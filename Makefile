@@ -32,12 +32,18 @@ VERSION    	 = 0.0.1
 SRC	 	 = $(wildcard src/*.cpp)
 OBJ	 	 = $(SRC:.cpp=.o)
 LDFLAGS   	+= -L$(BUILDDIR)
-LDLIBS		+= $(shell pkg-config --libs notcurses)
-CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
+LDLIBS		+= $(BUILDDIR)/libimgui.a -lGL $(shell pkg-config --libs glfw3)
+CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iimgui -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
 
-all: $(TARGET)
+all: imgui $(TARGET)
 
-$(TARGET): $(OBJ)
+imgui:
+ifeq ($(wildcard $(BUILDDIR)/libimgui.a),)
+	mkdir -p $(BUILDDIR)
+	$(MAKE) -C imgui/ BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD)
+endif
+
+$(TARGET): imgui $(OBJ)
 	mkdir -p $(BUILDDIR)
 	$(CXX) -o $(BUILDDIR)/$(TARGET) $(OBJ) $(LDFLAGS) $(LDLIBS)
 
@@ -57,4 +63,4 @@ updatever:
 	sed -i "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml) compile_flags.txt
 	sed -i "s#Project-Id-Version: $(NAME) $(OLDVERSION)#Project-Id-Version: $(NAME) $(VERSION)#g" po/*
 
-.PHONY: $(TARGET) updatever distclean clean all
+.PHONY: $(TARGET) updatever distclean clean imgui all
