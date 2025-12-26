@@ -1,6 +1,6 @@
 /build*/
-/ulpm
-/ulpm_r
+/oshot
+/oshot_r
 /locale/
 /include/version.h
 
@@ -40,4 +40,4 @@
 *.out
 *.app
 .cache
-ulpm.json
+imgui.ini

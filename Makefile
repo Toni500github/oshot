@@ -6,6 +6,34 @@ CXXSTD		?= c++20
 
 DEBUG 		?= 1
 
+COMPILER := $(shell $(CXX) --version | head -n1)
+
+ifeq ($(findstring g++,$(COMPILER)),g++)
+        export LTO_FLAGS = -flto=auto -ffat-lto-objects
+else ifeq ($(findstring clang,$(COMPILER)),clang)
+        export LTO_FLAGS = -flto=thin
+else
+    $(warning Unknown compiler: $(COMPILER). No LTO flags applied.)
+endif
+
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S), Linux)
+        LDLIBS += -lGL `pkg-config --static --libs glfw3 x11`
+endif
+
+ifeq ($(UNAME_S), Darwin) #APPLE
+        LDFLAGS += -L/usr/local/lib -L/opt/local/lib -L/opt/homebrew/lib
+        LDLIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
+        #LDLIBS += -lglfw3
+        LDLIBS += -lglfw
+
+        CXXFLAGS += -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include
+endif
+
+ifeq ($(OS), Windows_NT)
+        LDLIBS += -lglfw3 -lgdi32 -lopengl32 -limm32
+endif
+
 # https://stackoverflow.com/a/1079861
 # WAY easier way to build debug and release builds
 ifeq ($(DEBUG), 1)
@@ -32,18 +60,34 @@ VERSION    	 = 0.0.1
 SRC	 	 = $(wildcard src/*.cpp)
 OBJ	 	 = $(SRC:.cpp=.o)
 LDFLAGS   	+= -L$(BUILDDIR)
-LDLIBS		+= $(BUILDDIR)/libimgui.a -lGL $(shell pkg-config --libs glfw3)
-CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iimgui -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
+LDLIBS		+= $(BUILDDIR)/libimgui.a $(BUILDDIR)/libfmt.a $(BUILDDIR)/libtiny-process-library.a
+CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
 
-all: imgui $(TARGET)
+all: imgui fmt tpl toml $(TARGET)
 
 imgui:
 ifeq ($(wildcard $(BUILDDIR)/libimgui.a),)
 	mkdir -p $(BUILDDIR)
-	$(MAKE) -C imgui/ BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD)
+	$(MAKE) -C src/libs/imgui BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD)
 endif
 
-$(TARGET): imgui $(OBJ)
+fmt:
+ifeq ($(wildcard $(BUILDDIR)/libfmt.a),)
+	mkdir -p $(BUILDDIR)
+	$(MAKE) -C src/libs/fmt BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD)
+endif
+
+toml:
+ifeq ($(wildcard $(BUILDDIR)/toml.o),)
+	$(MAKE) -C src/libs/toml++ BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD)
+endif
+
+tpl:
+ifeq ($(wildcard $(BUILDDIR)/libtiny-process-library.a),)
+	$(MAKE) -C src/libs/tiny-process-library BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD)
+endif
+
+$(TARGET): imgui fmt tpl toml $(OBJ)
 	mkdir -p $(BUILDDIR)
 	$(CXX) -o $(BUILDDIR)/$(TARGET) $(OBJ) $(LDFLAGS) $(LDLIBS)
 
@@ -63,4 +107,4 @@ updatever:
 	sed -i "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml) compile_flags.txt
 	sed -i "s#Project-Id-Version: $(NAME) $(OLDVERSION)#Project-Id-Version: $(NAME) $(VERSION)#g" po/*
 
-.PHONY: $(TARGET) updatever distclean clean imgui all
+.PHONY: $(TARGET) updatever distclean clean imgui fmt tpl toml dist all
