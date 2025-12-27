@@ -6,6 +6,7 @@
 #include <functional>
 
 #include "imgui/imgui.h"
+#include "ocr.hpp"
 #include "screen_capture.hpp"
 struct point_t
 {
@@ -46,10 +47,9 @@ public:
     void             CreateTexture();
     capture_result_t GetFinalImage();
 
-    void Cancel(bool on_cancel = true);
+    void Cancel();
 
     bool IsActive() const { return m_state != ToolState::Idle; }
-
     void SetOnComplete(const std::function<void(capture_result_t)>& cb) { m_on_complete = cb; }
     void SetOnCancel(const std::function<void()>& cb) { m_on_cancel = cb; }
 
@@ -58,13 +58,16 @@ private:
     void DrawDarkOverlay();
     void DrawSelectionBorder();
     void DrawSizeIndicator();
+    void DrawOcrWindow();
 
+    OcrAPI           m_api;
     ImGuiIO&         m_io;
     capture_result_t m_screenshot;
     void*            m_texture_id = nullptr;  // ImGui texture ID
     ToolState        m_state      = ToolState::Idle;
     selection_rect_t m_selection;
     bool             m_is_selecting{};
+    bool             m_is_hovering_ocr{};
 
     std::function<void(capture_result_t)> m_on_complete;
     std::function<void()>                 m_on_cancel;

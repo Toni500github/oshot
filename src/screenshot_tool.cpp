@@ -2,11 +2,11 @@
 
 #include <cstdint>
 #include <cstring>
-#include <iostream>
+#include <optional>
+#include <vector>
 
+#include "fmt/base.h"
 #include "imgui/imgui.h"
-#include "imgui/imgui_impl_glfw.h"
-#include "imgui/imgui_impl_opengl3.h"
 #include "imgui/imgui_impl_opengl3_loader.h"
 
 static ImVec2 origin(0, 0);
@@ -23,7 +23,7 @@ bool ScreenshotInteraction::Start()
     if (!m_screenshot.success || m_screenshot.data.empty() || !m_screenshot.error_msg.empty())
     {
         m_state = ToolState::Idle;
-        std::cerr << "Failed to do data screenshot: " << m_screenshot.error_msg << std::endl;
+        fmt::println(stderr, "Failed to do data screenshot: {}", m_screenshot.error_msg);
         return false;
     }
     m_state = ToolState::Selecting;
@@ -54,14 +54,22 @@ bool ScreenshotInteraction::RenderOverlay()
 
     if (m_state == ToolState::Selecting || m_state == ToolState::Selected)
     {
-        HandleSelectionInput();
-        DrawDarkOverlay();
+        if (!m_is_hovering_ocr)
+        {
+            HandleSelectionInput();
+            DrawDarkOverlay();
+        }
         DrawSelectionBorder();
-        DrawSizeIndicator();
+        // DrawSizeIndicator();
     }
 
     ImGui::End();
     ImGui::PopStyleVar();
+
+    if (m_state == ToolState::Selected)
+    {
+        DrawOcrWindow();
+    }
 
     if (ImGui::IsKeyPressed(ImGuiKey_Escape))
     {
@@ -167,7 +175,42 @@ void ScreenshotInteraction::DrawSelectionBorder()
 
 void ScreenshotInteraction::DrawSizeIndicator() {}
 
-void ScreenshotInteraction::Cancel(bool on_cancel)
+void ScreenshotInteraction::DrawOcrWindow()
+{
+    static std::string ocr_text;
+
+    ImGui::Begin("OCR");
+
+    ImVec2 window_pos  = ImGui::GetWindowPos();
+    ImVec2 window_size = ImGui::GetWindowSize();
+    m_is_hovering_ocr =
+        ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) ||
+        (ImGui::IsMouseHoveringRect(window_pos, ImVec2(window_pos.x + window_size.x, window_pos.y + window_size.y)));
+
+    if (ImGui::Button("Extract Text"))
+    {
+        if (!m_api.Init())
+        {
+            ImGui::Text(" Failed to init OCR (damn)");
+            return;
+        }
+        m_api.SetImage(GetFinalImage());
+        const auto& text = m_api.ExtractText();
+        if (text)
+            ocr_text = *text;
+    }
+
+    ImGui::Spacing();
+
+    ImGui::InputTextMultiline("##source",
+                              ocr_text.data(),
+                              ocr_text.length(),
+                              ImVec2(-1, ImGui::GetTextLineHeight() * 16),
+                              ImGuiInputTextFlags_ReadOnly);
+    ImGui::End();
+}
+
+void ScreenshotInteraction::Cancel()
 {
     m_state = ToolState::Idle;
     if (m_texture_id)
@@ -176,7 +219,7 @@ void ScreenshotInteraction::Cancel(bool on_cancel)
         glDeleteTextures(1, &texture);
         m_texture_id = nullptr;
     }
-    if (on_cancel && m_on_cancel)
+    if (m_on_cancel)
     {
         m_on_cancel();
     }
@@ -194,31 +237,32 @@ capture_result_t ScreenshotInteraction::GetFinalImage()
     capture_result_t result;
     result.region  = region;
     result.success = true;
+    result.data.resize(region.width * region.height * 4);
 
-    result.data.assign(region.width * region.height * 4, 0);
+    const uint8_t* src_data = m_screenshot.data.data();
+    uint8_t*       dst_data = result.data.data();
 
-    // Calculate overlap between selection and screenshot
-    int overlap_x1 = std::max(region.x, 0);
-    int overlap_y1 = std::max(region.y, 0);
-    int overlap_x2 = std::min(region.x + region.width, m_screenshot.region.width);
-    int overlap_y2 = std::min(region.y + region.height, m_screenshot.region.height);
+    int src_width = m_screenshot.region.width;
+    int dst_width = region.width;
 
-    // Copy overlapping region
-    for (int y = overlap_y1; y < overlap_y2; ++y)
+    // Calculate bounds
+    int start_y = std::max(0, -region.y);
+    int end_y   = std::min(region.height, m_screenshot.region.height - region.y);
+    int start_x = std::max(0, -region.x);
+    int end_x   = std::min(region.width, m_screenshot.region.width - region.x);
+
+    std::fill(result.data.begin(), result.data.end(), 0);
+
+    // Copy only the valid region
+    for (int y = start_y; y < end_y; ++y)
     {
-        for (int x = overlap_x1; x < overlap_x2; ++x)
-        {
-            int src_x = x;
-            int src_y = y;
-            int dst_x = x - region.x;
-            int dst_y = y - region.y;
+        int src_y         = region.y + y;
+        int src_row_start = (src_y * src_width + region.x + start_x) * 4;
+        int dst_row_start = (y * dst_width + start_x) * 4;
 
-            int src_idx = (src_y * m_screenshot.region.width + src_x) * 4;
-            int dst_idx = (dst_y * region.width + dst_x) * 4;
-
-            // Copy RGBA pixel
-            std::copy_n(&m_screenshot.data[src_idx], 4, &result.data[dst_idx]);
-        }
+        // Copy the entire valid row segment
+        int bytes_to_copy = (end_x - start_x) * 4;
+        std::memcpy(&dst_data[dst_row_start], &src_data[src_row_start], bytes_to_copy);
     }
 
     return result;

@@ -16,7 +16,7 @@ struct region_t
 
 struct capture_result_t
 {
-    std::vector<uint8_t> data;
+    std::vector<uint8_t> data;  // RGBA
     bool                 success = false;
     region_t             region;
     std::string          error_msg;

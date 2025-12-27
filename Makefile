@@ -18,7 +18,7 @@ endif
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S), Linux)
-        LDLIBS += -lGL `pkg-config --static --libs glfw3 x11`
+        LDLIBS += -lGL `pkg-config --static --libs glfw3 x11 tesseract`
 endif
 
 ifeq ($(UNAME_S), Darwin) #APPLE

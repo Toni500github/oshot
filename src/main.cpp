@@ -1,21 +1,15 @@
 #include <stdio.h>
 
-#include <chrono>
 #include <fstream>
 #include <ios>
-#include <iostream>
 #include <string>
-#include <thread>
-
-#include "screenshot_tool.hpp"
-
-using namespace std::chrono_literals;
 
 #include "fmt/base.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_opengl3.h"
 #include "screen_capture.hpp"
+#include "screenshot_tool.hpp"
 #define GL_SILENCE_DEPRECATION
 #if defined(IMGUI_IMPL_OPENGL_ES2)
 #include <GLES2/gl2.h>
@@ -124,7 +118,7 @@ int main(int, char*[])
     ss_tool.SetOnComplete([&](capture_result_t result) {
         if (!result.success)
         {
-            std::cerr << "Screenshot failed: " << result.error_msg << std::endl;
+            fmt::println(stderr, "Screenshot failed: {}", result.error_msg);
             glfwSetWindowShouldClose(window, GLFW_TRUE);
             return;
         }
