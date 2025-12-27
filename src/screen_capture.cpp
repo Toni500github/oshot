@@ -2,11 +2,14 @@
 
 #include <unistd.h>
 
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+
+#include "fmt/format.h"
 
 // X11 fallback
 #include <X11/Xlib.h>
@@ -126,7 +129,7 @@ capture_result_t capture_full_screen_wayland()
     if (fread(ppm_data.data(), 1, ppm_data.size(), pipe) != ppm_data.size())
     {
         pclose(pipe);
-        result.error_msg = "Failed to read PPM data";
+        result.error_msg = fmt::format("Failed to read PPM data: {}", strerror(errno));
         return result;
     }
     pclose(pipe);

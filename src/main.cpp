@@ -7,6 +7,8 @@
 #include <string>
 #include <thread>
 
+#include "screenshot_tool.hpp"
+
 using namespace std::chrono_literals;
 
 #include "fmt/base.h"
@@ -45,6 +47,7 @@ void SaveAsPPM(const std::string& filename, const std::vector<uint8_t>& data, in
     for (int i = 0; i < width * height; ++i)
         file.write(reinterpret_cast<const char*>(&data[i * 4]), 3);
 }
+
 int main(int, char*[])
 {
     glfwSetErrorCallback(glfw_error_callback);
@@ -80,14 +83,22 @@ int main(int, char*[])
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
 #endif
 
-    // Create window with graphics context
-    float main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor(glfwGetPrimaryMonitor());  // Valid on GLFW 3.3+ only
-    int   win_width = (1280 * main_scale), win_height = (800 * main_scale);
-    GLFWwindow* window = glfwCreateWindow(win_width, win_height, "Dear ImGui GLFW+OpenGL3 example", nullptr, nullptr);
+    GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
+
+    // Create borderless fullscreen window
+    glfwWindowHint(GLFW_RED_BITS, mode->redBits);
+    glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
+    glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
+    glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+    glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);  // Borderless
+    glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);    // Always on top
+
+    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Screenshot Tool", nullptr, nullptr);
     if (window == nullptr)
         return 1;
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(true);  // Enable vsync
+    glfwSwapInterval(1);  // Enable vsync
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -100,21 +111,32 @@ int main(int, char*[])
     ImGui::StyleColorsDark();
     // ImGui::StyleColorsLight();
 
-    // Setup scaling
-    ImGuiStyle& style = ImGui::GetStyle();
-    style.ScaleAllSizes(main_scale);  // Bake a fixed style scale. (until we have a solution for dynamic style scaling,
-                                      // changing this requires resetting Style + calling this again)
-    style.FontScaleDpi = main_scale;  // Set initial font scale. (using io.ConfigDpiScaleFonts=true makes this
-                                      // unnecessary. We leave both here for documentation purpose)
-
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    // Our state
-    bool   show_another_window = false;
-    ImVec4 clear_color         = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    while (!glfwWindowShouldClose(window))
+    // Setup Screenshot Tool
+    ScreenshotInteraction ss_tool(io);
+    ss_tool.SetOnCancel([&]() {
+        fmt::println(stderr, "Cancelled screenshot");
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+    });
+    ss_tool.SetOnComplete([&](capture_result_t result) {
+        if (!result.success)
+        {
+            std::cerr << "Screenshot failed: " << result.error_msg << std::endl;
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+            return;
+        }
+
+        fmt::println("Saving to /tmp/test.ppm...");
+        SaveAsPPM("/tmp/test.ppm", result.data, result.region.width, result.region.height);
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+    });
+    if (!ss_tool.Start())
+        return 1;
+
+    while (!glfwWindowShouldClose(window) && ss_tool.IsActive())
     {
         // Poll and handle events (inputs, window resize, etc.)
         // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your
@@ -136,51 +158,14 @@ int main(int, char*[])
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code
-        // to learn more about Dear ImGui!).
-
-        // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
-        {
-            static float f       = 0.0f;
-            static int   counter = 0;
-
-            ImGui::Begin("Hello, world!");  // Create a window called "Hello, world!" and append into it.
-
-            ImGui::Text("This is some useful text.");  // Display some text (you can use a format strings too)
-            ImGui::Checkbox("Another Window", &show_another_window);
-
-            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
-            ImGui::ColorEdit3("clear color", (float*)&clear_color);  // Edit 3 floats representing a color
-
-            if (ImGui::Button(
-                    "Button"))  // Buttons return true when clicked (most widgets return true when edited/activated)
-                counter++;
-            ImGui::SameLine();
-            ImGui::Text("counter = %d", counter);
-
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-            ImGui::End();
-        }
-
-        // 3. Show another simple window.
-        if (show_another_window)
-        {
-            ImGui::Begin("Another Window",
-                         &show_another_window);  // Pass a pointer to our bool variable (the window will have a closing
-                                                 // button that will clear the bool when clicked)
-            ImGui::Text("Hello from another window!");
-            if (ImGui::Button("Close Me"))
-                show_another_window = false;
-            ImGui::End();
-        }
+        ss_tool.RenderOverlay();
 
         // Rendering
         ImGui::Render();
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
         glViewport(0, 0, display_w, display_h);
-        glClearColor(
-            clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);  // Transparent/dark background
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -194,22 +179,6 @@ int main(int, char*[])
 
     glfwDestroyWindow(window);
     glfwTerminate();
-
-    capture_result_t result;
-    switch (get_session_type())
-    {
-        case X11:     result = capture_full_screen_x11(); break;
-        case WAYLAND: result = capture_full_screen_wayland(); break;
-        default:      return 1;
-    }
-
-    if (!result.success)
-    {
-        std::cerr << "Failed to do data screenshot: " << result.error_msg << std::endl;
-        return 1;
-    }
-    fmt::println("Saving to /tmp/test.ppm...");
-    SaveAsPPM("/tmp/test.ppm", result.data, result.region.width, result.region.height);
 
     return 0;
 }

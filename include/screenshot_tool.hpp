@@ -1,0 +1,73 @@
+#ifndef _SCREENSHOT_TOOL_HPP_
+#define _SCREENSHOT_TOOL_HPP_
+
+#include <algorithm>
+#include <cstdlib>
+#include <functional>
+
+#include "imgui/imgui.h"
+#include "screen_capture.hpp"
+struct point_t
+{
+    float x{};
+    float y{};
+};
+
+struct selection_rect_t
+{
+    point_t start;
+    point_t end;
+
+    float get_x() const { return std::min(start.x, end.x); }
+    float get_y() const { return std::min(start.y, end.y); }
+    float get_width() const { return std::abs(end.x - start.x); }
+    float get_height() const { return std::abs(end.y - start.y); }
+};
+
+enum class ToolState
+{
+    Idle,
+    Capturing,
+    Selecting,
+    Selected
+};
+
+class ScreenshotInteraction
+{
+public:
+    ScreenshotInteraction(ImGuiIO& io) : m_io(io) {}
+    ~ScreenshotInteraction() { m_texture_id = nullptr; }
+
+    bool Start();
+
+    // Returns true if active, else false if finished
+    bool RenderOverlay();
+
+    void             CreateTexture();
+    capture_result_t GetFinalImage();
+
+    void Cancel(bool on_cancel = true);
+
+    bool IsActive() const { return m_state != ToolState::Idle; }
+
+    void SetOnComplete(const std::function<void(capture_result_t)>& cb) { m_on_complete = cb; }
+    void SetOnCancel(const std::function<void()>& cb) { m_on_cancel = cb; }
+
+private:
+    void HandleSelectionInput();
+    void DrawDarkOverlay();
+    void DrawSelectionBorder();
+    void DrawSizeIndicator();
+
+    ImGuiIO&         m_io;
+    capture_result_t m_screenshot;
+    void*            m_texture_id = nullptr;  // ImGui texture ID
+    ToolState        m_state      = ToolState::Idle;
+    selection_rect_t m_selection;
+    bool             m_is_selecting{};
+
+    std::function<void(capture_result_t)> m_on_complete;
+    std::function<void()>                 m_on_cancel;
+};
+
+#endif  // !_SCREENSHOT_TOOL_HPP_
