@@ -1,9 +1,3 @@
-#include <stdio.h>
-
-#include <fstream>
-#include <ios>
-#include <string>
-
 #include "fmt/base.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
@@ -26,20 +20,7 @@
 
 static void glfw_error_callback(int error, const char* description)
 {
-    fprintf(stderr, "GLFW Error %d: %s\n", error, description);
-}
-
-// Simple PPM image writer for testing
-void SaveAsPPM(const std::string& filename, const std::vector<uint8_t>& data, int width, int height)
-{
-    std::ofstream file(filename, std::ios::binary | std::ios::trunc);
-
-    // PPM header
-    file << "P6\n" << width << " " << height << "\n255\n";
-
-    // Write RGB data (skip alpha channel)
-    for (int i = 0; i < width * height; ++i)
-        file.write(reinterpret_cast<const char*>(&data[i * 4]), 3);
+    fmt::println(stderr, "GLFW Error {}: {}", error, description);
 }
 
 int main(int, char*[])
@@ -88,7 +69,7 @@ int main(int, char*[])
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);  // Borderless
     glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);    // Always on top
 
-    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Screenshot Tool", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "OCRshot - Screenshot tool", nullptr, nullptr);
     if (window == nullptr)
         return 1;
     glfwMakeContextCurrent(window);
@@ -110,23 +91,18 @@ int main(int, char*[])
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     // Setup Screenshot Tool
-    ScreenshotInteraction ss_tool(io);
+    ScreenshotTool ss_tool(io);
     ss_tool.SetOnCancel([&]() {
         fmt::println(stderr, "Cancelled screenshot");
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
     ss_tool.SetOnComplete([&](capture_result_t result) {
         if (!result.success)
-        {
             fmt::println(stderr, "Screenshot failed: {}", result.error_msg);
-            glfwSetWindowShouldClose(window, GLFW_TRUE);
-            return;
-        }
 
-        fmt::println("Saving to /tmp/test.ppm...");
-        SaveAsPPM("/tmp/test.ppm", result.data, result.region.width, result.region.height);
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
+
     if (!ss_tool.Start())
         return 1;
 

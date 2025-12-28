@@ -35,16 +35,16 @@ enum class ToolState
 
 enum ErrorState
 {
-    None = 0,
-    InitOcr = 1 << 1,
-    InvalidPath = 1 << 2 
+    None        = 0,
+    InitOcr     = 1 << 1,
+    InvalidPath = 1 << 2
 };
 
-class ScreenshotInteraction
+class ScreenshotTool
 {
 public:
-    ScreenshotInteraction(ImGuiIO& io) : m_io(io) {}
-    ~ScreenshotInteraction() { m_texture_id = nullptr; }
+    ScreenshotTool(ImGuiIO& io) : m_io(io) {}
+    ~ScreenshotTool() { m_texture_id = nullptr; }
 
     bool Start();
 

@@ -59,12 +59,12 @@ Cpp11BracedListStyle: false
 NamespaceIndentation: None
 
 # Format comments
-ReflowComments: true
+ReflowComments: IndentOnly
 
 # Additional settings to match Source SDK 2013 style
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
-AllowShortFunctionsOnASingleLine: All
+AllowShortFunctionsOnASingleLine: InlineOnly
 
 AlignConsecutiveShortCaseStatements:
   Enabled: true
@@ -74,6 +74,6 @@ AlignConsecutiveShortCaseStatements:
 
 AllowShortCaseLabelsOnASingleLine: true
 BinPackArguments: false
-BinPackParameters: false
+BinPackParameters: OnePerLine
 ExperimentalAutoDetectBinPacking: false
 AllowAllParametersOfDeclarationOnNextLine: false

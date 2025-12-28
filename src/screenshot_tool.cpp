@@ -25,7 +25,7 @@ static std::vector<std::string> GetTrainingDataList(const std::string& path)
     return list;
 }
 
-bool ScreenshotInteraction::Start()
+bool ScreenshotTool::Start()
 {
     switch (get_session_type())
     {
@@ -45,7 +45,7 @@ bool ScreenshotInteraction::Start()
     return true;
 }
 
-bool ScreenshotInteraction::RenderOverlay()
+bool ScreenshotTool::RenderOverlay()
 {
     if (!IsActive())
         return false;
@@ -103,7 +103,7 @@ bool ScreenshotInteraction::RenderOverlay()
     return true;
 }
 
-void ScreenshotInteraction::HandleSelectionInput()
+void ScreenshotTool::HandleSelectionInput()
 {
     const ImVec2& mouse_pos = ImGui::GetMousePos();
 
@@ -126,7 +126,7 @@ void ScreenshotInteraction::HandleSelectionInput()
     }
 }
 
-void ScreenshotInteraction::DrawDarkOverlay()
+void ScreenshotTool::DrawDarkOverlay()
 {
     ImDrawList* draw_list   = ImGui::GetForegroundDrawList();
     ImVec2      screen_size = m_io.DisplaySize;
@@ -151,7 +151,7 @@ void ScreenshotInteraction::DrawDarkOverlay()
     draw_list->AddRectFilled(ImVec2(sel_x + sel_w, sel_y), ImVec2(screen_size.x, sel_y + sel_h), dark_color);
 }
 
-void ScreenshotInteraction::DrawSelectionBorder()
+void ScreenshotTool::DrawSelectionBorder()
 {
     ImDrawList* draw_list = ImGui::GetForegroundDrawList();
 
@@ -187,9 +187,10 @@ void ScreenshotInteraction::DrawSelectionBorder()
                              handle_color);
 }
 
-void ScreenshotInteraction::DrawSizeIndicator() {}
+void ScreenshotTool::DrawSizeIndicator()
+{}
 
-void ScreenshotInteraction::DrawOcrWindow()
+void ScreenshotTool::DrawOcrWindow()
 {
     static std::string ocr_text;
     static std::string ocr_path{ "/usr/share/tessdata/" };
@@ -249,7 +250,8 @@ void ScreenshotInteraction::DrawOcrWindow()
         ImGui::InputText("Path", &ocr_path);
     }
 
-    if (!HasError(ErrorState::InvalidPath) && ImGui::BeginCombo("Model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge))
+    if (!HasError(ErrorState::InvalidPath) &&
+        ImGui::BeginCombo("Model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge))
     {
         static ImGuiTextFilter filter;
         if (ImGui::IsWindowAppearing())
@@ -279,7 +281,7 @@ void ScreenshotInteraction::DrawOcrWindow()
     ImGui::End();
 }
 
-void ScreenshotInteraction::Cancel()
+void ScreenshotTool::Cancel()
 {
     m_state = ToolState::Idle;
     if (m_texture_id)
@@ -294,7 +296,7 @@ void ScreenshotInteraction::Cancel()
     }
 }
 
-capture_result_t ScreenshotInteraction::GetFinalImage()
+capture_result_t ScreenshotTool::GetFinalImage()
 {
     region_t region{
         static_cast<int>(m_selection.get_x()),
@@ -337,27 +339,27 @@ capture_result_t ScreenshotInteraction::GetFinalImage()
     return result;
 }
 
-bool ScreenshotInteraction::HasError(ErrorState err)
+bool ScreenshotTool::HasError(ErrorState err)
 {
     return m_err_state & err;
 }
 
-bool ScreenshotInteraction::HasErrors()
+bool ScreenshotTool::HasErrors()
 {
     return m_err_state != ErrorState::None;
 }
 
-void ScreenshotInteraction::SetError(ErrorState err)
+void ScreenshotTool::SetError(ErrorState err)
 {
     m_err_state |= err;
 }
 
-void ScreenshotInteraction::ClearError(ErrorState err)
+void ScreenshotTool::ClearError(ErrorState err)
 {
     m_err_state &= ~err;
 }
 
-void ScreenshotInteraction::CreateTexture()
+void ScreenshotTool::CreateTexture()
 {
     if (m_screenshot.data.empty() || !m_screenshot.success)
         return;
