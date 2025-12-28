@@ -2,14 +2,28 @@
 
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <optional>
 #include <vector>
 
 #include "fmt/base.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3_loader.h"
+#include "imgui/imgui_stdlib.h"
 
 static ImVec2 origin(0, 0);
+
+static std::vector<std::string> GetTrainingDataList(const std::string& path)
+{
+    if (!std::filesystem::exists(path))
+        return {};
+
+    std::vector<std::string> list;
+    for (auto const& dir_entry : std::filesystem::directory_iterator{ path })
+        if (dir_entry.path().extension() == ".traineddata")
+            list.push_back(dir_entry.path().stem());
+    return list;
+}
 
 bool ScreenshotInteraction::Start()
 {
@@ -77,7 +91,7 @@ bool ScreenshotInteraction::RenderOverlay()
         return false;
     }
 
-    if (ImGui::IsKeyPressed(ImGuiKey_Enter) && m_state == ToolState::Selected)
+    if (!m_is_hovering_ocr && ImGui::IsKeyPressed(ImGuiKey_Enter) && m_state == ToolState::Selected)
     {
         if (m_on_complete)
             m_on_complete(GetFinalImage());
@@ -178,6 +192,9 @@ void ScreenshotInteraction::DrawSizeIndicator() {}
 void ScreenshotInteraction::DrawOcrWindow()
 {
     static std::string ocr_text;
+    static std::string ocr_path{ "/usr/share/tessdata/" };
+    static std::string ocr_model;
+    static size_t      item_selected_idx = 0;
 
     ImGui::Begin("OCR");
 
@@ -187,20 +204,72 @@ void ScreenshotInteraction::DrawOcrWindow()
         ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) ||
         (ImGui::IsMouseHoveringRect(window_pos, ImVec2(window_pos.x + window_size.x, window_pos.y + window_size.y)));
 
-    if (ImGui::Button("Extract Text"))
+    if (ImGui::Button("Extract Text") && !HasErrors() && !ocr_model.empty())
     {
-        if (!m_api.Init())
+        if (!m_api.Init(ocr_path, ocr_model))
         {
-            ImGui::Text(" Failed to init OCR (damn)");
-            return;
+            SetError(ErrorState::InitOcr);
         }
-        m_api.SetImage(GetFinalImage());
-        const auto& text = m_api.ExtractText();
-        if (text)
-            ocr_text = *text;
+        else
+        {
+            m_api.SetImage(GetFinalImage());
+            const auto& text = m_api.ExtractText();
+            if (text)
+                ocr_text = *text;
+            ClearError(ErrorState::InitOcr);
+        }
+    }
+
+    if (HasError(InitOcr))
+    {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Failed to init OCR!");
     }
 
     ImGui::Spacing();
+
+    const std::vector<std::string>& list = GetTrainingDataList(ocr_path);
+    if (list.empty())
+        SetError(ErrorState::InvalidPath);
+    else
+        ClearError(ErrorState::InvalidPath);
+
+    if (HasError(ErrorState::InvalidPath))
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
+
+        ImGui::InputText("Path", &ocr_path);
+
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1, 0, 0, 1), "Invalid/Empty!");
+    }
+    else
+    {
+        ImGui::InputText("Path", &ocr_path);
+    }
+
+    if (!HasError(ErrorState::InvalidPath) && ImGui::BeginCombo("Model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge))
+    {
+        static ImGuiTextFilter filter;
+        if (ImGui::IsWindowAppearing())
+        {
+            ImGui::SetKeyboardFocusHere();
+            filter.Clear();
+        }
+        ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F);
+        filter.Draw("##Filter", -FLT_MIN);
+
+        for (size_t i = 0; i < list.size(); ++i)
+        {
+            bool is_selected = item_selected_idx == i;
+            if (filter.PassFilter(list[i].c_str()))
+                if (ImGui::Selectable(list[i].c_str(), is_selected))
+                    item_selected_idx = i;
+        }
+        ocr_model = list[item_selected_idx];
+        ImGui::EndCombo();
+    }
 
     ImGui::InputTextMultiline("##source",
                               ocr_text.data(),
@@ -266,6 +335,26 @@ capture_result_t ScreenshotInteraction::GetFinalImage()
     }
 
     return result;
+}
+
+bool ScreenshotInteraction::HasError(ErrorState err)
+{
+    return m_err_state & err;
+}
+
+bool ScreenshotInteraction::HasErrors()
+{
+    return m_err_state != ErrorState::None;
+}
+
+void ScreenshotInteraction::SetError(ErrorState err)
+{
+    m_err_state |= err;
+}
+
+void ScreenshotInteraction::ClearError(ErrorState err)
+{
+    m_err_state &= ~err;
 }
 
 void ScreenshotInteraction::CreateTexture()

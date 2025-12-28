@@ -1,7 +1,9 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+
 #include <cstdint>
 #include <vector>
+
 #include "fmt/format.h"
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
 {

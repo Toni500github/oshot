@@ -33,6 +33,13 @@ enum class ToolState
     Selected
 };
 
+enum ErrorState
+{
+    None = 0,
+    InitOcr = 1 << 1,
+    InvalidPath = 1 << 2 
+};
+
 class ScreenshotInteraction
 {
 public:
@@ -59,12 +66,17 @@ private:
     void DrawSelectionBorder();
     void DrawSizeIndicator();
     void DrawOcrWindow();
+    bool HasError(ErrorState err);
+    bool HasErrors();
+    void ClearError(ErrorState err);
+    void SetError(ErrorState err);
 
     OcrAPI           m_api;
     ImGuiIO&         m_io;
     capture_result_t m_screenshot;
     void*            m_texture_id = nullptr;  // ImGui texture ID
     ToolState        m_state      = ToolState::Idle;
+    int              m_err_state  = ErrorState::None;
     selection_rect_t m_selection;
     bool             m_is_selecting{};
     bool             m_is_hovering_ocr{};

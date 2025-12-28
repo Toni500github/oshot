@@ -13,7 +13,7 @@
 class OcrAPI
 {
 public:
-    bool                       Init();
+    bool                       Init(const std::string& path, const std::string& model);
     void                       SetImage(const capture_result_t& ss) { m_ss = ss; }
     std::optional<std::string> ExtractText();
 

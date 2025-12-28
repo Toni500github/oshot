@@ -1,7 +1,5 @@
 #include "screen_capture.hpp"
 
-#include "util.hpp"
-
 #include <unistd.h>
 
 #include <cerrno>
@@ -12,6 +10,7 @@
 #include <vector>
 
 #include "fmt/format.h"
+#include "util.hpp"
 
 // X11 fallback
 #include <X11/Xlib.h>

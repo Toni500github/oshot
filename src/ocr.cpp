@@ -27,10 +27,10 @@ PIX* rgba_to_pix(const uint8_t* rgba_data, int width, int height)
     return pix;
 }
 
-bool OcrAPI::Init()
+bool OcrAPI::Init(const std::string& path, const std::string& model)
 {
     m_api = std::make_unique<tesseract::TessBaseAPI>();
-    return m_api->Init(nullptr, "eng") == 0;
+    return m_api->Init(path.c_str(), model.c_str()) == 0;
 }
 
 std::optional<std::string> OcrAPI::ExtractText()
