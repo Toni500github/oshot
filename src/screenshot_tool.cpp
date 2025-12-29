@@ -32,6 +32,21 @@ static std::vector<std::string> GetTrainingDataList(const std::string& path)
     return list;
 }
 
+// https://github.com/pthom/imgui/blob/808272622f52d2f36124629c29994d2a5a7eb2f2/imgui_demo.cpp#L273
+// Helper to display a little (?) mark which shows a tooltip when hovered.
+// In your own code you may want to display an actual icon if you are using a merged icon fonts (see docs/FONTS.md)
+static void HelpMarker(const char* desc)
+{
+    ImGui::TextDisabled("(?)");
+    if (ImGui::BeginItemTooltip())
+    {
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+        ImGui::TextUnformatted(desc);
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+}
+
 bool ScreenshotTool::Start()
 {
     translator = std::make_unique<Translator>();
@@ -322,6 +337,9 @@ void ScreenshotTool::DrawTranslationTools()
         if (opt_translation)
             translated_text = *opt_translation;
     }
+
+    ImGui::SameLine();
+    HelpMarker("The translation is done by online services such as Google translate");
 
     static constexpr float spacing = 4.0f;   // Spacing between inputs
     static constexpr float padding = 10.0f;  // Padding on right side
