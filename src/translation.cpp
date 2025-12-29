@@ -3,10 +3,9 @@
 #include <filesystem>
 #include <optional>
 
-
-#include "util.hpp"
 #include "fmt/format.h"
 #include "tiny-process-library/process.hpp"
+#include "util.hpp"
 
 void Translator::Start()
 {
@@ -54,14 +53,17 @@ command_result_t Translator::executeCommand(const std::string& command)
     return result;
 }
 
-std::optional<std::string> Translator::Translate(const std::string& lang_from, const std::string& lang_to, const std::string& text)
+std::optional<std::string> Translator::Translate(const std::string& lang_from,
+                                                 const std::string& lang_to,
+                                                 const std::string& text)
 {
     if (m_capabilities == NONE)
         return {};
 
     if (Has(Capabilities::HAS_TRANSLATE_BASH))
     {
-        const command_result_t& result = executeCommand(fmt::format("trans -brief {}:{} $'{}'", lang_from == "auto" ? "" : lang_from, lang_to, replace_str(text, "'", "\\'")));
+        const command_result_t& result = executeCommand(fmt::format(
+            "trans -brief {}:{} $'{}'", lang_from == "auto" ? "" : lang_from, lang_to, replace_str(text, "'", "\\'")));
         if (!result.success)
             return {};
         return result.output;

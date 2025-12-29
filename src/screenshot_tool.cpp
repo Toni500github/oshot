@@ -228,7 +228,8 @@ void ScreenshotTool::DrawOcrTools()
     if (HasError(InitOcr) || HasError(InvalidModel))
     {
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), HasError(InitOcr) ? "Failed to init OCR!" : "Please select a model first");
+        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
+                           HasError(InitOcr) ? "Failed to init OCR!" : "Please select a model first");
     }
 
     ImGui::Spacing();
@@ -278,10 +279,8 @@ void ScreenshotTool::DrawOcrTools()
         ImGui::EndCombo();
     }
 
-    ImGui::InputTextMultiline("##source",
-                              &m_ocr_text,
-                              ImVec2(-1, ImGui::GetTextLineHeight() * 10),
-                              ImGuiInputTextFlags_ReadOnly);
+    ImGui::InputTextMultiline(
+        "##source", &m_ocr_text, ImVec2(-1, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
 }
 
 void ScreenshotTool::DrawTranslationTools()
@@ -348,16 +347,13 @@ void ScreenshotTool::DrawTranslationTools()
     float available_width = ImGui::GetContentRegionAvail().x - spacing - padding;
     float width           = available_width / 2.0f;
 
-    ImGui::InputTextMultiline(
-        "##from",  &m_to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
+    ImGui::InputTextMultiline("##from", &m_to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
 
     ImGui::SameLine();
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + spacing);
 
-    ImGui::InputTextMultiline("##to",
-                              &translated_text,
-                              ImVec2(width, ImGui::GetTextLineHeight() * 10),
-                              ImGuiInputTextFlags_ReadOnly);
+    ImGui::InputTextMultiline(
+        "##to", &translated_text, ImVec2(width, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
 }
 
 void ScreenshotTool::Cancel()

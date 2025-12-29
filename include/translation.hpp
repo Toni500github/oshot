@@ -33,7 +33,9 @@ public:
 
     static command_result_t executeCommand(const std::string& command);
 
-    std::optional<std::string> Translate(const std::string& lang_from, const std::string& lang_to, const std::string& text);
+    std::optional<std::string> Translate(const std::string& lang_from,
+                                         const std::string& lang_to,
+                                         const std::string& text);
 
 private:
     int m_capabilities = NONE;

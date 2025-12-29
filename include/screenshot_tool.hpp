@@ -35,9 +35,9 @@ enum class ToolState
 
 enum ErrorState
 {
-    None        = 0,
-    InitOcr     = 1 << 1,
-    InvalidPath = 1 << 2,
+    None         = 0,
+    InitOcr      = 1 << 1,
+    InvalidPath  = 1 << 2,
     InvalidModel = 1 << 3
 };
 
@@ -83,8 +83,8 @@ private:
     bool             m_is_selecting{};
     bool             m_is_hovering_ocr{};
 
-    std::string      m_ocr_text;
-    std::string      m_to_translate_text;
+    std::string m_ocr_text;
+    std::string m_to_translate_text;
 
     std::function<void(capture_result_t)> m_on_complete;
     std::function<void()>                 m_on_cancel;
