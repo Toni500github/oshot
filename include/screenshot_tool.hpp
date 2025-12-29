@@ -37,7 +37,8 @@ enum ErrorState
 {
     None        = 0,
     InitOcr     = 1 << 1,
-    InvalidPath = 1 << 2
+    InvalidPath = 1 << 2,
+    InvalidModel = 1 << 3
 };
 
 class ScreenshotTool
@@ -65,7 +66,8 @@ private:
     void DrawDarkOverlay();
     void DrawSelectionBorder();
     void DrawSizeIndicator();
-    void DrawOcrWindow();
+    void DrawOcrTools();
+    void DrawTranslationTools();
     bool HasError(ErrorState err);
     bool HasErrors();
     void ClearError(ErrorState err);
@@ -80,6 +82,9 @@ private:
     selection_rect_t m_selection;
     bool             m_is_selecting{};
     bool             m_is_hovering_ocr{};
+
+    std::string      m_ocr_text;
+    std::string      m_to_translate_text;
 
     std::function<void(capture_result_t)> m_on_complete;
     std::function<void()>                 m_on_cancel;

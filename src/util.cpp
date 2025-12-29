@@ -59,3 +59,14 @@ std::vector<uint8_t> rgba_to_ppm(const std::vector<uint8_t>& rgba, int width, in
 
     return ppm_data;
 }
+
+std::string replace_str(std::string str, const std::string_view from, const std::string_view to)
+{
+    size_t start_pos = 0;
+    while ((start_pos = str.find(from, start_pos)) != std::string::npos)
+    {
+        str.replace(start_pos, from.length(), to);
+        start_pos += to.length();  // Handles case where 'to' is a substring of 'from'
+    }
+    return str;
+}

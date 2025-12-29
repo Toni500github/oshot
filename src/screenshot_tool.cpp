@@ -3,15 +3,22 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <optional>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "fmt/base.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3_loader.h"
 #include "imgui/imgui_stdlib.h"
+#include "langs.hpp"
+#include "translation.hpp"
 
 static ImVec2 origin(0, 0);
+
+static std::unique_ptr<Translator> translator;
 
 static std::vector<std::string> GetTrainingDataList(const std::string& path)
 {
@@ -27,6 +34,9 @@ static std::vector<std::string> GetTrainingDataList(const std::string& path)
 
 bool ScreenshotTool::Start()
 {
+    translator = std::make_unique<Translator>();
+    translator->Start();
+
     switch (get_session_type())
     {
         case X11:     m_screenshot = capture_full_screen_x11(); break;
@@ -74,7 +84,6 @@ bool ScreenshotTool::RenderOverlay()
             DrawDarkOverlay();
         }
         DrawSelectionBorder();
-        // DrawSizeIndicator();
     }
 
     ImGui::End();
@@ -82,7 +91,16 @@ bool ScreenshotTool::RenderOverlay()
 
     if (m_state == ToolState::Selected)
     {
-        DrawOcrWindow();
+        ImGui::Begin("Text tool");
+        ImVec2 window_pos  = ImGui::GetWindowPos();
+        ImVec2 window_size = ImGui::GetWindowSize();
+        m_is_hovering_ocr  = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) ||
+                            (ImGui::IsMouseHoveringRect(
+                                window_pos, ImVec2(window_pos.x + window_size.x, window_pos.y + window_size.y)));
+        DrawOcrTools();
+        if (translator->Has(HAS_CURL))
+            DrawTranslationTools();
+        ImGui::End();
     }
 
     if (ImGui::IsKeyPressed(ImGuiKey_Escape))
@@ -162,52 +180,23 @@ void ScreenshotTool::DrawSelectionBorder()
 
     draw_list->AddRect(
         ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h), IM_COL32(0, 150, 255, 255), 0.0f, 0, 2.0f);
-
-    float handle_size  = 4.0f;
-    ImU32 handle_color = 0xffffffff;
-
-    // Top-left
-    draw_list->AddRectFilled(ImVec2(sel_x - handle_size / 2, sel_y - handle_size / 2),
-                             ImVec2(sel_x + handle_size / 2, sel_y + handle_size / 2),
-                             handle_color);
-
-    // Top-right
-    draw_list->AddRectFilled(ImVec2(sel_x + sel_w - handle_size / 2, sel_y - handle_size / 2),
-                             ImVec2(sel_x + sel_w + handle_size / 2, sel_y + handle_size / 2),
-                             handle_color);
-
-    // Bottom-left
-    draw_list->AddRectFilled(ImVec2(sel_x - handle_size / 2, sel_y + sel_h - handle_size / 2),
-                             ImVec2(sel_x + handle_size / 2, sel_y + sel_h + handle_size / 2),
-                             handle_color);
-
-    // Bottom-right
-    draw_list->AddRectFilled(ImVec2(sel_x + sel_w - handle_size / 2, sel_y + sel_h - handle_size / 2),
-                             ImVec2(sel_x + sel_w + handle_size / 2, sel_y + sel_h + handle_size / 2),
-                             handle_color);
 }
 
-void ScreenshotTool::DrawSizeIndicator()
-{}
-
-void ScreenshotTool::DrawOcrWindow()
+void ScreenshotTool::DrawOcrTools()
 {
-    static std::string ocr_text;
     static std::string ocr_path{ "/usr/share/tessdata/" };
     static std::string ocr_model;
     static size_t      item_selected_idx = 0;
 
-    ImGui::Begin("OCR");
+    ImGui::SeparatorText("OCR");
 
-    ImVec2 window_pos  = ImGui::GetWindowPos();
-    ImVec2 window_size = ImGui::GetWindowSize();
-    m_is_hovering_ocr =
-        ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) ||
-        (ImGui::IsMouseHoveringRect(window_pos, ImVec2(window_pos.x + window_size.x, window_pos.y + window_size.y)));
-
-    if (ImGui::Button("Extract Text") && !HasErrors() && !ocr_model.empty())
+    if (ImGui::Button("Extract Text") && !HasErrors())
     {
-        if (!m_api.Init(ocr_path, ocr_model))
+        if (ocr_model.empty())
+        {
+            SetError(ErrorState::InvalidModel);
+        }
+        else if (!m_api.Init(ocr_path, ocr_model))
         {
             SetError(ErrorState::InitOcr);
         }
@@ -216,15 +205,15 @@ void ScreenshotTool::DrawOcrWindow()
             m_api.SetImage(GetFinalImage());
             const auto& text = m_api.ExtractText();
             if (text)
-                ocr_text = *text;
+                m_ocr_text = m_to_translate_text = *text;
             ClearError(ErrorState::InitOcr);
         }
     }
 
-    if (HasError(InitOcr))
+    if (HasError(InitOcr) || HasError(InvalidModel))
     {
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Failed to init OCR!");
+        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), HasError(InitOcr) ? "Failed to init OCR!" : "Please select a model first");
     }
 
     ImGui::Spacing();
@@ -270,15 +259,87 @@ void ScreenshotTool::DrawOcrWindow()
                     item_selected_idx = i;
         }
         ocr_model = list[item_selected_idx];
+        ClearError(ErrorState::InvalidModel);
         ImGui::EndCombo();
     }
 
     ImGui::InputTextMultiline("##source",
-                              ocr_text.data(),
-                              ocr_text.length(),
-                              ImVec2(-1, ImGui::GetTextLineHeight() * 16),
+                              &m_ocr_text,
+                              ImVec2(-1, ImGui::GetTextLineHeight() * 10),
                               ImGuiInputTextFlags_ReadOnly);
-    ImGui::End();
+}
+
+void ScreenshotTool::DrawTranslationTools()
+{
+    static std::string lang_from{ "auto" };
+    static std::string lang_to{ "en-us" };
+    static size_t      index_from = 0;
+    static size_t      index_to   = 0;
+
+    static std::string translated_text;
+
+    ImGui::SeparatorText("Translate");
+
+    auto createCombo = [](const char* name, int start, std::string& lang, size_t& idx) {
+        if (ImGui::BeginCombo(name, getNameFromCode(lang).data(), ImGuiComboFlags_HeightLarge))
+        {
+            static ImGuiTextFilter filter;
+            if (ImGui::IsWindowAppearing())
+            {
+                ImGui::SetKeyboardFocusHere();
+                filter.Clear();
+            }
+            ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F);
+            filter.Draw("##Filter", -FLT_MIN);
+
+            for (size_t i = start; i < GOOGLE_TRANSLATE_LANGUAGES_ARRAY.size(); ++i)
+            {
+                const std::pair<const char*, const char*>& pair        = GOOGLE_TRANSLATE_LANGUAGES_ARRAY[i];
+                bool                                       is_selected = idx == i;
+                if (filter.PassFilter(pair.second))
+                {
+                    if (ImGui::Selectable(pair.second, is_selected))
+                    {
+                        idx  = i;
+                        lang = GOOGLE_TRANSLATE_LANGUAGES_ARRAY[idx].first;
+                    }
+                }
+            }
+            ImGui::EndCombo();
+        }
+    };
+
+    createCombo("From", 0, lang_from, index_from);
+
+    ImGui::Spacing();
+
+    // Ignore "Automatic" in To
+    createCombo("To", 1, lang_to, index_to);
+
+    if (!m_to_translate_text.empty() && ImGui::Button("Translate"))
+    {
+        const auto& opt_translation = translator->Translate(lang_from, lang_to, m_to_translate_text);
+        if (opt_translation)
+            translated_text = *opt_translation;
+    }
+
+    static constexpr float spacing = 4.0f;   // Spacing between inputs
+    static constexpr float padding = 10.0f;  // Padding on right side
+
+    // Calculate available width minus spacing and padding
+    float available_width = ImGui::GetContentRegionAvail().x - spacing - padding;
+    float width           = available_width / 2.0f;
+
+    ImGui::InputTextMultiline(
+        "##from",  &m_to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
+
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + spacing);
+
+    ImGui::InputTextMultiline("##to",
+                              &translated_text,
+                              ImVec2(width, ImGui::GetTextLineHeight() * 10),
+                              ImGuiInputTextFlags_ReadOnly);
 }
 
 void ScreenshotTool::Cancel()
