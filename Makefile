@@ -17,21 +17,21 @@ else
 endif
 
 UNAME_S := $(shell uname -s)
-ifeq ($(UNAME_S), Linux)
-        LDLIBS += -lGL `pkg-config --static --libs glfw3 x11 tesseract`
+ifeq ($(UNAME_S),Linux)
+        LDLIBS += -lGL -lX11
 endif
 
-ifeq ($(UNAME_S), Darwin) #APPLE
+ifeq ($(UNAME_S),Darwin) #APPLE
         LDFLAGS += -L/usr/local/lib -L/opt/local/lib -L/opt/homebrew/lib
         LDLIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
         #LDLIBS += -lglfw3
-        LDLIBS += -lglfw
+        #LDLIBS += -lglfw
 
         CXXFLAGS += -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include
 endif
 
-ifeq ($(OS), Windows_NT)
-        LDLIBS += -lglfw3 -lgdi32 -lopengl32 -limm32
+ifeq ($(findstring MINGW64_NT,$(UNAME_S)),MINGW64_NT)
+        LDLIBS += -lgdi32 -lopengl32 -limm32
 endif
 
 # https://stackoverflow.com/a/1079861
@@ -60,7 +60,7 @@ VERSION    	 = 0.0.1
 SRC	 	 = $(wildcard src/*.cpp)
 OBJ	 	 = $(SRC:.cpp=.o)
 LDFLAGS   	+= -L$(BUILDDIR)
-LDLIBS		+= $(BUILDDIR)/libimgui.a $(BUILDDIR)/libfmt.a $(BUILDDIR)/libtiny-process-library.a
+LDLIBS		+= $(BUILDDIR)/libimgui.a $(BUILDDIR)/libfmt.a $(BUILDDIR)/libtiny-process-library.a `pkg-config --static --libs glfw3 tesseract`
 CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
 
 all: imgui fmt tpl getopt-port toml $(TARGET)

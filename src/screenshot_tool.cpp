@@ -30,7 +30,7 @@ static std::vector<std::string> GetTrainingDataList(const std::string& path)
     std::vector<std::string> list;
     for (auto const& dir_entry : std::filesystem::directory_iterator{ path })
         if (dir_entry.path().extension() == ".traineddata")
-            list.push_back(dir_entry.path().stem());
+            list.push_back(dir_entry.path().stem().string());
     return list;
 }
 
@@ -293,7 +293,7 @@ void ScreenshotTool::DrawTranslationTools()
 
     static std::string translated_text;
 
-    ImGui::SeparatorText("Translate");
+    ImGui::SeparatorText("Translation");
 
     auto createCombo = [](const char* name, int start, std::string& lang, size_t& idx) {
         if (ImGui::BeginCombo(name, getNameFromCode(lang).data(), ImGuiComboFlags_HeightLarge))

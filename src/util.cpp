@@ -1,14 +1,13 @@
 #include "util.hpp"
 
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <vector>
 
 #include "fmt/format.h"
+
+#if __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
 {
     std::vector<uint8_t> rgba_data(width * height * 4);
@@ -29,6 +28,7 @@ std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
 
     return rgba_data;
 }
+#endif
 
 std::vector<uint8_t> ppm_to_rgba(uint8_t* ppm, int width, int height)
 {

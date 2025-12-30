@@ -145,7 +145,7 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
                 if (OPTIONAL_ARGUMENT_IS_PRESENT)
                     config->generateConfig(optarg);
                 else
-                    config->generateConfig(configFile);
+                    config->generateConfig(configFile.string());
                 exit(EXIT_SUCCESS);
 
             default:
@@ -181,8 +181,8 @@ static void localize(void)
 
 int main(int argc, char* argv[])
 {
-    const std::string& configDir  = getConfigDir();
-    const std::string& configFile = parse_config_path(argc, argv, configDir);
+    const std::string& configDir  = getConfigDir().string();
+    const std::string& configFile = parse_config_path(argc, argv, configDir).string();
 
     localize();
 

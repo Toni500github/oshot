@@ -12,9 +12,11 @@
 #include "fmt/format.h"
 #include "util.hpp"
 
+#ifdef __linux__
 // X11 fallback
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#endif
 
 SessionType get_session_type()
 {
@@ -38,7 +40,7 @@ SessionType get_session_type()
 capture_result_t capture_full_screen_x11()
 {
     capture_result_t result;
-
+#ifdef __linux__
     Display* display = XOpenDisplay(nullptr);
     if (!display)
     {
@@ -65,7 +67,7 @@ capture_result_t capture_full_screen_x11()
 
     XDestroyImage(image);
     XCloseDisplay(display);
-
+#endif
     return result;
 }
 

@@ -15,9 +15,9 @@
 
 enum types
 {
-    STR,
-    BOOL,
-    INT
+    TYPE_STR,
+    TYPE_BOOL,
+    TYPE_INT
 };
 
 struct override_configs_types
@@ -84,16 +84,16 @@ private:
 
         // user wants a bool (overridable), we found an override matching the name, and the override is a bool.
         if constexpr (std::is_same<T, bool>())
-            if (overridePos != overrides.end() && overrides.at(value.data()).value_type == BOOL)
+            if (overridePos != overrides.end() && overrides.at(value.data()).value_type == TYPE_BOOL)
                 return overrides.at(value.data()).bool_value;
 
         // user wants a str (overridable), we found an override matching the name, and the override is a str.
         if constexpr (std::is_same<T, std::string>())
-            if (overridePos != overrides.end() && overrides.at(value.data()).value_type == STR)
+            if (overridePos != overrides.end() && overrides.at(value.data()).value_type == TYPE_STR)
                 return overrides.at(value.data()).string_value;
 
         if constexpr (std::is_same<T, std::uint16_t>())
-            if (overridePos != overrides.end() && overrides.at(value.data()).value_type == INT)
+            if (overridePos != overrides.end() && overrides.at(value.data()).value_type == TYPE_INT)
                 return overrides.at(value.data()).int_value;
 
         const std::optional<T> ret = this->m_tbl.at_path(value).value<T>();
