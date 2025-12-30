@@ -48,7 +48,7 @@ std::unique_ptr<Config> config;
 static void version()
 {
     fmt::print(
-        "customfetch {} built from branch '{}' at {} commit '{}' ({}).\n"
+        "oshot {} built from branch '{}' at {} commit '{}' ({}).\n"
         "Date: {}\n"
         "Tag: {}\n",
         VERSION,
@@ -66,7 +66,7 @@ static void version()
 // Print the args help menu, then exit with code depending if it's from invalid or -h arg
 static void help(bool invalid_opt = false)
 {
-    fmt::print(FMT_COMPILE("{}"), customfetch_help);
+    fmt::print(FMT_COMPILE("{}"), oshot_help);
     fmt::print("\n");
     std::exit(invalid_opt);
 }
@@ -172,8 +172,8 @@ static void localize(void)
     if (!init)
     {
         setlocale(LC_ALL, "");
-        bindtextdomain("customfetch", LOCALEDIR);
-        textdomain("customfetch");
+        bindtextdomain("oshot", LOCALEDIR);
+        textdomain("oshot");
         init = true;
     }
 #endif

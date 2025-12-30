@@ -11,7 +11,7 @@ Config::Config(const std::string& configFile, const std::string& configDir)
 {
     if (!std::filesystem::exists(configDir))
     {
-        warn(_("customfetch config folder was not found, Creating folders at {}!"), configDir);
+        warn(_("oshot config folder was not found, Creating folders at {}!"), configDir);
         std::filesystem::create_directories(configDir);
     }
 

@@ -133,7 +133,7 @@ use-trans-gawk = false
 trans-awk-path = "trans.awk"
 )#";
 
-inline constexpr std::string_view customfetch_help = (R"(Usage: oshot [OPTIONS]...
+inline constexpr std::string_view oshot_help = (R"(Usage: oshot [OPTIONS]...
 Screenshot tool to extract and translate text on the fly.
 
 NOTE: Boolean flags [<BOOL>] accept: "true", 1, "enable", or empty. Any other value is treated as false.

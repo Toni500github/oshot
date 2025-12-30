@@ -36,10 +36,10 @@ std::string          replace_str(std::string str, const std::string_view from, c
 std::filesystem::path getHomeConfigDir();
 
 /*
- * Get the customfetch config directory
+ * Get the oshot config directory
  * where we'll have "config.toml"
  * from getHomeConfigDir()
- * @return customfetch's config directory
+ * @return oshot's config directory
  */
 std::filesystem::path getConfigDir();
 
