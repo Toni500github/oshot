@@ -3,25 +3,14 @@
 #include <filesystem>
 #include <optional>
 
+#include "config.hpp"
 #include "fmt/format.h"
 #include "tiny-process-library/process.hpp"
 #include "util.hpp"
 
-void Translator::Start()
+bool Translator::Start()
 {
-    if (!HasCurl())
-        return;
-
-    m_capabilities |= HAS_CURL;
-    if (HasTranslateShell())
-        m_capabilities |= HAS_TRANSLATE_BASH;
-    if (HasGawk())
-        m_capabilities |= HAS_TRANSLATE_GAWK;
-}
-
-bool Translator::Has(Capabilities cap)
-{
-    return m_capabilities & cap;
+    return HasCurl();
 }
 
 command_result_t Translator::executeCommand(const std::string& command)
@@ -57,45 +46,26 @@ std::optional<std::string> Translator::Translate(const std::string& lang_from,
                                                  const std::string& lang_to,
                                                  const std::string& text)
 {
-    if (m_capabilities == NONE)
+    const command_result_t& result = config->use_trans_gawk
+                                         ? executeCommand(fmt::format("{} -f {} -- -brief {}:{} $'{}'",
+                                                                      config->gawk_path,
+                                                                      config->trans_awk_path,
+                                                                      lang_from == "auto" ? "" : lang_from,
+                                                                      lang_to,
+                                                                      replace_str(text, "'", "\\'")))
+                                         : executeCommand(fmt::format("{} -brief {}:{} $'{}'",
+                                                                      config->trans_path,
+                                                                      lang_from == "auto" ? "" : lang_from,
+                                                                      lang_to,
+                                                                      replace_str(text, "'", "\\'")));
+    if (!result.success)
         return {};
-
-    if (Has(Capabilities::HAS_TRANSLATE_BASH))
-    {
-        const command_result_t& result = executeCommand(fmt::format(
-            "trans -brief {}:{} $'{}'", lang_from == "auto" ? "" : lang_from, lang_to, replace_str(text, "'", "\\'")));
-        if (!result.success)
-            return {};
-        return result.output;
-    }
+    return result.output;
 
     return {};
-}
-
-bool Translator::HasTranslateShell()
-{
-#ifndef _WIN32
-    // Windows: Check multiple possible locations
-    if (executeCommand(WHICH " trans").success)
-        return true;
-#else
-    // Linux/macOS
-    if (executeCommand("trans --version 2>&1").output.find("Translate Shell") != (size_t)-1)
-        return true;
-#endif
-    return false;
 }
 
 bool Translator::HasCurl()
 {
     return executeCommand(WHICH " curl").success;
-}
-
-bool Translator::HasGawk()
-{
-#ifdef _WIN32
-    if (std::filesystem::exists(".\\gawk.exe"))
-        return true;
-#endif
-    return (executeCommand(WHICH " gawk").success);
 }

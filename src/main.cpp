@@ -1,14 +1,22 @@
+#include <memory>
+
 #include "fmt/base.h"
+#include "fmt/compile.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_opengl3.h"
-#include "screen_capture.hpp"
-#include "screenshot_tool.hpp"
 #define GL_SILENCE_DEPRECATION
 #if defined(IMGUI_IMPL_OPENGL_ES2)
 #include <GLES2/gl2.h>
 #endif
 #include <GLFW/glfw3.h>  // Will drag system OpenGL headers
+
+#include "config.hpp"
+#include "getopt_port/getopt.h"
+#include "screen_capture.hpp"
+#include "screenshot_tool.hpp"
+#include "switch_fnv1a.hpp"
+#include "util.hpp"
 
 // [Win32] Our example includes a copy of glfw3.lib pre-compiled with VS2010 to maximize ease of testing and
 // compatibility with old VS compilers. To link with VS2010-era libraries, VS2015+ requires linking with
@@ -18,13 +26,172 @@
 #pragma comment(lib, "legacy_stdio_definitions")
 #endif
 
+#if (!__has_include("version.h"))
+#error "version.h not found, please generate it with ./scripts/generateVersion.sh"
+#else
+#include "version.h"
+#endif
+
+// clang-format off
+// https://cfengine.com/blog/2021/optional-arguments-with-getopt-long/
+// because "--opt-arg arg" won't work
+// but "--opt-arg=arg" will
+#define OPTIONAL_ARGUMENT_IS_PRESENT \
+    ((optarg == NULL && optind < argc && argv[optind][0] != '-') \
+     ? (bool) (optarg = argv[optind++]) \
+     : (optarg != NULL))
+// clang-format on
+
+std::unique_ptr<Config> config;
+
+// Print the version and some other infos, then exit successfully
+static void version()
+{
+    fmt::print(
+        "customfetch {} built from branch '{}' at {} commit '{}' ({}).\n"
+        "Date: {}\n"
+        "Tag: {}\n",
+        VERSION,
+        GIT_BRANCH,
+        GIT_DIRTY,
+        GIT_COMMIT_HASH,
+        GIT_COMMIT_MESSAGE,
+        GIT_COMMIT_DATE,
+        GIT_TAG);
+
+    // if only everyone would not return error when querying the program version :(
+    std::exit(EXIT_SUCCESS);
+}
+
+// Print the args help menu, then exit with code depending if it's from invalid or -h arg
+static void help(bool invalid_opt = false)
+{
+    fmt::print(FMT_COMPILE("{}"), customfetch_help);
+    fmt::print("\n");
+    std::exit(invalid_opt);
+}
+
+// clang-format off
+// Return true if optarg says something true
+static bool str_to_bool(const std::string_view str)
+{
+    return (str == "true" || str == "1" || str == "enable");
+}
+
+// parseargs() but only for parsing the user config path trough args
+// and so we can directly construct Config
+static std::filesystem::path parse_config_path(int argc, char* argv[], const std::filesystem::path &configDir)
+{
+    int opt = 0;
+    int option_index = 0;
+    opterr = 0;
+    const char *optstring = "-C:";
+    static const struct option opts[] = {
+        {"config", required_argument, 0, 'C'},
+        {0,0,0,0}
+    };
+
+    while ((opt = getopt_long(argc, argv, optstring, opts, &option_index)) != -1)
+    {
+        switch (opt)
+        {
+            // skip errors or anything else
+            case 0:
+            case '?':
+                break;
+
+            case 'C':
+                if (!std::filesystem::exists(optarg))
+                    die(_("config file '{}' doesn't exist"), optarg);
+                return optarg;
+        }
+    }
+
+    return configDir / "config.toml";
+}
+
+static bool parseargs(int argc, char* argv[], const std::filesystem::path& configFile)
+{
+    int opt = 0;
+    int option_index = 0;
+    opterr = 1; // re-enable since before we disabled for "invalid option" error
+    const char *optstring = "-Vh";
+    static const struct option opts[] = {
+        {"version", no_argument,       0, 'V'},
+        {"help",    no_argument,       0, 'h'},
+
+        {"gen-config", optional_argument, 0, "gen-config"_fnv1a16},
+
+        {0,0,0,0}
+    };
+
+    /* parse operation */
+    optind = 1;
+    while ((opt = getopt_long(argc, argv, optstring, opts, &option_index)) != -1)
+    {
+        switch (opt)
+        {
+            case 0:
+                break;
+            case '?':
+                help(EXIT_FAILURE); break;
+
+            case 'V':
+                version(); break;
+            case 'h':
+                help(); break;
+
+            case "gen-config"_fnv1a16:
+                if (OPTIONAL_ARGUMENT_IS_PRESENT)
+                    config->generateConfig(optarg);
+                else
+                    config->generateConfig(configFile);
+                exit(EXIT_SUCCESS);
+
+            default:
+                return false;
+        }
+    }
+
+    return true;
+}
+
 static void glfw_error_callback(int error, const char* description)
 {
     fmt::println(stderr, "GLFW Error {}: {}", error, description);
 }
 
-int main(int, char*[])
+/** Sets up gettext localization. Safe to call multiple times.
+ */
+/* Inspired by the monotone function localize_monotone. */
+// taken from pacman
+static void localize(void)
 {
+#if ENABLE_NLS
+    static bool init = false;
+    if (!init)
+    {
+        setlocale(LC_ALL, "");
+        bindtextdomain("customfetch", LOCALEDIR);
+        textdomain("customfetch");
+        init = true;
+    }
+#endif
+}
+
+int main(int argc, char* argv[])
+{
+    const std::string& configDir  = getConfigDir();
+    const std::string& configFile = parse_config_path(argc, argv, configDir);
+
+    localize();
+
+    config = std::make_unique<Config>(configFile, configDir);
+    if (!parseargs(argc, argv, configFile))
+        return 1;
+
+    config->loadConfigFile(configFile);
+
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
         return 1;

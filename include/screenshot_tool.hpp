@@ -8,6 +8,11 @@
 #include "imgui/imgui.h"
 #include "ocr.hpp"
 #include "screen_capture.hpp"
+
+#ifdef None
+#undef None
+#endif
+
 struct point_t
 {
     float x{};

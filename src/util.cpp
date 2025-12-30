@@ -1,7 +1,11 @@
+#include "util.hpp"
+
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
 #include <cstdint>
+#include <cstdlib>
+#include <filesystem>
 #include <vector>
 
 #include "fmt/format.h"
@@ -69,4 +73,63 @@ std::string replace_str(std::string str, const std::string_view from, const std:
         start_pos += to.length();  // Handles case where 'to' is a substring of 'from'
     }
     return str;
+}
+
+std::string expandVar(std::string ret, bool dont)
+{
+    if (ret.empty() || dont)
+        return ret;
+
+    const char* env;
+    if (ret.front() == '~')
+    {
+        env = std::getenv("HOME");
+        if (env == nullptr)
+            die(_("FATAL: $HOME enviroment variable is not set (how?)"));
+
+        ret.replace(0, 1, env);  // replace ~ with the $HOME value
+    }
+    else if (ret.front() == '$')
+    {
+        ret.erase(0, 1);
+
+        std::string   temp;
+        const size_t& pos = ret.find('/');
+        if (pos != std::string::npos)
+        {
+            temp = ret.substr(pos);
+            ret.erase(pos);
+        }
+
+        env = std::getenv(ret.c_str());
+        if (env == nullptr)
+            die(_("No such enviroment variable: {}"), ret);
+
+        ret = env;
+        ret += temp;
+    }
+
+    return ret;
+}
+
+std::filesystem::path getHomeConfigDir()
+{
+    const char* dir = std::getenv("XDG_CONFIG_HOME");
+    if (dir != NULL && dir[0] != '\0' && std::filesystem::exists(dir))
+    {
+        return std::filesystem::path(dir);
+    }
+    else
+    {
+        const char* home = std::getenv("HOME");
+        if (home == nullptr)
+            die(_("Failed to find $HOME, set it to your home directory!"));
+
+        return std::filesystem::path(home) / ".config";
+    }
+}
+
+std::filesystem::path getConfigDir()
+{
+    return getHomeConfigDir() / "oshot";
 }

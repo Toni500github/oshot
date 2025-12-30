@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "config.hpp"
 #include "fmt/base.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3_loader.h"
@@ -19,6 +20,7 @@
 static ImVec2 origin(0, 0);
 
 static std::unique_ptr<Translator> translator;
+static bool                        has_curl;
 
 static std::vector<std::string> GetTrainingDataList(const std::string& path)
 {
@@ -50,7 +52,7 @@ static void HelpMarker(const char* desc)
 bool ScreenshotTool::Start()
 {
     translator = std::make_unique<Translator>();
-    translator->Start();
+    has_curl   = translator->Start();
 
     switch (get_session_type())
     {
@@ -81,8 +83,7 @@ bool ScreenshotTool::RenderOverlay()
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, origin);
     ImGui::Begin("Screenshot Tool",
                  nullptr,
-                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground |
-                     ImGuiWindowFlags_NoScrollbar);
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
 
     if (m_screenshot.data.empty() || !m_screenshot.success || !m_texture_id)
         return false;
@@ -106,14 +107,14 @@ bool ScreenshotTool::RenderOverlay()
 
     if (m_state == ToolState::Selected)
     {
-        ImGui::Begin("Text tool");
+        ImGui::Begin("Text tools");
         ImVec2 window_pos  = ImGui::GetWindowPos();
         ImVec2 window_size = ImGui::GetWindowSize();
         m_is_hovering_ocr  = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) ||
                             (ImGui::IsMouseHoveringRect(
                                 window_pos, ImVec2(window_pos.x + window_size.x, window_pos.y + window_size.y)));
         DrawOcrTools();
-        if (translator->Has(HAS_CURL))
+        if (has_curl)
             DrawTranslationTools();
         ImGui::End();
     }
@@ -199,8 +200,8 @@ void ScreenshotTool::DrawSelectionBorder()
 
 void ScreenshotTool::DrawOcrTools()
 {
-    static std::string ocr_path{ "/usr/share/tessdata/" };
-    static std::string ocr_model;
+    static std::string ocr_path{ config->ocr_path };
+    static std::string ocr_model{ config->ocr_model };
     static size_t      item_selected_idx = 0;
 
     ImGui::SeparatorText("OCR");
@@ -421,7 +422,7 @@ bool ScreenshotTool::HasError(ErrorState err)
 
 bool ScreenshotTool::HasErrors()
 {
-    return m_err_state != ErrorState::None;
+    return m_err_state != 0;
 }
 
 void ScreenshotTool::SetError(ErrorState err)

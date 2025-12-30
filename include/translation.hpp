@@ -9,14 +9,6 @@
 #define WHICH "which"
 #endif
 
-enum Capabilities
-{
-    NONE               = 0,
-    HAS_CURL           = 1 << 1,
-    HAS_TRANSLATE_BASH = 1 << 2,
-    HAS_TRANSLATE_GAWK = 1 << 3,
-};
-
 struct command_result_t
 {
     bool        success;
@@ -27,22 +19,13 @@ struct command_result_t
 class Translator
 {
 public:
-    void Start();
+    bool Start();
 
-    bool Has(Capabilities cap);
+    bool HasCurl();
 
     static command_result_t executeCommand(const std::string& command);
 
     std::optional<std::string> Translate(const std::string& lang_from,
                                          const std::string& lang_to,
                                          const std::string& text);
-
-private:
-    int m_capabilities = NONE;
-
-    bool HasTranslateShell();
-
-    bool HasCurl();
-
-    bool HasGawk();
 };

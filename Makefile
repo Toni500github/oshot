@@ -4,7 +4,7 @@ PREFIX	  	?= /usr
 VARS  	  	?=
 CXXSTD		?= c++20
 
-DEBUG 		?= 1
+DEBUG 		?= 0
 
 COMPILER := $(shell $(CXX) --version | head -n1)
 
@@ -63,7 +63,7 @@ LDFLAGS   	+= -L$(BUILDDIR)
 LDLIBS		+= $(BUILDDIR)/libimgui.a $(BUILDDIR)/libfmt.a $(BUILDDIR)/libtiny-process-library.a
 CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
 
-all: imgui fmt tpl toml $(TARGET)
+all: imgui fmt tpl getopt-port toml $(TARGET)
 
 imgui:
 ifeq ($(wildcard $(BUILDDIR)/libimgui.a),)
@@ -87,9 +87,15 @@ ifeq ($(wildcard $(BUILDDIR)/libtiny-process-library.a),)
 	$(MAKE) -C src/libs/tiny-process-library BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD)
 endif
 
-$(TARGET): imgui fmt tpl toml $(OBJ)
+getopt-port:
+ifeq ($(wildcard $(BUILDDIR)/getopt.o),)
+	$(MAKE) -C src/libs/getopt_port BUILDDIR=$(BUILDDIR)
+endif
+
+$(TARGET): fmt toml tpl getopt-port $(OBJ)
 	mkdir -p $(BUILDDIR)
-	$(CXX) -o $(BUILDDIR)/$(TARGET) $(OBJ) $(LDFLAGS) $(LDLIBS)
+	sh ./generateVersion.sh
+	$(CXX) -o $(BUILDDIR)/$(TARGET) $(OBJ) $(BUILDDIR)/*.o $(LDFLAGS) $(LDLIBS)
 
 dist: $(TARGET)
 	zip -j $(NAME)-v$(VERSION).zip LICENSE README.md $(BUILDDIR)/$(TARGET)
@@ -107,4 +113,4 @@ updatever:
 	sed -i "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml) compile_flags.txt
 	sed -i "s#Project-Id-Version: $(NAME) $(OLDVERSION)#Project-Id-Version: $(NAME) $(VERSION)#g" po/*
 
-.PHONY: $(TARGET) updatever distclean clean imgui fmt tpl toml dist all
+.PHONY: $(TARGET) updatever distclean clean imgui fmt tpl toml getopt-port dist all
