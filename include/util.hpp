@@ -4,6 +4,8 @@
 #ifdef __linux__
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#elif defined(_WIN32)
+#include <windows.h>
 #endif
 
 #include <chrono>

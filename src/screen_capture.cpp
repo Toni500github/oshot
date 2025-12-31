@@ -16,10 +16,16 @@
 // X11 fallback
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#elif defined(_WIN32)
+#include <windows.h>
 #endif
 
 SessionType get_session_type()
 {
+#ifdef _WIN32
+    return OS_WINDOWS;
+#endif
+
     const char* xdg     = std::getenv("XDG_SESSION_TYPE");
     const char* wayland = std::getenv("WAYLAND_DISPLAY");
     const char* x11     = std::getenv("DISPLAY");
@@ -106,5 +112,80 @@ capture_result_t capture_full_screen_wayland()
     result.region.height = height;
     result.success       = true;
 
+    return result;
+}
+
+capture_result_t capture_full_screen_windows()
+{
+    capture_result_t result;
+#ifdef _WIN32
+    int width  = GetSystemMetrics(SM_CXSCREEN);
+    int height = GetSystemMetrics(SM_CYSCREEN);
+
+    result.region.width  = width;
+    result.region.height = height;
+
+    // Get Device Contexts
+    HDC hScreenDC = GetDC(NULL);
+    HDC hMemoryDC = CreateCompatibleDC(hScreenDC);
+
+    // Create a 32-bit bitmap for RGBA capture
+    BITMAPINFO bmi              = { 0 };
+    bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth       = width;
+    bmi.bmiHeader.biHeight      = -height;  // Negative for top-down DIB
+    bmi.bmiHeader.biPlanes      = 1;
+    bmi.bmiHeader.biBitCount    = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    // Create DIB section
+    void*   pBits   = nullptr;
+    HBITMAP hBitmap = CreateDIBSection(hScreenDC, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
+
+    if (!hBitmap)
+    {
+        DeleteDC(hMemoryDC);
+        ReleaseDC(NULL, hScreenDC);
+        result.error_msg = "Failed to create DIB section";
+        return result;
+    }
+
+    // Select the bitmap into the memory DC
+    HBITMAP hOldBitmap = (HBITMAP)SelectObject(hMemoryDC, hBitmap);
+
+    // Copy the screen to the bitmap
+    BitBlt(hMemoryDC,
+           0,
+           0,
+           width,
+           height,
+           hScreenDC,
+           0,
+           0,
+           SRCCOPY | CAPTUREBLT  // CAPTUREBLT captures layered windows
+    );
+
+    // Now we have the RGB data in pBits, but we need to convert to RGBA
+    // The DIB section gives us BGRA format in memory
+    const uint8_t* src = static_cast<const uint8_t*>(pBits);
+    uint8_t*       dst = result.data.data();
+
+    // Convert BGRA to RGBA
+    for (int i = 0; i < width * height; ++i)
+    {
+        dst[i * 4 + 0] = src[i * 4 + 2];  // R <- B
+        dst[i * 4 + 1] = src[i * 4 + 1];  // G <- G
+        dst[i * 4 + 2] = src[i * 4 + 0];  // B <- R
+        dst[i * 4 + 3] = 0xff;            // A <- A
+    }
+
+    // Cleanup
+    SelectObject(hMemoryDC, hOldBitmap);
+    DeleteObject(hBitmap);
+    DeleteDC(hMemoryDC);
+    ReleaseDC(NULL, hScreenDC);
+
+    result.success = true;
+#endif
     return result;
 }

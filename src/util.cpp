@@ -114,6 +114,7 @@ std::string expandVar(std::string ret, bool dont)
 
 std::filesystem::path getHomeConfigDir()
 {
+#if __unix__
     const char* dir = std::getenv("XDG_CONFIG_HOME");
     if (dir != NULL && dir[0] != '\0' && std::filesystem::exists(dir))
     {
@@ -127,6 +128,30 @@ std::filesystem::path getHomeConfigDir()
 
         return std::filesystem::path(home) / ".config";
     }
+#else
+    PWSTR widePath = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &widePath)))
+    {
+        // Get required buffer size
+        int         size = WideCharToMultiByte(CP_UTF8, 0, widePath, -1, NULL, 0, NULL, NULL);
+        std::string narrowPath(size, 0);
+        WideCharToMultiByte(CP_UTF8, 0, widePath, -1, &narrowPath[0], size, NULL, NULL);
+        CoTaskMemFree(widePath);
+
+        // Remove null terminator from string
+        narrowPath.pop_back();
+        return narrowPath;
+    }
+    const char* dir = std::getenv("APPDATA");
+    if (dir != NULL && dir[0] != '\0' && std::filesystem::exists(dir))
+    {
+        return std::filesystem::path(dir);
+    }
+    else
+    {
+        die("Failed to get %APPDATA% path");
+    }
+#endif
 }
 
 std::filesystem::path getConfigDir()
