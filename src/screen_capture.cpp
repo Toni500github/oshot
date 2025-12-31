@@ -1,7 +1,5 @@
 #include "screen_capture.hpp"
 
-#include <unistd.h>
-
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
@@ -13,6 +11,8 @@
 #include "util.hpp"
 
 #ifdef __linux__
+#include <unistd.h>
+
 // X11 fallback
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -80,7 +80,7 @@ capture_result_t capture_full_screen_x11()
 capture_result_t capture_full_screen_wayland()
 {
     capture_result_t result;
-
+#ifdef __linux__
     std::FILE* pipe = popen("grim -t ppm -", "r");
     if (!pipe)
     {
@@ -111,7 +111,7 @@ capture_result_t capture_full_screen_wayland()
     result.region.width  = width;
     result.region.height = height;
     result.success       = true;
-
+#endif
     return result;
 }
 

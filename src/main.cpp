@@ -115,10 +115,11 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
     int opt = 0;
     int option_index = 0;
     opterr = 1; // re-enable since before we disabled for "invalid option" error
-    const char *optstring = "-Vh";
+    const char *optstring = "-VhC:";
     static const struct option opts[] = {
         {"version", no_argument,       0, 'V'},
         {"help",    no_argument,       0, 'h'},
+        {"config",  required_argument, 0, 'C'},
 
         {"gen-config", optional_argument, 0, "gen-config"_fnv1a16},
 
@@ -132,6 +133,7 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
         switch (opt)
         {
             case 0:
+            case 'C':
                 break;
             case '?':
                 help(EXIT_FAILURE); break;
@@ -161,40 +163,20 @@ static void glfw_error_callback(int error, const char* description)
     fmt::println(stderr, "GLFW Error {}: {}", error, description);
 }
 
-/** Sets up gettext localization. Safe to call multiple times.
- */
-/* Inspired by the monotone function localize_monotone. */
-// taken from pacman
-static void localize(void)
-{
-#if ENABLE_NLS
-    static bool init = false;
-    if (!init)
-    {
-        setlocale(LC_ALL, "");
-        bindtextdomain("oshot", LOCALEDIR);
-        textdomain("oshot");
-        init = true;
-    }
-#endif
-}
-
 int main(int argc, char* argv[])
 {
     const std::string& configDir  = getConfigDir().string();
     const std::string& configFile = parse_config_path(argc, argv, configDir).string();
 
-    localize();
-
     config = std::make_unique<Config>(configFile, configDir);
     if (!parseargs(argc, argv, configFile))
-        return 1;
+        return EXIT_FAILURE;
 
     config->loadConfigFile(configFile);
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
-        return 1;
+        return EXIT_FAILURE;
 
     // Decide GL+GLSL versions
 #if defined(IMGUI_IMPL_OPENGL_ES2)
@@ -236,9 +218,9 @@ int main(int argc, char* argv[])
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);  // Borderless
     glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);    // Always on top
 
-    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "OCRshot - Screenshot tool", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "OCRshot", nullptr, nullptr);
     if (window == nullptr)
-        return 1;
+        return EXIT_FAILURE;
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);  // Enable vsync
 
@@ -271,7 +253,7 @@ int main(int argc, char* argv[])
     });
 
     if (!ss_tool.Start())
-        return 1;
+        return EXIT_FAILURE;
 
     while (!glfwWindowShouldClose(window) && ss_tool.IsActive())
     {
@@ -317,5 +299,5 @@ int main(int argc, char* argv[])
     glfwDestroyWindow(window);
     glfwTerminate();
 
-    return 0;
+    return EXIT_SUCCESS;
 }
