@@ -124,6 +124,8 @@ capture_result_t capture_full_screen_windows()
 
     result.region.width  = width;
     result.region.height = height;
+    result.data.resize(width * height * 4);
+    std::fill(result.data.begin(), result.data.end(), 0);
 
     // Get Device Contexts
     HDC hScreenDC = GetDC(NULL);
@@ -166,7 +168,7 @@ capture_result_t capture_full_screen_windows()
     );
 
     // Now we have the RGB data in pBits, but we need to convert to RGBA
-    // The DIB section gives us BGRA format in memory
+    // The DIB section gives us BGRA format in memory (why..?)
     const uint8_t* src = static_cast<const uint8_t*>(pBits);
     uint8_t*       dst = result.data.data();
 
@@ -176,7 +178,7 @@ capture_result_t capture_full_screen_windows()
         dst[i * 4 + 0] = src[i * 4 + 2];  // R <- B
         dst[i * 4 + 1] = src[i * 4 + 1];  // G <- G
         dst[i * 4 + 2] = src[i * 4 + 0];  // B <- R
-        dst[i * 4 + 3] = 0xff;            // A <- A
+        dst[i * 4 + 3] = 0xff;
     }
 
     // Cleanup

@@ -6,6 +6,9 @@
 #include <X11/Xutil.h>
 #elif defined(_WIN32)
 #include <windows.h>
+#include <knownfolders.h>
+#include <combaseapi.h>
+#include <shlobj.h>
 #endif
 
 #include <chrono>
@@ -71,6 +74,9 @@ void error(const std::string_view fmt, Args&&... args) noexcept
 template <typename... Args>
 void die(const std::string_view fmt, Args&&... args) noexcept
 {
+#ifdef _WIN32
+    MessageBox(nullptr, fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(), "Fatal Error", MB_ICONERROR | MB_OK);
+#endif
     fmt::print(stderr,
                BOLD_COLOR(fmt::rgb(fmt::color::red)),
                "[{}] FATAL: {}\n",
@@ -93,6 +99,9 @@ void debug(const std::string_view fmt, Args&&... args) noexcept
 template <typename... Args>
 void warn(const std::string_view fmt, Args&&... args) noexcept
 {
+#ifdef _WIN32
+    MessageBox(nullptr, fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(), "Warning", MB_ICONWARNING | MB_OK);
+#endif
     fmt::print(BOLD_COLOR((fmt::rgb(fmt::color::yellow))),
                "[{}] WARNING: {}\n",
                std::chrono::system_clock::now(),
@@ -102,6 +111,9 @@ void warn(const std::string_view fmt, Args&&... args) noexcept
 template <typename... Args>
 void info(const std::string_view fmt, Args&&... args) noexcept
 {
+#ifdef _WIN32
+    MessageBox(nullptr, fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(), "Info", MB_ICONINFORMATION | MB_OK);
+#endif
     fmt::print(BOLD_COLOR((fmt::rgb(fmt::color::cyan))),
                "[{}] INFO: {}\n",
                std::chrono::system_clock::now(),
@@ -123,7 +135,16 @@ inline void ctrl_d_handler(const std::istream& cin)
 template <typename... Args>
 bool askUserYorN(bool def, const std::string_view fmt, Args&&... args)
 {
-    const std::string& inputs_str = fmt::format(" [{}]: ", def ? "Y/n" : "y/N");
+#ifdef _WIN32
+    int result = MessageBox(
+        NULL,
+        fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(),
+        "Confirmation",
+        MB_YESNO | MB_ICONQUESTION
+    );
+    return (result == IDYES);
+#else
+    const std::string_view inputs_str = def ? " [Y/n]:" : " [y/N]:";
     std::string        result;
     fmt::print(fmt::runtime(fmt), std::forward<Args>(args)...);
     fmt::print("{}", inputs_str);
@@ -140,6 +161,7 @@ bool askUserYorN(bool def, const std::string_view fmt, Args&&... args)
         return def;
 
     return !def;
+#endif
 }
 
 #endif  // !_UTIL_HPP_

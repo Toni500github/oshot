@@ -31,7 +31,7 @@ ifeq ($(UNAME_S),Darwin) #APPLE
 endif
 
 ifeq ($(findstring MINGW64_NT,$(UNAME_S)),MINGW64_NT)
-        LDLIBS += -lgdi32 -lopengl32 -limm32
+        LDLIBS += -lgdi32 -lopengl32 -limm32 -lole32 -luuid
 endif
 
 # https://stackoverflow.com/a/1079861
