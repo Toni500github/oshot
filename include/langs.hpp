@@ -8,7 +8,7 @@
 
 using namespace frozen::string_literals;
 
-constexpr std::array<std::pair<const char*, const char*>, 116> GOOGLE_TRANSLATE_LANGUAGES_ARRAY = {
+constexpr std::array<std::pair<const char*, const char*>, 114> GOOGLE_TRANSLATE_LANGUAGES_ARRAY = {
     { { "auto", "Automatic" },
       { "af", "Afrikaans" },
       { "sq", "Albanian" },
@@ -24,8 +24,6 @@ constexpr std::array<std::pair<const char*, const char*>, 116> GOOGLE_TRANSLATE_
       { "ca", "Catalan" },
       { "ceb", "Cebuano" },
       { "ny", "Chichewa" },
-      { "zh-CN", "Chinese (Simplified)" },
-      { "zh-TW", "Chinese (Traditional)" },
       { "co", "Corsican" },
       { "hr", "Croatian" },
       { "cs", "Czech" },
@@ -115,8 +113,8 @@ constexpr std::array<std::pair<const char*, const char*>, 116> GOOGLE_TRANSLATE_
       { "yo", "Yoruba" },
       { "zu", "Zulu" },
       { "zh", "Chinese (Auto)" },
-      { "zh-cn", "Chinese (Simplified)" },
-      { "zh-tw", "Chinese (Traditional)" },
+      { "zh-CN", "Chinese (Simplified)" },
+      { "zh-TW", "Chinese (Traditional)" },
       { "pt-br", "Portuguese (Brazil)" },
       { "pt-pt", "Portuguese (Portugal)" },
       { "es-419", "Spanish (Latin America)" },
@@ -250,8 +248,6 @@ static constexpr std::string_view getNameFromCode(const std::string_view code)
         case "yo"_fnv1a32:     return "Yoruba";
         case "zu"_fnv1a32:     return "Zulu";
         case "zh"_fnv1a32:     return "Chinese (Auto)";
-        case "zh-cn"_fnv1a32:  return "Chinese (Simplified)";
-        case "zh-tw"_fnv1a32:  return "Chinese (Traditional)";
         case "pt-br"_fnv1a32:  return "Portuguese (Brazil)";
         case "pt-pt"_fnv1a32:  return "Portuguese (Portugal)";
         case "es-419"_fnv1a32: return "Spanish (Latin America)";

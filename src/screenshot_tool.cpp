@@ -299,6 +299,7 @@ void ScreenshotTool::DrawTranslationTools()
     ImGui::SeparatorText("Translation");
 
     auto createCombo = [](const char* name, int start, std::string& lang, size_t& idx) {
+        ImGui::PushID(name);
         if (ImGui::BeginCombo(name, getNameFromCode(lang).data(), ImGuiComboFlags_HeightLarge))
         {
             static ImGuiTextFilter filter;
@@ -316,15 +317,18 @@ void ScreenshotTool::DrawTranslationTools()
                 bool                                       is_selected = idx == i;
                 if (filter.PassFilter(pair.second))
                 {
+                    ImGui::PushID(static_cast<int>(i));
                     if (ImGui::Selectable(pair.second, is_selected))
                     {
                         idx  = i;
                         lang = GOOGLE_TRANSLATE_LANGUAGES_ARRAY[idx].first;
                     }
+                    ImGui::PopID();
                 }
             }
             ImGui::EndCombo();
         }
+        ImGui::PopID();
     };
 
     createCombo("From", 0, lang_from, index_from);
