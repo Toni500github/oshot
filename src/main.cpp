@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <memory>
 
 #include "fmt/base.h"
@@ -13,6 +14,7 @@
 
 #include "config.hpp"
 #include "getopt_port/getopt.h"
+#include "langs.hpp"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "switch_fnv1a.hpp"
@@ -71,8 +73,15 @@ static void help(bool invalid_opt = false)
     std::exit(invalid_opt);
 }
 
+static constexpr void print_languages()
+{
+    for (const auto& [code, name] : GOOGLE_TRANSLATE_LANGUAGES_ARRAY)
+        fmt::print(FMT_COMPILE("{}: {}\n"), name, code);
+    std::exit(EXIT_SUCCESS);
+}
+
 // clang-format off
-// Return true if optarg says something true
+// Return true if optarg says something true...
 static bool str_to_bool(const std::string_view str)
 {
     return (str == "true" || str == "1" || str == "enable");
@@ -80,7 +89,7 @@ static bool str_to_bool(const std::string_view str)
 
 // parseargs() but only for parsing the user config path trough args
 // and so we can directly construct Config
-static std::filesystem::path parse_config_path(int argc, char* argv[], const std::filesystem::path &configDir)
+static std::filesystem::path parse_config_path(int argc, char* argv[], const std::filesystem::path& configDir)
 {
     int opt = 0;
     int option_index = 0;
@@ -115,10 +124,11 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
     int opt = 0;
     int option_index = 0;
     opterr = 1; // re-enable since before we disabled for "invalid option" error
-    const char *optstring = "-VhC:";
+    const char *optstring = "-VhlC:";
     static const struct option opts[] = {
         {"version", no_argument,       0, 'V'},
         {"help",    no_argument,       0, 'h'},
+        {"list",    no_argument,       0, 'l'},
         {"config",  required_argument, 0, 'C'},
 
         {"gen-config", optional_argument, 0, "gen-config"_fnv1a16},
@@ -142,6 +152,8 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
                 version(); break;
             case 'h':
                 help(); break;
+            case 'l':
+                print_languages(); break;
 
             case "gen-config"_fnv1a16:
                 if (OPTIONAL_ARGUMENT_IS_PRESENT)
@@ -229,11 +241,16 @@ int main(int argc, char* argv[])
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    
+    if (!config->font.empty())
+    {
+        const auto& path = get_font_path(config->font);
+        if (!path.empty())
+        io.FontDefault = io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, nullptr, io.Fonts->GetGlyphRangesDefault());
+    }
 
-    // Setup Dear ImGui style
     ImGui::StyleColorsDark();
-    // ImGui::StyleColorsLight();
 
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);

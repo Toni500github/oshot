@@ -5,7 +5,17 @@
 #include <string>
 
 #include "fmt/os.h"
+#include "toml++/toml.hpp"
 #include "util.hpp"
+
+static bool is_str_digital(const std::string& str)
+{
+    for (size_t i = 0; i < str.size(); ++i)
+        if (!(str[i] >= '0' && str[i] <= '9'))
+            return false;
+
+    return true;
+}
 
 Config::Config(const std::string& configFile, const std::string& configDir)
 {
@@ -41,19 +51,28 @@ void Config::loadConfigFile(const std::string& filename)
 
     ocr_path       = getValue<std::string>("default.ocr-path", "/usr/share/tessdata");
     ocr_model      = getValue<std::string>("default.ocr-model", "eng");
+    lang_from      = getValue<std::string>("default.lang-from", "auto");
+    lang_to        = getValue<std::string>("default.lang-to", "en-us");
     gawk_path      = getValue<std::string>("default.gawk-path", "gawk");
     trans_path     = getValue<std::string>("default.trans-path", "trans");
     trans_awk_path = getValue<std::string>("default.trans-awk-path", "trans.awk");
+    font           = getValue<std::string>("default.font", "");
     use_trans_gawk = getValue<bool>("default.use-trans-gawk", false);
-}
 
-static bool is_str_digital(const std::string& str)
-{
-    for (size_t i = 0; i < str.size(); ++i)
-        if (!(str[i] >= '0' && str[i] <= '9'))
-            return false;
+    const toml::table* all_langs_tbl = m_tbl["lang"].as_table();
+    if (!all_langs_tbl)
+        return;
 
-    return true;
+    for (const auto& [lang_code, lang_node] : *all_langs_tbl)
+    {
+        const toml::table* lang_tbl = lang_node.as_table();
+        if (!lang_tbl)
+            continue;
+
+        const std::optional<std::string>& font_str = lang_tbl->at_path("font").value<std::string>();
+        if (font_str)
+            this->lang_fonts_paths[lang_code.data()] = font_str.value();
+    }
 }
 
 void Config::overrideOption(const std::string& opt)

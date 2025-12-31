@@ -17,6 +17,7 @@
 #include "langs.hpp"
 #include "screen_capture.hpp"
 #include "translation.hpp"
+#include "util.hpp"
 
 static ImVec2 origin(0, 0);
 
@@ -288,8 +289,8 @@ void ScreenshotTool::DrawOcrTools()
 
 void ScreenshotTool::DrawTranslationTools()
 {
-    static std::string lang_from{ "auto" };
-    static std::string lang_to{ "en-us" };
+    static std::string lang_from{ config->lang_from };
+    static std::string lang_to{ config->lang_to };
     static size_t      index_from = 0;
     static size_t      index_to   = 0;
 
@@ -350,13 +351,34 @@ void ScreenshotTool::DrawTranslationTools()
     float available_width = ImGui::GetContentRegionAvail().x - spacing - padding;
     float width           = available_width / 2.0f;
 
-    ImGui::InputTextMultiline("##from", &m_to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
+    ImFont* font_from = GetOrLoadFontForLanguage(lang_from);
+    if (font_from)
+    {
+        ImGui::PushFont(font_from);
+        ImGui::InputTextMultiline("##from", &m_to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
+        ImGui::PopFont();
+    }
+    else
+    {
+        ImGui::InputTextMultiline("##from", &m_to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
+    }
 
     ImGui::SameLine();
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + spacing);
 
-    ImGui::InputTextMultiline(
-        "##to", &translated_text, ImVec2(width, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
+    ImFont* font_to = GetOrLoadFontForLanguage(lang_to);
+    if (font_to)
+    {
+        ImGui::PushFont(font_to);
+        ImGui::InputTextMultiline(
+            "##to", &translated_text, ImVec2(width, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
+        ImGui::PopFont();
+    }
+    else
+    {
+        ImGui::InputTextMultiline(
+            "##to", &translated_text, ImVec2(width, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
+    }
 }
 
 void ScreenshotTool::Cancel()
@@ -368,6 +390,10 @@ void ScreenshotTool::Cancel()
         glDeleteTextures(1, &texture);
         m_texture_id = nullptr;
     }
+
+    // Clear font cache (just clears our references, not the actual ImGui fonts)
+    m_font_cache.clear();
+
     if (m_on_cancel)
     {
         m_on_cancel();
@@ -435,6 +461,39 @@ void ScreenshotTool::SetError(ErrorState err)
 void ScreenshotTool::ClearError(ErrorState err)
 {
     m_err_state &= ~err;
+}
+
+ImFont* ScreenshotTool::GetOrLoadFontForLanguage(const std::string& lang_code)
+{
+    // Check cache first
+    auto it = m_font_cache.find(lang_code);
+    if (it != m_font_cache.end())
+    {
+        debug("cached {}: {}", lang_code, it->second.font_path);
+        return it->second.font;
+    }
+
+    // Get font path for this language
+    const auto& font_path = get_lang_font_path(lang_code);
+    debug("font_path {}: {}", lang_code, font_path.string());
+    if (font_path.empty())
+    {
+        // Cache null result
+        m_font_cache[lang_code] = { "", nullptr, true };
+        return nullptr;
+    }
+
+    ImFont* font =
+        m_io.Fonts->AddFontFromFileTTF(font_path.string().c_str(), 16.0f, nullptr, m_io.Fonts->GetGlyphRangesDefault());
+
+    // Cache the result
+    m_font_cache[lang_code] = { font_path.string(), font, true };
+
+    // Rebuild font atlas - texture is handled automatically by backend
+    if (font)
+        m_io.Fonts->Build();
+
+    return font;
 }
 
 void ScreenshotTool::CreateTexture()
