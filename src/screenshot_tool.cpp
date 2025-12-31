@@ -317,13 +317,11 @@ void ScreenshotTool::DrawTranslationTools()
                 bool                                       is_selected = idx == i;
                 if (filter.PassFilter(pair.second))
                 {
-                    ImGui::PushID(static_cast<int>(i));
                     if (ImGui::Selectable(pair.second, is_selected))
                     {
                         idx  = i;
                         lang = GOOGLE_TRANSLATE_LANGUAGES_ARRAY[idx].first;
                     }
-                    ImGui::PopID();
                 }
             }
             ImGui::EndCombo();

@@ -41,10 +41,8 @@ public:
     std::string lang_from;
     std::string lang_to;
     std::string font;
-    std::string gawk_path;
     std::string trans_path;
-    std::string trans_awk_path;
-    bool        use_trans_gawk;
+    std::string bash_path;
 
     std::unordered_map<std::string, std::string> lang_fonts_paths;
 
@@ -124,17 +122,11 @@ lang-from = "auto"
 # Default to language codename translate
 lang-to = "en-us"
 
-# Path or executable to the gawk binary
-gawk-path = "gawk"
-
 # Path or executable to the trans shell script
 trans-path = "trans"
 
-# If to use the "trans.awk" file or the bash shell script one
-use-trans-gawk = false
-
-# Path to the "trans.awk" translation file
-trans-awk-path = "trans.awk"
+# Path or executable to the Bash shell
+bash-path = "bash"
 
 # Default font (absolute path or just name) for the whole application.
 # Leave/Make it empty, or commment it, to use ImGUI default font.

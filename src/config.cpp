@@ -49,15 +49,13 @@ void Config::loadConfigFile(const std::string& filename)
             err.source().begin.column);
     }
 
-    ocr_path       = getValue<std::string>("default.ocr-path", "/usr/share/tessdata");
-    ocr_model      = getValue<std::string>("default.ocr-model", "eng");
-    lang_from      = getValue<std::string>("default.lang-from", "auto");
-    lang_to        = getValue<std::string>("default.lang-to", "en-us");
-    gawk_path      = getValue<std::string>("default.gawk-path", "gawk");
-    trans_path     = getValue<std::string>("default.trans-path", "trans");
-    trans_awk_path = getValue<std::string>("default.trans-awk-path", "trans.awk");
-    font           = getValue<std::string>("default.font", "");
-    use_trans_gawk = getValue<bool>("default.use-trans-gawk", false);
+    ocr_path   = getValue<std::string>("default.ocr-path", "/usr/share/tessdata");
+    ocr_model  = getValue<std::string>("default.ocr-model", "eng");
+    lang_from  = getValue<std::string>("default.lang-from", "auto");
+    lang_to    = getValue<std::string>("default.lang-to", "en-us");
+    trans_path = getValue<std::string>("default.trans-path", "trans");
+    bash_path  = getValue<std::string>("default.bash-path", "bash");
+    font       = getValue<std::string>("default.font", "");
 
     const toml::table* all_langs_tbl = m_tbl["lang"].as_table();
     if (!all_langs_tbl)

@@ -1,6 +1,5 @@
 #include "translation.hpp"
 
-#include <filesystem>
 #include <optional>
 
 #include "config.hpp"
@@ -21,7 +20,7 @@ command_result_t Translator::executeCommand(const std::string& command)
     try
     {
         TinyProcessLib::Process process(
-            command,
+            config->bash_path + " -c \"" + command + "\"",
             "",
             [&output](const char* bytes, size_t n) { output.assign(bytes, n); },
             nullptr,
@@ -46,18 +45,13 @@ std::optional<std::string> Translator::Translate(const std::string& lang_from,
                                                  const std::string& lang_to,
                                                  const std::string& text)
 {
-    const command_result_t& result = config->use_trans_gawk
-                                         ? executeCommand(fmt::format("{} -f {} -- -brief {}:{} $'{}'",
-                                                                      config->gawk_path,
-                                                                      config->trans_awk_path,
-                                                                      lang_from == "auto" ? "" : lang_from,
-                                                                      lang_to,
-                                                                      replace_str(text, "'", "\\'")))
-                                         : executeCommand(fmt::format("{} -brief {}:{} $'{}'",
-                                                                      config->trans_path,
-                                                                      lang_from == "auto" ? "" : lang_from,
-                                                                      lang_to,
-                                                                      replace_str(text, "'", "\\'")));
+    std::string escaped_str{ text };
+    replace_str(escaped_str, "'", "\\'");
+    replace_str(escaped_str, "\"", "\\\"");
+
+    const command_result_t& result = executeCommand(fmt::format(
+        "{} -brief {}:{} $'{}'", config->trans_path, lang_from == "auto" ? "" : lang_from, lang_to, escaped_str));
+
     if (!result.success)
         return {};
     return result.output;
