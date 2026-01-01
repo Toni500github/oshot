@@ -60,7 +60,7 @@ VERSION    	 = 0.0.1
 SRC	 	 = $(wildcard src/*.cpp)
 OBJ	 	 = $(SRC:.cpp=.o)
 LDFLAGS   	+= -L$(BUILDDIR)
-LDLIBS		+= $(BUILDDIR)/libimgui.a $(BUILDDIR)/libfmt.a $(BUILDDIR)/libtiny-process-library.a `pkg-config --static --libs glfw3 tesseract`
+LDLIBS		+= $(BUILDDIR)/libimgui.a $(BUILDDIR)/libfmt.a $(BUILDDIR)/libtiny-process-library.a `pkg-config --static --libs glfw3 tesseract libcurl`
 CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
 
 all: imgui fmt tpl getopt-port toml $(TARGET)
