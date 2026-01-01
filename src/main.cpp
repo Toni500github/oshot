@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <memory>
 
 #include "fmt/base.h"
@@ -13,6 +14,7 @@
 
 #include "config.hpp"
 #include "getopt_port/getopt.h"
+#include "langs.hpp"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "switch_fnv1a.hpp"
@@ -71,8 +73,15 @@ static void help(bool invalid_opt = false)
     std::exit(invalid_opt);
 }
 
+static constexpr void print_languages()
+{
+    for (const auto& [code, name] : GOOGLE_TRANSLATE_LANGUAGES_ARRAY)
+        fmt::print(FMT_COMPILE("{}: {}\n"), name, code);
+    std::exit(EXIT_SUCCESS);
+}
+
 // clang-format off
-// Return true if optarg says something true
+// Return true if optarg says something true...
 static bool str_to_bool(const std::string_view str)
 {
     return (str == "true" || str == "1" || str == "enable");
@@ -80,7 +89,7 @@ static bool str_to_bool(const std::string_view str)
 
 // parseargs() but only for parsing the user config path trough args
 // and so we can directly construct Config
-static std::filesystem::path parse_config_path(int argc, char* argv[], const std::filesystem::path &configDir)
+static std::filesystem::path parse_config_path(int argc, char* argv[], const std::filesystem::path& configDir)
 {
     int opt = 0;
     int option_index = 0;
@@ -115,10 +124,12 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
     int opt = 0;
     int option_index = 0;
     opterr = 1; // re-enable since before we disabled for "invalid option" error
-    const char *optstring = "-Vh";
+    const char *optstring = "-VhlC:";
     static const struct option opts[] = {
         {"version", no_argument,       0, 'V'},
         {"help",    no_argument,       0, 'h'},
+        {"list",    no_argument,       0, 'l'},
+        {"config",  required_argument, 0, 'C'},
 
         {"gen-config", optional_argument, 0, "gen-config"_fnv1a16},
 
@@ -132,6 +143,7 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
         switch (opt)
         {
             case 0:
+            case 'C':
                 break;
             case '?':
                 help(EXIT_FAILURE); break;
@@ -140,6 +152,8 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
                 version(); break;
             case 'h':
                 help(); break;
+            case 'l':
+                print_languages(); break;
 
             case "gen-config"_fnv1a16:
                 if (OPTIONAL_ARGUMENT_IS_PRESENT)
@@ -161,40 +175,20 @@ static void glfw_error_callback(int error, const char* description)
     fmt::println(stderr, "GLFW Error {}: {}", error, description);
 }
 
-/** Sets up gettext localization. Safe to call multiple times.
- */
-/* Inspired by the monotone function localize_monotone. */
-// taken from pacman
-static void localize(void)
-{
-#if ENABLE_NLS
-    static bool init = false;
-    if (!init)
-    {
-        setlocale(LC_ALL, "");
-        bindtextdomain("oshot", LOCALEDIR);
-        textdomain("oshot");
-        init = true;
-    }
-#endif
-}
-
 int main(int argc, char* argv[])
 {
     const std::string& configDir  = getConfigDir().string();
     const std::string& configFile = parse_config_path(argc, argv, configDir).string();
 
-    localize();
-
     config = std::make_unique<Config>(configFile, configDir);
     if (!parseargs(argc, argv, configFile))
-        return 1;
+        return EXIT_FAILURE;
 
     config->loadConfigFile(configFile);
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
-        return 1;
+        return EXIT_FAILURE;
 
     // Decide GL+GLSL versions
 #if defined(IMGUI_IMPL_OPENGL_ES2)
@@ -236,9 +230,9 @@ int main(int argc, char* argv[])
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);  // Borderless
     glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);    // Always on top
 
-    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "OCRshot - Screenshot tool", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "OCRshot", nullptr, nullptr);
     if (window == nullptr)
-        return 1;
+        return EXIT_FAILURE;
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);  // Enable vsync
 
@@ -247,11 +241,16 @@ int main(int argc, char* argv[])
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    
+    if (!config->font.empty())
+    {
+        const auto& path = get_font_path(config->font);
+        if (!path.empty())
+        io.FontDefault = io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, nullptr, io.Fonts->GetGlyphRangesDefault());
+    }
 
-    // Setup Dear ImGui style
     ImGui::StyleColorsDark();
-    // ImGui::StyleColorsLight();
 
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -271,7 +270,7 @@ int main(int argc, char* argv[])
     });
 
     if (!ss_tool.Start())
-        return 1;
+        return EXIT_FAILURE;
 
     while (!glfwWindowShouldClose(window) && ss_tool.IsActive())
     {
@@ -317,5 +316,5 @@ int main(int argc, char* argv[])
     glfwDestroyWindow(window);
     glfwTerminate();
 
-    return 0;
+    return EXIT_SUCCESS;
 }

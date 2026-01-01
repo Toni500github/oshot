@@ -3,6 +3,7 @@
 #define _CONFIG_HPP
 
 #include <memory>
+#include <vector>
 
 #include "util.hpp"
 #define TOML_HEADER_ONLY 0
@@ -37,12 +38,11 @@ public:
     // Variables of config file in [default] table
     std::string ocr_path;
     std::string ocr_model;
-    // std::string lang_from;
-    // std::string lang_to;
-    std::string gawk_path;
-    std::string trans_path;
-    std::string trans_awk_path;
-    bool        use_trans_gawk;
+    std::string lang_from;
+    std::string lang_to;
+    std::string font;
+
+    std::unordered_map<std::string, std::string> lang_fonts_paths;
 
     std::unordered_map<std::string, override_configs_types> overrides;
 
@@ -114,23 +114,21 @@ ocr-path = "/usr/share/tessdata/"
 # Default OCR model.
 ocr-model = "eng"
 
-# Default from language translate
+# Default from language codename translate
 lang-from = "auto"
 
-# Default to language translate
+# Default to language codename translate
 lang-to = "en-us"
 
-# Path or executable to the gawk binary
-gawk-path = "gawk"
+# Default font (absolute path or just name) for the whole application.
+# Leave/Make it empty, or commment it, to use ImGUI default font.
+font = "arial.ttf"
 
-# Path or executable to the trans shell script
-trans-path = "trans"
-
-# If to use the "trans.awk" file or the bash shell script one
-use-trans-gawk = false
-
-# Path to the "trans.awk" translation file
-trans-awk-path = "trans.awk"
+# These sections are dedicated for being able to display languages with their appropriated fonts.
+# based on the language code, you can write a table (e.g [lang.en-us]) and
+# put a variable called "font" which can be an absolute path or just the name of the font.
+#[lang.en-us]
+#font = "DejaVuSans.ttf" # Or C:\\Windows\\Fonts\\DejaVuSans.ttf or ~/.fonts/DejaVuSans.ttf
 )#";
 
 inline constexpr std::string_view oshot_help = (R"(Usage: oshot [OPTIONS]...
@@ -142,6 +140,7 @@ GENERAL OPTIONS:
     -h, --help                  Print this help menu.
     -V, --version               Print version and other infos about the build.
     -C, --config <PATH>         Path to the config file to use (default: ~/.config/oshot/config.toml).
+    -l, --list                  List all available translatable languages along side their codenames.
 
     --gen-config [<PATH>]       Generate default config file. If PATH is omitted, saves to default location.
                                 Prompts before overwriting.

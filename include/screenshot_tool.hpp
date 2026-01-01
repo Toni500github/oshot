@@ -67,16 +67,24 @@ public:
     void SetOnCancel(const std::function<void()>& cb) { m_on_cancel = cb; }
 
 private:
-    void HandleSelectionInput();
-    void DrawDarkOverlay();
-    void DrawSelectionBorder();
-    void DrawSizeIndicator();
-    void DrawOcrTools();
-    void DrawTranslationTools();
-    bool HasError(ErrorState err);
-    bool HasErrors();
-    void ClearError(ErrorState err);
-    void SetError(ErrorState err);
+    struct FontCacheEntry
+    {
+        std::string font_path;
+        ImFont*     font   = nullptr;
+        bool        loaded = false;
+    };
+
+    void    HandleSelectionInput();
+    void    DrawDarkOverlay();
+    void    DrawSelectionBorder();
+    void    DrawSizeIndicator();
+    void    DrawOcrTools();
+    void    DrawTranslationTools();
+    ImFont* GetOrLoadFontForLanguage(const std::string& lang_code);
+    bool    HasError(ErrorState err);
+    bool    HasErrors();
+    void    ClearError(ErrorState err);
+    void    SetError(ErrorState err);
 
     OcrAPI           m_api;
     ImGuiIO&         m_io;
@@ -87,6 +95,8 @@ private:
     selection_rect_t m_selection;
     bool             m_is_selecting{};
     bool             m_is_hovering_ocr{};
+
+    std::unordered_map<std::string, FontCacheEntry> m_font_cache;
 
     std::string m_ocr_text;
     std::string m_to_translate_text;

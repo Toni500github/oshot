@@ -1,9 +1,14 @@
 #ifndef _UTIL_HPP_
 #define _UTIL_HPP_
 
-#ifdef __linux__
+#if defined(__linux__)
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#elif defined(_WIN32)
+#include <combaseapi.h>
+#include <knownfolders.h>
+#include <shlobj.h>
+#include <windows.h>
 #endif
 
 #include <chrono>
@@ -29,9 +34,11 @@
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height);
 #endif
 
-std::vector<uint8_t> ppm_to_rgba(uint8_t* ppm, int width, int height);
-std::vector<uint8_t> rgba_to_ppm(const std::vector<uint8_t>& rgba, int width, int height);
-std::string          replace_str(std::string str, const std::string_view from, const std::string_view to);
+std::vector<uint8_t>  ppm_to_rgba(uint8_t* ppm, int width, int height);
+std::vector<uint8_t>  rgba_to_ppm(const std::vector<uint8_t>& rgba, int width, int height);
+std::string           replace_str(std::string& str, const std::string_view from, const std::string_view to);
+std::filesystem::path get_font_path(const std::string& font);
+std::filesystem::path get_lang_font_path(const std::string& lang);
 
 /*
  * Get the user config directory
@@ -69,6 +76,12 @@ void error(const std::string_view fmt, Args&&... args) noexcept
 template <typename... Args>
 void die(const std::string_view fmt, Args&&... args) noexcept
 {
+#ifdef _WIN32
+    MessageBox(nullptr,
+               fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(),
+               "Fatal Error",
+               MB_ICONERROR | MB_OK);
+#endif
     fmt::print(stderr,
                BOLD_COLOR(fmt::rgb(fmt::color::red)),
                "[{}] FATAL: {}\n",
@@ -91,6 +104,12 @@ void debug(const std::string_view fmt, Args&&... args) noexcept
 template <typename... Args>
 void warn(const std::string_view fmt, Args&&... args) noexcept
 {
+#ifdef _WIN32
+    MessageBox(nullptr,
+               fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(),
+               "Warning",
+               MB_ICONWARNING | MB_OK);
+#endif
     fmt::print(BOLD_COLOR((fmt::rgb(fmt::color::yellow))),
                "[{}] WARNING: {}\n",
                std::chrono::system_clock::now(),
@@ -100,6 +119,12 @@ void warn(const std::string_view fmt, Args&&... args) noexcept
 template <typename... Args>
 void info(const std::string_view fmt, Args&&... args) noexcept
 {
+#ifdef _WIN32
+    MessageBox(nullptr,
+               fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(),
+               "Info",
+               MB_ICONINFORMATION | MB_OK);
+#endif
     fmt::print(BOLD_COLOR((fmt::rgb(fmt::color::cyan))),
                "[{}] INFO: {}\n",
                std::chrono::system_clock::now(),
@@ -121,8 +146,15 @@ inline void ctrl_d_handler(const std::istream& cin)
 template <typename... Args>
 bool askUserYorN(bool def, const std::string_view fmt, Args&&... args)
 {
-    const std::string& inputs_str = fmt::format(" [{}]: ", def ? "Y/n" : "y/N");
-    std::string        result;
+#ifdef _WIN32
+    int result = MessageBox(NULL,
+                            fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(),
+                            "Confirmation",
+                            MB_YESNO | MB_ICONQUESTION);
+    return (result == IDYES);
+#else
+    const std::string_view inputs_str = def ? " [Y/n]:" : " [y/N]:";
+    std::string            result;
     fmt::print(fmt::runtime(fmt), std::forward<Args>(args)...);
     fmt::print("{}", inputs_str);
 
@@ -138,6 +170,7 @@ bool askUserYorN(bool def, const std::string_view fmt, Args&&... args)
         return def;
 
     return !def;
+#endif
 }
 
 #endif  // !_UTIL_HPP_

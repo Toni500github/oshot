@@ -1,9 +1,14 @@
 #include <array>
 #include <utility>
 
+#include "fmt/base.h"
+#include "frozen/string.h"
+#include "frozen/unordered_map.h"
 #include "switch_fnv1a.hpp"
 
-constexpr std::array<std::pair<const char*, const char*>, 116> GOOGLE_TRANSLATE_LANGUAGES_ARRAY = {
+using namespace frozen::string_literals;
+
+constexpr std::array<std::pair<const char*, const char*>, 114> GOOGLE_TRANSLATE_LANGUAGES_ARRAY = {
     { { "auto", "Automatic" },
       { "af", "Afrikaans" },
       { "sq", "Albanian" },
@@ -19,8 +24,6 @@ constexpr std::array<std::pair<const char*, const char*>, 116> GOOGLE_TRANSLATE_
       { "ca", "Catalan" },
       { "ceb", "Cebuano" },
       { "ny", "Chichewa" },
-      { "zh-CN", "Chinese (Simplified)" },
-      { "zh-TW", "Chinese (Traditional)" },
       { "co", "Corsican" },
       { "hr", "Croatian" },
       { "cs", "Czech" },
@@ -110,8 +113,8 @@ constexpr std::array<std::pair<const char*, const char*>, 116> GOOGLE_TRANSLATE_
       { "yo", "Yoruba" },
       { "zu", "Zulu" },
       { "zh", "Chinese (Auto)" },
-      { "zh-cn", "Chinese (Simplified)" },
-      { "zh-tw", "Chinese (Traditional)" },
+      { "zh-CN", "Chinese (Simplified)" },
+      { "zh-TW", "Chinese (Traditional)" },
       { "pt-br", "Portuguese (Brazil)" },
       { "pt-pt", "Portuguese (Portugal)" },
       { "es-419", "Spanish (Latin America)" },
@@ -120,6 +123,19 @@ constexpr std::array<std::pair<const char*, const char*>, 116> GOOGLE_TRANSLATE_
       { "en-us", "English (US)" },
       { "fr-ca", "French (Canada)" },
       { "fr-fr", "French (France)" } }
+};
+
+// Custom formatter for the pair
+template <>
+struct fmt::formatter<std::pair<const char*, const char*>>
+{
+    constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
+
+    template <typename FormatContext>
+    auto format(const std::pair<const char*, const char*>& p, FormatContext& ctx)
+    {
+        return fmt::format_to(ctx.out(), "{}: {}", p.second, p.first);
+    }
 };
 
 static constexpr std::string_view getNameFromCode(const std::string_view code)
@@ -232,8 +248,6 @@ static constexpr std::string_view getNameFromCode(const std::string_view code)
         case "yo"_fnv1a32:     return "Yoruba";
         case "zu"_fnv1a32:     return "Zulu";
         case "zh"_fnv1a32:     return "Chinese (Auto)";
-        case "zh-cn"_fnv1a32:  return "Chinese (Simplified)";
-        case "zh-tw"_fnv1a32:  return "Chinese (Traditional)";
         case "pt-br"_fnv1a32:  return "Portuguese (Brazil)";
         case "pt-pt"_fnv1a32:  return "Portuguese (Portugal)";
         case "es-419"_fnv1a32: return "Spanish (Latin America)";
@@ -242,6 +256,117 @@ static constexpr std::string_view getNameFromCode(const std::string_view code)
         case "en-us"_fnv1a32:  return "English (US)";
         case "fr-ca"_fnv1a32:  return "French (Canada)";
         case "fr-fr"_fnv1a32:  return "French (France)";
-        default:               return "Unknown";
+        default:               return "Automatic";
     }
 }
+
+// clang-format off
+static constexpr frozen::unordered_map<frozen::string, std::array<frozen::string, 5>, 12> lang_fonts = {
+    { "hy"_s,
+      {
+          "arial.ttf"_s,
+          "sylfaen.ttf"_s,
+          "seguiemj.ttf"_s,
+          "NotoSansArmenian-Regular.ttf"_s,
+          "DejaVuSans.ttf"_s
+      } },
+
+    { "ar"_s,
+      {
+          "tahoma.ttf"_s,
+          "segoeui.ttf"_s,
+          "NotoSansArabic-Regular.ttf"_s,
+          "DejaVuSans.ttf"_s,
+          "LiberationSans-Regular.ttf"_s
+      } },
+
+    { "zh-CN"_s,
+      {
+          "msyh.ttc"_s,
+          "simsun.ttc"_s,
+          "NotoSansCJK-Regular.ttc"_s,
+          "DejaVuSans.ttf"_s,
+          "LiberationSans-Regular.ttf"_s
+      } },
+
+    { "zh-TW"_s,
+      {
+          "msjh.ttc"_s,
+          "mingliu.ttc"_s,
+          "NotoSansCJK-Regular.ttc"_s,
+          "DejaVuSans.ttf"_s,
+          "LiberationSans-Regular.ttf"_s
+      } },
+
+    { "ja"_s,
+      {
+          "meiryo.ttc"_s,
+          "msgothic.ttc"_s,
+          "NotoSansJP-Regular.otf"_s,
+          "DejaVuSans.ttf"_s,
+          "LiberationSans-Regular.ttf"_s
+      } },
+
+    { "ko"_s,
+      {
+          "malgun.ttf"_s,
+          "gulim.ttc"_s,
+          "NotoSansKR-Regular.otf"_s,
+          "DejaVuSans.ttf"_s,
+          "LiberationSans-Regular.ttf"_s
+      } },
+
+    { "ru"_s,
+      {
+          "arial.ttf"_s,
+          "times.ttf"_s,
+          "segoeui.ttf"_s,
+          "DejaVuSans.ttf"_s,
+          "LiberationSans-Regular.ttf"_s
+      } },
+
+    { "hi"_s,
+      {
+          "nirmala.ttf"_s,
+          "mangal.ttf"_s,
+          "NotoSansDevanagari-Regular.ttf"_s,
+          "DejaVuSans.ttf"_s,
+          "LiberationSans-Regular.ttf"_s
+      } },
+
+    { "th"_s,
+      {
+          "leelawui.ttf"_s,
+          "cordia.ttf"_s,
+          "NotoSansThai-Regular.ttf"_s,
+          "DejaVuSans.ttf"_s,
+          "LiberationSans-Regular.ttf"_s
+      } },
+
+    { "he"_s,
+      {
+          "arial.ttf"_s,
+          "tahoma.ttf"_s,
+          "NotoSansHebrew-Regular.ttf"_s,
+          "DejaVuSans.ttf"_s,
+          "LiberationSans-Regular.ttf"_s
+      } },
+
+    { "el"_s,
+      {
+          "arial.ttf"_s,
+          "times.ttf"_s,
+          "DejaVuSans.ttf"_s,
+          "LiberationSans-Regular.ttf"_s,
+          "NotoSans-Regular.ttf"_s
+      } },
+
+    { "default"_s,
+      {
+          "arial.ttf"_s,
+          "segoeui.ttf"_s,
+          "DejaVuSans.ttf"_s,
+          "LiberationSans-Regular.ttf"_s,
+          "NotoSans-Regular.ttf"_s
+      } }
+};

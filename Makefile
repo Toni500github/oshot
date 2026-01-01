@@ -4,7 +4,7 @@ PREFIX	  	?= /usr
 VARS  	  	?=
 CXXSTD		?= c++20
 
-DEBUG 		?= 0
+DEBUG 		?= 1
 
 COMPILER := $(shell $(CXX) --version | head -n1)
 
@@ -31,7 +31,7 @@ ifeq ($(UNAME_S),Darwin) #APPLE
 endif
 
 ifeq ($(findstring MINGW64_NT,$(UNAME_S)),MINGW64_NT)
-        LDLIBS += -lgdi32 -lopengl32 -limm32
+        LDLIBS += -lgdi32 -lopengl32 -limm32 -lole32 -luuid
 endif
 
 # https://stackoverflow.com/a/1079861
@@ -60,7 +60,7 @@ VERSION    	 = 0.0.1
 SRC	 	 = $(wildcard src/*.cpp)
 OBJ	 	 = $(SRC:.cpp=.o)
 LDFLAGS   	+= -L$(BUILDDIR)
-LDLIBS		+= $(BUILDDIR)/libimgui.a $(BUILDDIR)/libfmt.a $(BUILDDIR)/libtiny-process-library.a `pkg-config --static --libs glfw3 tesseract`
+LDLIBS		+= $(BUILDDIR)/libimgui.a $(BUILDDIR)/libfmt.a $(BUILDDIR)/libtiny-process-library.a `pkg-config --static --libs glfw3 tesseract libcurl`
 CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
 
 all: imgui fmt tpl getopt-port toml $(TARGET)

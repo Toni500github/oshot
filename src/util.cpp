@@ -5,7 +5,11 @@
 #include <filesystem>
 #include <vector>
 
+#include "config.hpp"
+#include "fmt/compile.h"
 #include "fmt/format.h"
+#include "frozen/string.h"
+#include "langs.hpp"
 
 #if __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
@@ -47,7 +51,7 @@ std::vector<uint8_t> ppm_to_rgba(uint8_t* ppm, int width, int height)
 
 std::vector<uint8_t> rgba_to_ppm(const std::vector<uint8_t>& rgba, int width, int height)
 {
-    std::string header = "P6\n" + fmt::to_string(width) + " " + fmt::to_string(height) + "\n255\n";
+    const std::string& header = "P6\n" + fmt::to_string(width) + " " + fmt::to_string(height) + "\n255\n";
 
     std::vector<uint8_t> ppm_data;
     ppm_data.reserve(header.size() + (width * height * 3));
@@ -64,7 +68,7 @@ std::vector<uint8_t> rgba_to_ppm(const std::vector<uint8_t>& rgba, int width, in
     return ppm_data;
 }
 
-std::string replace_str(std::string str, const std::string_view from, const std::string_view to)
+std::string replace_str(std::string& str, const std::string_view from, const std::string_view to)
 {
     size_t start_pos = 0;
     while ((start_pos = str.find(from, start_pos)) != std::string::npos)
@@ -114,6 +118,7 @@ std::string expandVar(std::string ret, bool dont)
 
 std::filesystem::path getHomeConfigDir()
 {
+#if __unix__
     const char* dir = std::getenv("XDG_CONFIG_HOME");
     if (dir != NULL && dir[0] != '\0' && std::filesystem::exists(dir))
     {
@@ -127,9 +132,82 @@ std::filesystem::path getHomeConfigDir()
 
         return std::filesystem::path(home) / ".config";
     }
+#else
+    PWSTR widePath = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &widePath)))
+    {
+        // Get required buffer size
+        int         size = WideCharToMultiByte(CP_UTF8, 0, widePath, -1, NULL, 0, NULL, NULL);
+        std::string narrowPath(size, 0);
+        WideCharToMultiByte(CP_UTF8, 0, widePath, -1, &narrowPath[0], size, NULL, NULL);
+        CoTaskMemFree(widePath);
+
+        // Remove null terminator from string
+        narrowPath.pop_back();
+        return narrowPath;
+    }
+    const char* dir = std::getenv("APPDATA");
+    if (dir != NULL && dir[0] != '\0' && std::filesystem::exists(dir))
+        return std::filesystem::path(dir);
+    else
+        die("Failed to get %APPDATA% path");
+#endif
 }
 
 std::filesystem::path getConfigDir()
 {
     return getHomeConfigDir() / "oshot";
+}
+
+std::filesystem::path get_font_path(const std::string& font)
+{
+#ifdef _WIN32
+    static constexpr std::array<std::string_view, 2> default_search_paths = {
+        "C:\\Windows\\Fonts\\",
+        "C:\\Windows\\Resources\\Themes\\Fonts\\",
+    };
+#else
+    static constexpr std::array<std::string_view, 4> default_search_paths = {
+        "/usr/share/fonts/",
+        "/usr/local/share/fonts/",
+        "~/.fonts/",
+        "~/.local/share/fonts/",
+    };
+#endif
+    if (std::filesystem::path(font).is_absolute())
+        return font;
+
+    for (const std::string_view path : default_search_paths)
+    {
+        const std::string& font_path = expandVar(fmt::format(FMT_COMPILE("{}{}"), path, font));
+        if (std::filesystem::exists(font_path))
+            return font_path;
+    }
+
+    return {};
+}
+
+std::filesystem::path get_lang_font_path(const std::string& lang)
+{
+    if (config->lang_fonts_paths.find(lang) != config->lang_fonts_paths.end())
+    {
+        const std::filesystem::path font_path_config(config->lang_fonts_paths[lang]);
+        if (font_path_config.is_absolute())
+            return font_path_config;
+
+        return get_font_path(font_path_config.string());
+    }
+
+    const auto& it = lang_fonts.find(frozen::string(lang));
+    if (it != lang_fonts.end())
+    {
+        for (const frozen::string font : it->second)
+        {
+            const auto& path = get_font_path(font.data());
+            if (!path.empty())
+                return path;
+        }
+    }
+
+    return {};
 }

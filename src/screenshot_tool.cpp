@@ -9,18 +9,24 @@
 #include <utility>
 #include <vector>
 
+// clang-format off
+// Because of X11 headers now I need to wonder
+// about the order of each included header file.
+#include "translation.hpp"
+// clang-format on
+
 #include "config.hpp"
 #include "fmt/base.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3_loader.h"
 #include "imgui/imgui_stdlib.h"
 #include "langs.hpp"
-#include "translation.hpp"
+#include "screen_capture.hpp"
+#include "util.hpp"
 
 static ImVec2 origin(0, 0);
 
 static std::unique_ptr<Translator> translator;
-static bool                        has_curl;
 
 static std::vector<std::string> GetTrainingDataList(const std::string& path)
 {
@@ -52,13 +58,13 @@ static void HelpMarker(const char* desc)
 bool ScreenshotTool::Start()
 {
     translator = std::make_unique<Translator>();
-    has_curl   = translator->Start();
 
     switch (get_session_type())
     {
-        case X11:     m_screenshot = capture_full_screen_x11(); break;
-        case WAYLAND: m_screenshot = capture_full_screen_wayland(); break;
-        default:      ;
+        case X11:        m_screenshot = capture_full_screen_x11(); break;
+        case WAYLAND:    m_screenshot = capture_full_screen_wayland(); break;
+        case OS_WINDOWS: m_screenshot = capture_full_screen_windows(); break;
+        default:         ;
     }
 
     if (!m_screenshot.success || m_screenshot.data.empty() || !m_screenshot.error_msg.empty())
@@ -114,8 +120,7 @@ bool ScreenshotTool::RenderOverlay()
                             (ImGui::IsMouseHoveringRect(
                                 window_pos, ImVec2(window_pos.x + window_size.x, window_pos.y + window_size.y)));
         DrawOcrTools();
-        if (has_curl)
-            DrawTranslationTools();
+        DrawTranslationTools();
         ImGui::End();
     }
 
@@ -286,8 +291,8 @@ void ScreenshotTool::DrawOcrTools()
 
 void ScreenshotTool::DrawTranslationTools()
 {
-    static std::string lang_from{ "auto" };
-    static std::string lang_to{ "en-us" };
+    static std::string lang_from{ config->lang_from };
+    static std::string lang_to{ config->lang_to };
     static size_t      index_from = 0;
     static size_t      index_to   = 0;
 
@@ -296,6 +301,7 @@ void ScreenshotTool::DrawTranslationTools()
     ImGui::SeparatorText("Translation");
 
     auto createCombo = [](const char* name, int start, std::string& lang, size_t& idx) {
+        ImGui::PushID(name);
         if (ImGui::BeginCombo(name, getNameFromCode(lang).data(), ImGuiComboFlags_HeightLarge))
         {
             static ImGuiTextFilter filter;
@@ -322,6 +328,7 @@ void ScreenshotTool::DrawTranslationTools()
             }
             ImGui::EndCombo();
         }
+        ImGui::PopID();
     };
 
     createCombo("From", 0, lang_from, index_from);
@@ -348,13 +355,34 @@ void ScreenshotTool::DrawTranslationTools()
     float available_width = ImGui::GetContentRegionAvail().x - spacing - padding;
     float width           = available_width / 2.0f;
 
-    ImGui::InputTextMultiline("##from", &m_to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
+    ImFont* font_from = GetOrLoadFontForLanguage(lang_from);
+    if (font_from)
+    {
+        ImGui::PushFont(font_from);
+        ImGui::InputTextMultiline("##from", &m_to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
+        ImGui::PopFont();
+    }
+    else
+    {
+        ImGui::InputTextMultiline("##from", &m_to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
+    }
 
     ImGui::SameLine();
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + spacing);
 
-    ImGui::InputTextMultiline(
-        "##to", &translated_text, ImVec2(width, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
+    ImFont* font_to = GetOrLoadFontForLanguage(lang_to);
+    if (font_to)
+    {
+        ImGui::PushFont(font_to);
+        ImGui::InputTextMultiline(
+            "##to", &translated_text, ImVec2(width, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
+        ImGui::PopFont();
+    }
+    else
+    {
+        ImGui::InputTextMultiline(
+            "##to", &translated_text, ImVec2(width, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
+    }
 }
 
 void ScreenshotTool::Cancel()
@@ -366,6 +394,10 @@ void ScreenshotTool::Cancel()
         glDeleteTextures(1, &texture);
         m_texture_id = nullptr;
     }
+
+    // Clear font cache (just clears our references, not the actual ImGui fonts)
+    m_font_cache.clear();
+
     if (m_on_cancel)
     {
         m_on_cancel();
@@ -433,6 +465,39 @@ void ScreenshotTool::SetError(ErrorState err)
 void ScreenshotTool::ClearError(ErrorState err)
 {
     m_err_state &= ~err;
+}
+
+ImFont* ScreenshotTool::GetOrLoadFontForLanguage(const std::string& lang_code)
+{
+    // Check cache first
+    auto it = m_font_cache.find(lang_code);
+    if (it != m_font_cache.end())
+    {
+        debug("cached {}: {}", lang_code, it->second.font_path);
+        return it->second.font;
+    }
+
+    // Get font path for this language
+    const auto& font_path = get_lang_font_path(lang_code);
+    debug("font_path {}: {}", lang_code, font_path.string());
+    if (font_path.empty())
+    {
+        // Cache null result
+        m_font_cache[lang_code] = { "", nullptr, true };
+        return nullptr;
+    }
+
+    ImFont* font =
+        m_io.Fonts->AddFontFromFileTTF(font_path.string().c_str(), 16.0f, nullptr, m_io.Fonts->GetGlyphRangesDefault());
+
+    // Cache the result
+    m_font_cache[lang_code] = { font_path.string(), font, true };
+
+    // Rebuild font atlas - texture is handled automatically by backend
+    if (font)
+        m_io.Fonts->Build();
+
+    return font;
 }
 
 void ScreenshotTool::CreateTexture()
