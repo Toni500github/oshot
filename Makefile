@@ -4,7 +4,7 @@ PREFIX	  	?= /usr
 VARS  	  	?=
 CXXSTD		?= c++20
 
-DEBUG 		?= 0
+DEBUG 		?= 1
 
 COMPILER := $(shell $(CXX) --version | head -n1)
 

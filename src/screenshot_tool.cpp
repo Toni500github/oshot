@@ -9,6 +9,12 @@
 #include <utility>
 #include <vector>
 
+// clang-format off
+// Because of X11 headers now I need to wonder
+// about the order of each included header file.
+#include "translation.hpp"
+// clang-format on
+
 #include "config.hpp"
 #include "fmt/base.h"
 #include "imgui/imgui.h"
@@ -16,13 +22,11 @@
 #include "imgui/imgui_stdlib.h"
 #include "langs.hpp"
 #include "screen_capture.hpp"
-#include "translation.hpp"
 #include "util.hpp"
 
 static ImVec2 origin(0, 0);
 
 static std::unique_ptr<Translator> translator;
-static bool                        has_curl;
 
 static std::vector<std::string> GetTrainingDataList(const std::string& path)
 {
@@ -54,7 +58,6 @@ static void HelpMarker(const char* desc)
 bool ScreenshotTool::Start()
 {
     translator = std::make_unique<Translator>();
-    has_curl   = translator->Start();
 
     switch (get_session_type())
     {
@@ -117,8 +120,7 @@ bool ScreenshotTool::RenderOverlay()
                             (ImGui::IsMouseHoveringRect(
                                 window_pos, ImVec2(window_pos.x + window_size.x, window_pos.y + window_size.y)));
         DrawOcrTools();
-        if (has_curl)
-            DrawTranslationTools();
+        DrawTranslationTools();
         ImGui::End();
     }
 
