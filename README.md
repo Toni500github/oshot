@@ -4,10 +4,10 @@ A simple tool for extracting and translating text from a screenshot (on the fly)
 
 ## Dependencies
 Names can vary from package manager (or distro) thus try to search with base name (e.g libglfw3-dev -> glfw3)
-* libx11-dev
-* [translate-shell](https://github.com/soimort/translate-shell/tree/develop?tab=readme-ov-file#installation) (optional, no translate though)
-* grim (if using wayland)
+* libx11-dev (linux-only)
+* grim (linux-only, if using wayland)
 * libglfw3-dev
+* tesseract (install the eng model/version too)
 
 ## Building
 
