@@ -177,6 +177,7 @@ static void glfw_error_callback(int error, const char* description)
 
 int main(int argc, char* argv[])
 {
+#if !CF_MACOS
     const std::string& configDir  = getConfigDir().string();
     const std::string& configFile = parse_config_path(argc, argv, configDir).string();
 
@@ -315,6 +316,8 @@ int main(int argc, char* argv[])
 
     glfwDestroyWindow(window);
     glfwTerminate();
+#endif
 
+    capture_full_screen_macos();
     return EXIT_SUCCESS;
 }
