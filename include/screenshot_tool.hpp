@@ -77,13 +77,16 @@ private:
         bool        loaded = false;
     };
 
-    void    HandleSelectionInput();
-    void    DrawDarkOverlay();
-    void    DrawSelectionBorder();
-    void    DrawSizeIndicator();
-    void    DrawOcrTools();
-    void    DrawTranslationTools();
+    void HandleSelectionInput();
+    void DrawDarkOverlay();
+    void DrawMenuItems();
+    void DrawSelectionBorder();
+    void DrawSizeIndicator();
+    void DrawOcrTools();
+    void DrawTranslationTools();
+
     ImFont* GetOrLoadFontForLanguage(const std::string& lang_code);
+    bool    SaveAsPng(const capture_result_t& img);
     bool    HasError(ErrorState err);
     bool    HasErrors();
     void    ClearError(ErrorState err);

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <memory>
@@ -23,6 +24,8 @@
 #include "imgui/imgui_stdlib.h"
 #include "langs.hpp"
 #include "screen_capture.hpp"
+#include "svpng.h"
+#include "tinyfiledialogs.h"
 #include "util.hpp"
 
 static ImVec2 origin(0, 0);
@@ -114,12 +117,13 @@ bool ScreenshotTool::RenderOverlay()
 
     if (m_state == ToolState::Selected)
     {
-        ImGui::Begin("Text tools");
+        ImGui::Begin("Text tools", nullptr, ImGuiWindowFlags_MenuBar);
         ImVec2 window_pos  = ImGui::GetWindowPos();
         ImVec2 window_size = ImGui::GetWindowSize();
         m_is_hovering_ocr  = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) ||
                             (ImGui::IsMouseHoveringRect(
                                 window_pos, ImVec2(window_pos.x + window_size.x, window_pos.y + window_size.y)));
+        DrawMenuItems();
         DrawOcrTools();
         DrawTranslationTools();
         ImGui::End();
@@ -204,6 +208,47 @@ void ScreenshotTool::DrawSelectionBorder()
         ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h), IM_COL32(0, 150, 255, 255), 0.0f, 0, 2.0f);
 }
 
+void ScreenshotTool::DrawMenuItems()
+{
+    if (ImGui::BeginMenuBar())
+    {
+        if (ImGui::BeginMenu("File"))
+        {
+            if (ImGui::MenuItem("Save as PNG"))
+                SaveAsPng(GetFinalImage());
+            if (ImGui::MenuItem("Quit", "ESC"))
+                Cancel();
+            ImGui::EndMenu();
+        }
+
+        ImGui::EndMenuBar();
+    }
+}
+
+bool ScreenshotTool::SaveAsPng(const capture_result_t& img)
+{
+    auto        now       = std::chrono::system_clock::now();
+    const char* filter[]  = { "*.png" };
+    const char* save_path = tinyfd_saveFileDialog("Save File",
+                                                  fmt::format("oshot_{:%F_%H-%M}.png", now).c_str(),  // default path
+                                                  1,                // number of filter patterns
+                                                  filter,           // file filters
+                                                  "Images (*.png)"  // filter description
+    );
+
+    if (!save_path)
+    {
+        Cancel();
+        return false;
+    }
+
+    std::FILE* fp = fopen(save_path, "wb");
+    if (!fp)
+        die("Failed to save/open file at path {}", save_path);
+    svpng(fp, img.region.width, img.region.height, img.data.data(), 0xff);
+    return true;
+}
+
 void ScreenshotTool::DrawOcrTools()
 {
     static std::string ocr_path{ config->ocr_path };
@@ -256,8 +301,7 @@ void ScreenshotTool::DrawOcrTools()
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
     }
 
-    if (!HasError(ErrorState::InvalidPath) &&
-        ImGui::BeginCombo("Model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge))
+    if (!HasError(InvalidPath) && ImGui::BeginCombo("Model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge))
     {
         static ImGuiTextFilter filter;
         if (ImGui::IsWindowAppearing())
@@ -277,10 +321,10 @@ void ScreenshotTool::DrawOcrTools()
                     item_selected_idx = i;
         }
         ocr_model = list[item_selected_idx];
-        ClearError(ErrorState::InvalidModel);
+        ClearError(InvalidModel);
         ImGui::EndCombo();
     }
-    else if (HasError(ErrorState::InvalidPath))
+    else if (HasError(InvalidPath))
     {
         // If combo is not open, we might need to update ocr_model from item_selected_idx
         if (!list.empty() && item_selected_idx < list.size())
