@@ -4,7 +4,7 @@ PREFIX	  	?= /usr
 VARS  	  	?=
 CXXSTD		?= c++20
 
-DEBUG 		?= 1
+DEBUG 		?= 0
 
 COMPILER := $(shell $(CXX) --version | head -n1)
 
@@ -19,19 +19,17 @@ endif
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
         LDLIBS += -lGL -lX11
-endif
 
-ifeq ($(UNAME_S),Darwin) #APPLE
+else ifeq ($(UNAME_S),Darwin) #APPLE
         LDFLAGS += -L/usr/local/lib -L/opt/local/lib -L/opt/homebrew/lib
         LDLIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
         #LDLIBS += -lglfw3
         #LDLIBS += -lglfw
 
         CXXFLAGS += -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include
-endif
 
-ifeq ($(findstring MINGW64_NT,$(UNAME_S)),MINGW64_NT)
-        LDLIBS += -lgdi32 -lopengl32 -limm32 -lole32 -luuid
+else ifeq ($(findstring _NT,$(UNAME_S)),_NT)
+        LDLIBS += -lgdi32 -lopengl32 -limm32 -lole32 -lcomdlg32 -luuid
 endif
 
 # https://stackoverflow.com/a/1079861

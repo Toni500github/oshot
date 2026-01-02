@@ -187,6 +187,9 @@ file(GLOB SRC "src/*.cpp")
 add_executable(${PROJECT_NAME} ${SRC})
 enable_lto(${PROJECT_NAME})
 
+execute_process(COMMAND ./generateVersion.sh
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 target_compile_definitions(${PROJECT_NAME} PRIVATE VERSION="${PROJECT_VERSION}")
 
 target_include_directories(${PROJECT_NAME} PUBLIC

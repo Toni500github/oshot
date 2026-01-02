@@ -210,6 +210,8 @@ void ScreenshotTool::DrawSelectionBorder()
 
 void ScreenshotTool::DrawMenuItems()
 {
+    static bool show_about = false;
+
     if (ImGui::BeginMenuBar())
     {
         if (ImGui::BeginMenu("File"))
@@ -220,8 +222,44 @@ void ScreenshotTool::DrawMenuItems()
                 Cancel();
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu("Help"))
+        {
+            if (ImGui::MenuItem("About"))
+                show_about = true;
+            ImGui::EndMenu();
+        }
 
         ImGui::EndMenuBar();
+    }
+
+    if (show_about)
+    {
+        ImGui::SetNextWindowSize(ImVec2(200, 200), ImGuiCond_FirstUseEver);
+        ImGui::Begin("About", &show_about, ImGuiWindowFlags_NoCollapse);
+        ImVec2 window_pos  = ImGui::GetWindowPos();
+        ImVec2 window_size = ImGui::GetWindowSize();
+        m_is_hovering_ocr  = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) ||
+                            (ImGui::IsMouseHoveringRect(
+                                window_pos, ImVec2(window_pos.x + window_size.x, window_pos.y + window_size.y)));
+
+        ImGui::Text("oshot");
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::TextWrapped("Screenshot tool to extract and translate text on the fly");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+
+        ImGui::Text("Version: " VERSION);
+        ImGui::Text("Created by: Toni500");
+        ImGui::Text("Copyright © 2026");
+
+        ImGui::Spacing();
+        if (ImGui::Button("Close"))
+            show_about = false;
+
+        ImGui::End();
     }
 }
 
@@ -404,9 +442,12 @@ void ScreenshotTool::DrawTranslationTools()
     auto createCombo =
         [&](const char* name, const ErrorState err, int start, std::string& lang, size_t& idx, ImFont* font) {
             ImGui::PushID(name);
+
+            bool style_pushed = false;
             if (HasError(err))
             {
                 ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
+                style_pushed = true;
             }
 
             if (ImGui::BeginCombo(name, getNameFromCode(lang).data(), ImGuiComboFlags_HeightLarge))
@@ -433,14 +474,13 @@ void ScreenshotTool::DrawTranslationTools()
                             font = GetOrLoadFontForLanguage(lang);
                             (void)font;
                             ClearError(err);
-                            ImGui::PopStyleColor();
                         }
                     }
                 }
                 ImGui::EndCombo();
             }
 
-            if (HasError(err))
+            if (style_pushed)
             {
                 ImGui::PopStyleColor();
                 ImGui::SameLine();
