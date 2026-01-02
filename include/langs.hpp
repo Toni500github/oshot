@@ -256,7 +256,7 @@ static constexpr std::string_view getNameFromCode(const std::string_view code)
         case "en-us"_fnv1a32:  return "English (US)";
         case "fr-ca"_fnv1a32:  return "French (Canada)";
         case "fr-fr"_fnv1a32:  return "French (France)";
-        default:               return "Automatic";
+        default:               return "Unknown";
     }
 }
 

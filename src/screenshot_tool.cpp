@@ -1,5 +1,6 @@
 #include "screenshot_tool.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -208,57 +209,51 @@ void ScreenshotTool::DrawOcrTools()
     static std::string ocr_path{ config->ocr_path };
     static std::string ocr_model{ config->ocr_model };
     static size_t      item_selected_idx = 0;
+    static bool        first_frame       = true;
 
     ImGui::SeparatorText("OCR");
 
-    if (ImGui::Button("Extract Text") && !HasErrors())
-    {
-        if (ocr_model.empty())
-        {
-            SetError(ErrorState::InvalidModel);
-        }
-        else if (!m_api.Init(ocr_path, ocr_model))
-        {
-            SetError(ErrorState::InitOcr);
-        }
+    static std::vector<std::string> list{ "" };
+    auto                            check_list = [&]() {
+        list = GetTrainingDataList(ocr_path);
+        if (list.empty())
+            SetError(InvalidPath);
         else
-        {
-            m_api.SetImage(GetFinalImage());
-            const auto& text = m_api.ExtractText();
-            if (text)
-                m_ocr_text = m_to_translate_text = *text;
-            ClearError(ErrorState::InitOcr);
-        }
-    }
+            ClearError(InvalidPath);
+    };
 
-    if (HasError(InitOcr) || HasError(InvalidModel))
+    if (first_frame)
     {
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
-                           HasError(InitOcr) ? "Failed to init OCR!" : "Please select a model first");
+        check_list();
+        if (std::find(list.begin(), list.end(), ocr_model) == list.end())
+            SetError(InvalidModel);
+        first_frame = false;
     }
 
-    ImGui::Spacing();
-
-    const std::vector<std::string>& list = GetTrainingDataList(ocr_path);
-    if (list.empty())
-        SetError(ErrorState::InvalidPath);
-    else
-        ClearError(ErrorState::InvalidPath);
-
-    if (HasError(ErrorState::InvalidPath))
+    if (HasError(InvalidPath))
     {
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
 
-        ImGui::InputText("Path", &ocr_path);
+        if (ImGui::InputText("Path", &ocr_path))
+            check_list();
 
         ImGui::PopStyleColor();
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(1, 0, 0, 1), "Invalid/Empty!");
+
+        ImGui::TextDisabled("Model: %s", ocr_model.empty() ? "Select path first" : ocr_model.c_str());
+
+        goto end;
     }
     else
     {
-        ImGui::InputText("Path", &ocr_path);
+        if (ImGui::InputText("Path", &ocr_path))
+            check_list();
+    }
+
+    if (HasError(InvalidModel))
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
     }
 
     if (!HasError(ErrorState::InvalidPath) &&
@@ -270,6 +265,7 @@ void ScreenshotTool::DrawOcrTools()
             ImGui::SetKeyboardFocusHere();
             filter.Clear();
         }
+
         ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F);
         filter.Draw("##Filter", -FLT_MIN);
 
@@ -284,6 +280,46 @@ void ScreenshotTool::DrawOcrTools()
         ClearError(ErrorState::InvalidModel);
         ImGui::EndCombo();
     }
+    else if (HasError(ErrorState::InvalidPath))
+    {
+        // If combo is not open, we might need to update ocr_model from item_selected_idx
+        if (!list.empty() && item_selected_idx < list.size())
+            ocr_model = list[item_selected_idx];
+    }
+
+    if (HasError(InvalidModel))
+    {
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1, 0, 0, 1), "Invalid!");
+    }
+
+end:
+    if (!HasErrors() && ImGui::Button("Extract Text"))
+    {
+        if (std::find(list.begin(), list.end(), ocr_model) == list.end())
+        {
+            SetError(InvalidModel);
+        }
+        else if (!m_api.Init(ocr_path, ocr_model))
+        {
+            SetError(InitOcr);
+        }
+        else
+        {
+            m_api.SetImage(GetFinalImage());
+            const auto& text = m_api.ExtractText();
+            if (text)
+                m_ocr_text = m_to_translate_text = *text;
+            ClearError(InitOcr);
+        }
+    }
+
+    if (HasError(InitOcr))
+    {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Failed to init OCR!");
+    }
 
     ImGui::InputTextMultiline(
         "##source", &m_ocr_text, ImVec2(-1, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
@@ -295,13 +331,39 @@ void ScreenshotTool::DrawTranslationTools()
     static std::string lang_to{ config->lang_to };
     static size_t      index_from = 0;
     static size_t      index_to   = 0;
+    static bool        first_frame = true;
 
     static std::string translated_text;
 
+    static ImFont *font_from;
+    static ImFont *font_to;
+
     ImGui::SeparatorText("Translation");
 
-    auto createCombo = [](const char* name, int start, std::string& lang, size_t& idx) {
+    if (first_frame)
+    {
+        if (getNameFromCode(lang_from) == "Unknown")
+            SetError(InvalidLangFrom);
+        else
+            ClearError(InvalidLangFrom);
+
+        if (getNameFromCode(lang_to) == "Unknown")
+            SetError(InvalidLangTo);
+        else
+            ClearError(InvalidLangTo);
+
+        font_from = GetOrLoadFontForLanguage(lang_from);
+        font_to = GetOrLoadFontForLanguage(lang_to);
+        first_frame = false;
+    }
+
+    auto createCombo = [&](const char* name, const ErrorState err, int start, std::string& lang, size_t& idx, ImFont* font) {
         ImGui::PushID(name);
+        if (HasError(err))
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
+        }
+
         if (ImGui::BeginCombo(name, getNameFromCode(lang).data(), ImGuiComboFlags_HeightLarge))
         {
             static ImGuiTextFilter filter;
@@ -323,26 +385,45 @@ void ScreenshotTool::DrawTranslationTools()
                     {
                         idx  = i;
                         lang = GOOGLE_TRANSLATE_LANGUAGES_ARRAY[idx].first;
+                        font = GetOrLoadFontForLanguage(lang);
+                        (void)font;
+                        ClearError(err);
+                        ImGui::PopStyleColor();
                     }
                 }
             }
             ImGui::EndCombo();
         }
+
+        if (HasError(err))
+        {
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1, 0, 0, 1), "Invalid Default Language!");
+        }
+
         ImGui::PopID();
     };
 
-    createCombo("From", 0, lang_from, index_from);
+    createCombo("From", InvalidLangFrom, 0, lang_from, index_from, font_from);
 
     ImGui::Spacing();
 
     // Ignore "Automatic" in To
-    createCombo("To", 1, lang_to, index_to);
+    createCombo("To", InvalidLangTo, 1, lang_to, index_to, font_to);
 
-    if (!m_to_translate_text.empty() && ImGui::Button("Translate"))
+    if (!(HasError(InvalidLangFrom) || HasError(InvalidLangTo)) && !m_to_translate_text.empty() && ImGui::Button("Translate"))
     {
-        const auto& opt_translation = translator->Translate(lang_from, lang_to, m_to_translate_text);
-        if (opt_translation)
-            translated_text = *opt_translation;
+        const auto& translation = translator->Translate(lang_from, lang_to, m_to_translate_text);
+        if (translation)
+        {
+            translated_text = *translation;
+            ClearError(FailedTranslation);
+        }
+        else
+        {
+            SetError(FailedTranslation);
+        }
     }
 
     ImGui::SameLine();
@@ -355,7 +436,6 @@ void ScreenshotTool::DrawTranslationTools()
     float available_width = ImGui::GetContentRegionAvail().x - spacing - padding;
     float width           = available_width / 2.0f;
 
-    ImFont* font_from = GetOrLoadFontForLanguage(lang_from);
     if (font_from)
     {
         ImGui::PushFont(font_from);
@@ -370,7 +450,17 @@ void ScreenshotTool::DrawTranslationTools()
     ImGui::SameLine();
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + spacing);
 
-    ImFont* font_to = GetOrLoadFontForLanguage(lang_to);
+    if (HasError(FailedTranslation))
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
+        translated_text = "Failed to translate text";
+        ImGui::InputTextMultiline(
+            "##to", &translated_text, ImVec2(width, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
+
+        ImGui::PopStyleColor();
+        return;
+    }
+
     if (font_to)
     {
         ImGui::PushFont(font_to);
@@ -395,7 +485,7 @@ void ScreenshotTool::Cancel()
         m_texture_id = nullptr;
     }
 
-    // Clear font cache (just clears our references, not the actual ImGui fonts)
+    // (just clears our references, not the actual ImGui fonts)
     m_font_cache.clear();
 
     if (m_on_cancel)
@@ -477,7 +567,6 @@ ImFont* ScreenshotTool::GetOrLoadFontForLanguage(const std::string& lang_code)
         return it->second.font;
     }
 
-    // Get font path for this language
     const auto& font_path = get_lang_font_path(lang_code);
     debug("font_path {}: {}", lang_code, font_path.string());
     if (font_path.empty())

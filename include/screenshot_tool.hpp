@@ -40,10 +40,13 @@ enum class ToolState
 
 enum ErrorState
 {
-    None         = 0,
-    InitOcr      = 1 << 1,
-    InvalidPath  = 1 << 2,
-    InvalidModel = 1 << 3
+    None              = 0,
+    InitOcr           = 1 << 1,
+    InvalidPath       = 1 << 2,
+    InvalidModel      = 1 << 3,
+    FailedTranslation = 1 << 4,
+    InvalidLangFrom   = 1 << 5,
+    InvalidLangTo     = 1 << 6
 };
 
 class ScreenshotTool
