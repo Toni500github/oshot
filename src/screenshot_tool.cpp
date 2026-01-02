@@ -329,14 +329,14 @@ void ScreenshotTool::DrawTranslationTools()
 {
     static std::string lang_from{ config->lang_from };
     static std::string lang_to{ config->lang_to };
-    static size_t      index_from = 0;
-    static size_t      index_to   = 0;
+    static size_t      index_from  = 0;
+    static size_t      index_to    = 0;
     static bool        first_frame = true;
 
     static std::string translated_text;
 
-    static ImFont *font_from;
-    static ImFont *font_to;
+    static ImFont* font_from;
+    static ImFont* font_to;
 
     ImGui::SeparatorText("Translation");
 
@@ -352,58 +352,59 @@ void ScreenshotTool::DrawTranslationTools()
         else
             ClearError(InvalidLangTo);
 
-        font_from = GetOrLoadFontForLanguage(lang_from);
-        font_to = GetOrLoadFontForLanguage(lang_to);
+        font_from   = GetOrLoadFontForLanguage(lang_from);
+        font_to     = GetOrLoadFontForLanguage(lang_to);
         first_frame = false;
     }
 
-    auto createCombo = [&](const char* name, const ErrorState err, int start, std::string& lang, size_t& idx, ImFont* font) {
-        ImGui::PushID(name);
-        if (HasError(err))
-        {
-            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
-        }
-
-        if (ImGui::BeginCombo(name, getNameFromCode(lang).data(), ImGuiComboFlags_HeightLarge))
-        {
-            static ImGuiTextFilter filter;
-            if (ImGui::IsWindowAppearing())
+    auto createCombo =
+        [&](const char* name, const ErrorState err, int start, std::string& lang, size_t& idx, ImFont* font) {
+            ImGui::PushID(name);
+            if (HasError(err))
             {
-                ImGui::SetKeyboardFocusHere();
-                filter.Clear();
+                ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
             }
-            ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F);
-            filter.Draw("##Filter", -FLT_MIN);
 
-            for (size_t i = start; i < GOOGLE_TRANSLATE_LANGUAGES_ARRAY.size(); ++i)
+            if (ImGui::BeginCombo(name, getNameFromCode(lang).data(), ImGuiComboFlags_HeightLarge))
             {
-                const std::pair<const char*, const char*>& pair        = GOOGLE_TRANSLATE_LANGUAGES_ARRAY[i];
-                bool                                       is_selected = idx == i;
-                if (filter.PassFilter(pair.second))
+                static ImGuiTextFilter filter;
+                if (ImGui::IsWindowAppearing())
                 {
-                    if (ImGui::Selectable(pair.second, is_selected))
+                    ImGui::SetKeyboardFocusHere();
+                    filter.Clear();
+                }
+                ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F);
+                filter.Draw("##Filter", -FLT_MIN);
+
+                for (size_t i = start; i < GOOGLE_TRANSLATE_LANGUAGES_ARRAY.size(); ++i)
+                {
+                    const std::pair<const char*, const char*>& pair        = GOOGLE_TRANSLATE_LANGUAGES_ARRAY[i];
+                    bool                                       is_selected = idx == i;
+                    if (filter.PassFilter(pair.second))
                     {
-                        idx  = i;
-                        lang = GOOGLE_TRANSLATE_LANGUAGES_ARRAY[idx].first;
-                        font = GetOrLoadFontForLanguage(lang);
-                        (void)font;
-                        ClearError(err);
-                        ImGui::PopStyleColor();
+                        if (ImGui::Selectable(pair.second, is_selected))
+                        {
+                            idx  = i;
+                            lang = GOOGLE_TRANSLATE_LANGUAGES_ARRAY[idx].first;
+                            font = GetOrLoadFontForLanguage(lang);
+                            (void)font;
+                            ClearError(err);
+                            ImGui::PopStyleColor();
+                        }
                     }
                 }
+                ImGui::EndCombo();
             }
-            ImGui::EndCombo();
-        }
 
-        if (HasError(err))
-        {
-            ImGui::PopStyleColor();
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(1, 0, 0, 1), "Invalid Default Language!");
-        }
+            if (HasError(err))
+            {
+                ImGui::PopStyleColor();
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(1, 0, 0, 1), "Invalid Default Language!");
+            }
 
-        ImGui::PopID();
-    };
+            ImGui::PopID();
+        };
 
     createCombo("From", InvalidLangFrom, 0, lang_from, index_from, font_from);
 
@@ -412,7 +413,8 @@ void ScreenshotTool::DrawTranslationTools()
     // Ignore "Automatic" in To
     createCombo("To", InvalidLangTo, 1, lang_to, index_to, font_to);
 
-    if (!(HasError(InvalidLangFrom) || HasError(InvalidLangTo)) && !m_to_translate_text.empty() && ImGui::Button("Translate"))
+    if (!(HasError(InvalidLangFrom) || HasError(InvalidLangTo)) && !m_to_translate_text.empty() &&
+        ImGui::Button("Translate"))
     {
         const auto& translation = translator->Translate(lang_from, lang_to, m_to_translate_text);
         if (translation)
