@@ -62,10 +62,11 @@ bool ScreenshotTool::Start()
 
     switch (get_session_type())
     {
-        case X11:        m_screenshot = capture_full_screen_x11(); break;
-        case WAYLAND:    m_screenshot = capture_full_screen_wayland(); break;
-        case OS_WINDOWS: m_screenshot = capture_full_screen_windows(); break;
-        default:         ;
+        case X11:     m_screenshot = capture_full_screen_x11(); break;
+        case WAYLAND: m_screenshot = capture_full_screen_wayland(); break;
+        case WINDOWS: m_screenshot = capture_full_screen_windows(); break;
+        case MACOS:   m_screenshot = capture_full_screen_macos(); break;
+        default:      ;
     }
 
     if (!m_screenshot.success || m_screenshot.data.empty() || !m_screenshot.error_msg.empty())
@@ -256,8 +257,7 @@ void ScreenshotTool::DrawOcrTools()
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
     }
 
-    if (!HasError(ErrorState::InvalidPath) &&
-        ImGui::BeginCombo("Model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge))
+    if (!HasError(InvalidPath) && ImGui::BeginCombo("Model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge))
     {
         static ImGuiTextFilter filter;
         if (ImGui::IsWindowAppearing())
@@ -277,10 +277,10 @@ void ScreenshotTool::DrawOcrTools()
                     item_selected_idx = i;
         }
         ocr_model = list[item_selected_idx];
-        ClearError(ErrorState::InvalidModel);
+        ClearError(InvalidModel);
         ImGui::EndCombo();
     }
-    else if (HasError(ErrorState::InvalidPath))
+    else if (HasError(InvalidPath))
     {
         // If combo is not open, we might need to update ocr_model from item_selected_idx
         if (!list.empty() && item_selected_idx < list.size())

@@ -8,22 +8,27 @@
 #include <vector>
 
 #include "fmt/format.h"
+#include "platform.hpp"
 #include "util.hpp"
 
-#ifdef __linux__
+#if CF_LINUX
 #include <unistd.h>
-
 // X11 fallback
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-#elif defined(_WIN32)
+#elif CF_WINDOWS
 #include <windows.h>
+#elif CF_MACOS
+#include <CoreGraphics/CoreGraphics.h>
+#include <ImageIO/ImageIO.h>
 #endif
 
 SessionType get_session_type()
 {
-#ifdef _WIN32
-    return OS_WINDOWS;
+#if CF_WINDOWS
+    return WINDOWS;
+#elif CF_MACOS
+    return MACOS;
 #endif
 
     const char* xdg     = std::getenv("XDG_SESSION_TYPE");
@@ -46,7 +51,7 @@ SessionType get_session_type()
 capture_result_t capture_full_screen_x11()
 {
     capture_result_t result;
-#ifdef __linux__
+#if CF_LINUX
     Display* display = XOpenDisplay(nullptr);
     if (!display)
     {
@@ -80,7 +85,7 @@ capture_result_t capture_full_screen_x11()
 capture_result_t capture_full_screen_wayland()
 {
     capture_result_t result;
-#ifdef __linux__
+#if CF_LINUX
     std::FILE* pipe = popen("grim -t ppm -", "r");
     if (!pipe)
     {
@@ -118,7 +123,7 @@ capture_result_t capture_full_screen_wayland()
 capture_result_t capture_full_screen_windows()
 {
     capture_result_t result;
-#ifdef _WIN32
+#if CF_WINDOWS
     int width  = GetSystemMetrics(SM_CXSCREEN);
     int height = GetSystemMetrics(SM_CYSCREEN);
 
@@ -186,6 +191,62 @@ capture_result_t capture_full_screen_windows()
     DeleteObject(hBitmap);
     DeleteDC(hMemoryDC);
     ReleaseDC(NULL, hScreenDC);
+
+    result.success = true;
+#endif
+    return result;
+}
+
+capture_result_t capture_full_screen_macos()
+{
+    capture_result_t result;
+#if CF_MACOS
+
+    CGDirectDisplayID displayID = CGMainDisplayID();
+    CGImageRef screenshot = CGDisplayCreateImage(displayID);
+
+    if (!screenshot)
+    {
+        result.error_msg = "Failed to create screenshot";
+        return result;
+    }
+
+    size_t width         = CGImageGetWidth(screenshot);
+    size_t height        = CGImageGetHeight(screenshot);
+    size_t bytesPerRow   = CGImageGetBytesPerRow(screenshot);
+    result.region.width  = width;
+    result.region.height = height;
+
+    // Create bitmap context
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGContextRef    context    = CGBitmapContextCreate(
+        nullptr, width, height, 8, bytesPerRow, colorSpace, kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+
+    if (!context)
+    {
+        result.error_msg = "Failed to create bitmap context";
+        CGImageRelease(screenshot);
+        CGColorSpaceRelease(colorSpace);
+        return result;
+    }
+
+    // Draw the screenshot into the context
+    CGRect rect = CGRectMake(0, 0, width, height);
+    CGContextDrawImage(context, rect, screenshot);
+
+    // Get the raw RGBA data
+    uint8_t* data = static_cast<uint8_t*>(CGBitmapContextGetData(context));
+
+    if (data)
+    {
+        size_t dataSize = height * bytesPerRow;
+        result.data.assign(data, data + dataSize);
+    }
+
+    // Clean up
+    CGContextRelease(context);
+    CGImageRelease(screenshot);
+    CGColorSpaceRelease(colorSpace);
 
     result.success = true;
 #endif

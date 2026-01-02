@@ -10,8 +10,9 @@
 #include "fmt/format.h"
 #include "frozen/string.h"
 #include "langs.hpp"
+#include "platform.hpp"
 
-#if __linux__
+#if CF_LINUX
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
 {
     std::vector<uint8_t> rgba_data(width * height * 4);
@@ -118,7 +119,7 @@ std::string expandVar(std::string ret, bool dont)
 
 std::filesystem::path getHomeConfigDir()
 {
-#if __unix__
+#if !CF_WINDOWS
     const char* dir = std::getenv("XDG_CONFIG_HOME");
     if (dir != NULL && dir[0] != '\0' && std::filesystem::exists(dir))
     {
@@ -161,7 +162,7 @@ std::filesystem::path getConfigDir()
 
 std::filesystem::path get_font_path(const std::string& font)
 {
-#ifdef _WIN32
+#if CF_WINDOWS
     static constexpr std::array<std::string_view, 2> default_search_paths = {
         "C:\\Windows\\Fonts\\",
         "C:\\Windows\\Resources\\Themes\\Fonts\\",
