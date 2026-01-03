@@ -4,5 +4,5 @@
 -Wextra
 -Wpedantic
 -std=c++20
--DVERSION="0.1.1"
+-DVERSION="0.1.2"
 -DDEBUG=1
