@@ -24,8 +24,6 @@
 #include "imgui/imgui_stdlib.h"
 #include "langs.hpp"
 #include "screen_capture.hpp"
-#include "svpng.h"
-#include "tinyfiledialogs.h"
 #include "util.hpp"
 
 static ImVec2 origin(0, 0);
@@ -135,11 +133,12 @@ bool ScreenshotTool::RenderOverlay()
         return false;
     }
 
-    if (!m_is_hovering_ocr && ImGui::IsKeyPressed(ImGuiKey_Enter) && m_state == ToolState::Selected)
+    if (((ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) &&
+         ImGui::IsKeyPressed(ImGuiKey_S)) &&
+        m_state == ToolState::Selected)
     {
         if (m_on_complete)
             m_on_complete(GetFinalImage());
-
         m_state = ToolState::Idle;
         return false;
     }
@@ -216,10 +215,17 @@ void ScreenshotTool::DrawMenuItems()
     {
         if (ImGui::BeginMenu("File"))
         {
-            if (ImGui::MenuItem("Save as PNG"))
-                SaveAsPng(GetFinalImage());
+            if (ImGui::MenuItem("Save Image", "CTRL+S"))
+                if (m_on_complete)
+                    m_on_complete(GetFinalImage());
+            ImGui::Separator();
             if (ImGui::MenuItem("Quit", "ESC"))
                 Cancel();
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Edit"))
+        {
+            if (ImGui::MenuItem("Allow OCR edit", nullptr, &config->allow_ocr_edit)){}
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help"))
@@ -235,7 +241,7 @@ void ScreenshotTool::DrawMenuItems()
     if (show_about)
     {
         ImGui::SetNextWindowSize(ImVec2(200, 200), ImGuiCond_FirstUseEver);
-        ImGui::Begin("About", &show_about, ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin("About", &show_about, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings);
         ImVec2 window_pos  = ImGui::GetWindowPos();
         ImVec2 window_size = ImGui::GetWindowSize();
         m_is_hovering_ocr  = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) ||
@@ -261,30 +267,6 @@ void ScreenshotTool::DrawMenuItems()
 
         ImGui::End();
     }
-}
-
-bool ScreenshotTool::SaveAsPng(const capture_result_t& img)
-{
-    auto        now       = std::chrono::system_clock::now();
-    const char* filter[]  = { "*.png" };
-    const char* save_path = tinyfd_saveFileDialog("Save File",
-                                                  fmt::format("oshot_{:%F_%H-%M}.png", now).c_str(),  // default path
-                                                  1,                // number of filter patterns
-                                                  filter,           // file filters
-                                                  "Images (*.png)"  // filter description
-    );
-
-    if (!save_path)
-    {
-        Cancel();
-        return false;
-    }
-
-    std::FILE* fp = fopen(save_path, "wb");
-    if (!fp)
-        die("Failed to save/open file at path {}", save_path);
-    svpng(fp, img.region.width, img.region.height, img.data.data(), 0xff);
-    return true;
 }
 
 void ScreenshotTool::DrawOcrTools()
@@ -403,8 +385,10 @@ end:
         ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Failed to init OCR!");
     }
 
-    ImGui::InputTextMultiline(
-        "##source", &m_ocr_text, ImVec2(-1, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
+    ImGui::InputTextMultiline("##source",
+                              &m_ocr_text,
+                              ImVec2(-1, ImGui::GetTextLineHeight() * 10),
+                              config->allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 }
 
 void ScreenshotTool::DrawTranslationTools()

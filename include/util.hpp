@@ -1,6 +1,7 @@
 #ifndef _UTIL_HPP_
 #define _UTIL_HPP_
 
+#include "screen_capture.hpp"
 #if defined(__linux__)
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -39,20 +40,8 @@ std::vector<uint8_t>  rgba_to_ppm(const std::vector<uint8_t>& rgba, int width, i
 std::string           replace_str(std::string& str, const std::string_view from, const std::string_view to);
 std::filesystem::path get_font_path(const std::string& font);
 std::filesystem::path get_lang_font_path(const std::string& lang);
-
-/*
- * Get the user config directory
- * either from $XDG_CONFIG_HOME or from $HOME/.config/
- * @return user's config directory
- */
+bool                  save_png(const capture_result_t& img);
 std::filesystem::path getHomeConfigDir();
-
-/*
- * Get the oshot config directory
- * where we'll have "config.toml"
- * from getHomeConfigDir()
- * @return oshot's config directory
- */
 std::filesystem::path getConfigDir();
 
 /* Replace special symbols such as ~ and $ (at the begging) in std::string

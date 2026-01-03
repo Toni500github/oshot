@@ -86,7 +86,6 @@ private:
     void DrawTranslationTools();
 
     ImFont* GetOrLoadFontForLanguage(const std::string& lang_code);
-    bool    SaveAsPng(const capture_result_t& img);
     bool    HasError(ErrorState err);
     bool    HasErrors();
     void    ClearError(ErrorState err);
@@ -107,8 +106,8 @@ private:
     std::string m_ocr_text;
     std::string m_to_translate_text;
 
-    std::function<void(capture_result_t)> m_on_complete;
-    std::function<void()>                 m_on_cancel;
+    std::function<void(const capture_result_t&)> m_on_complete;
+    std::function<void()>                        m_on_cancel;
 };
 
 #endif  // !_SCREENSHOT_TOOL_HPP_

@@ -1,5 +1,6 @@
 #include "util.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -10,6 +11,9 @@
 #include "fmt/format.h"
 #include "frozen/string.h"
 #include "langs.hpp"
+#include "screen_capture.hpp"
+#include "svpng.h"
+#include "tinyfiledialogs.h"
 
 #if __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
@@ -66,6 +70,27 @@ std::vector<uint8_t> rgba_to_ppm(const std::vector<uint8_t>& rgba, int width, in
     }
 
     return ppm_data;
+}
+
+bool save_png(const capture_result_t& img)
+{
+    auto        now       = std::chrono::system_clock::now();
+    const char* filter[]  = { "*.png" };
+    const char* save_path = tinyfd_saveFileDialog("Save File",
+                                                  fmt::format("oshot_{:%F_%H-%M}.png", now).c_str(),  // default path
+                                                  1,                // number of filter patterns
+                                                  filter,           // file filters
+                                                  "Images (*.png)"  // filter description
+    );
+
+    if (!save_path)
+        return false;
+
+    std::FILE* fp = fopen(save_path, "wb");
+    if (!fp)
+        die("Failed to save/open file at path {}", save_path);
+    svpng(fp, img.region.width, img.region.height, img.data.data(), 0xff);
+    return true;
 }
 
 std::string replace_str(std::string& str, const std::string_view from, const std::string_view to)

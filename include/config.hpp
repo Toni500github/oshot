@@ -41,6 +41,7 @@ public:
     std::string lang_from;
     std::string lang_to;
     std::string font;
+    bool        allow_ocr_edit = false;
 
     std::unordered_map<std::string, std::string> lang_fonts_paths;
 
@@ -119,6 +120,9 @@ lang-from = "auto"
 
 # Default to language codename translate
 lang-to = "en-us"
+
+# Allow the OCR proccessed output to be editable
+allow-edit-ocr = false
 
 # Default font (absolute path or just name) for the whole application.
 # Leave/Make it empty, or commment it, to use ImGUI default font.

@@ -262,10 +262,11 @@ int main(int argc, char* argv[])
         fmt::println(stderr, "Cancelled screenshot");
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
-    ss_tool.SetOnComplete([&](capture_result_t result) {
+    ss_tool.SetOnComplete([&](const capture_result_t& result) {
         if (!result.success)
             fmt::println(stderr, "Screenshot failed: {}", result.error_msg);
 
+        save_png(result);
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
 

@@ -4,7 +4,7 @@ PREFIX	  	?= /usr
 VARS  	  	?=
 CXXSTD		?= c++20
 
-DEBUG 		?= 0
+DEBUG 		?= 1
 
 COMPILER := $(shell $(CXX) --version | head -n1)
 
@@ -37,9 +37,10 @@ endif
 ifeq ($(DEBUG), 1)
         BUILDDIR  := build/debug
 	LTO_FLAGS  = -fno-lto
-        CXXFLAGS  := -ggdb3 -Wall -Wextra -pedantic -Wno-unused-parameter -fsanitize=address -fsanitize=undefined \
+	SAN_FLAGS ?= -fsanitize=address -fsanitize=undefined
+        CXXFLAGS  := -ggdb3 -Wall -Wextra -pedantic -Wno-unused-parameter $(SAN_FLAGS) \
 			-DDEBUG=1 -fno-omit-frame-pointer $(DEBUG_CXXFLAGS) $(CXXFLAGS)
-        LDFLAGS	  += -fsanitize=address -fsanitize=undefined -fno-lto -Wl,-rpath,$(BUILDDIR)
+        LDFLAGS	  += $(SAN_FLAGS) -fno-lto -Wl,-rpath,$(BUILDDIR)
 else
 	# Check if an optimization flag is not already set
 	ifneq ($(filter -O%,$(CXXFLAGS)),)
