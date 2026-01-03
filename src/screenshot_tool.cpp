@@ -497,7 +497,7 @@ void ScreenshotTool::DrawTranslationTools()
     }
 
     ImGui::SameLine();
-    HelpMarker("The translation is done by online services such as Google translate");
+    HelpMarker("The translation is done by online services such as Google translate. It sucks at auto-detect and multi-line");
 
     static constexpr float spacing = 4.0f;   // Spacing between inputs
     static constexpr float padding = 10.0f;  // Padding on right side
