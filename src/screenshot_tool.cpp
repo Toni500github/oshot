@@ -24,11 +24,13 @@
 #include "imgui/imgui_stdlib.h"
 #include "langs.hpp"
 #include "screen_capture.hpp"
+#include "socket.hpp"
 #include "util.hpp"
 
 static ImVec2 origin(0, 0);
 
-static std::unique_ptr<Translator> translator;
+static std::unique_ptr<Translator>   translator;
+static std::unique_ptr<SocketSender> sender;
 
 static std::vector<std::string> GetTrainingDataList(const std::string& path)
 {
@@ -60,6 +62,8 @@ static void HelpMarker(const char* desc)
 bool ScreenshotTool::Start()
 {
     translator = std::make_unique<Translator>();
+    sender     = std::make_unique<SocketSender>();
+    sender->Start();
 
     switch (get_session_type())
     {
@@ -225,7 +229,7 @@ void ScreenshotTool::DrawMenuItems()
         }
         if (ImGui::BeginMenu("Edit"))
         {
-            if (ImGui::MenuItem("Allow OCR edit", nullptr, &config->allow_ocr_edit)){}
+            if (ImGui::MenuItem("Allow OCR edit", nullptr, &config->allow_ocr_edit));
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help"))
@@ -389,6 +393,11 @@ end:
                               &m_ocr_text,
                               ImVec2(-1, ImGui::GetTextLineHeight() * 10),
                               config->allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+
+    if (!m_ocr_text.empty() && ImGui::Button("Copy Text"))
+    {
+        sender->Send("copy_text: " + m_ocr_text);
+    }
 }
 
 void ScreenshotTool::DrawTranslationTools()
@@ -497,7 +506,8 @@ void ScreenshotTool::DrawTranslationTools()
     }
 
     ImGui::SameLine();
-    HelpMarker("The translation is done by online services such as Google translate. It sucks at auto-detect and multi-line");
+    HelpMarker(
+        "The translation is done by online services such as Google translate. It sucks at auto-detect and multi-line");
 
     static constexpr float spacing = 4.0f;   // Spacing between inputs
     static constexpr float padding = 10.0f;  // Padding on right side

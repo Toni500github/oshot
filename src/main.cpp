@@ -179,6 +179,7 @@ int main(int argc, char* argv[])
 {
     const std::string& configDir  = getConfigDir().string();
     const std::string& configFile = parse_config_path(argc, argv, configDir).string();
+    const std::string& imgui_ini_path = configDir + "/imgui.ini";
 
     config = std::make_unique<Config>(configFile, configDir);
     if (!parseargs(argc, argv, configFile))
@@ -240,7 +241,7 @@ int main(int argc, char* argv[])
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    (void)io;
+    io.IniFilename = imgui_ini_path.c_str();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     
     if (!config->font.empty())
