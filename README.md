@@ -25,7 +25,7 @@ $ make
 $ ./build/release/oshot
 ```
 
-### Windows Configuration
+## Windows Configuration
 After installing Tesseract:
 1. Open the `%APPDATA%` directory (press Win+R and type `%APPDATA%`)
 2. Navigate to the `oshot` directory
