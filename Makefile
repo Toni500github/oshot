@@ -53,8 +53,8 @@ endif
 
 NAME		 = oshot
 TARGET		?= $(NAME)
-OLDVERSION	 = 0.0.0
-VERSION    	 = 0.0.1
+OLDVERSION	 = 0.0.1
+VERSION    	 = 0.1.0
 SRC	 	 = $(wildcard src/*.cpp)
 OBJ	 	 = $(SRC:.cpp=.o)
 LDFLAGS   	+= -L$(BUILDDIR)
@@ -116,6 +116,5 @@ distclean:
 
 updatever:
 	sed -i "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml) compile_flags.txt
-	sed -i "s#Project-Id-Version: $(NAME) $(OLDVERSION)#Project-Id-Version: $(NAME) $(VERSION)#g" po/*
 
 .PHONY: $(TARGET) updatever distclean clean imgui fmt tpl toml getopt-port dist all

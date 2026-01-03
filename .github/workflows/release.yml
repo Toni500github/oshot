@@ -51,7 +51,40 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update && sudo apt-get purge firefox -y
-          sudo apt-get install -y build-essential pkg-config make libx11-dev libglfw3-dev libtesseract-dev libcurl4-openssl-dev zip
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            make \
+            git \
+            libx11-dev \
+            libglfw3-dev \
+            libtesseract-dev \
+            libcurl4-openssl-dev \
+            zip \
+            libpng-dev \
+            libjpeg-dev \
+            libopenjp2-7-dev \
+            libgif-dev \
+            libtiff-dev \
+            libwebp-dev \
+            libnghttp2-dev \
+            libidn2-dev \
+            librtmp-dev \
+            libssh-dev \
+            libpsl-dev \
+            libkrb5-dev \
+            libldap2-dev \
+            libbrotli-dev \
+            libleptonica-dev \
+            libarchive-dev \
+            libdeflate-dev \
+            libjbig-dev \
+            libsharpyuv-dev \
+            libicu-dev \
+            libunistring-dev \
+            libkeyutils-dev \
+            libssl-dev \
+            libcrypto++-dev
 
       - name: Install dependencies (Windows)
         if: matrix.os == 'windows-latest'
@@ -60,6 +93,7 @@ jobs:
           update: true
           install: >-
             zip
+            git
             libcurl-devel
             mingw-w64-x86_64-ncurses
             mingw-w64-x86_64-toolchain
@@ -68,17 +102,23 @@ jobs:
             mingw-w64-x86_64-make
             mingw-w64-x86_64-tesseract-ocr
             mingw-w64-x86_64-glfw
+            mingw-w64-x86_64-libpng
+            mingw-w64-x86_64-libjpeg-turbo
+            mingw-w64-x86_64-openjpeg2
+            mingw-w64-x86_64-libwebp
+            mingw-w64-x86_64-libtiff
+            mingw-w64-x86_64-curl
 
       - name: Build project (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          make all DEBUG=0
+          make all DEBUG=0 LDFLAGS="-Wl,--as-needed"
 
       - name: Build project (Windows)
         if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
-          make all DEBUG=0
+          mingw32-make all DEBUG=0
 
       - name: Prepare Linux package
         if: matrix.os == 'ubuntu-latest'
@@ -86,7 +126,6 @@ jobs:
           mkdir -p package/oshot
           cp ./build/release/oshot package/oshot/oshot
           chmod +x package/oshot/oshot
-          # Create a simple README or install script if needed
           echo "#!/bin/bash" > package/oshot/install.sh
           echo "cp oshot /usr/local/bin/oshot" >> package/oshot/install.sh
           chmod +x package/oshot/install.sh
