@@ -3,14 +3,19 @@
 A simple tool for extracting and translating text from a screenshot (on the fly)
 
 ## Dependencies
+### Linux
 Names can vary from package manager (or distro) thus try to search with base name (e.g libglfw3-dev -> glfw3)
-* libx11-dev (linux-only)
-* grim (linux-only, if using wayland)
+* libx11-dev
+* grim (if using wayland)
 * libglfw3-dev
-* tesseract (install the eng model/version too)
+* tesseract (with its model too)
+### Windows
+1. Install Tesseract OCR from [UB-Mannheim/tesseract](https://github.com/UB-Mannheim/tesseract/wiki)
+2. Download language data from [tesseract-ocr/tessdata](https://github.com/tesseract-ocr/tessdata)
+3. Extract language data to your preferred directory
+4. Configure the path in `config.toml` (see Windows Configuration section)
 
 ## Building
-
 ### with `make`
 ```bash
 $ git clone https://github.com/Toni500github/oshot/
@@ -20,15 +25,15 @@ $ make
 $ ./build/release/oshot
 ```
 
-### with `cmake`
-```bash
-$ git clone https://github.com/Toni500github/oshot/
-$ cd oshot/
-$ mkdir build && cd $_
-$ cmake .. -DCMAKE_BUILD_TYPE=Release
-$ make
-# You can move it a custom directory in your $PATH (preferably in local/home)
-$ ./oshot
+### Windows Configuration
+After installing Tesseract:
+1. Open the `%APPDATA%` directory (press Win+R and type `%APPDATA%`)
+2. Navigate to the `oshot` directory
+3. Edit `config.toml` and set the `ocr-path` variable to your Tesseract data directory
+   - Use double backslashes in the path: `C:\\Users\\Name\\tessdata`
+Example:
+```toml
+ocr-path = "C:\\Program Files\\Tesseract-OCR\\tessdata"
 ```
 
 ## Usage
