@@ -111,6 +111,6 @@ distclean:
 	find . -type f -name "*.a" -delete
 
 updatever:
-	sed -i "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml) compile_flags.txt
+	sed -i "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml) CMakeFiles.txt compile_flags.txt
 
 .PHONY: $(TARGET) updatever distclean clean imgui fmt tpl toml getopt-port dist all
