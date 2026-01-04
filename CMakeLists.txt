@@ -183,7 +183,12 @@ elseif (APPLE)
 endif()
 
 # Main executable
-file(GLOB SRC "src/*.cpp")
+file(GLOB SRC
+	"src/*.cpp"
+	"src/libs/toml++/toml.cpp"
+	"src/libs/getopt_port/getopt.c"
+	"src/libs/tinyfiledialogs/tinyfiledialogs.c"
+)
 add_executable(${PROJECT_NAME} ${SRC})
 enable_lto(${PROJECT_NAME})
 
@@ -231,36 +236,6 @@ target_include_directories(fmt PUBLIC
 )
 target_link_libraries(${PROJECT_NAME} PUBLIC fmt)
 
-# tiny-process-library
-add_library(tiny-process-library STATIC
-    "src/libs/tiny-process-library/process.cpp"
-)
-
-if(MSVC)
-    target_compile_definitions(tiny-process-library PRIVATE /D_CRT_SECURE_NO_WARNINGS)
-else()
-    target_compile_options(tiny-process-library PRIVATE -std=c++11 -Wall -Wextra)
-endif()
-
-if(WIN32)
-    set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
-    target_sources(tiny-process-library PRIVATE "src/libs/tiny-process-library/process_win.cpp")
-else()
-    target_sources(tiny-process-library PRIVATE "src/libs/tiny-process-library/process_unix.cpp")
-endif()
-
-set_target_properties(tiny-process-library PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-)
-
-find_package(Threads REQUIRED)
-target_link_libraries(tiny-process-library PRIVATE Threads::Threads)
-target_include_directories(tiny-process-library PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/tiny-process-library
-)
-enable_lto(tiny-process-library)
-target_link_libraries(${PROJECT_NAME} PUBLIC tiny-process-library)
-
 # imgui library
 file(GLOB IMGUI_SOURCES
     "src/libs/imgui/*.cpp"
@@ -271,16 +246,6 @@ set_target_properties(imgui PROPERTIES POSITION_INDEPENDENT_CODE ON)
 enable_lto(imgui)
 target_compile_definitions(imgui PRIVATE IMGUI_IMPL_OPENGL_LOADER_GLAD)
 target_link_libraries(${PROJECT_NAME} PUBLIC imgui)
-
-# toml++ library
-add_library(toml STATIC "src/libs/toml++/toml.cpp")
-set_target_properties(toml PROPERTIES POSITION_INDEPENDENT_CODE ON)
-enable_lto(toml)
-target_compile_options(toml PRIVATE -std=c++20)
-target_include_directories(toml PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/toml++
-)
-target_link_libraries(${PROJECT_NAME} PUBLIC toml++)
 
 # Installation
 install(TARGETS ${PROJECT_NAME}
