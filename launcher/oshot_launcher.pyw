@@ -1,4 +1,4 @@
-#!/bin/env python3
+#!python
 from time import sleep
 import threading
 import pystray
