@@ -7,6 +7,7 @@ import pyclip
 import subprocess
 from PIL import Image, ImageDraw
 
+OSHOT = 'oshot'
 HOST = '127.0.0.1'
 PORT = 6016
 
@@ -36,11 +37,11 @@ def listen_socket():
                     data_str = data.decode()
                     print(f"Received: {data_str}")
                     if (data_str.startswith("copy_text: ")):
-                        pyclip.copy(data_str.removeprefix("copy_text: "))
+                        pyclip.copy(data_str.removeprefix("copy_text: ").rstrip("\n"))
                         print("Copied!")
 
 def launch():
-    subprocess.run(["oshot"])
+    subprocess.run([OSHOT])
 
 if __name__ == "__main__":
     menu = (
