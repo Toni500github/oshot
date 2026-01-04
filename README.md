@@ -3,26 +3,51 @@
 A simple tool for extracting and translating text from a screenshot (on the fly)
 
 ## Dependencies
+
 ### Linux
-Names can vary from package manager (or distro) thus try to search with base name (e.g libglfw3-dev -> glfw3)
-* libx11-dev
-* grim (if using wayland)
-* libglfw3-dev
-* tesseract (with its model too)
+Package names may vary by distribution and package manager.  
+If a package is not found, try searching by its base name (e.g. `libglfw3-dev` → `glfw`).
+
+- `libx11-dev`
+- `grim` (Wayland only)
+- `libglfw3-dev`
+- `tesseract` (including some language models)
+- `python` and `pip`
+  - Python packages: `pip install pillow pystray pyclip`
+
 ### Windows
-1. Install Tesseract OCR from [UB-Mannheim/tesseract](https://github.com/UB-Mannheim/tesseract/wiki)
-2. Download language data from [tesseract-ocr/tessdata](https://github.com/tesseract-ocr/tessdata)
-3. Extract language data to your preferred directory
-4. Configure the path in `config.toml` (see Windows Configuration section)
+1. Install **Tesseract OCR** from  
+   https://github.com/UB-Mannheim/tesseract/wiki
+2. Download the required language data from  
+   https://github.com/tesseract-ocr/tessdata
+3. Extract the language files to a directory of your choice
+4. Configure the Tesseract and language data paths in `config.toml`  
+   (see *Windows Configuration* section)
+5. Install **Python** from the Microsoft Store or https://www.python.org/downloads/release/python-3142/ \
+   NOTE: CHECK THE "Add python.exe to $PATH" OPTION
+6. After installing Python, open the CMD and type: \
+   `curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py` \
+   `python get-pip.py`
+7. Installed pip, run `pip install pillow pystray pyclip`
 
 ## Building
-### with `make`
+### Make
 ```bash
 $ git clone https://github.com/Toni500github/oshot/
 $ cd oshot/
 $ make
-# You can move it in a custom directory in your $PATH (preferably in local/home)
+# You can move it in a custom directory in your $PATH (preferably in the home)
 $ ./build/release/oshot
+```
+### CMake (ninja)
+```bash
+$ git clone https://github.com/Toni500github/oshot/
+$ cd oshot/
+$ mkdir build2 && cd build2
+$ cmake .. -G Ninja -DDCMAKE_BUILD_TYPE=Release
+$ ninja
+# You can move it in a custom directory in your $PATH (preferably in home)
+$ ./oshot
 ```
 
 ## Windows Configuration
