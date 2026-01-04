@@ -54,8 +54,8 @@ endif
 
 NAME		 = oshot
 TARGET		?= $(NAME)
-OLDVERSION	 = 0.1.1
-VERSION    	 = 0.1.2
+OLDVERSION	 = 0.1.2
+VERSION    	 = 0.1.3
 SRC	 	 = $(wildcard src/*.cpp)
 OBJ	 	 = $(SRC:.cpp=.o)
 LDFLAGS   	+= -L$(BUILDDIR)
@@ -111,6 +111,6 @@ distclean:
 	find . -type f -name "*.a" -delete
 
 updatever:
-	sed -i "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml) CMakeFiles.txt compile_flags.txt
+	sed -i "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml) CMakeLists.txt compile_flags.txt
 
 .PHONY: $(TARGET) updatever distclean clean imgui fmt tpl toml getopt-port dist all
