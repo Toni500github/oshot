@@ -21,6 +21,13 @@
 #define SVPNG_PUT(u) output->push_back(static_cast<uint8_t>(u))
 #include "svpng.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#include "stb_image.h"
+#include "stb_image_resize2.h"
+
+extern int scr_w, scr_h;
+
 #if __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
 {
@@ -76,6 +83,104 @@ std::vector<uint8_t> rgba_to_ppm(const std::vector<uint8_t>& rgba, int width, in
     }
 
     return ppm_data;
+}
+
+void fit_to_screen(capture_result_t& img, int screen_w, int screen_h)
+{
+    const int img_w = img.region.width;
+    const int img_h = img.region.height;
+
+    if (img_w <= screen_w && img_h <= screen_h)
+        return;
+
+    float scale = std::min(static_cast<float>(screen_w) / img_w, static_cast<float>(screen_h) / img_h);
+
+    int new_w = static_cast<int>(img_w * scale);
+    int new_h = static_cast<int>(img_h * scale);
+
+    std::vector<uint8_t> resized(new_w * new_h * 4);
+
+    bool ok = stbir_resize_uint8_linear(img.data.data(), img_w, img_h, 0, resized.data(), new_w, new_h, 0, STBIR_RGBA);
+
+    if (!ok)
+    {
+        img.success   = false;
+        img.error_msg = "Image resize failed";
+        return;
+    }
+
+    img.data          = std::move(resized);
+    img.region.width  = new_w;
+    img.region.height = new_h;
+}
+
+static std::vector<uint8_t> read_stdin_binary()
+{
+    std::vector<uint8_t> buffer;
+
+    uint8_t temp[4096];
+    while (true)
+    {
+        size_t n = fread(temp, 1, sizeof(temp), stdin);
+        if (n == 0)
+            break;
+        buffer.insert(buffer.end(), temp, temp + n);
+    }
+
+    return buffer;
+}
+
+capture_result_t load_image_rgba(bool stdin_has_data, const std::string& path)
+{
+    capture_result_t result{};
+
+    int width    = 0;
+    int height   = 0;
+    int channels = 0;
+
+    // Force RGBA output (4 channels)
+    stbi_uc* pixels = nullptr;
+    if (!stdin_has_data)
+    {
+        pixels = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+    }
+    else
+    {
+#ifdef _WIN32
+        _setmode(_fileno(stdin), _O_BINARY);
+#endif
+
+        std::vector<uint8_t> input = read_stdin_binary();
+        if (input.empty())
+        {
+            result.success   = false;
+            result.error_msg = "stdin reported data but was empty";
+            return result;
+        }
+
+        pixels = stbi_load_from_memory(
+            input.data(), static_cast<int>(input.size()), &width, &height, &channels, STBI_rgb_alpha);
+    }
+
+    if (!pixels)
+    {
+        result.success   = false;
+        result.error_msg = stbi_failure_reason();
+        return result;
+    }
+
+    result.region.width  = width;
+    result.region.height = height;
+
+    const size_t size = static_cast<size_t>(width) * height * 4;
+    result.data.assign(pixels, pixels + size);
+
+    result.success = true;
+
+    stbi_image_free(pixels);
+
+    fit_to_screen(result, scr_w, scr_h);
+    return result;
 }
 
 bool save_png(SavingOp op, const capture_result_t& img)

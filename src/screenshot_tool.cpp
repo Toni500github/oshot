@@ -32,6 +32,37 @@ static ImVec2 origin(0, 0);
 static std::unique_ptr<Translator> translator;
 std::unique_ptr<SocketSender>      sender;
 
+#ifndef _WIN32
+#include <sys/select.h>
+#include <unistd.h>
+
+static bool stdin_has_data()
+{
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+
+    timeval tv{};
+    return select(STDIN_FILENO + 1, &fds, nullptr, nullptr, &tv) > 0;
+}
+#else
+#include <io.h>
+#include <windows.h>
+
+static bool stdin_has_data()
+{
+    HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+    if (h == INVALID_HANDLE_VALUE)
+        return false;
+
+    DWORD available = 0;
+    if (!PeekNamedPipe(h, nullptr, 0, nullptr, &available, nullptr))
+        return false;
+
+    return available > 0;
+}
+#endif
+
 static std::vector<std::string> GetTrainingDataList(const std::string& path)
 {
     if (!std::filesystem::exists(path))
@@ -65,12 +96,22 @@ bool ScreenshotTool::Start()
     sender     = std::make_unique<SocketSender>();
     sender->Start();
 
-    switch (get_session_type())
+    bool stdin_data_exist = stdin_has_data();
+    if (config->_source_file.empty() && !stdin_data_exist)
     {
-        case X11:        m_screenshot = capture_full_screen_x11(); break;
-        case WAYLAND:    m_screenshot = capture_full_screen_wayland(); break;
-        case OS_WINDOWS: m_screenshot = capture_full_screen_windows(); break;
-        default:         ;
+        switch (get_session_type())
+        {
+            case X11:        m_screenshot = capture_full_screen_x11(); break;
+            case WAYLAND:    m_screenshot = capture_full_screen_wayland(); break;
+            case OS_WINDOWS: m_screenshot = capture_full_screen_windows(); break;
+            default:         ;
+        }
+    }
+    else
+    {
+        m_screenshot = load_image_rgba(stdin_data_exist, config->_source_file);
+        if (!m_screenshot.success)
+            die("{}", m_screenshot.error_msg);
     }
 
     if (!m_screenshot.success || m_screenshot.data.empty() || !m_screenshot.error_msg.empty())
@@ -101,8 +142,12 @@ bool ScreenshotTool::RenderOverlay()
         return false;
 
     // Draw the screenshot as background
+    // And center it
+    auto*  vp = ImGui::GetMainViewport();
+    ImVec2 image_size((float)m_screenshot.region.width, (float)m_screenshot.region.height);
+    ImVec2 origin(vp->Pos.x + (vp->Size.x - image_size.x) * 0.5f, vp->Pos.y + (vp->Size.y - image_size.y) * 0.5f);
     ImGui::GetBackgroundDrawList()->AddImage(
-        m_texture_id, origin, ImVec2(m_screenshot.region.width, m_screenshot.region.height));
+        m_texture_id, origin, ImVec2(origin.x + image_size.x, origin.y + image_size.y));
 
     if (m_state == ToolState::Selecting || m_state == ToolState::Selected)
     {

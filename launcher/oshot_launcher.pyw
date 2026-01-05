@@ -21,9 +21,6 @@ def create_image():
     dc.rectangle([16, 16, 48, 48], fill='white')
     return image
 
-def on_quit(icon):
-    icon.stop()
-
 def setup(icon):
     icon.visible = True
 
@@ -74,8 +71,8 @@ def launch():
 
 if __name__ == "__main__":
     menu = (
-        pystray.MenuItem('Show', launch),
-        pystray.MenuItem('Quit', on_quit)
+        pystray.MenuItem('Show', launch, default=True),
+        pystray.MenuItem('Quit', lambda icon, _: icon.stop())
     )
 
     icon = pystray.Icon("oshot_main_icon", create_image(), "oshot launcher", menu)

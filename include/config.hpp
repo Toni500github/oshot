@@ -45,6 +45,10 @@ public:
 
     std::unordered_map<std::string, std::string> lang_fonts_paths;
 
+    // From CLI arguments
+    // Or ImGUI window
+    std::string _source_file;
+
     std::unordered_map<std::string, override_configs_types> overrides;
 
     /**

@@ -30,7 +30,7 @@
 #endif
 
 #if (!__has_include("version.h"))
-#error "version.h not found, please generate it with ./scripts/generateVersion.sh"
+#error "version.h not found, please generate it with ./generateVersion.sh"
 #else
 #include "version.h"
 #endif
@@ -46,6 +46,7 @@
 // clang-format on
 
 std::unique_ptr<Config> config;
+int                     scr_w{}, scr_h{};
 
 // Print the version and some other infos, then exit successfully
 static void version()
@@ -82,12 +83,6 @@ static constexpr void print_languages()
 }
 
 // clang-format off
-// Return true if optarg says something true...
-static bool str_to_bool(const std::string_view str)
-{
-    return (str == "true" || str == "1" || str == "enable");
-}
-
 // parseargs() but only for parsing the user config path trough args
 // and so we can directly construct Config
 static std::filesystem::path parse_config_path(int argc, char* argv[], const std::filesystem::path& configDir)
@@ -125,12 +120,13 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
     int opt = 0;
     int option_index = 0;
     opterr = 1; // re-enable since before we disabled for "invalid option" error
-    const char *optstring = "-VhlC:";
+    const char *optstring = "-VhlC:f:";
     static const struct option opts[] = {
         {"version", no_argument,       0, 'V'},
         {"help",    no_argument,       0, 'h'},
         {"list",    no_argument,       0, 'l'},
         {"config",  required_argument, 0, 'C'},
+        {"source",  required_argument, 0, 'f'},
 
         {"gen-config", optional_argument, 0, "gen-config"_fnv1a16},
 
@@ -155,6 +151,8 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
                 help(); break;
             case 'l':
                 print_languages(); break;
+            case 'f':
+                config->_source_file = optarg; break;
 
             case "gen-config"_fnv1a16:
                 if (OPTIONAL_ARGUMENT_IS_PRESENT)
@@ -178,8 +176,8 @@ static void glfw_error_callback(int error, const char* description)
 
 int main(int argc, char* argv[])
 {
-    const std::string& configDir  = getConfigDir().string();
-    const std::string& configFile = parse_config_path(argc, argv, configDir).string();
+    const std::string& configDir      = getConfigDir().string();
+    const std::string& configFile     = parse_config_path(argc, argv, configDir).string();
     const std::string& imgui_ini_path = configDir + "/imgui.ini";
 
     config = std::make_unique<Config>(configFile, configDir);
@@ -237,6 +235,9 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);  // Enable vsync
+
+    scr_w = mode->width;
+    scr_h = mode->height;
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -297,7 +298,8 @@ int main(int argc, char* argv[])
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        ss_tool.RenderOverlay();
+        if (!ss_tool.RenderOverlay())
+            break;
 
         // Rendering
         ImGui::Render();
