@@ -45,7 +45,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     and/or inline in C99/C++, etc.
 */
 #ifndef SVPNG_LINKAGE
-#define SVPNG_LINKAGE
+#define SVPNG_LINKAGE static
 #endif
 
 /*! \def SVPNG_OUTPUT

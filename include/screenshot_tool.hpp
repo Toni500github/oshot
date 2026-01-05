@@ -38,6 +38,12 @@ enum class ToolState
     Selected
 };
 
+enum class SavingOp
+{
+    SAVE_CLIPBOARD,
+    SAVE_FILE
+};
+
 enum ErrorState
 {
     None              = 0,
@@ -66,7 +72,7 @@ public:
     void Cancel();
 
     bool IsActive() const { return m_state != ToolState::Idle; }
-    void SetOnComplete(const std::function<void(capture_result_t)>& cb) { m_on_complete = cb; }
+    void SetOnComplete(const std::function<void(SavingOp, const capture_result_t&)>& cb) { m_on_complete = cb; }
     void SetOnCancel(const std::function<void()>& cb) { m_on_cancel = cb; }
 
 private:
@@ -106,8 +112,8 @@ private:
     std::string m_ocr_text;
     std::string m_to_translate_text;
 
-    std::function<void(const capture_result_t&)> m_on_complete;
-    std::function<void()>                        m_on_cancel;
+    std::function<void(SavingOp, const capture_result_t&)> m_on_complete;
+    std::function<void()>                                  m_on_cancel;
 };
 
 #endif  // !_SCREENSHOT_TOOL_HPP_

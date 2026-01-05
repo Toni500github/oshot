@@ -5,11 +5,14 @@ import pystray
 import socket
 import pyclip
 import subprocess
+import io
+import struct
+import pyperclipimg as pci
 from PIL import Image, ImageDraw
 
 OSHOT = 'oshot'
 HOST = '127.0.0.1'
-PORT = 6016
+PORT = 6015
 
 def create_image():
     # Simple icon for now
@@ -24,21 +27,47 @@ def on_quit(icon):
 def setup(icon):
     icon.visible = True
 
+def recv_exact(conn, size):
+    buf = b""
+    while len(buf) < size:
+        chunk = conn.recv(size - len(buf))
+        if not chunk:
+            raise ConnectionError("Socket closed")
+        buf += chunk
+    return buf
+
 def listen_socket():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind((HOST, PORT))
         s.listen()
-        conn, addr = s.accept()
-        with conn:
-            while True:
-                sleep(0.1)
-                data = conn.recv(2048)
-                if data:
-                    data_str = data.decode()
-                    print(f"Received: {data_str}")
-                    if (data_str.startswith("copy_text: ")):
-                        pyclip.copy(data_str.removeprefix("copy_text: ").rstrip("\n"))
-                        print("Copied!")
+        print(f"Listening on {HOST}:{PORT}")
+
+        while True:
+            conn, addr = s.accept()
+            print(f"Connection from {addr}")
+            threading.Thread(target=handle_client, args=(conn,), daemon=True).start()
+
+def handle_client(conn):
+    with conn:
+        while True:
+            try:
+                type_byte = recv_exact(conn, 1)
+                size_bytes = recv_exact(conn, 4)
+                size = struct.unpack("!I", size_bytes)[0]
+                payload = recv_exact(conn, size)
+
+                if type_byte == b'T':
+                    pyclip.copy(payload.decode('utf-8'))
+                    icon.notify("Copied text!")
+                elif type_byte == b'I':
+                    image = Image.open(io.BytesIO(payload))
+                    image.load()
+                    pci.copy(image)
+                    icon.notify("Copied image!")
+            except ConnectionError:
+                print("Client disconnected")
+                break
 
 def launch():
     subprocess.run([OSHOT])

@@ -1,7 +1,11 @@
+#ifndef _SOCKET_HPP_
+#define _SOCKET_HPP_
+
+#include <memory>
 #include <string>
 #ifdef _WIN32
-#include <ws2tcpip.h>
 #include <winsock2.h>
+#include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
 #define close closesocket
 #else
@@ -11,12 +15,19 @@
 #include <unistd.h>
 #endif
 
+enum class SendMsg
+{
+    COPY_TEXT,
+    COPY_IMAGE,
+};
+
 class SocketSender
 {
 public:
-    ~SocketSender();
-    bool Start(int port = 6016);
+    ~SocketSender() { Close(); };
+    bool Start(int port = 6015);
     bool Send(const std::string& text);
+    bool Send(SendMsg msg, const void* src, size_t size);
     void Close();
 
     bool IsFailed() { return m_failed; }
@@ -25,3 +36,7 @@ private:
     int  m_sock{};
     bool m_failed{};
 };
+
+extern std::unique_ptr<SocketSender> sender;
+
+#endif  // !_SOCKET_HPP_

@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <vector>
@@ -12,8 +13,13 @@
 #include "frozen/string.h"
 #include "langs.hpp"
 #include "screen_capture.hpp"
-#include "svpng.h"
+#include "screenshot_tool.hpp"
+#include "socket.hpp"
 #include "tinyfiledialogs.h"
+
+#define SVPNG_OUTPUT std::vector<uint8_t>* output
+#define SVPNG_PUT(u) output->push_back(static_cast<uint8_t>(u))
+#include "svpng.h"
 
 #if __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
@@ -72,8 +78,20 @@ std::vector<uint8_t> rgba_to_ppm(const std::vector<uint8_t>& rgba, int width, in
     return ppm_data;
 }
 
-bool save_png(const capture_result_t& img)
+bool save_png(SavingOp op, const capture_result_t& img)
 {
+    std::vector<uint8_t> data;
+    data.reserve(img.region.width * img.region.height * 4);
+    svpng(&data, img.region.width, img.region.height, img.data.data(), 1);
+    size_t size = data.size();
+
+    if (op == SavingOp::SAVE_CLIPBOARD)
+    {
+        if (sender->IsFailed())
+            die("Couldn't copy image into clipboard: launcher not respoding/opened");
+        return sender->Send(SendMsg::COPY_IMAGE, data.data(), size);
+    }
+
     auto        now       = std::chrono::system_clock::now();
     const char* filter[]  = { "*.png" };
     const char* save_path = tinyfd_saveFileDialog("Save File",
@@ -82,14 +100,15 @@ bool save_png(const capture_result_t& img)
                                                   filter,           // file filters
                                                   "Images (*.png)"  // filter description
     );
-
     if (!save_path)
         return false;
 
-    std::FILE* fp = fopen(save_path, "wb");
+    FILE* fp = fopen(save_path, "wb");
     if (!fp)
-        die("Failed to save/open file at path {}", save_path);
-    svpng(fp, img.region.width, img.region.height, img.data.data(), 0xff);
+        die("Failed to open file");
+
+    fwrite(data.data(), 1, size, fp);
+    fclose(fp);
     return true;
 }
 

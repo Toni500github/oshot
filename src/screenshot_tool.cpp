@@ -29,8 +29,8 @@
 
 static ImVec2 origin(0, 0);
 
-static std::unique_ptr<Translator>   translator;
-static std::unique_ptr<SocketSender> sender;
+static std::unique_ptr<Translator> translator;
+std::unique_ptr<SocketSender>      sender;
 
 static std::vector<std::string> GetTrainingDataList(const std::string& path)
 {
@@ -137,12 +137,19 @@ bool ScreenshotTool::RenderOverlay()
         return false;
     }
 
-    if (((ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) &&
-         ImGui::IsKeyPressed(ImGuiKey_S)) &&
-        m_state == ToolState::Selected)
+    const bool ctrl_down    = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
+    const bool save_pressed = ImGui::IsKeyPressed(ImGuiKey_S);
+    const bool copy_pressed = ImGui::IsKeyPressed(ImGuiKey_C);
+
+    if (m_state == ToolState::Selected && ctrl_down && (save_pressed || copy_pressed))
     {
         if (m_on_complete)
-            m_on_complete(GetFinalImage());
+        {
+            const SavingOp op = save_pressed ? SavingOp::SAVE_FILE : SavingOp::SAVE_CLIPBOARD;
+
+            m_on_complete(op, GetFinalImage());
+        }
+
         m_state = ToolState::Idle;
         return false;
     }
@@ -221,7 +228,10 @@ void ScreenshotTool::DrawMenuItems()
         {
             if (ImGui::MenuItem("Save Image", "CTRL+S"))
                 if (m_on_complete)
-                    m_on_complete(GetFinalImage());
+                    m_on_complete(SavingOp::SAVE_FILE, GetFinalImage());
+            if (ImGui::MenuItem("Copy Image", "CTRL+C"))
+                if (m_on_complete)
+                    m_on_complete(SavingOp::SAVE_CLIPBOARD, GetFinalImage());
             ImGui::Separator();
             if (ImGui::MenuItem("Quit", "ESC"))
                 Cancel();
@@ -229,7 +239,7 @@ void ScreenshotTool::DrawMenuItems()
         }
         if (ImGui::BeginMenu("Edit"))
         {
-            if (ImGui::MenuItem("Allow OCR edit", nullptr, &config->allow_ocr_edit));
+            if (ImGui::MenuItem("Allow OCR edit", nullptr, &config->allow_ocr_edit)){}
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help"))
@@ -396,7 +406,7 @@ end:
 
     if (!m_ocr_text.empty() && ImGui::Button("Copy Text"))
     {
-        sender->Send("copy_text: " + m_ocr_text);
+        sender->Send(m_ocr_text);
     }
 }
 

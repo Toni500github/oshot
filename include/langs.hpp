@@ -1,3 +1,6 @@
+#ifndef _LANGS_HPP_
+#define _LANGS_HPP_
+
 #include <array>
 #include <utility>
 
@@ -370,3 +373,5 @@ static constexpr frozen::unordered_map<frozen::string, std::array<frozen::string
           "NotoSans-Regular.ttf"_s
       } }
 };
+
+#endif // !_LANGS_HPP_

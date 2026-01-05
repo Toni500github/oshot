@@ -1,3 +1,6 @@
+#ifndef _TRANSLATION_HPP_
+#define _TRANSLATION_HPP_
+
 #include <optional>
 #include <string>
 
@@ -11,3 +14,5 @@ public:
 private:
     std::string parseGoogleResponse(const std::string& json);
 };
+
+#endif  // !_TRANSLATION_HPP_

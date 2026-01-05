@@ -17,6 +17,7 @@
 #include "langs.hpp"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
+#include "socket.hpp"
 #include "switch_fnv1a.hpp"
 #include "util.hpp"
 
@@ -263,11 +264,11 @@ int main(int argc, char* argv[])
         fmt::println(stderr, "Cancelled screenshot");
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
-    ss_tool.SetOnComplete([&](const capture_result_t& result) {
+    ss_tool.SetOnComplete([&](SavingOp op, const capture_result_t& result) {
         if (!result.success)
             fmt::println(stderr, "Screenshot failed: {}", result.error_msg);
 
-        save_png(result);
+        save_png(op, result);
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
 
@@ -317,6 +318,8 @@ int main(int argc, char* argv[])
 
     glfwDestroyWindow(window);
     glfwTerminate();
+
+    sender->Close();
 
     return EXIT_SUCCESS;
 }
