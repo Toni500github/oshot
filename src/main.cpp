@@ -227,8 +227,10 @@ int main(int argc, char* argv[])
     glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
     glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
     glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+#if !DEBUG
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);  // Borderless
     glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);    // Always on top
+#endif
 
     GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "OCRshot", nullptr, nullptr);
     if (window == nullptr)

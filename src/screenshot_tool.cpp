@@ -882,9 +882,19 @@ void ScreenshotTool::Cancel()
 
 capture_result_t ScreenshotTool::GetFinalImage()
 {
+    auto* vp = ImGui::GetMainViewport();
+    ImVec2 image_size(
+        static_cast<float>(m_screenshot.region.width),
+        static_cast<float>(m_screenshot.region.height)
+    );
+    ImVec2 image_pos(
+        vp->Pos.x + (vp->Size.x - image_size.x) * 0.5f,
+        vp->Pos.y + (vp->Size.y - image_size.y) * 0.5f
+    );
+
     region_t region{
-        static_cast<int>(m_selection.get_x()),
-        static_cast<int>(m_selection.get_y()),
+        static_cast<int>(m_selection.get_x() - image_pos.x),
+        static_cast<int>(m_selection.get_y() - image_pos.y),
         static_cast<int>(m_selection.get_width()),
         static_cast<int>(m_selection.get_height()),
     };
