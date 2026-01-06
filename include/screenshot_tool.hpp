@@ -68,7 +68,8 @@ enum ErrorState
     InvalidModel      = 1 << 3,
     FailedTranslation = 1 << 4,
     InvalidLangFrom   = 1 << 5,
-    InvalidLangTo     = 1 << 6
+    InvalidLangTo     = 1 << 6,
+    NoLauncher        = 1 << 7
 };
 
 class ScreenshotTool

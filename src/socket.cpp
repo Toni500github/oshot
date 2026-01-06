@@ -1,6 +1,24 @@
 #include "socket.hpp"
 
+#include <cstdint>
 #include <string>
+
+static bool send_all(int fd, const char* buf, size_t size)
+{
+    size_t sent = 0;
+    while (sent < size)
+    {
+        size_t remaining = size - sent;
+        int    chunk     = static_cast<int>(std::min(remaining, static_cast<size_t>(INT_MAX)));
+
+        int n = send(fd, buf + sent, chunk, 0);
+        if (n <= 0)
+            return false;
+
+        sent += n;
+    }
+    return true;
+}
 
 bool SocketSender::Start(int port)
 {
@@ -47,12 +65,19 @@ bool SocketSender::Send(const std::string& text)
     if (send(m_sock, &type, 1, 0) != 1)
         return false;
 
-    return (send(m_sock, text.c_str(), text.length(), 0) != -1);
+    if (text.size() > UINT32_MAX)
+        return false;
+
+    uint32_t net_len = htonl(static_cast<uint32_t>(text.size()));  // network byte order
+    if (send(m_sock, reinterpret_cast<const char*>(&net_len), sizeof(net_len), 0) != sizeof(net_len))
+        return false;
+
+    return send_all(m_sock, text.c_str(), text.size());
 }
 
 bool SocketSender::Send(SendMsg msg, const void* src, size_t size)
 {
-    if (!src)
+    if (!src || size < 2)
         return false;
 
     char type;
@@ -63,30 +88,18 @@ bool SocketSender::Send(SendMsg msg, const void* src, size_t size)
         default:                  return false;
     }
 
-    uint32_t len = htonl(static_cast<uint32_t>(size));  // network byte order
+    if (size > UINT32_MAX)
+        return false;
 
+    uint32_t net_len = htonl(static_cast<uint32_t>(size));  // network byte order
     if (send(m_sock, &type, 1, 0) != 1)
         return false;
 
-    if (send(m_sock, reinterpret_cast<const char*>(&len), 4, 0) != 4)
+    if (send(m_sock, reinterpret_cast<const char*>(&net_len), sizeof(net_len), 0) != sizeof(net_len))
         return false;
 
-#ifdef _WIN32
     const char* buf = reinterpret_cast<const char*>(src);
-#else
-    const char* buf = static_cast<const char*>(src);
-#endif
-
-    size_t sent = 0;
-    while (sent < size)
-    {
-        int n = send(m_sock, buf + sent, static_cast<int>(size - sent), 0);
-        if (n <= 0)
-            return false;
-        sent += n;
-    }
-
-    return true;
+    return send_all(m_sock, buf, size);
 }
 
 void SocketSender::Close()

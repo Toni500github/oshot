@@ -94,7 +94,8 @@ bool ScreenshotTool::Start()
 {
     translator = std::make_unique<Translator>();
     sender     = std::make_unique<SocketSender>();
-    sender->Start();
+    if (!sender->Start())
+        SetError(NoLauncher);
 
     bool stdin_data_exist = stdin_has_data();
     if (config->_source_file.empty() && !stdin_data_exist)
@@ -199,7 +200,7 @@ bool ScreenshotTool::RenderOverlay()
 
     if (edit_ocr_pressed)
         config->allow_ocr_edit = !config->allow_ocr_edit;
-    else if (view_handles_pressed)
+    if (view_handles_pressed)
         config->_enable_handles = !config->_enable_handles;
 
     if (m_state == ToolState::Selected && (save_pressed || copy_pressed))
@@ -511,8 +512,13 @@ void ScreenshotTool::DrawMenuItems()
                 if (m_on_complete)
                     m_on_complete(SavingOp::SAVE_FILE, GetFinalImage());
             if (ImGui::MenuItem("Copy Image", "CTRL+SHIFT+C"))
-                if (m_on_complete)
+            {
+                if (HasError(NoLauncher))
+                    ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
+                                       "Please launch oshot with its launcher, in order to copy text/images");
+                else if (m_on_complete)
                     m_on_complete(SavingOp::SAVE_CLIPBOARD, GetFinalImage());
+            }
             ImGui::Separator();
             if (ImGui::MenuItem("Quit", "ESC"))
                 Cancel();
@@ -686,9 +692,17 @@ end:
                               ImVec2(-1, ImGui::GetTextLineHeight() * 10),
                               config->allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
-    if (!m_ocr_text.empty() && ImGui::Button("Copy Text"))
+    if (HasError(NoLauncher))
     {
+        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
+                           "Please launch oshot with its launcher, in order to copy text/images");
+    }
+    else if (!m_ocr_text.empty() && ImGui::Button("Copy Text"))
+    {
+        if (m_ocr_text.back() == '\n')
+            m_ocr_text.pop_back();
         sender->Send(m_ocr_text);
+        ClearError(NoLauncher);
     }
 }
 
