@@ -661,7 +661,7 @@ void ScreenshotTool::DrawOcrTools()
     }
 
 end:
-    if (!HasErrors() && ImGui::Button("Extract Text"))
+    if (!HasError(InvalidModel) && !HasError(InvalidPath) && ImGui::Button("Extract Text"))
     {
         if (std::find(list.begin(), list.end(), ocr_model) == list.end())
         {
@@ -926,11 +926,6 @@ capture_result_t ScreenshotTool::GetFinalImage()
 bool ScreenshotTool::HasError(ErrorState err)
 {
     return m_err_state & err;
-}
-
-bool ScreenshotTool::HasErrors()
-{
-    return m_err_state != 0;
 }
 
 void ScreenshotTool::SetError(ErrorState err)

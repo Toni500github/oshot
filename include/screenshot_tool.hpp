@@ -124,7 +124,6 @@ private:
 
     ImFont* GetOrLoadFontForLanguage(const std::string& lang_code);
     bool    HasError(ErrorState err);
-    bool    HasErrors();
     void    ClearError(ErrorState err);
     void    SetError(ErrorState err);
 

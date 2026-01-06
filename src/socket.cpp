@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string>
 
+#include "util.hpp"
+
 static bool send_all(int fd, const char* buf, size_t size)
 {
     size_t sent = 0;

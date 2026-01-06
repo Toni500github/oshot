@@ -26,6 +26,11 @@
 #include "stb_image.h"
 #include "stb_image_resize2.h"
 
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
+
 extern int scr_w, scr_h;
 
 #if __linux__
