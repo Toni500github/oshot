@@ -6,6 +6,7 @@
 #include <functional>
 
 #include "imgui/imgui.h"
+#include "imgui/imgui_internal.h"
 #include "ocr.hpp"
 #include "screen_capture.hpp"
 
@@ -35,13 +36,28 @@ enum class ToolState
     Idle,
     Capturing,
     Selecting,
-    Selected
+    Selected,
+    Resizing
 };
 
 enum class SavingOp
 {
     SAVE_CLIPBOARD,
     SAVE_FILE
+};
+
+enum class HandleHovered
+{
+    None,
+    Top,
+    Bottom,
+    Left,
+    Right,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+    Move
 };
 
 enum ErrorState
@@ -76,6 +92,9 @@ public:
     void SetOnCancel(const std::function<void()>& cb) { m_on_cancel = cb; }
 
 private:
+    static constexpr float HANDLE_DRAW_SIZE  = 4.0f;
+    static constexpr float HANDLE_HOVER_SIZE = 10.0f;
+
     struct FontCacheEntry
     {
         std::string font_path;
@@ -83,13 +102,24 @@ private:
         bool        loaded = false;
     };
 
+    struct HandleInfo
+    {
+        HandleHovered type;
+        ImVec2        pos;
+        ImRect        rect;
+    };
+
     void HandleSelectionInput();
+    void HandleResizeInput();
     void DrawDarkOverlay();
     void DrawMenuItems();
     void DrawSelectionBorder();
     void DrawSizeIndicator();
     void DrawOcrTools();
     void DrawTranslationTools();
+
+    void UpdateHandleHoverState();
+    void UpdateCursor();
 
     ImFont* GetOrLoadFontForLanguage(const std::string& lang_code);
     bool    HasError(ErrorState err);
@@ -100,12 +130,17 @@ private:
     OcrAPI           m_api;
     ImGuiIO&         m_io;
     capture_result_t m_screenshot;
-    void*            m_texture_id = nullptr;  // ImGui texture ID
-    ToolState        m_state      = ToolState::Idle;
-    int              m_err_state  = ErrorState::None;
+    void*            m_texture_id      = nullptr;  // ImGui texture ID
+    ToolState        m_state           = ToolState::Idle;
+    HandleHovered    m_handle_hover    = HandleHovered::None;
+    HandleHovered    m_dragging_handle = HandleHovered::None;
+    int              m_err_state       = ErrorState::None;
     selection_rect_t m_selection;
+    selection_rect_t m_drag_start_selection;
     bool             m_is_selecting{};
     bool             m_is_hovering_ocr{};
+    ImVec2           m_drag_start_mouse{};
+    ImVec2           m_handle_pos{};  // Position of currently hovered handle
 
     std::unordered_map<std::string, FontCacheEntry> m_font_cache;
 

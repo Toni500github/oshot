@@ -11,21 +11,21 @@
 #include <utility>
 #include <vector>
 
-// clang-format off
-// Because of X11 headers now I need to wonder
-// about the order of each included header file.
-#include "translation.hpp"
-// clang-format on
-
 #include "config.hpp"
 #include "fmt/base.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3_loader.h"
+#include "imgui/imgui_internal.h"
 #include "imgui/imgui_stdlib.h"
 #include "langs.hpp"
 #include "screen_capture.hpp"
 #include "socket.hpp"
+#include "translation.hpp"
 #include "util.hpp"
+
+#ifdef None
+#undef None
+#endif
 
 static ImVec2 origin(0, 0);
 
@@ -142,14 +142,22 @@ bool ScreenshotTool::RenderOverlay()
         return false;
 
     // Draw the screenshot as background
-    // And center it
+    // and center it
+    // clang-format off
     auto*  vp = ImGui::GetMainViewport();
-    ImVec2 image_size((float)m_screenshot.region.width, (float)m_screenshot.region.height);
-    ImVec2 origin(vp->Pos.x + (vp->Size.x - image_size.x) * 0.5f, vp->Pos.y + (vp->Size.y - image_size.y) * 0.5f);
+    ImVec2 image_size(
+        static_cast<float>(m_screenshot.region.width),
+        static_cast<float>(m_screenshot.region.height)
+    );
+    ImVec2 origin(
+        vp->Pos.x + (vp->Size.x - image_size.x) * 0.5f,
+        vp->Pos.y + (vp->Size.y - image_size.y) * 0.5f
+    );
     ImGui::GetBackgroundDrawList()->AddImage(
         m_texture_id, origin, ImVec2(origin.x + image_size.x, origin.y + image_size.y));
+    // clang-format on
 
-    if (m_state == ToolState::Selecting || m_state == ToolState::Selected)
+    if (m_state == ToolState::Selecting || m_state == ToolState::Selected || m_state == ToolState::Resizing)
     {
         if (!m_is_hovering_ocr)
         {
@@ -167,7 +175,7 @@ bool ScreenshotTool::RenderOverlay()
         ImGui::Begin("Text tools", nullptr, ImGuiWindowFlags_MenuBar);
         ImVec2 window_pos  = ImGui::GetWindowPos();
         ImVec2 window_size = ImGui::GetWindowSize();
-        m_is_hovering_ocr  = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) ||
+        m_is_hovering_ocr  = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) ||
                             (ImGui::IsMouseHoveringRect(
                                 window_pos, ImVec2(window_pos.x + window_size.x, window_pos.y + window_size.y)));
         DrawMenuItems();
@@ -182,16 +190,23 @@ bool ScreenshotTool::RenderOverlay()
         return false;
     }
 
-    const bool ctrl_down    = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
-    const bool save_pressed = ImGui::IsKeyPressed(ImGuiKey_S);
-    const bool copy_pressed = ImGui::IsKeyPressed(ImGuiKey_C);
+    const bool ctrl_down            = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
+    const bool shift_down           = ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
+    const bool save_pressed         = ctrl_down && ImGui::IsKeyPressed(ImGuiKey_S);
+    const bool copy_pressed         = ctrl_down && shift_down && ImGui::IsKeyPressed(ImGuiKey_C);
+    const bool edit_ocr_pressed     = ctrl_down && ImGui::IsKeyPressed(ImGuiKey_E);
+    const bool view_handles_pressed = ctrl_down && ImGui::IsKeyPressed(ImGuiKey_G);
 
-    if (m_state == ToolState::Selected && ctrl_down && (save_pressed || copy_pressed))
+    if (edit_ocr_pressed)
+        config->allow_ocr_edit = !config->allow_ocr_edit;
+    else if (view_handles_pressed)
+        config->_enable_handles = !config->_enable_handles;
+
+    if (m_state == ToolState::Selected && (save_pressed || copy_pressed))
     {
         if (m_on_complete)
         {
             const SavingOp op = save_pressed ? SavingOp::SAVE_FILE : SavingOp::SAVE_CLIPBOARD;
-
             m_on_complete(op, GetFinalImage());
         }
 
@@ -205,23 +220,210 @@ bool ScreenshotTool::RenderOverlay()
 void ScreenshotTool::HandleSelectionInput()
 {
     const ImVec2& mouse_pos = ImGui::GetMousePos();
+    float         sel_x     = m_selection.get_x();
+    float         sel_y     = m_selection.get_y();
+    float         sel_w     = m_selection.get_width();
+    float         sel_h     = m_selection.get_height();
+    ImRect        selection_rect(ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h));
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !m_is_selecting)
     {
-        m_selection.start = { mouse_pos.x, mouse_pos.y };
-        m_selection.end   = m_selection.start;
-        m_is_selecting    = true;
-        m_state           = ToolState::Selecting;
+        // Check if we're starting to resize from a handle
+        if (m_handle_hover != HandleHovered::None)
+        {
+            m_dragging_handle      = m_handle_hover;
+            m_drag_start_mouse     = mouse_pos;
+            m_drag_start_selection = m_selection;
+            m_state                = ToolState::Resizing;
+            m_is_selecting         = true;
+        }
+        // Check if we're clicking inside the selection to move it
+        else if (selection_rect.Contains(mouse_pos))
+        {
+            m_dragging_handle      = HandleHovered::Move;
+            m_drag_start_mouse     = mouse_pos;
+            m_drag_start_selection = m_selection;
+            m_state                = ToolState::Resizing;
+            m_is_selecting         = true;
+        }
+        else
+        {
+            // Start new selection
+            m_selection.start = { mouse_pos.x, mouse_pos.y };
+            m_selection.end   = m_selection.start;
+            m_is_selecting    = true;
+            m_state           = ToolState::Selecting;
+        }
     }
 
     if (m_is_selecting && ImGui::IsMouseDown(ImGuiMouseButton_Left))
-        m_selection.end = { mouse_pos.x, mouse_pos.y };
+    {
+        if (m_state == ToolState::Resizing)
+            HandleResizeInput();
+        else  // ToolState::Selecting
+            m_selection.end = { mouse_pos.x, mouse_pos.y };
+    }
 
     if (m_is_selecting && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
     {
-        m_is_selecting = false;
+        m_is_selecting    = false;
+        m_dragging_handle = HandleHovered::None;
+
         if (m_selection.get_width() > 10 && m_selection.get_height() > 10)
             m_state = ToolState::Selected;
+    }
+}
+
+void ScreenshotTool::HandleResizeInput()
+{
+    const ImVec2& mouse_pos = ImGui::GetMousePos();
+    ImVec2        delta(mouse_pos.x - m_drag_start_mouse.x, mouse_pos.y - m_drag_start_mouse.y);
+
+    switch (m_dragging_handle)
+    {
+        case HandleHovered::TopLeft:
+            m_selection.start.x = m_drag_start_selection.start.x + delta.x;
+            m_selection.start.y = m_drag_start_selection.start.y + delta.y;
+            break;
+        case HandleHovered::TopRight:
+            m_selection.end.x   = m_drag_start_selection.end.x + delta.x;
+            m_selection.start.y = m_drag_start_selection.start.y + delta.y;
+            break;
+        case HandleHovered::BottomLeft:
+            m_selection.start.x = m_drag_start_selection.start.x + delta.x;
+            m_selection.end.y   = m_drag_start_selection.end.y + delta.y;
+            break;
+        case HandleHovered::BottomRight:
+            m_selection.end.x = m_drag_start_selection.end.x + delta.x;
+            m_selection.end.y = m_drag_start_selection.end.y + delta.y;
+            break;
+        case HandleHovered::Top:    m_selection.start.y = m_drag_start_selection.start.y + delta.y; break;
+        case HandleHovered::Bottom: m_selection.end.y = m_drag_start_selection.end.y + delta.y; break;
+        case HandleHovered::Left:   m_selection.start.x = m_drag_start_selection.start.x + delta.x; break;
+        case HandleHovered::Right:  m_selection.end.x = m_drag_start_selection.end.x + delta.x; break;
+        case HandleHovered::Move:  // Move the entire selection
+            m_selection.start.x = m_drag_start_selection.start.x + delta.x;
+            m_selection.start.y = m_drag_start_selection.start.y + delta.y;
+            m_selection.end.x   = m_drag_start_selection.end.x + delta.x;
+            m_selection.end.y   = m_drag_start_selection.end.y + delta.y;
+            break;
+        default: break;
+    }
+}
+
+void ScreenshotTool::UpdateHandleHoverState()
+{
+    const ImVec2 mouse_pos = ImGui::GetMousePos();
+    m_handle_hover         = HandleHovered::None;
+    m_handle_pos           = ImVec2(0, 0);
+
+    if (m_state != ToolState::Selected && m_state != ToolState::Resizing)
+        return;
+
+    float sel_x = m_selection.get_x();
+    float sel_y = m_selection.get_y();
+    float sel_w = m_selection.get_width();
+    float sel_h = m_selection.get_height();
+
+    const float hover_half = HANDLE_HOVER_SIZE / 2.0f;
+
+    const std::array<HandleInfo, 8> handles = {
+        { { .type = HandleHovered::TopLeft,
+            .pos  = ImVec2(sel_x, sel_y),
+            .rect = ImRect(ImVec2(sel_x - hover_half, sel_y - hover_half),
+                           ImVec2(sel_x + hover_half, sel_y + hover_half)) },
+
+          { .type = HandleHovered::TopRight,
+            .pos  = ImVec2(sel_x + sel_w, sel_y),
+            .rect = ImRect(ImVec2(sel_x + sel_w - hover_half, sel_y - hover_half),
+                           ImVec2(sel_x + sel_w + hover_half, sel_y + hover_half)) },
+
+          { .type = HandleHovered::BottomLeft,
+            .pos  = ImVec2(sel_x, sel_y + sel_h),
+            .rect = ImRect(ImVec2(sel_x - hover_half, sel_y + sel_h - hover_half),
+                           ImVec2(sel_x + hover_half, sel_y + sel_h + hover_half)) },
+
+          { .type = HandleHovered::BottomRight,
+            .pos  = ImVec2(sel_x + sel_w, sel_y + sel_h),
+            .rect = ImRect(ImVec2(sel_x + sel_w - hover_half, sel_y + sel_h - hover_half),
+                           ImVec2(sel_x + sel_w + hover_half, sel_y + sel_h + hover_half)) },
+
+          { .type = HandleHovered::Top,
+            .pos  = ImVec2(sel_x + sel_w / 2, sel_y),
+            .rect = ImRect(ImVec2(sel_x + sel_w / 2 - hover_half, sel_y - hover_half),
+                           ImVec2(sel_x + sel_w / 2 + hover_half, sel_y + hover_half)) },
+
+          { .type = HandleHovered::Bottom,
+            .pos  = ImVec2(sel_x + sel_w / 2, sel_y + sel_h),
+            .rect = ImRect(ImVec2(sel_x + sel_w / 2 - hover_half, sel_y + sel_h - hover_half),
+                           ImVec2(sel_x + sel_w / 2 + hover_half, sel_y + sel_h + hover_half)) },
+
+          { .type = HandleHovered::Left,
+            .pos  = ImVec2(sel_x, sel_y + sel_h / 2),
+            .rect = ImRect(ImVec2(sel_x - hover_half, sel_y + sel_h / 2 - hover_half),
+                           ImVec2(sel_x + hover_half, sel_y + sel_h / 2 + hover_half)) },
+
+          { .type = HandleHovered::Right,
+            .pos  = ImVec2(sel_x + sel_w, sel_y + sel_h / 2),
+            .rect = ImRect(ImVec2(sel_x + sel_w - hover_half, sel_y + sel_h / 2 - hover_half),
+                           ImVec2(sel_x + sel_w + hover_half, sel_y + sel_h / 2 + hover_half)) } }
+    };
+
+    for (const auto& handle : handles)
+    {
+        if (handle.rect.Contains(mouse_pos))
+        {
+            m_handle_hover = handle.type;
+            m_handle_pos   = { handle.pos.x * 2, handle.pos.y * 2 };
+            break;
+        }
+    }
+}
+
+void ScreenshotTool::UpdateCursor()
+{
+    if (m_handle_hover != HandleHovered::None || m_dragging_handle != HandleHovered::None)
+    {
+        HandleHovered handle = (m_dragging_handle != HandleHovered::None) ? m_dragging_handle : m_handle_hover;
+
+        switch (handle)
+        {
+            case HandleHovered::Move: ImGui::SetMouseCursor(ImGuiMouseCursor_Hand); break;
+
+            case HandleHovered::TopLeft:
+            case HandleHovered::BottomRight: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE); break;
+
+            case HandleHovered::TopRight:
+            case HandleHovered::BottomLeft: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNESW); break;
+
+            case HandleHovered::Top:
+            case HandleHovered::Bottom: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS); break;
+
+            case HandleHovered::Left:
+            case HandleHovered::Right: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW); break;
+
+            default: ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow); break;
+        }
+    }
+    else if ((m_state == ToolState::Selected || m_state == ToolState::Resizing) && !m_is_hovering_ocr)
+    {
+        // Check if mouse is inside the selection (for moving)
+        float sel_x = m_selection.get_x();
+        float sel_y = m_selection.get_y();
+        float sel_w = m_selection.get_width();
+        float sel_h = m_selection.get_height();
+
+        ImRect       selection_rect(ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h));
+        const ImVec2 mouse_pos = ImGui::GetMousePos();
+
+        if (selection_rect.Contains(mouse_pos))
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        else
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
+    }
+    else
+    {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
     }
 }
 
@@ -259,8 +461,42 @@ void ScreenshotTool::DrawSelectionBorder()
     float sel_w = m_selection.get_width();
     float sel_h = m_selection.get_height();
 
+    UpdateHandleHoverState();
+
+    UpdateCursor();
+
+    // Draw selection border
     draw_list->AddRect(
-        ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h), IM_COL32(0, 150, 255, 255), 0.0f, 0, 2.0f);
+        ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h), IM_COL32(0, 150, 255, 255), 0.0f, 0, 1.0f);
+
+    if (!config->_enable_handles)
+        return;
+
+    // Draw handles
+    const float handle_draw_half = HANDLE_DRAW_SIZE / 2.0f;
+    auto        draw_handle      = [&](ImVec2 pos, HandleHovered type) {
+        ImVec2 min = ImVec2(pos.x - handle_draw_half, pos.y - handle_draw_half);
+        ImVec2 max = ImVec2(pos.x + handle_draw_half, pos.y + handle_draw_half);
+
+        ImU32 color = IM_COL32(255, 255, 255, 255);
+        if (m_handle_hover == type || m_dragging_handle == type)
+            color = IM_COL32(255, 255, 0, 255);  // Yellow
+
+        draw_list->AddRectFilled(min, max, color);
+        draw_list->AddRect(min, max, IM_COL32(255, 255, 255, 255), 0.0f, 0, 2.0f);
+    };
+
+    // Corner handles
+    draw_handle(ImVec2(sel_x, sel_y), HandleHovered::TopLeft);
+    draw_handle(ImVec2(sel_x + sel_w, sel_y), HandleHovered::TopRight);
+    draw_handle(ImVec2(sel_x, sel_y + sel_h), HandleHovered::BottomLeft);
+    draw_handle(ImVec2(sel_x + sel_w, sel_y + sel_h), HandleHovered::BottomRight);
+
+    // Edge handles
+    draw_handle(ImVec2(sel_x + sel_w / 2, sel_y), HandleHovered::Top);
+    draw_handle(ImVec2(sel_x + sel_w / 2, sel_y + sel_h), HandleHovered::Bottom);
+    draw_handle(ImVec2(sel_x, sel_y + sel_h / 2), HandleHovered::Left);
+    draw_handle(ImVec2(sel_x + sel_w, sel_y + sel_h / 2), HandleHovered::Right);
 }
 
 void ScreenshotTool::DrawMenuItems()
@@ -274,7 +510,7 @@ void ScreenshotTool::DrawMenuItems()
             if (ImGui::MenuItem("Save Image", "CTRL+S"))
                 if (m_on_complete)
                     m_on_complete(SavingOp::SAVE_FILE, GetFinalImage());
-            if (ImGui::MenuItem("Copy Image", "CTRL+C"))
+            if (ImGui::MenuItem("Copy Image", "CTRL+SHIFT+C"))
                 if (m_on_complete)
                     m_on_complete(SavingOp::SAVE_CLIPBOARD, GetFinalImage());
             ImGui::Separator();
@@ -284,7 +520,8 @@ void ScreenshotTool::DrawMenuItems()
         }
         if (ImGui::BeginMenu("Edit"))
         {
-            if (ImGui::MenuItem("Allow OCR edit", nullptr, &config->allow_ocr_edit)){}
+            if (ImGui::MenuItem("View Handles", "CTRL+G", &config->_enable_handles)){}
+            if (ImGui::MenuItem("Allow OCR edit", "CTRL+E", &config->allow_ocr_edit)){}
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help"))
