@@ -91,10 +91,14 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 if (WIN32)
-    target_link_libraries(oshot PRIVATE ws2_32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32)
+    if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_link_options(${PROJECT_NAME} PRIVATE "-mwindows")
+        target_compile_options(${PROJECT_NAME} PRIVATE "-mwindows")
+    endif()
 elseif (UNIX AND NOT APPLE)
     find_package(X11 REQUIRED)
-    target_link_libraries(oshot PRIVATE X11::X11)
+    target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
 endif()
 
 # -----------------------------

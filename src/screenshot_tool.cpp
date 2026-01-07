@@ -881,6 +881,7 @@ void ScreenshotTool::Cancel()
 
 capture_result_t ScreenshotTool::GetFinalImage()
 {
+    // clang-format off
     auto* vp = ImGui::GetMainViewport();
     ImVec2 image_size(
         static_cast<float>(m_screenshot.region.width),
@@ -890,6 +891,7 @@ capture_result_t ScreenshotTool::GetFinalImage()
         vp->Pos.x + (vp->Size.x - image_size.x) * 0.5f,
         vp->Pos.y + (vp->Size.y - image_size.y) * 0.5f
     );
+    // clang-format on
 
     region_t region{
         static_cast<int>(m_selection.get_x() - image_pos.x),
