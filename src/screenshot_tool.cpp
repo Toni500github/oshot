@@ -667,14 +667,13 @@ end:
         {
             SetError(InvalidModel);
         }
-        else if (!m_api.Init(ocr_path, ocr_model))
+        else if (!m_api.Configure(ocr_path.c_str(), ocr_model.c_str()))
         {
             SetError(InitOcr);
         }
         else
         {
-            m_api.SetImage(GetFinalImage());
-            const auto& text = m_api.ExtractText();
+            const auto& text = m_api.RecognizeCapture(GetFinalImage(), 300);
             if (text)
                 m_ocr_text = m_to_translate_text = *text;
             ClearError(InitOcr);
