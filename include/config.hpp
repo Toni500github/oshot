@@ -141,13 +141,14 @@ font = "arial.ttf"
 )#";
 
 inline constexpr std::string_view oshot_help = (R"(Usage: oshot [OPTIONS]...
-Screenshot tool to extract and translate text on the fly.
+Lightweight Screenshot tool to extract and translate text on the fly.
 
 NOTE: Boolean flags [<BOOL>] accept: "true", 1, "enable", or empty. Any other value is treated as false.
 
 GENERAL OPTIONS:
     -h, --help                  Print this help menu.
     -V, --version               Print version and other infos about the build.
+    -f, --source <PATH>         Path to the image to use as background (use - for reading stdin)
     -C, --config <PATH>         Path to the config file to use (default: ~/.config/oshot/config.toml).
     -l, --list                  List all available translatable languages along side their codenames.
 
