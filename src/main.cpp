@@ -238,14 +238,6 @@ int main(int argc, char* argv[])
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);  // Enable vsync
 
-#ifdef _WIN32
-    FILE* f = fopen("oshot.log", "w");
-    if (f) {
-        freopen_s(&f, "CONOUT$", "w", stdout);
-        freopen_s(&f, "CONERR$", "w", stderr);
-    }
-#endif
-
     scr_w = mode->width;
     scr_h = mode->height;
 

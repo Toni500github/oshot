@@ -29,8 +29,6 @@ else ifeq ($(UNAME_S),Darwin) #APPLE
         CXXFLAGS += -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include
 
 else ifeq ($(findstring _NT,$(UNAME_S)),_NT)
-	CXXFLAGS += -mwindows
-	LDFLAGS += -mwindows
         LDLIBS += -lgdi32 -lopengl32 -limm32 -lole32 -lcomdlg32 -luuid
 endif
 
