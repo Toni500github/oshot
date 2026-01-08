@@ -216,21 +216,15 @@ int main(int argc, char* argv[])
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
 #endif
 
-    GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
-    const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
-
-    // Create borderless fullscreen window
-    glfwWindowHint(GLFW_RED_BITS, mode->redBits);
-    glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
-    glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
-    glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
 #if !DEBUG
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);  // Borderless
     glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);    // Always on top
 #endif
+
+    GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
 
     GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "OCRshot", nullptr, nullptr);
     if (window == nullptr)
