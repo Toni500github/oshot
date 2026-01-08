@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
+#include <future>
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_internal.h"
@@ -69,7 +70,8 @@ enum ErrorState
     FailedTranslation = 1 << 4,
     InvalidLangFrom   = 1 << 5,
     InvalidLangTo     = 1 << 6,
-    NoLauncher        = 1 << 7
+    NoLauncher        = 1 << 7,
+    WarnConnLauncher  = 1 << 8
 };
 
 class ScreenshotTool
@@ -141,6 +143,9 @@ private:
     bool             m_is_hovering_ocr{};
     ImVec2           m_drag_start_mouse{};
     ImVec2           m_handle_pos{};  // Position of currently hovered handle
+
+    std::future<bool> m_connect_future;
+    bool              m_connect_done = false;
 
     std::unordered_map<std::string, FontCacheEntry> m_font_cache;
 

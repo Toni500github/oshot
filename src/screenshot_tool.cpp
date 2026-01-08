@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -26,6 +27,8 @@
 #ifdef None
 #undef None
 #endif
+
+using namespace std::chrono_literals;
 
 static ImVec2 origin(0, 0);
 
@@ -92,11 +95,13 @@ static void HelpMarker(const char* desc)
 
 bool ScreenshotTool::Start()
 {
-    translator = std::make_unique<Translator>();
-    sender     = std::make_unique<SocketSender>();
-    if (!sender->Start())
-        SetError(NoLauncher);
+    translator       = std::make_unique<Translator>();
+    sender           = std::make_unique<SocketSender>();
+    m_connect_future = std::async(std::launch::async, [&] {
+        return sender->Start();  // blocking connect()
+    });
 
+    SetError(WarnConnLauncher);
     bool stdin_data_exist = stdin_has_data();
     if (config->_source_file.empty() && !stdin_data_exist)
     {
@@ -130,6 +135,20 @@ bool ScreenshotTool::RenderOverlay()
 {
     if (!IsActive())
         return false;
+
+    if (!m_connect_done)
+    {
+        if (m_connect_future.valid() && m_connect_future.wait_for(0ms) == std::future_status::ready)
+        {
+            bool success   = m_connect_future.get();
+            m_connect_done = true;
+
+            ClearError(WarnConnLauncher);
+
+            if (!success)
+                SetError(NoLauncher);
+        }
+    }
 
     // Create fullscreen overlay window
     ImGui::SetNextWindowPos(origin);
@@ -691,7 +710,11 @@ end:
                               ImVec2(-1, ImGui::GetTextLineHeight() * 10),
                               config->allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
-    if (HasError(NoLauncher))
+    if (HasError(WarnConnLauncher))
+    {
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Connecting to launcher...");
+    }
+    else if (HasError(NoLauncher))
     {
         ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
                            "Please launch oshot with its launcher, in order to copy text/images");
