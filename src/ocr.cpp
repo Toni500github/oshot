@@ -2,13 +2,15 @@
 
 #include <cstring>
 
+#include "util.hpp"
+
 static tesseract::PageSegMode choose_psm(int w, int h)
 {
     const int   area   = w * h;
     const float aspect = (h > 0) ? float(w) / h : 1.0f;
 
     // Extremely small selections (icons, buttons, single words)
-    if (area < 20'000)
+    if (area < 20'000 && aspect < 2.0f)
         return tesseract::PSM_SINGLE_WORD;
 
     // Short, wide regions (menu entries, labels)
@@ -56,7 +58,7 @@ bool OcrAPI::Configure(const char* data_path, const char* model, tesseract::OcrE
     return true;
 }
 
-std::optional<std::string> OcrAPI::RecognizeCapture(const capture_result_t& cap, int dpi)
+std::optional<std::string> OcrAPI::RecognizeCapture(const capture_result_t& cap)
 {
     if (!m_initialized || cap.data.empty() || cap.region.width <= 0 || cap.region.height <= 0)
         return std::nullopt;
@@ -71,9 +73,14 @@ std::optional<std::string> OcrAPI::RecognizeCapture(const capture_result_t& cap,
     if (!pix)
         return std::nullopt;
 
+    float scale = std::min(static_cast<float>(scr_w) / cap.region.width, static_cast<float>(scr_h) / cap.region.height);
+
+    int effective_dpi = static_cast<int>(get_screen_dpi() * scale);
+    effective_dpi     = std::clamp(effective_dpi, 70, 300);
+
     m_api->SetPageSegMode(psm);
     m_api->SetImage(pix.get());
-    m_api->SetSourceResolution(dpi);
+    m_api->SetSourceResolution(effective_dpi);
 
     TextPtr text(m_api->GetUTF8Text(), [](char* p) { delete[] p; });
 
@@ -102,7 +109,7 @@ OcrAPI::PixPtr OcrAPI::rgba_to_pix(const uint8_t* rgba, int w, int h)
             // RGBA → Leptonica BGRA
             *dst = (p[2] << 24) |  // B
                    (p[1] << 16) |  // G
-                   (p[0] << 8)  |  // R
+                   (p[0] << 8) |   // R
                    (p[3]);         // A
         }
     }

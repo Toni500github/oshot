@@ -23,7 +23,7 @@ public:
 
     bool Configure(const char* data_path, const char* model, tesseract::OcrEngineMode oem = tesseract::OEM_LSTM_ONLY);
 
-    std::optional<std::string> RecognizeCapture(const capture_result_t& cap, int dpi);
+    std::optional<std::string> RecognizeCapture(const capture_result_t& cap);
 
 private:
     struct OcrConfig

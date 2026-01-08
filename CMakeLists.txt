@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_CXX_FLAGS_DEBUG
-    "${CMAKE_CXX_FLAGS_DEBUG} -ggdb3 -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer -Wall -Wextra -pedantic -Wno-unused-parameter"
+    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG=1 -ggdb3 -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer -Wall -Wextra -pedantic -Wno-unused-parameter"
 )
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
@@ -91,10 +91,10 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 if (WIN32)
-    target_link_libraries(oshot PRIVATE ws2_32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32 shcore)
 elseif (UNIX AND NOT APPLE)
     find_package(X11 REQUIRED)
-    target_link_libraries(oshot PRIVATE X11::X11)
+    target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
 endif()
 
 # -----------------------------

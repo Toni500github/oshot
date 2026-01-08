@@ -27,11 +27,16 @@
 #include "stb_image_resize2.h"
 
 #ifdef _WIN32
+#ifdef __MINGW64__
+#define NTDDI_VERSION NTDDI_WINBLUE
+#define _WIN32_WINNT _WIN32_WINNT_WINBLUE
+#endif
 #include <fcntl.h>
 #include <io.h>
+#include <shellscalingapi.h>  // GetDpiForMonitor
+#include <windows.h>
+#pragma comment(lib, "Shcore.lib")
 #endif
-
-extern int scr_w, scr_h;
 
 #if __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
@@ -89,6 +94,35 @@ std::vector<uint8_t> rgba_to_ppm(const std::vector<uint8_t>& rgba, int width, in
 
     return ppm_data;
 }
+
+#ifdef _WIN32
+int get_screen_dpi()
+{
+    uint32_t dpiX = 96;
+    uint32_t dpiY = 96;
+
+    HMONITOR hMonitor = MonitorFromWindow(nullptr, MONITOR_DEFAULTTOPRIMARY);
+    if (hMonitor && SUCCEEDED(GetDpiForMonitor(hMonitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY)))
+        return dpiX;
+    return 96;  // fallback
+}
+#else
+int get_screen_dpi()
+{
+    Display* dpy = XOpenDisplay(nullptr);
+    if (!dpy)
+        return 96;  // fallback
+
+    double width_mm = DisplayWidthMM(dpy, DefaultScreen(dpy));
+    double width_px = DisplayWidth(dpy, DefaultScreen(dpy));
+
+    XCloseDisplay(dpy);
+
+    // dpi = pixels per inch
+    double dpi = width_px / (width_mm / 25.4);
+    return static_cast<int>(dpi + 0.5);
+}
+#endif
 
 void fit_to_screen(capture_result_t& img, int screen_w, int screen_h)
 {

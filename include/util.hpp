@@ -37,6 +37,8 @@ enum class SavingOp;
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height);
 #endif
 
+extern int scr_w, scr_h;
+
 std::vector<uint8_t>  ppm_to_rgba(uint8_t* ppm, int width, int height);
 std::vector<uint8_t>  rgba_to_ppm(const std::vector<uint8_t>& rgba, int width, int height);
 std::string           replace_str(std::string& str, const std::string_view from, const std::string_view to);
@@ -45,6 +47,7 @@ std::filesystem::path get_font_path(const std::string& font);
 std::filesystem::path get_lang_font_path(const std::string& lang);
 capture_result_t      load_image_rgba(bool stdin_has_data, const std::string& path);
 bool                  save_png(SavingOp op, const capture_result_t& img);
+int                   get_screen_dpi();
 std::filesystem::path getHomeConfigDir();
 std::filesystem::path getConfigDir();
 

@@ -692,7 +692,7 @@ end:
         }
         else
         {
-            const auto& text = m_api.RecognizeCapture(GetFinalImage(), 300);
+            const auto& text = m_api.RecognizeCapture(GetFinalImage());
             if (text)
                 m_ocr_text = m_to_translate_text = *text;
             ClearError(InitOcr);
