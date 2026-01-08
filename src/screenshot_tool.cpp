@@ -13,7 +13,6 @@
 #include <vector>
 
 #include "config.hpp"
-#include "fmt/base.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3_loader.h"
 #include "imgui/imgui_internal.h"
@@ -95,11 +94,8 @@ static void HelpMarker(const char* desc)
 
 bool ScreenshotTool::Start()
 {
-    translator       = std::make_unique<Translator>();
-    sender           = std::make_unique<SocketSender>();
-    m_connect_future = std::async(std::launch::async, [&] {
-        return sender->Start();  // blocking connect()
-    });
+    translator = std::make_unique<Translator>();
+    sender     = std::make_unique<SocketSender>();
 
     SetError(WarnConnLauncher);
     bool stdin_data_exist = stdin_has_data();
@@ -116,18 +112,34 @@ bool ScreenshotTool::Start()
     else
     {
         m_screenshot = load_image_rgba(stdin_data_exist, config->_source_file);
-        if (!m_screenshot.success)
-            die("{}", m_screenshot.error_msg);
     }
 
     if (!m_screenshot.success || m_screenshot.data.empty() || !m_screenshot.error_msg.empty())
     {
         m_state = ToolState::Idle;
-        fmt::println(stderr, "Failed to do data screenshot: {}", m_screenshot.error_msg);
+        error("Failed to do data screenshot: {}", m_screenshot.error_msg);
         return false;
     }
+
+    return true;
+}
+
+bool ScreenshotTool::StartWindow()
+{
+    m_io             = ImGui::GetIO();
+    m_connect_future = std::async(std::launch::async, [&] {
+        return sender->Start();  // blocking connect()
+    });
+
     m_state = ToolState::Selecting;
     CreateTexture();
+    fit_to_screen(m_screenshot);
+    if (!m_screenshot.success || m_screenshot.data.empty() || !m_screenshot.error_msg.empty())
+    {
+        m_state = ToolState::Idle;
+        error("Failed to do data screenshot: {}", m_screenshot.error_msg);
+        return false;
+    }
     return true;
 }
 
@@ -162,20 +174,8 @@ bool ScreenshotTool::RenderOverlay()
         return false;
 
     // Draw the screenshot as background
-    // and center it
-    // clang-format off
-    auto*  vp = ImGui::GetMainViewport();
-    ImVec2 image_size(
-        static_cast<float>(m_screenshot.region.width),
-        static_cast<float>(m_screenshot.region.height)
-    );
-    ImVec2 origin(
-        vp->Pos.x + (vp->Size.x - image_size.x) * 0.5f,
-        vp->Pos.y + (vp->Size.y - image_size.y) * 0.5f
-    );
-    ImGui::GetBackgroundDrawList()->AddImage(
-        m_texture_id, origin, ImVec2(origin.x + image_size.x, origin.y + image_size.y));
-    // clang-format on
+    UpdateWindowBg();
+    ImGui::GetBackgroundDrawList()->AddImage(m_texture_id, m_image_origin, m_image_end);
 
     if (m_state == ToolState::Selecting || m_state == ToolState::Selected || m_state == ToolState::Resizing)
     {
@@ -449,8 +449,7 @@ void ScreenshotTool::UpdateCursor()
 
 void ScreenshotTool::DrawDarkOverlay()
 {
-    ImDrawList* draw_list   = ImGui::GetForegroundDrawList();
-    ImVec2      screen_size = m_io.DisplaySize;
+    ImDrawList* draw_list = ImGui::GetForegroundDrawList();
 
     float sel_x = m_selection.get_x();
     float sel_y = m_selection.get_y();
@@ -460,16 +459,16 @@ void ScreenshotTool::DrawDarkOverlay()
     ImU32 dark_color = IM_COL32(0, 0, 0, 120);
 
     // Top rectangle
-    draw_list->AddRectFilled(ImVec2(0, 0), ImVec2(screen_size.x, sel_y), dark_color);
+    draw_list->AddRectFilled(m_image_origin, ImVec2(m_image_end.x, sel_y), dark_color);
 
     // Bottom rectangle
-    draw_list->AddRectFilled(ImVec2(0, sel_y + sel_h), screen_size, dark_color);
+    draw_list->AddRectFilled(ImVec2(m_image_origin.x, sel_y + sel_h), m_image_end, dark_color);
 
     // Left rectangle
-    draw_list->AddRectFilled(ImVec2(0, sel_y), ImVec2(sel_x, sel_y + sel_h), dark_color);
+    draw_list->AddRectFilled(ImVec2(m_image_origin.x, sel_y), ImVec2(sel_x, sel_y + sel_h), dark_color);
 
     // Right rectangle
-    draw_list->AddRectFilled(ImVec2(sel_x + sel_w, sel_y), ImVec2(screen_size.x, sel_y + sel_h), dark_color);
+    draw_list->AddRectFilled(ImVec2(sel_x + sel_w, sel_y), ImVec2(m_image_end.x, sel_y + sel_h), dark_color);
 }
 
 void ScreenshotTool::DrawSelectionBorder()
@@ -904,19 +903,10 @@ void ScreenshotTool::Cancel()
 
 capture_result_t ScreenshotTool::GetFinalImage()
 {
-    auto* vp = ImGui::GetMainViewport();
-    ImVec2 image_size(
-        static_cast<float>(m_screenshot.region.width),
-        static_cast<float>(m_screenshot.region.height)
-    );
-    ImVec2 image_pos(
-        vp->Pos.x + (vp->Size.x - image_size.x) * 0.5f,
-        vp->Pos.y + (vp->Size.y - image_size.y) * 0.5f
-    );
-
+    UpdateWindowBg();
     region_t region{
-        static_cast<int>(m_selection.get_x() - image_pos.x),
-        static_cast<int>(m_selection.get_y() - image_pos.y),
+        static_cast<int>(m_selection.get_x() - m_image_origin.x),
+        static_cast<int>(m_selection.get_y() - m_image_origin.y),
         static_cast<int>(m_selection.get_width()),
         static_cast<int>(m_selection.get_height()),
     };
@@ -970,6 +960,28 @@ void ScreenshotTool::ClearError(ErrorState err)
     m_err_state &= ~err;
 }
 
+void ScreenshotTool::UpdateWindowBg()
+{
+    // Calculate where the screenshot will be drawn (centered)
+    // clang-format off
+    auto* vp = ImGui::GetMainViewport();
+    ImVec2 image_size(
+        static_cast<float>(m_screenshot.region.width),
+        static_cast<float>(m_screenshot.region.height)
+    );
+    
+    m_image_origin = ImVec2(
+        vp->Pos.x + (vp->Size.x - image_size.x) * 0.5f,
+        vp->Pos.y + (vp->Size.y - image_size.y) * 0.5f
+    );
+    
+    m_image_end = ImVec2(
+        m_image_origin.x + image_size.x,
+        m_image_origin.y + image_size.y
+    );
+    // clang-format on
+}
+
 ImFont* ScreenshotTool::GetOrLoadFontForLanguage(const std::string& lang_code)
 {
     // Check cache first
@@ -1002,10 +1014,10 @@ ImFont* ScreenshotTool::GetOrLoadFontForLanguage(const std::string& lang_code)
     return font;
 }
 
-void ScreenshotTool::CreateTexture()
+bool ScreenshotTool::CreateTexture()
 {
     if (m_screenshot.data.empty() || !m_screenshot.success)
-        return;
+        return false;
 
     GLuint texture;
     glGenTextures(1, &texture);
@@ -1027,4 +1039,5 @@ void ScreenshotTool::CreateTexture()
                  m_screenshot.data.data());
 
     m_texture_id = (void*)(intptr_t)texture;
+    return true;
 }

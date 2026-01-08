@@ -176,6 +176,8 @@ static void glfw_error_callback(int error, const char* description)
 
 int main(int argc, char* argv[])
 {
+    GLFWwindow* window = nullptr;
+
     const std::string& configDir      = getConfigDir().string();
     const std::string& configFile     = parse_config_path(argc, argv, configDir).string();
     const std::string& imgui_ini_path = configDir + "/imgui.ini";
@@ -185,6 +187,25 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
 
     config->loadConfigFile(configFile);
+
+    // Setup Screenshot Tool
+    // Calling it before starting the window so that
+    // we can capture at the exact moment we launch
+    ScreenshotTool ss_tool;
+    ss_tool.SetOnCancel([&]() {
+        fmt::println(stderr, "Cancelled screenshot");
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+    });
+    ss_tool.SetOnComplete([&](SavingOp op, const capture_result_t& result) {
+        if (!result.success)
+            error("Screenshot failed: {}", result.error_msg);
+
+        save_png(op, result);
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+    });
+
+    if (!ss_tool.Start())
+        return EXIT_FAILURE;
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -226,8 +247,8 @@ int main(int argc, char* argv[])
     GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
 
-    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "OCRshot", nullptr, nullptr);
-    if (window == nullptr)
+    window = glfwCreateWindow(mode->width, mode->height, "OCRshot", nullptr, nullptr);
+    if (!window)
         return EXIT_FAILURE;
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);  // Enable vsync
@@ -238,10 +259,11 @@ int main(int argc, char* argv[])
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    ImGui::StyleColorsDark();
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = imgui_ini_path.c_str();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    
+
     if (!config->font.empty())
     {
         const auto& path = get_font_path(config->font);
@@ -249,27 +271,11 @@ int main(int argc, char* argv[])
         io.FontDefault = io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, nullptr, io.Fonts->GetGlyphRangesDefault());
     }
 
-    ImGui::StyleColorsDark();
-
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    // Setup Screenshot Tool
-    ScreenshotTool ss_tool(io);
-    ss_tool.SetOnCancel([&]() {
-        fmt::println(stderr, "Cancelled screenshot");
-        glfwSetWindowShouldClose(window, GLFW_TRUE);
-    });
-    ss_tool.SetOnComplete([&](SavingOp op, const capture_result_t& result) {
-        if (!result.success)
-            fmt::println(stderr, "Screenshot failed: {}", result.error_msg);
-
-        save_png(op, result);
-        glfwSetWindowShouldClose(window, GLFW_TRUE);
-    });
-
-    if (!ss_tool.Start())
+    if (!ss_tool.StartWindow())
         return EXIT_FAILURE;
 
     while (!glfwWindowShouldClose(window) && ss_tool.IsActive())

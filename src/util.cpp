@@ -124,15 +124,15 @@ int get_screen_dpi()
 }
 #endif
 
-void fit_to_screen(capture_result_t& img, int screen_w, int screen_h)
+void fit_to_screen(capture_result_t& img)
 {
     const int img_w = img.region.width;
     const int img_h = img.region.height;
 
-    if (img_w <= screen_w && img_h <= screen_h)
+    if (img_w <= scr_w && img_h <= scr_h)
         return;
 
-    float scale = std::min(static_cast<float>(screen_w) / img_w, static_cast<float>(screen_h) / img_h);
+    float scale = std::min(static_cast<float>(scr_w) / img_w, static_cast<float>(scr_h) / img_h);
 
     int new_w = static_cast<int>(img_w * scale);
     int new_h = static_cast<int>(img_h * scale);
@@ -218,7 +218,6 @@ capture_result_t load_image_rgba(bool stdin_has_data, const std::string& path)
 
     stbi_image_free(pixels);
 
-    fit_to_screen(result, scr_w, scr_h);
     return result;
 }
 

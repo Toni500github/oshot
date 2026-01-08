@@ -77,15 +77,16 @@ enum ErrorState
 class ScreenshotTool
 {
 public:
-    ScreenshotTool(ImGuiIO& io) : m_io(io) {}
+    ScreenshotTool() : m_io(dummy) {}
     ~ScreenshotTool() { m_texture_id = nullptr; }
 
     bool Start();
+    bool StartWindow();
 
     // Returns true if active, else false if finished
     bool RenderOverlay();
 
-    void             CreateTexture();
+    bool             CreateTexture();
     capture_result_t GetFinalImage();
 
     void Cancel();
@@ -95,6 +96,8 @@ public:
     void SetOnCancel(const std::function<void()>& cb) { m_on_cancel = cb; }
 
 private:
+    struct ImGuiIO dummy;
+
     static constexpr float HANDLE_DRAW_SIZE  = 4.0f;
     static constexpr float HANDLE_HOVER_SIZE = 10.0f;
 
@@ -123,6 +126,7 @@ private:
 
     void UpdateHandleHoverState();
     void UpdateCursor();
+    void UpdateWindowBg();
 
     ImFont* GetOrLoadFontForLanguage(const std::string& lang_code);
     bool    HasError(ErrorState err);
@@ -142,7 +146,9 @@ private:
     bool             m_is_selecting{};
     bool             m_is_hovering_ocr{};
     ImVec2           m_drag_start_mouse{};
-    ImVec2           m_handle_pos{};  // Position of currently hovered handle
+    ImVec2           m_handle_pos{};    // Position of currently hovered handle
+    ImVec2           m_image_origin{};  // Where screenshot is drawn (top-left)
+    ImVec2           m_image_end{};     // Where screenshot ends (bottom-right)
 
     std::future<bool> m_connect_future;
     bool              m_connect_done = false;

@@ -46,6 +46,7 @@ std::string           select_image();
 std::filesystem::path get_font_path(const std::string& font);
 std::filesystem::path get_lang_font_path(const std::string& lang);
 capture_result_t      load_image_rgba(bool stdin_has_data, const std::string& path);
+void                  fit_to_screen(capture_result_t& img);
 bool                  save_png(SavingOp op, const capture_result_t& img);
 int                   get_screen_dpi();
 std::filesystem::path getHomeConfigDir();
