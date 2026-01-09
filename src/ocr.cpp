@@ -2,10 +2,14 @@
 
 #include <cstring>
 
+#include "config.hpp"
 #include "util.hpp"
 
 static tesseract::PageSegMode choose_psm(int w, int h)
 {
+    if (config->_preferred_psm != 0)
+        return static_cast<tesseract::PageSegMode>(config->_preferred_psm);
+
     const int   area   = w * h;
     const float aspect = (h > 0) ? float(w) / h : 1.0f;
 

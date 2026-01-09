@@ -1,5 +1,7 @@
 #include "screenshot_tool.hpp"
 
+#include <tesseract/publictypes.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -533,6 +535,17 @@ void ScreenshotTool::DrawMenuItems()
         }
         if (ImGui::BeginMenu("Edit"))
         {
+            if (ImGui::BeginMenu("Optimize OCR for..."))
+            {
+                if (ImGui::RadioButton("Automatic", config->_preferred_psm == 0))
+                    config->_preferred_psm = 0;
+                ImGui::RadioButton("Single Word", &config->_preferred_psm, tesseract::PSM_SINGLE_WORD);
+                ImGui::RadioButton("Single Line", &config->_preferred_psm, tesseract::PSM_SINGLE_LINE);
+                ImGui::RadioButton("Block", &config->_preferred_psm, tesseract::PSM_SINGLE_BLOCK);
+                ImGui::RadioButton("Big Region", &config->_preferred_psm, tesseract::PSM_AUTO);
+                ImGui::EndMenu();
+            }
+            ImGui::Separator();
             ImGui::MenuItem("View Handles", "CTRL+G", &config->_enable_handles);
             ImGui::MenuItem("Allow OCR edit", "CTRL+E", &config->allow_ocr_edit);
             ImGui::EndMenu();
@@ -691,6 +704,12 @@ end:
     {
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Failed to init OCR!");
+    }
+
+    if (!HasError(InvalidModel) && !HasError(InvalidPath))
+    {
+        ImGui::SameLine();
+        HelpMarker("If the result seems off, you could try selecting an option in Edit > Optimize OCR for...");
     }
 
     ImGui::InputTextMultiline("##source",

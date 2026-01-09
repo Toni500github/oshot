@@ -48,6 +48,7 @@ public:
     // From CLI arguments
     // Or ImGUI window
     std::string _source_file;
+    int         _preferred_psm  = 0;
     bool        _enable_handles = true;
 
     std::unordered_map<std::string, override_configs_types> overrides;

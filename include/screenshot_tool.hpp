@@ -2,8 +2,8 @@
 #define _SCREENSHOT_TOOL_HPP_
 
 #include <algorithm>
-#include <cstdlib>
 #include <atomic>
+#include <cstdlib>
 #include <functional>
 #include <future>
 
@@ -79,11 +79,6 @@ class ScreenshotTool
 {
 public:
     ScreenshotTool() : m_io(dummy) {}
-    ~ScreenshotTool()
-    {
-        if (!IsActive())
-            Cancel();
-    }
 
     bool Start();
     bool StartWindow();
