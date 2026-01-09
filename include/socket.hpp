@@ -32,7 +32,11 @@ public:
     bool IsFailed() { return m_failed; }
 
 private:
-    int  m_sock{};
+#ifdef _WIN32
+    size_t m_sock{};
+#else
+    int m_sock{};
+#endif
     bool m_failed{};
 };
 

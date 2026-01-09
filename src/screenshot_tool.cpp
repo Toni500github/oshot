@@ -134,7 +134,7 @@ bool ScreenshotTool::StartWindow()
     m_state = ToolState::Selecting;
     CreateTexture();
     fit_to_screen(m_screenshot);
-    if (!m_screenshot.success || m_screenshot.data.empty() || !m_screenshot.error_msg.empty())
+    if (!m_screenshot.success || m_screenshot.data.empty() || !m_screenshot.error_msg.empty() || !m_texture_id)
     {
         m_state = ToolState::Idle;
         error("Failed to do data screenshot: {}", m_screenshot.error_msg);
@@ -143,11 +143,8 @@ bool ScreenshotTool::StartWindow()
     return true;
 }
 
-bool ScreenshotTool::RenderOverlay()
+void ScreenshotTool::RenderOverlay()
 {
-    if (!IsActive())
-        return false;
-
     if (!m_connect_done)
     {
         if (m_connect_future.valid() && m_connect_future.wait_for(0ms) == std::future_status::ready)
@@ -169,9 +166,6 @@ bool ScreenshotTool::RenderOverlay()
     ImGui::Begin("Screenshot Tool",
                  nullptr,
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
-
-    if (m_screenshot.data.empty() || !m_screenshot.success || !m_texture_id)
-        return false;
 
     // Draw the screenshot as background
     UpdateWindowBg();
@@ -203,38 +197,6 @@ bool ScreenshotTool::RenderOverlay()
         DrawTranslationTools();
         ImGui::End();
     }
-
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape))
-    {
-        Cancel();
-        return false;
-    }
-
-    const bool ctrl_down            = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
-    const bool shift_down           = ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
-    const bool save_pressed         = ctrl_down && ImGui::IsKeyPressed(ImGuiKey_S);
-    const bool copy_pressed         = ctrl_down && shift_down && ImGui::IsKeyPressed(ImGuiKey_C);
-    const bool edit_ocr_pressed     = ctrl_down && ImGui::IsKeyPressed(ImGuiKey_E);
-    const bool view_handles_pressed = ctrl_down && ImGui::IsKeyPressed(ImGuiKey_G);
-
-    if (edit_ocr_pressed)
-        config->allow_ocr_edit = !config->allow_ocr_edit;
-    if (view_handles_pressed)
-        config->_enable_handles = !config->_enable_handles;
-
-    if (m_state == ToolState::Selected && (save_pressed || copy_pressed))
-    {
-        if (m_on_complete)
-        {
-            const SavingOp op = save_pressed ? SavingOp::SAVE_FILE : SavingOp::SAVE_CLIPBOARD;
-            m_on_complete(op, GetFinalImage());
-        }
-
-        m_state = ToolState::Idle;
-        return false;
-    }
-
-    return true;
 }
 
 void ScreenshotTool::HandleSelectionInput()
@@ -518,12 +480,38 @@ void ScreenshotTool::DrawSelectionBorder()
     draw_handle(ImVec2(sel_x + sel_w, sel_y + sel_h / 2), HandleHovered::Right);
 }
 
+// from ImGui::GetShortcutRoutingData(ImGuiKeyChord key_chord)
+// Majority of shortcuts will be Key + any number of Mods
+// We accept _Single_ mod with ImGuiKey_None.
+//  - Shortcut(ImGuiKey_S | ImGuiMod_Ctrl);                    // Legal
+//  - Shortcut(ImGuiKey_S | ImGuiMod_Ctrl | ImGuiMod_Shift);   // Legal
+//  - Shortcut(ImGuiMod_Ctrl);                                 // Legal
+//  - Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift);                // Not legal
 void ScreenshotTool::DrawMenuItems()
 {
     static bool show_about = false;
 
     if (ImGui::BeginMenuBar())
     {
+        // Handle shortcuts FIRST, before drawing menus
+        if (ImGui::Shortcut(ImGuiKey_Escape))
+            Cancel();
+
+        if (ImGui::Shortcut(ImGuiKey_E | ImGuiMod_Ctrl))
+            config->allow_ocr_edit = !config->allow_ocr_edit;
+
+        if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Ctrl))
+            config->_enable_handles = !config->_enable_handles;
+
+        if (ImGui::Shortcut(ImGuiKey_S | ImGuiMod_Ctrl))
+            if (m_on_complete)
+                m_on_complete(SavingOp::SAVE_FILE, GetFinalImage());
+
+        if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl | ImGuiMod_Shift))
+            if (!HasError(NoLauncher) && m_on_complete)
+                m_on_complete(SavingOp::SAVE_CLIPBOARD, GetFinalImage());
+
+        // Now draw the menus
         if (ImGui::BeginMenu("File"))
         {
             if (ImGui::MenuItem("Save Image", "CTRL+S"))
@@ -544,8 +532,8 @@ void ScreenshotTool::DrawMenuItems()
         }
         if (ImGui::BeginMenu("Edit"))
         {
-            if (ImGui::MenuItem("View Handles", "CTRL+G", &config->_enable_handles)){}
-            if (ImGui::MenuItem("Allow OCR edit", "CTRL+E", &config->allow_ocr_edit)){}
+            ImGui::MenuItem("View Handles", "CTRL+G", &config->_enable_handles);
+            ImGui::MenuItem("Allow OCR edit", "CTRL+E", &config->allow_ocr_edit);
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help"))

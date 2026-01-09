@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <string>
 
 #include "util.hpp"
@@ -33,10 +34,10 @@ bool SocketSender::Start(int port)
 
 #ifdef _WIN32
     if (m_failed)
-        error("connect failed: {}", WSAGetLastError());
+        error("connect to launcher failed: {}", WSAGetLastError());
 #else
     if (m_failed)
-        perror("connect failed");
+        error("connecting to launcher failed: {}", strerror(errno));
 #endif
 
     return !m_failed;

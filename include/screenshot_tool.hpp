@@ -83,8 +83,7 @@ public:
     bool Start();
     bool StartWindow();
 
-    // Returns true if active, else false if finished
-    bool RenderOverlay();
+    void RenderOverlay();
 
     bool             CreateTexture();
     capture_result_t GetFinalImage();
