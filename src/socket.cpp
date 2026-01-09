@@ -76,13 +76,13 @@ bool SocketSender::Send(SendMsg msg, const void* src, size_t size)
 
     const char* buf = reinterpret_cast<const char*>(src);
 
-    size_t sent = 0;
+    size_t           sent       = 0;
+    constexpr size_t CHUNK_SIZE = 64 * 1024;  // 64KB
     while (sent < size)
     {
         size_t remaining = size - sent;
-        int    chunk     = static_cast<int>(std::min(remaining, static_cast<size_t>(INT_MAX)));
-
-        int n = send(m_sock, buf + sent, chunk, 0);
+        size_t chunk     = std::min(remaining, CHUNK_SIZE);
+        int    n         = send(m_sock, buf + sent, chunk, 0);
         if (n <= 0)
             return false;
 

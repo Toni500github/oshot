@@ -66,7 +66,11 @@ std::vector<uint8_t> ppm_to_rgba(std::span<const uint8_t> ppm, int width, int he
     const size_t required_ppm  = static_cast<size_t>(width) * height * 3;
     const size_t required_rgba = static_cast<size_t>(width) * height * 4;
 
-    if (ppm.size() < required_ppm)
+    if (width <= 0 || height <= 0 || ppm.size() < required_ppm)
+        return {};
+
+    // Check multiplication overflow
+    if (static_cast<size_t>(width) > SIZE_MAX / height / 3)
         return {};
 
     std::vector<uint8_t> rgba_data(required_rgba);
@@ -86,8 +90,11 @@ std::vector<uint8_t> rgba_to_ppm(std::span<const uint8_t> rgba, int width, int h
     const size_t required_ppm  = static_cast<size_t>(width) * height * 3;
     const size_t required_rgba = static_cast<size_t>(width) * height * 4;
 
-    if (rgba.size() < required_rgba)
+    if (width <= 0 || height <= 0 || rgba.size() < required_rgba)
         return {};
+
+    if (static_cast<size_t>(width) > SIZE_MAX / height / 3)
+        return {};  // Check multiplication overflow
 
     const std::string& header = fmt::format("P6\n{} {}\n255\n", width, height);
 
@@ -140,13 +147,16 @@ void fit_to_screen(capture_result_t& img)
     const int img_w = img.region.width;
     const int img_h = img.region.height;
 
+    if (img_w <= 0 || img_h <= 0)
+        return;
+
     if (img_w <= scr_w && img_h <= scr_h)
         return;
 
     float scale = std::min(static_cast<float>(scr_w) / img_w, static_cast<float>(scr_h) / img_h);
 
-    int new_w = static_cast<int>(img_w * scale);
-    int new_h = static_cast<int>(img_h * scale);
+    int new_w = static_cast<int>(std::round(img_w * scale));
+    int new_h = static_cast<int>(std::round(img_h * scale));
 
     std::vector<uint8_t> resized(new_w * new_h * 4);
 

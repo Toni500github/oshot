@@ -107,8 +107,9 @@ OcrAPI::PixPtr OcrAPI::rgba_to_pix(std::span<const uint8_t> rgba, int w, int h)
     {
         for (int x = 0; x < w; ++x)
         {
-            const auto* p   = &rgba[4 * (y * w + x)];
-            uint32_t*   dst = data + y * stride + x;
+            size_t      index = static_cast<size_t>(y) * w + x;
+            const auto* p     = &rgba[index * 4];
+            uint32_t*   dst   = data + y * stride + x;
 
             // RGBA → Leptonica BGRA
             *dst = (p[2] << 24) |  // B

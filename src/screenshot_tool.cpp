@@ -27,6 +27,10 @@
 #undef None
 #endif
 
+#ifndef GL_NO_ERROR
+#define GL_NO_ERROR 0
+#endif
+
 using namespace std::chrono_literals;
 
 static ImVec2 origin(0, 0);
@@ -145,15 +149,14 @@ bool ScreenshotTool::StartWindow()
 
 void ScreenshotTool::RenderOverlay()
 {
-    if (!m_connect_done)
+    if (!m_connect_done.load(std::memory_order_acquire))
     {
         if (m_connect_future.valid() && m_connect_future.wait_for(0ms) == std::future_status::ready)
         {
-            bool success   = m_connect_future.get();
-            m_connect_done = true;
+            bool success = m_connect_future.get();
+            m_connect_done.store(true, std::memory_order_release);
 
             ClearError(WarnConnLauncher);
-
             if (!success)
                 SetError(NoLauncher);
         }
@@ -297,7 +300,6 @@ void ScreenshotTool::UpdateHandleHoverState()
 {
     const ImVec2 mouse_pos = ImGui::GetMousePos();
     m_handle_hover         = HandleHovered::None;
-    m_handle_pos           = ImVec2(0, 0);
 
     if (m_state != ToolState::Selected && m_state != ToolState::Resizing)
         return;
@@ -356,7 +358,6 @@ void ScreenshotTool::UpdateHandleHoverState()
         if (handle.rect.Contains(mouse_pos))
         {
             m_handle_hover = handle.type;
-            m_handle_pos   = { handle.pos.x * 2, handle.pos.y * 2 };
             break;
         }
     }
@@ -892,6 +893,7 @@ void ScreenshotTool::Cancel()
 capture_result_t ScreenshotTool::GetFinalImage()
 {
     UpdateWindowBg();
+
     region_t region{
         static_cast<int>(m_selection.get_x() - m_image_origin.x),
         static_cast<int>(m_selection.get_y() - m_image_origin.y),
@@ -902,32 +904,38 @@ capture_result_t ScreenshotTool::GetFinalImage()
     capture_result_t result;
     result.region  = region;
     result.success = true;
-    result.data.resize(region.width * region.height * 4);
+    result.data.resize(static_cast<size_t>(region.width) * region.height * 4);
 
     std::span<const uint8_t> src_data(m_screenshot.view());
     std::span<uint8_t>       dst_data(result.data);
 
-    int src_width = m_screenshot.region.width;
-    int dst_width = region.width;
+    const int src_width = m_screenshot.region.width;
+    const int dst_width = region.width;
 
     // Calculate bounds
-    int start_y = std::max(0, -region.y);
-    int end_y   = std::min(region.height, m_screenshot.region.height - region.y);
-    int start_x = std::max(0, -region.x);
-    int end_x   = std::min(region.width, m_screenshot.region.width - region.x);
-
-    std::fill(result.data.begin(), result.data.end(), 0);
+    const int start_y = std::max(0, -region.y);
+    const int end_y   = std::min(region.height, m_screenshot.region.height - region.y);
+    const int start_x = std::max(0, -region.x);
+    const int end_x   = std::min(region.width, m_screenshot.region.width - region.x);
 
     // Copy only the valid region
     for (int y = start_y; y < end_y; ++y)
     {
-        int src_y         = region.y + y;
-        int src_row_start = (src_y * src_width + region.x + start_x) * 4;
-        int dst_row_start = (y * dst_width + start_x) * 4;
+        const int src_y = region.y + y;
 
-        // Copy the entire valid row segment
-        int bytes_to_copy = (end_x - start_x) * 4;
-        std::memcpy(&dst_data[dst_row_start], &src_data[src_row_start], bytes_to_copy);
+        const size_t src_row_start = (static_cast<size_t>(src_y) * src_width + region.x + start_x) * 4;
+        const size_t dst_row_start = static_cast<size_t>(y * dst_width + start_x) * 4;
+        const size_t bytes_to_copy = static_cast<size_t>(end_x - start_x) * 4;
+
+#if DEBUG
+        assert(src_row_start + bytes_to_copy <= src_data.size());
+        assert(dst_row_start + bytes_to_copy <= dst_data.size());
+#else
+        if (src_row_start + bytes_to_copy > src_data.size() || dst_row_start + bytes_to_copy > dst_data.size())
+            return result;
+#endif
+
+        std::memcpy(dst_data.data() + dst_row_start, src_data.data() + src_row_start, bytes_to_copy);
     }
 
     return result;
@@ -1004,13 +1012,19 @@ ImFont* ScreenshotTool::GetOrLoadFontForLanguage(const std::string& lang_code)
 
 bool ScreenshotTool::CreateTexture()
 {
-    if (m_screenshot.data.empty() || !m_screenshot.success)
-        return false;
+    // Delete old texture first
+    if (m_texture_id)
+    {
+        GLuint old_texture = (GLuint)(intptr_t)m_texture_id;
+        glDeleteTextures(1, &old_texture);
+    }
 
     GLuint texture;
     glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
+    if (glGetError() != GL_NO_ERROR)
+        return false;
 
+    glBindTexture(GL_TEXTURE_2D, texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);

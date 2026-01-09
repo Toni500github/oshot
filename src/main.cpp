@@ -169,9 +169,9 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
     return true;
 }
 
-static void glfw_error_callback(int error, const char* description)
+static void glfw_error_callback(int i_error, const char* description)
 {
-    fmt::println(stderr, "GLFW Error {}: {}", error, description);
+    error("GLFW Error {}: {}", i_error, description);
 }
 
 int main(int argc, char* argv[])
