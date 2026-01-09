@@ -142,9 +142,6 @@ jobs:
           cp ./launcher/oshot_launcher.py package/oshot/oshot_launcher.pyw
           # Copy required DLLs
           ldd ./build/release/oshot.exe | grep -i mingw | awk '{print $3}' | xargs -I {} cp {} package/oshot/ || true
-          curl -LO https://downloads.fdossena.com/Projects/Mesa3D/Builds/MesaForWindows-x64-20.1.8.7z
-          7z x MesaForWindows-x64-20.1.8.7z
-          cp opengl32.dll package/oshot/
           cd package
           zip -r oshot-windows.zip oshot/
 

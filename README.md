@@ -65,6 +65,12 @@ Example:
 ```toml
 ocr-path = "C:\\Program Files\\Tesseract-OCR\\tessdata"
 ```
+## Windows Troubleshooting
+If when starting oshot, it starts to flick the screen black (or it won't launch), try to follow these steps:
+1. Download [MesaForWindows-x64-20.1.8.7z](https://downloads.fdossena.com/geth.php?r=mesa64-latest)
+2. Extract the `opengl32.dll` file into the directory where `oshot.exe` is located
+3. Try to launch it again
+If still errors, please open an [Issue](https://github.com/Toni500github/oshot/issues) and take a screenshot of the error appearing in the console when executing `oshot.exe`
 
 ## Usage
 https://github.com/user-attachments/assets/ac505de6-0818-4d67-bb51-064d86f1f970
