@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,9 @@ struct capture_result_t
     bool                 success = false;
     region_t             region;
     std::string          error_msg;
+
+    std::span<const uint8_t> view() const { return data; }
+    std::span<uint8_t>       view() { return data; }
 };
 
 enum SessionType

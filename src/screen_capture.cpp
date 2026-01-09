@@ -107,7 +107,7 @@ capture_result_t capture_full_screen_wayland()
     }
     pclose(pipe);
 
-    result.data          = ppm_to_rgba(ppm_data.data(), width, height);
+    result.data          = ppm_to_rgba(ppm_data, width, height);
     result.region.width  = width;
     result.region.height = height;
     result.success       = true;
@@ -168,9 +168,9 @@ capture_result_t capture_full_screen_windows()
     );
 
     // Now we have the RGB data in pBits, but we need to convert to RGBA
-    // The DIB section gives us BGRA format in memory (why..?)
-    const uint8_t* src = static_cast<const uint8_t*>(pBits);
-    uint8_t*       dst = result.data.data();
+    // The DIB section gives us BGRA format in memory
+    std::span<const uint8_t> src(static_cast<const uint8_t*>(pBits), width * height * 4);
+    std::span<uint8_t>       dst(result.data);
 
     // Convert BGRA to RGBA
     for (int i = 0; i < width * height; ++i)

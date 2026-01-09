@@ -60,16 +60,16 @@ bool OcrAPI::Configure(const char* data_path, const char* model, tesseract::OcrE
 
 std::optional<std::string> OcrAPI::RecognizeCapture(const capture_result_t& cap)
 {
-    if (!m_initialized || cap.data.empty() || cap.region.width <= 0 || cap.region.height <= 0)
+    if (!m_initialized || cap.view().empty() || cap.region.width <= 0 || cap.region.height <= 0)
         return std::nullopt;
 
     const size_t required = static_cast<size_t>(cap.region.width) * cap.region.height * 4;
 
-    if (cap.data.size() < required)
+    if (cap.view().size() < required)
         return std::nullopt;
 
     tesseract::PageSegMode psm = choose_psm(cap.region.width, cap.region.height);
-    PixPtr                 pix = rgba_to_pix(cap.data.data(), cap.region.width, cap.region.height);
+    PixPtr                 pix = rgba_to_pix(cap.view(), cap.region.width, cap.region.height);
     if (!pix)
         return std::nullopt;
 
@@ -90,8 +90,12 @@ std::optional<std::string> OcrAPI::RecognizeCapture(const capture_result_t& cap)
     return std::string(text.get());
 }
 
-OcrAPI::PixPtr OcrAPI::rgba_to_pix(const uint8_t* rgba, int w, int h)
+OcrAPI::PixPtr OcrAPI::rgba_to_pix(std::span<const uint8_t> rgba, int w, int h)
 {
+    const size_t required = static_cast<size_t>(w) * h * 4;
+    if (rgba.size() < required)
+        return PixPtr(nullptr);
+
     PIX* pix = pixCreate(w, h, 32);
     if (!pix)
         return PixPtr(nullptr);
@@ -103,8 +107,8 @@ OcrAPI::PixPtr OcrAPI::rgba_to_pix(const uint8_t* rgba, int w, int h)
     {
         for (int x = 0; x < w; ++x)
         {
-            const uint8_t* p   = rgba + 4 * (y * w + x);
-            uint32_t*      dst = data + y * stride + x;
+            const auto* p   = &rgba[4 * (y * w + x)];
+            uint32_t*   dst = data + y * stride + x;
 
             // RGBA → Leptonica BGRA
             *dst = (p[2] << 24) |  // B

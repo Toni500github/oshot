@@ -61,10 +61,15 @@ std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
 }
 #endif
 
-std::vector<uint8_t> ppm_to_rgba(uint8_t* ppm, int width, int height)
+std::vector<uint8_t> ppm_to_rgba(std::span<const uint8_t> ppm, int width, int height)
 {
-    std::vector<uint8_t> rgba_data(width * height * 4);
+    const size_t required_ppm  = static_cast<size_t>(width) * height * 3;
+    const size_t required_rgba = static_cast<size_t>(width) * height * 4;
 
+    if (ppm.size() < required_ppm)
+        return {};
+
+    std::vector<uint8_t> rgba_data(required_rgba);
     for (int i = 0; i < width * height; ++i)
     {
         rgba_data[i * 4 + 0] = ppm[i * 3 + 0];  // R
@@ -76,12 +81,18 @@ std::vector<uint8_t> ppm_to_rgba(uint8_t* ppm, int width, int height)
     return rgba_data;
 }
 
-std::vector<uint8_t> rgba_to_ppm(const std::vector<uint8_t>& rgba, int width, int height)
+std::vector<uint8_t> rgba_to_ppm(std::span<const uint8_t> rgba, int width, int height)
 {
-    const std::string& header = "P6\n" + fmt::to_string(width) + " " + fmt::to_string(height) + "\n255\n";
+    const size_t required_ppm  = static_cast<size_t>(width) * height * 3;
+    const size_t required_rgba = static_cast<size_t>(width) * height * 4;
+
+    if (rgba.size() < required_rgba)
+        return {};
+
+    const std::string& header = fmt::format("P6\n{} {}\n255\n", width, height);
 
     std::vector<uint8_t> ppm_data;
-    ppm_data.reserve(header.size() + (width * height * 3));
+    ppm_data.reserve(header.size() + required_ppm);
     ppm_data.insert(ppm_data.end(), header.begin(), header.end());
 
     for (size_t i = 0; i < rgba.size(); i += 4)
@@ -139,7 +150,8 @@ void fit_to_screen(capture_result_t& img)
 
     std::vector<uint8_t> resized(new_w * new_h * 4);
 
-    bool ok = stbir_resize_uint8_linear(img.data.data(), img_w, img_h, 0, resized.data(), new_w, new_h, 0, STBIR_RGBA);
+    bool ok =
+        stbir_resize_uint8_linear(img.view().data(), img_w, img_h, 0, resized.data(), new_w, new_h, 0, STBIR_RGBA);
 
     if (!ok)
     {
@@ -225,7 +237,7 @@ bool save_png(SavingOp op, const capture_result_t& img)
 {
     std::vector<uint8_t> data;
     data.reserve(img.region.width * img.region.height * 4);
-    svpng(&data, img.region.width, img.region.height, img.data.data(), 1);
+    svpng(&data, img.region.width, img.region.height, img.view().data(), 1);
     size_t size = data.size();
 
     if (op == SavingOp::SAVE_CLIPBOARD)

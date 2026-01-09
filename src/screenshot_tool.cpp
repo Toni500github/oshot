@@ -904,8 +904,8 @@ capture_result_t ScreenshotTool::GetFinalImage()
     result.success = true;
     result.data.resize(region.width * region.height * 4);
 
-    const uint8_t* src_data = m_screenshot.data.data();
-    uint8_t*       dst_data = result.data.data();
+    std::span<const uint8_t> src_data(m_screenshot.view());
+    std::span<uint8_t>       dst_data(result.data);
 
     int src_width = m_screenshot.region.width;
     int dst_width = region.width;
@@ -1024,7 +1024,7 @@ bool ScreenshotTool::CreateTexture()
                  0,
                  GL_RGBA,
                  GL_UNSIGNED_BYTE,
-                 m_screenshot.data.data());
+                 m_screenshot.view().data());
 
     m_texture_id = (void*)(intptr_t)texture;
     return true;

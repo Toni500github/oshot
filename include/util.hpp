@@ -18,6 +18,7 @@ enum class SavingOp;
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -39,8 +40,8 @@ std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height);
 
 extern int scr_w, scr_h;
 
-std::vector<uint8_t>  ppm_to_rgba(uint8_t* ppm, int width, int height);
-std::vector<uint8_t>  rgba_to_ppm(const std::vector<uint8_t>& rgba, int width, int height);
+std::vector<uint8_t>  ppm_to_rgba(std::span<const uint8_t> ppm, int width, int height);
+std::vector<uint8_t>  rgba_to_ppm(std::span<const uint8_t> rgba, int width, int height);
 std::string           replace_str(std::string& str, const std::string_view from, const std::string_view to);
 std::string           select_image();
 std::filesystem::path get_font_path(const std::string& font);
