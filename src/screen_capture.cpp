@@ -40,6 +40,7 @@ struct com_ptr
 
     T** operator&() { return &ptr; }
     T*  operator->() const { return ptr; }
+        operator T*() const { return ptr; }
         operator bool() const { return ptr != nullptr; }
 };
 
@@ -237,7 +238,7 @@ capture_result_t capture_full_screen_windows()
     com_ptr<IDXGIDevice> dxgiDevice;
     device->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDevice);
 
-    com_ptr<IDXGIAdapter> adapter = nullptr;
+    com_ptr<IDXGIAdapter> adapter;
     dxgiDevice->GetAdapter(&adapter);
 
     com_ptr<IDXGIOutput> output;
