@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_CXX_FLAGS_DEBUG
-    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG=1 -ggdb3 -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer -Wall -Wextra -pedantic -Wno-unused-parameter"
+    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG=1 -ggdb3 -fno-omit-frame-pointer -Wall -Wextra -pedantic -Wno-unused-parameter"
 )
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
@@ -91,8 +91,11 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 if (WIN32)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32 shcore)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32 shcore d3d11 dxgi)
 elseif (UNIX AND NOT APPLE)
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fsanitize=undefined")
+    endif()
     find_package(X11 REQUIRED)
     target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
 endif()

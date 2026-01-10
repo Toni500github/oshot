@@ -29,7 +29,7 @@ else ifeq ($(UNAME_S),Darwin) #APPLE
         CXXFLAGS += -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include
 
 else ifeq ($(findstring _NT,$(UNAME_S)),_NT)
-        LDLIBS += -lgdi32 -lopengl32 -limm32 -lole32 -lcomdlg32 -luuid -lshcore
+        LDLIBS += -ld3d11 -ldxgi -lgdi32 -lopengl32 -limm32 -lole32 -lcomdlg32 -luuid -lshcore
 endif
 
 # https://stackoverflow.com/a/1079861
