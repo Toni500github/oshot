@@ -17,7 +17,13 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #elif defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <d3d11.h>
+#include <dxgi1_2.h>
+#include <stdio.h>
+#pragma comment(lib, "d3d11")
+#pragma comment(lib, "dxgi")
 #endif
 
 SessionType get_session_type()
@@ -118,76 +124,135 @@ capture_result_t capture_full_screen_wayland()
 capture_result_t capture_full_screen_windows()
 {
     capture_result_t result;
+
 #ifdef _WIN32
-    int width  = GetSystemMetrics(SM_CXSCREEN);
-    int height = GetSystemMetrics(SM_CYSCREEN);
+    HRESULT hr;
+
+    // Create D3D11 device
+    ID3D11Device*        device  = nullptr;
+    ID3D11DeviceContext* context = nullptr;
+
+    hr = D3D11CreateDevice(
+        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context);
+
+    if (FAILED(hr))
+    {
+        result.error_msg = "D3D11CreateDevice failed";
+        return result;
+    }
+
+    // Get primary output (monitor)
+    IDXGIDevice* dxgiDevice = nullptr;
+    device->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDevice);
+
+    IDXGIAdapter* adapter = nullptr;
+    dxgiDevice->GetAdapter(&adapter);
+
+    IDXGIOutput* output = nullptr;
+    adapter->EnumOutputs(0, &output);  // primary monitor
+
+    IDXGIOutput1* output1 = nullptr;
+    output->QueryInterface(__uuidof(IDXGIOutput1), (void**)&output1);
+
+    // Create duplication
+    IDXGIOutputDuplication* duplication = nullptr;
+    hr                                  = output1->DuplicateOutput(device, &duplication);
+
+    if (FAILED(hr))
+    {
+        result.error_msg = "DuplicateOutput failed";
+        goto cleanup;
+    }
+
+    // Acquire frame
+    DXGI_OUTDUPL_FRAME_INFO frameInfo{};
+    IDXGIResource*          resource = nullptr;
+
+    hr = duplication->AcquireNextFrame(1000, &frameInfo, &resource);
+    if (FAILED(hr))
+    {
+        result.error_msg = "AcquireNextFrame failed";
+        goto cleanup;
+    }
+
+    ID3D11Texture2D* gpuTex = nullptr;
+    resource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&gpuTex);
+
+    D3D11_TEXTURE2D_DESC desc{};
+    gpuTex->GetDesc(&desc);
+
+    const int width  = static_cast<int>(desc.Width);
+    const int height = static_cast<int>(desc.Height);
 
     result.region.width  = width;
     result.region.height = height;
     result.data.resize(width * height * 4);
-    std::fill(result.data.begin(), result.data.end(), 0);
 
-    // Get Device Contexts
-    HDC hScreenDC = GetDC(NULL);
-    HDC hMemoryDC = CreateCompatibleDC(hScreenDC);
+    // Create staging texture (CPU readable)
+    D3D11_TEXTURE2D_DESC stagingDesc = desc;
+    stagingDesc.Usage                = D3D11_USAGE_STAGING;
+    stagingDesc.BindFlags            = 0;
+    stagingDesc.CPUAccessFlags       = D3D11_CPU_ACCESS_READ;
+    stagingDesc.MiscFlags            = 0;
 
-    // Create a 32-bit bitmap for RGBA capture
-    BITMAPINFO bmi              = { 0 };
-    bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth       = width;
-    bmi.bmiHeader.biHeight      = -height;  // Negative for top-down DIB
-    bmi.bmiHeader.biPlanes      = 1;
-    bmi.bmiHeader.biBitCount    = 32;
-    bmi.bmiHeader.biCompression = BI_RGB;
-
-    // Create DIB section
-    void*   pBits   = nullptr;
-    HBITMAP hBitmap = CreateDIBSection(hScreenDC, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
-
-    if (!hBitmap)
+    ID3D11Texture2D* staging = nullptr;
+    hr                       = device->CreateTexture2D(&stagingDesc, nullptr, &staging);
+    if (FAILED(hr))
     {
-        DeleteDC(hMemoryDC);
-        ReleaseDC(NULL, hScreenDC);
-        result.error_msg = "Failed to create DIB section";
-        return result;
+        result.error_msg = "CreateTexture2D (staging) failed";
+        duplication->ReleaseFrame();
+        goto cleanup;
     }
 
-    // Select the bitmap into the memory DC
-    HBITMAP hOldBitmap = (HBITMAP)SelectObject(hMemoryDC, hBitmap);
+    context->CopyResource(staging, gpuTex);
 
-    // Copy the screen to the bitmap
-    BitBlt(hMemoryDC,
-           0,
-           0,
-           width,
-           height,
-           hScreenDC,
-           0,
-           0,
-           SRCCOPY | CAPTUREBLT  // CAPTUREBLT captures layered windows
-    );
+    // Map and convert BGRA -> RGBA
+    D3D11_MAPPED_SUBRESOURCE map{};
+    hr = context->Map(staging, 0, D3D11_MAP_READ, 0, &map);
+    if (FAILED(hr))
+    {
+        result.error_msg = "Map failed";
+        duplication->ReleaseFrame();
+        goto cleanup;
+    }
 
-    // Now we have the RGB data in pBits, but we need to convert to RGBA
-    // The DIB section gives us BGRA format in memory
-    std::span<const uint8_t> src(static_cast<const uint8_t*>(pBits), width * height * 4);
+    std::span<const uint8_t> src(static_cast<const uint8_t*>(map.pData));
     std::span<uint8_t>       dst(result.data);
 
-    // Convert BGRA to RGBA
-    for (int i = 0; i < width * height; ++i)
+    for (int y = 0; y < height; ++y)
     {
-        dst[i * 4 + 0] = src[i * 4 + 2];  // R <- B
-        dst[i * 4 + 1] = src[i * 4 + 1];  // G <- G
-        dst[i * 4 + 2] = src[i * 4 + 0];  // B <- R
-        dst[i * 4 + 3] = 0xff;
+        std::span<const uint8_t> row(src + y * map.RowPitch);
+        for (int x = 0; x < width; ++x)
+        {
+            const int si = x * 4;
+            const int di = (y * width + x) * 4;
+
+            dst[di + 0] = row[si + 2];  // R
+            dst[di + 1] = row[si + 1];  // G
+            dst[di + 2] = row[si + 0];  // B
+            dst[di + 3] = 0xff;         // A
+        }
     }
 
-    // Cleanup
-    SelectObject(hMemoryDC, hOldBitmap);
-    DeleteObject(hBitmap);
-    DeleteDC(hMemoryDC);
-    ReleaseDC(NULL, hScreenDC);
+    context->Unmap(staging, 0);
+    duplication->ReleaseFrame();
 
     result.success = true;
+
+    // clang-format off
+cleanup:
+    if (staging)     staging->Release();
+    if (gpuTex)      gpuTex->Release();
+    if (resource)    resource->Release();
+    if (duplication) duplication->Release();
+    if (output1)     output1->Release();
+    if (output)      output->Release();
+    if (adapter)     adapter->Release();
+    if (dxgiDevice)  dxgiDevice->Release();
+    if (context)     context->Release();
+    if (device)      device->Release();
+
 #endif
+
     return result;
 }
