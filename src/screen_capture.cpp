@@ -121,10 +121,86 @@ capture_result_t capture_full_screen_wayland()
     return result;
 }
 
+capture_result_t capture_full_screen_windows_fallback()
+{
+    capture_result_t result;
+#ifdef _WIN32
+    int width  = GetSystemMetrics(SM_CXSCREEN);
+    int height = GetSystemMetrics(SM_CYSCREEN);
+
+    result.region.width  = width;
+    result.region.height = height;
+    result.data.resize(width * height * 4);
+    std::fill(result.data.begin(), result.data.end(), 0);
+
+    // Get Device Contexts
+    HDC hScreenDC = GetDC(NULL);
+    HDC hMemoryDC = CreateCompatibleDC(hScreenDC);
+
+    // Create a 32-bit bitmap for RGBA capture
+    BITMAPINFO bmi              = { 0 };
+    bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth       = width;
+    bmi.bmiHeader.biHeight      = -height;  // Negative for top-down DIB
+    bmi.bmiHeader.biPlanes      = 1;
+    bmi.bmiHeader.biBitCount    = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    // Create DIB section
+    void*   pBits   = nullptr;
+    HBITMAP hBitmap = CreateDIBSection(hScreenDC, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
+
+    if (!hBitmap)
+    {
+        DeleteDC(hMemoryDC);
+        ReleaseDC(NULL, hScreenDC);
+        result.error_msg = "Failed to create DIB section";
+        return result;
+    }
+
+    // Select the bitmap into the memory DC
+    HBITMAP hOldBitmap = (HBITMAP)SelectObject(hMemoryDC, hBitmap);
+
+    // Copy the screen to the bitmap
+    BitBlt(hMemoryDC,
+           0,
+           0,
+           width,
+           height,
+           hScreenDC,
+           0,
+           0,
+           SRCCOPY | CAPTUREBLT  // CAPTUREBLT captures layered windows
+    );
+
+    // Now we have the RGB data in pBits, but we need to convert to RGBA
+    // The DIB section gives us BGRA format in memory
+    std::span<const uint8_t> src(static_cast<const uint8_t*>(pBits), width * height * 4);
+    std::span<uint8_t>       dst(result.data);
+
+    // Convert BGRA to RGBA
+    for (int i = 0; i < width * height; ++i)
+    {
+        dst[i * 4 + 0] = src[i * 4 + 2];  // R <- B
+        dst[i * 4 + 1] = src[i * 4 + 1];  // G <- G
+        dst[i * 4 + 2] = src[i * 4 + 0];  // B <- R
+        dst[i * 4 + 3] = 0xff;
+    }
+
+    // Cleanup
+    SelectObject(hMemoryDC, hOldBitmap);
+    DeleteObject(hBitmap);
+    DeleteDC(hMemoryDC);
+    ReleaseDC(NULL, hScreenDC);
+
+    result.success = true;
+#endif
+    return result;
+}
+
 capture_result_t capture_full_screen_windows()
 {
     capture_result_t result;
-
 #ifdef _WIN32
     HRESULT hr;
 
@@ -138,7 +214,7 @@ capture_result_t capture_full_screen_windows()
     if (FAILED(hr))
     {
         result.error_msg = "D3D11CreateDevice failed";
-        return result;
+        return capture_full_screen_windows_fallback();
     }
 
     // Get primary output (monitor)
@@ -252,7 +328,9 @@ cleanup:
     if (context)     context->Release();
     if (device)      device->Release();
 
-#endif
+    if (FAILED(hr))
+        return capture_full_screen_windows_fallback();
 
+#endif
     return result;
 }
