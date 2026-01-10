@@ -47,6 +47,7 @@
 
 std::unique_ptr<Config> config;
 int                     scr_w{}, scr_h{};
+FILE*                   fp;
 
 // Print the version and some other infos, then exit successfully
 static void version()
@@ -252,6 +253,24 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);  // Enable vsync
+
+#if defined(_WIN32) && !defined(WINDOWS_CMD)
+    // Windows GUI (-mwindows): log to file
+    fp = fopen("oshot.log", "w");
+    if (!fp)
+    {
+        // fallback
+        fp = stdout;
+        fprintf(stderr, "Failed to open oshot.log, using stdout\n");
+    }
+
+    FILE* dummy;
+    freopen_s(&dummy, "CONOUT$", "w", stdout);
+    freopen_s(&dummy, "CONOUT$", "w", stderr);
+#else
+    fp = stdout;
+#endif
+
 
     scr_w = mode->width;
     scr_h = mode->height;

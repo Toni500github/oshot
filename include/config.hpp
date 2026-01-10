@@ -3,7 +3,6 @@
 #define _CONFIG_HPP
 
 #include <memory>
-#include <vector>
 
 #include "util.hpp"
 #define TOML_HEADER_ONLY 0

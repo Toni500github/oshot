@@ -92,6 +92,12 @@ target_link_libraries(${PROJECT_NAME}
 
 if (WIN32)
     target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32 shcore d3d11 dxgi)
+    if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT DEFINED WINDOWS_CMD)
+        target_link_options(${PROJECT_NAME} PRIVATE "-mwindows")
+        target_compile_options(${PROJECT_NAME} PRIVATE "-mwindows")
+    else()
+        target_compile_options(${PROJECT_NAME} PRIVATE "-DWINDOWS_CMD=1")
+    endif()
 elseif (UNIX AND NOT APPLE)
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
         set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fsanitize=undefined")

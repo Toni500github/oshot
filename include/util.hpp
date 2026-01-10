@@ -1,6 +1,8 @@
 #ifndef _UTIL_HPP_
 #define _UTIL_HPP_
 
+#include <cstdio>
+
 #include "screen_capture.hpp"
 enum class SavingOp;
 
@@ -34,11 +36,12 @@ enum class SavingOp;
 #define _(s) (char*)s
 #endif
 
+extern int   scr_w, scr_h;
+extern FILE* fp;
+
 #ifdef __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height);
 #endif
-
-extern int scr_w, scr_h;
 
 std::vector<uint8_t>  ppm_to_rgba(std::span<const uint8_t> ppm, int width, int height);
 std::vector<uint8_t>  rgba_to_ppm(std::span<const uint8_t> rgba, int width, int height);
@@ -64,7 +67,7 @@ std::string expandVar(std::string ret, bool dont = false);
 template <typename... Args>
 void error(const std::string_view fmt, Args&&... args) noexcept
 {
-    fmt::print(stderr,
+    fmt::print(fp,
                BOLD_COLOR(fmt::rgb(fmt::color::red)),
                "[{}] ERROR: {}\n",
                std::chrono::system_clock::now(),
@@ -72,7 +75,7 @@ void error(const std::string_view fmt, Args&&... args) noexcept
 }
 
 template <typename... Args>
-void die(const std::string_view fmt, Args&&... args) noexcept
+[[noreturn]] void die(const std::string_view fmt, Args&&... args) noexcept
 {
 #ifdef _WIN32
     MessageBox(nullptr,
@@ -80,7 +83,7 @@ void die(const std::string_view fmt, Args&&... args) noexcept
                "Fatal Error",
                MB_ICONERROR | MB_OK);
 #endif
-    fmt::print(stderr,
+    fmt::print(fp,
                BOLD_COLOR(fmt::rgb(fmt::color::red)),
                "[{}] FATAL: {}\n",
                std::chrono::system_clock::now(),
@@ -92,7 +95,7 @@ template <typename... Args>
 void debug(const std::string_view fmt, Args&&... args) noexcept
 {
 #if DEBUG
-    fmt::print(BOLD_COLOR((fmt::rgb(fmt::color::hot_pink))),
+    fmt::print(fp, BOLD_COLOR((fmt::rgb(fmt::color::hot_pink))),
                "[{}] [DEBUG]: {}\n",
                std::chrono::system_clock::now(),
                fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
@@ -108,7 +111,8 @@ void warn(const std::string_view fmt, Args&&... args) noexcept
                "Warning",
                MB_ICONWARNING | MB_OK);
 #endif
-    fmt::print(BOLD_COLOR((fmt::rgb(fmt::color::yellow))),
+    fmt::print(fp,
+               BOLD_COLOR((fmt::rgb(fmt::color::yellow))),
                "[{}] WARNING: {}\n",
                std::chrono::system_clock::now(),
                fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
@@ -123,7 +127,8 @@ void info(const std::string_view fmt, Args&&... args) noexcept
                "Info",
                MB_ICONINFORMATION | MB_OK);
 #endif
-    fmt::print(BOLD_COLOR((fmt::rgb(fmt::color::cyan))),
+    fmt::print(fp,
+               BOLD_COLOR((fmt::rgb(fmt::color::cyan))),
                "[{}] INFO: {}\n",
                std::chrono::system_clock::now(),
                fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
