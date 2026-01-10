@@ -17,8 +17,32 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #elif defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <d3d11.h>
+#include <dxgi1_2.h>
+#include <stdio.h>
 #include <windows.h>
+#pragma comment(lib, "d3d11")
+#pragma comment(lib, "dxgi")
 #endif
+
+// Windows only
+template <typename T>
+struct com_ptr
+{
+    T* ptr = nullptr;
+
+    ~com_ptr()
+    {
+        if (ptr)
+            ptr->Release();
+    }
+
+    T** operator&() { return &ptr; }
+    T*  operator->() const { return ptr; }
+        operator T*() const { return ptr; }
+        operator bool() const { return ptr != nullptr; }
+};
 
 SessionType get_session_type()
 {
@@ -115,7 +139,7 @@ capture_result_t capture_full_screen_wayland()
     return result;
 }
 
-capture_result_t capture_full_screen_windows()
+capture_result_t capture_full_screen_windows_fallback()
 {
     capture_result_t result;
 #ifdef _WIN32
@@ -186,6 +210,125 @@ capture_result_t capture_full_screen_windows()
     DeleteObject(hBitmap);
     DeleteDC(hMemoryDC);
     ReleaseDC(NULL, hScreenDC);
+
+    result.success = true;
+#endif
+    return result;
+}
+
+capture_result_t capture_full_screen_windows()
+{
+    capture_result_t result;
+#ifdef _WIN32
+    HRESULT hr;
+
+    // Create D3D11 device
+    com_ptr<ID3D11Device>        device;
+    com_ptr<ID3D11DeviceContext> context;
+
+    hr = D3D11CreateDevice(
+        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context);
+    if (FAILED(hr))
+    {
+        result.error_msg = "D3D11CreateDevice failed";
+        return capture_full_screen_windows_fallback();
+    }
+
+    // Get primary output (monitor)
+    com_ptr<IDXGIDevice> dxgiDevice;
+    device->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDevice);
+
+    com_ptr<IDXGIAdapter> adapter;
+    dxgiDevice->GetAdapter(&adapter);
+
+    com_ptr<IDXGIOutput> output;
+    adapter->EnumOutputs(0, &output);  // primary monitor
+
+    com_ptr<IDXGIOutput1> output1;
+    output->QueryInterface(__uuidof(IDXGIOutput1), (void**)&output1);
+
+    // Create duplication
+    com_ptr<IDXGIOutputDuplication> duplication;
+
+    hr = output1->DuplicateOutput(device, &duplication);
+    if (FAILED(hr))
+    {
+        result.error_msg = "DuplicateOutput failed";
+        return capture_full_screen_windows_fallback();
+    }
+
+    // Acquire frame
+    DXGI_OUTDUPL_FRAME_INFO frameInfo{};
+    com_ptr<IDXGIResource>  resource;
+
+    hr = duplication->AcquireNextFrame(16, &frameInfo, &resource);
+    if (FAILED(hr))
+    {
+        result.error_msg = "AcquireNextFrame failed";
+        return capture_full_screen_windows_fallback();
+    }
+
+    com_ptr<ID3D11Texture2D> gpuTex;
+    resource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&gpuTex);
+
+    D3D11_TEXTURE2D_DESC desc{};
+    gpuTex->GetDesc(&desc);
+
+    const int width  = static_cast<int>(desc.Width);
+    const int height = static_cast<int>(desc.Height);
+
+    result.region.width  = width;
+    result.region.height = height;
+    result.data.resize(width * height * 4);
+
+    // Create staging texture (CPU readable)
+    D3D11_TEXTURE2D_DESC stagingDesc = desc;
+    stagingDesc.Usage                = D3D11_USAGE_STAGING;
+    stagingDesc.BindFlags            = 0;
+    stagingDesc.CPUAccessFlags       = D3D11_CPU_ACCESS_READ;
+    stagingDesc.MiscFlags            = 0;
+
+    com_ptr<ID3D11Texture2D> staging;
+    hr = device->CreateTexture2D(&stagingDesc, nullptr, &staging);
+    if (FAILED(hr))
+    {
+        result.error_msg = "CreateTexture2D (staging) failed";
+        duplication->ReleaseFrame();
+        return capture_full_screen_windows_fallback();
+    }
+
+    context->CopyResource(staging, gpuTex);
+
+    // Map and convert BGRA -> RGBA
+    D3D11_MAPPED_SUBRESOURCE map{};
+    hr = context->Map(staging, 0, D3D11_MAP_READ, 0, &map);
+    if (FAILED(hr))
+    {
+        result.error_msg = "Map failed";
+        duplication->ReleaseFrame();
+        return capture_full_screen_windows_fallback();
+    }
+
+    const uint8_t* src = static_cast<const uint8_t*>(map.pData);
+    uint8_t*       dst = result.data.data();
+
+    for (int y = 0; y < height; ++y)
+    {
+        const uint8_t* row = src + y * map.RowPitch;
+        for (int x = 0; x < width; ++x)
+        {
+            const int si = x * 4;
+            const int di = (y * width + x) * 4;
+
+            dst[di + 0] = row[si + 2];  // R
+            dst[di + 1] = row[si + 1];  // G
+            dst[di + 2] = row[si + 0];  // B
+            dst[di + 3] = 0xff;         // A
+        }
+    }
+
+    context->Unmap(staging, 0);
+    duplication->ReleaseFrame();
 
     result.success = true;
 #endif
