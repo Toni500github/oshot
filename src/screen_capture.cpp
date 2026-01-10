@@ -18,13 +18,30 @@
 #include <X11/Xutil.h>
 #elif defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <stdio.h>
+#include <windows.h>
 #pragma comment(lib, "d3d11")
 #pragma comment(lib, "dxgi")
 #endif
+
+// Windows only
+template <typename T>
+struct com_ptr
+{
+    T* ptr = nullptr;
+
+    ~com_ptr()
+    {
+        if (ptr)
+            ptr->Release();
+    }
+
+    T** operator&() { return &ptr; }
+    T*  operator->() const { return ptr; }
+        operator bool() const { return ptr != nullptr; }
+};
 
 SessionType get_session_type()
 {
@@ -205,12 +222,11 @@ capture_result_t capture_full_screen_windows()
     HRESULT hr;
 
     // Create D3D11 device
-    ID3D11Device*        device  = nullptr;
-    ID3D11DeviceContext* context = nullptr;
+    com_ptr<ID3D11Device>        device;
+    com_ptr<ID3D11DeviceContext> context;
 
     hr = D3D11CreateDevice(
         nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context);
-
     if (FAILED(hr))
     {
         result.error_msg = "D3D11CreateDevice failed";
@@ -218,40 +234,40 @@ capture_result_t capture_full_screen_windows()
     }
 
     // Get primary output (monitor)
-    IDXGIDevice* dxgiDevice = nullptr;
+    com_ptr<IDXGIDevice> dxgiDevice;
     device->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDevice);
 
-    IDXGIAdapter* adapter = nullptr;
+    com_ptr<IDXGIAdapter> adapter = nullptr;
     dxgiDevice->GetAdapter(&adapter);
 
-    IDXGIOutput* output = nullptr;
+    com_ptr<IDXGIOutput> output;
     adapter->EnumOutputs(0, &output);  // primary monitor
 
-    IDXGIOutput1* output1 = nullptr;
+    com_ptr<IDXGIOutput1> output1;
     output->QueryInterface(__uuidof(IDXGIOutput1), (void**)&output1);
 
     // Create duplication
-    IDXGIOutputDuplication* duplication = nullptr;
-    hr                                  = output1->DuplicateOutput(device, &duplication);
+    com_ptr<IDXGIOutputDuplication> duplication;
 
+    hr = output1->DuplicateOutput(device, &duplication);
     if (FAILED(hr))
     {
         result.error_msg = "DuplicateOutput failed";
-        goto cleanup;
+        return capture_full_screen_windows_fallback();
     }
 
     // Acquire frame
     DXGI_OUTDUPL_FRAME_INFO frameInfo{};
-    IDXGIResource*          resource = nullptr;
+    com_ptr<IDXGIResource>  resource;
 
     hr = duplication->AcquireNextFrame(1000, &frameInfo, &resource);
     if (FAILED(hr))
     {
         result.error_msg = "AcquireNextFrame failed";
-        goto cleanup;
+        return capture_full_screen_windows_fallback();
     }
 
-    ID3D11Texture2D* gpuTex = nullptr;
+    com_ptr<ID3D11Texture2D> gpuTex;
     resource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&gpuTex);
 
     D3D11_TEXTURE2D_DESC desc{};
@@ -271,13 +287,13 @@ capture_result_t capture_full_screen_windows()
     stagingDesc.CPUAccessFlags       = D3D11_CPU_ACCESS_READ;
     stagingDesc.MiscFlags            = 0;
 
-    ID3D11Texture2D* staging = nullptr;
-    hr                       = device->CreateTexture2D(&stagingDesc, nullptr, &staging);
+    com_ptr<ID3D11Texture2D> staging;
+    hr = device->CreateTexture2D(&stagingDesc, nullptr, &staging);
     if (FAILED(hr))
     {
         result.error_msg = "CreateTexture2D (staging) failed";
         duplication->ReleaseFrame();
-        goto cleanup;
+        return capture_full_screen_windows_fallback();
     }
 
     context->CopyResource(staging, gpuTex);
@@ -289,15 +305,15 @@ capture_result_t capture_full_screen_windows()
     {
         result.error_msg = "Map failed";
         duplication->ReleaseFrame();
-        goto cleanup;
+        return capture_full_screen_windows_fallback();
     }
 
-    std::span<const uint8_t> src(static_cast<const uint8_t*>(map.pData));
-    std::span<uint8_t>       dst(result.data);
+    const uint8_t* src = static_cast<const uint8_t*>(map.pData);
+    uint8_t*       dst = result.data.data();
 
     for (int y = 0; y < height; ++y)
     {
-        std::span<const uint8_t> row(src + y * map.RowPitch);
+        const uint8_t* row = src + y * map.RowPitch;
         for (int x = 0; x < width; ++x)
         {
             const int si = x * 4;
@@ -314,23 +330,6 @@ capture_result_t capture_full_screen_windows()
     duplication->ReleaseFrame();
 
     result.success = true;
-
-    // clang-format off
-cleanup:
-    if (staging)     staging->Release();
-    if (gpuTex)      gpuTex->Release();
-    if (resource)    resource->Release();
-    if (duplication) duplication->Release();
-    if (output1)     output1->Release();
-    if (output)      output->Release();
-    if (adapter)     adapter->Release();
-    if (dxgiDevice)  dxgiDevice->Release();
-    if (context)     context->Release();
-    if (device)      device->Release();
-
-    if (FAILED(hr))
-        return capture_full_screen_windows_fallback();
-
 #endif
     return result;
 }
