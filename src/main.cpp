@@ -30,7 +30,7 @@
 #endif
 
 #if (!__has_include("version.h"))
-#error "version.h not found, please generate it with ./generateVersion.sh"
+#error "version.h not found, please generate it with ./scripts/generateVersion.sh"
 #else
 #include "version.h"
 #endif

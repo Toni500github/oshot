@@ -4,6 +4,8 @@
 /locale/
 /include/version.h
 
+AppDir
+*.AppImage
 *.tar.*
 *.mo
 

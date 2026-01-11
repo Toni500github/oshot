@@ -68,7 +68,7 @@ add_executable(${PROJECT_NAME} ${SRC})
 enable_lto(${PROJECT_NAME})
 
 execute_process(
-    COMMAND ./generateVersion.sh
+    COMMAND ./scripts/generateVersion.sh
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 

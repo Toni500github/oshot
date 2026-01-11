@@ -97,8 +97,8 @@ ifeq ($(wildcard $(BUILDDIR)/getopt.o),)
 	$(MAKE) -C src/libs/getopt_port BUILDDIR=$(BUILDDIR)
 endif
 
-genver: ./generateVersion.sh
-	./generateVersion.sh
+genver: ./scripts/generateVersion.sh
+	./scripts/generateVersion.sh
 
 $(TARGET): genver fmt toml tfd getopt-port $(OBJ)
 	mkdir -p $(BUILDDIR)

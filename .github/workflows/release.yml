@@ -38,7 +38,7 @@ jobs:
       contents: read
     strategy:
       matrix:
-        os: [ ubuntu-latest, windows-latest ]
+        os: [ ubuntu-latest, ubuntu-22.04, windows-latest ]
 
     steps:
       - name: Checkout repository
@@ -48,7 +48,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os != 'windows-latest'
         run: |
           sudo apt-get update && sudo apt-get purge firefox -y
           sudo apt-get install -y \
@@ -56,11 +56,11 @@ jobs:
             pkg-config \
             make \
             git \
+            zip \
             libx11-dev \
             libglfw3-dev \
             libtesseract-dev \
             libcurl4-openssl-dev \
-            zip \
             libpng-dev \
             libjpeg-dev \
             libopenjp2-7-dev \
@@ -79,7 +79,6 @@ jobs:
             libarchive-dev \
             libdeflate-dev \
             libjbig-dev \
-            libsharpyuv-dev \
             libicu-dev \
             libunistring-dev \
             libkeyutils-dev \
@@ -133,11 +132,23 @@ jobs:
           cd package
           zip -r oshot-linux.zip oshot/
 
+      - name: Prepare AppImage package
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          mkdir -p package/oshot
+          ./scripts/create_appimage.sh ./build/release/oshot oshot-x86_64.AppImage
+          chmod +x oshot-x86_64.AppImage
+          mv oshot-x86_64.AppImage package/oshot/
+          cp ./launcher/oshot_launcher.py package/oshot/
+          cd package
+          zip -r oshot-appimage.zip oshot/
+
       - name: Prepare Windows package
         if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
           mkdir -p package/oshot
+          sed -i 's|#!/bin/env python3|#!python|' launcher/oshot_launcher.py
           cp ./build/release/oshot.exe package/oshot/
           cp ./launcher/oshot_launcher.py package/oshot/oshot_launcher.pyw
           # Copy required DLLs
@@ -198,6 +209,16 @@ jobs:
           upload_url: ${{ needs.release.outputs.release-url }}
           asset_path: downloaded-artifacts/ubuntu-latest-packages/oshot-linux.zip
           asset_name: oshot-linux-${{ needs.get-version.outputs.version }}.zip
+          asset_content_type: application/zip
+
+      - name: Upload Linux AppImage package
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.release-url }}
+          asset_path: downloaded-artifacts/ubuntu-latest-packages/oshot-appimage.zip
+          asset_name: oshot-linux-appimage-${{ needs.get-version.outputs.version }}.zip
           asset_content_type: application/zip
 
       - name: Upload Windows package
