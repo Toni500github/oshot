@@ -177,6 +177,23 @@ static void glfw_error_callback(int i_error, const char* description)
 
 int main(int argc, char* argv[])
 {
+#if defined(_WIN32) && !defined(WINDOWS_CMD)
+    // Windows GUI (-mwindows): log to file
+    fp = fopen("oshot.log", "w");
+    if (!fp)
+    {
+        // fallback
+        fp = stdout;
+        fprintf(stderr, "Failed to open oshot.log, using stdout\n");
+    }
+
+    FILE* dummy;
+    freopen_s(&dummy, "CONOUT$", "w", stdout);
+    freopen_s(&dummy, "CONOUT$", "w", stderr);
+#else
+    fp = stdout;
+#endif
+
     GLFWwindow* window = nullptr;
 
     const std::string& configDir      = getConfigDir().string();
@@ -253,24 +270,6 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);  // Enable vsync
-
-#if defined(_WIN32) && !defined(WINDOWS_CMD)
-    // Windows GUI (-mwindows): log to file
-    fp = fopen("oshot.log", "w");
-    if (!fp)
-    {
-        // fallback
-        fp = stdout;
-        fprintf(stderr, "Failed to open oshot.log, using stdout\n");
-    }
-
-    FILE* dummy;
-    freopen_s(&dummy, "CONOUT$", "w", stdout);
-    freopen_s(&dummy, "CONOUT$", "w", stderr);
-#else
-    fp = stdout;
-#endif
-
 
     scr_w = mode->width;
     scr_h = mode->height;
