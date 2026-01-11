@@ -4,6 +4,6 @@
 -Wextra
 -Wpedantic
 -std=c++20
--DVERSION="0.2.1"
+-DVERSION="0.2.2"
 -DDEBUG=1
 -DWINDOWS_CMD=1

@@ -57,6 +57,7 @@ jobs:
             make \
             git \
             zip \
+            fuse \
             libx11-dev \
             libglfw3-dev \
             libtesseract-dev \
@@ -110,7 +111,7 @@ jobs:
             mingw-w64-x86_64-curl
 
       - name: Build project (Linux)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os != 'windows-latest'
         run: |
           make all DEBUG=0 LDFLAGS="-Wl,--as-needed"
 
@@ -217,7 +218,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.release.outputs.release-url }}
-          asset_path: downloaded-artifacts/ubuntu-latest-packages/oshot-appimage.zip
+          asset_path: downloaded-artifacts/ubuntu-22.04-packages/oshot-appimage.zip
           asset_name: oshot-linux-appimage-${{ needs.get-version.outputs.version }}.zip
           asset_content_type: application/zip
 
