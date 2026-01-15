@@ -10,11 +10,15 @@ If a package is not found, try searching by its base name (e.g., `libglfw3-dev` 
 - `libx11-dev`
 - `grim` (Wayland only)
 - `libglfw3-dev`
-- `tesseract` (including necessary language models)
+- `libtesseract` (including necessary language models, e.g `tesseract-ocr-eng`)
 - **Python** and **pip**  
   - Python packages:
     ```bash
-    pip install pillow pystray pyclip pyperclipimg
+    pip install --user pillow pystray pyclip pyperclipimg
+    ```
+  - From Arch Linux and based:
+    ```
+    yay -S python-pillow python-pystray python-pyclip python-pyperclipimg
     ```
 
 #### Windows
@@ -72,11 +76,9 @@ If when starting oshot, it starts to flick the screen black (or it won't launch)
 2. Extract the `opengl32.dll` file into the directory where `oshot.exe` is located
 3. Try to launch it again
 ### Linux
-If when you try to run `./oshot`, it gives an error about not finding `liblept.so.5`, then try to follow these steps:
-1. Make sure tesseract and leptonica are both installed
-2. Run this command as root: `ln -s /usr/lib/libleptonica.so /usr/lib/liblept.so.5`
-3. Try to launch it again
+- If when you try to run oshot gives linking library errors, then try to use the AppImage release instead.
+- If you are using KDE or Gnome in Wayland and running `oshot` or `grim` doesn't work, then you need to take the screenshot from an external tool and either pipe into stdin or use the `-f /path/to/image` flag 
 
-If still errors, please open an [Issue](https://github.com/Toni500github/oshot/issues) and take a screenshot of the error appearing in the console when executing `oshot.exe`
+If still errors, please open an [Issue](https://github.com/Toni500github/oshot/issues) and take a screenshot/paste the text of the error appearing in the console when executing oshot
 ## Usage
 https://github.com/user-attachments/assets/ac505de6-0818-4d67-bb51-064d86f1f970
