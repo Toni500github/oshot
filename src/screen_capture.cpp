@@ -139,7 +139,7 @@ capture_result_t capture_full_screen_wayland()
     return result;
 }
 
-capture_result_t capture_full_screen_windows_fallback()
+capture_result_t capture_full_screen_windows()
 {
     capture_result_t result;
 #ifdef _WIN32
@@ -216,10 +216,10 @@ capture_result_t capture_full_screen_windows_fallback()
     return result;
 }
 
-capture_result_t capture_full_screen_windows()
+capture_result_t capture_full_screen_windows_2()
 {
     capture_result_t result;
-#ifdef _WIN32
+#if 0
     HRESULT hr;
 
     // Create D3D11 device
