@@ -1,23 +1,26 @@
 #include "screen_capture.hpp"
 
-#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
 
-#include "fmt/format.h"
+#include "tiny-process-library/process.hpp"
 #include "util.hpp"
 
-#ifdef __linux__
-#include <unistd.h>
-
-// X11 fallback
+#if defined(__linux__)
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <unistd.h>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 #elif defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
+#define INITGUID
+#include "fmt/format.h"
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <stdio.h>
@@ -105,36 +108,33 @@ capture_result_t capture_full_screen_wayland()
 {
     capture_result_t result;
 #ifdef __linux__
-    std::FILE* pipe = popen("grim -t ppm -", "r");
-    if (!pipe)
+    std::vector<uint8_t>    buf;
+    TinyProcessLib::Process proc(
+        { "grim", "-t", "ppm", "-" },
+        "",  // cwd
+        [&](const char* bytes, size_t n) {
+            // stdout (binary)
+            buf.insert(buf.end(), reinterpret_cast<const uint8_t*>(bytes), reinterpret_cast<const uint8_t*>(bytes) + n);
+        },
+        [&](const char* bytes, size_t n) {
+            // stderr (text)
+            result.error_msg.assign(bytes, n);
+        });
+
+    int      w, h, comp;
+    uint8_t* rgba = stbi_load_from_memory(buf.data(), buf.size(), &w, &h, &comp, STBI_rgb_alpha);
+    if (!rgba)
     {
-        result.error_msg = "Failed to execute grim";
+        result.error_msg =
+            "Failed to read PPM data: " + std::string(stbi_failure_reason() ? stbi_failure_reason() : "Unknown");
         return result;
     }
 
-    char magic[3];
-    int  width{}, height{}, maxval{};
-    if (fscanf(pipe, "%2s %d %d %d", magic, &width, &height, &maxval) != 4 || magic[0] != 'P' || magic[1] != '6')
-    {
-        pclose(pipe);
-        result.error_msg = "Invalid PPM format from grim";
-        return result;
-    }
-    fgetc(pipe);  // skip newline
-
-    std::vector<uint8_t> ppm_data(width * height * 3);
-    if (fread(ppm_data.data(), 1, ppm_data.size(), pipe) != ppm_data.size())
-    {
-        pclose(pipe);
-        result.error_msg = fmt::format("Failed to read PPM data: {}", strerror(errno));
-        return result;
-    }
-    pclose(pipe);
-
-    result.data          = ppm_to_rgba(ppm_data, width, height);
-    result.region.width  = width;
-    result.region.height = height;
-    result.success       = true;
+    result.region.width  = w;
+    result.region.height = h;
+    result.data.assign(rgba, rgba + (w * h * 4));
+    stbi_image_free(rgba);
+    result.success = true;
 #endif
     return result;
 }

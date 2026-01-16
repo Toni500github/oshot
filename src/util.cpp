@@ -61,58 +61,6 @@ std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
 }
 #endif
 
-std::vector<uint8_t> ppm_to_rgba(std::span<const uint8_t> ppm, int width, int height)
-{
-    const size_t required_ppm  = static_cast<size_t>(width) * height * 3;
-    const size_t required_rgba = static_cast<size_t>(width) * height * 4;
-
-    if (width <= 0 || height <= 0 || ppm.size() < required_ppm)
-        return {};
-
-    // Check multiplication overflow
-    if (static_cast<size_t>(width) > SIZE_MAX / height / 3)
-        return {};
-
-    std::vector<uint8_t> rgba_data(required_rgba);
-    for (int i = 0; i < width * height; ++i)
-    {
-        rgba_data[i * 4 + 0] = ppm[i * 3 + 0];  // R
-        rgba_data[i * 4 + 1] = ppm[i * 3 + 1];  // G
-        rgba_data[i * 4 + 2] = ppm[i * 3 + 2];  // B
-        rgba_data[i * 4 + 3] = 0xff;            // A
-    }
-
-    return rgba_data;
-}
-
-std::vector<uint8_t> rgba_to_ppm(std::span<const uint8_t> rgba, int width, int height)
-{
-    const size_t required_ppm  = static_cast<size_t>(width) * height * 3;
-    const size_t required_rgba = static_cast<size_t>(width) * height * 4;
-
-    if (width <= 0 || height <= 0 || rgba.size() < required_rgba)
-        return {};
-
-    if (static_cast<size_t>(width) > SIZE_MAX / height / 3)
-        return {};  // Check multiplication overflow
-
-    const std::string& header = fmt::format("P6\n{} {}\n255\n", width, height);
-
-    std::vector<uint8_t> ppm_data;
-    ppm_data.reserve(header.size() + required_ppm);
-    ppm_data.insert(ppm_data.end(), header.begin(), header.end());
-
-    for (size_t i = 0; i < rgba.size(); i += 4)
-    {
-        ppm_data.push_back(rgba[i]);      // R
-        ppm_data.push_back(rgba[i + 1]);  // G
-        ppm_data.push_back(rgba[i + 2]);  // B
-        // Skip rgba[i + 3] (alpha channel)
-    }
-
-    return ppm_data;
-}
-
 #ifdef _WIN32
 int get_screen_dpi()
 {
@@ -226,7 +174,7 @@ capture_result_t load_image_rgba(bool stdin_has_data, const std::string& path)
     if (!pixels)
     {
         result.success   = false;
-        result.error_msg = stbi_failure_reason();
+        result.error_msg = stbi_failure_reason() ? stbi_failure_reason() : "Unknown Error";
         return result;
     }
 
