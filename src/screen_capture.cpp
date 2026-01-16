@@ -14,17 +14,17 @@
 #include <X11/Xutil.h>
 #include <unistd.h>
 
-#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 #elif defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #define INITGUID
-#include "fmt/format.h"
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <stdio.h>
 #include <windows.h>
+
+#include "fmt/format.h"
 #pragma comment(lib, "d3d11")
 #pragma comment(lib, "dxgi")
 #endif
@@ -126,6 +126,7 @@ capture_result_t capture_full_screen_wayland()
     if (!rgba)
     {
         result.error_msg =
+            // It's just a global string return
             "Failed to read PPM data: " + std::string(stbi_failure_reason() ? stbi_failure_reason() : "Unknown");
         return result;
     }

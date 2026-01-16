@@ -65,7 +65,7 @@ VERSION    	 = 0.2.3
 SRC	 	 = $(wildcard src/*.cpp)
 OBJ	 	 = $(SRC:.cpp=.o)
 LDFLAGS   	+= -L$(BUILDDIR)
-LDLIBS		+= $(wildcard $(BUILDDIR)/*.a) `pkg-config --static --libs glfw3 tesseract libcurl`
+LDLIBS		+= $(wildcard $(BUILDDIR)/*.a) `pkg-config --static --libs glfw3 tesseract libcurl zbar`
 CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
 
 all: imgui fmt tfd tpl getopt-port toml $(TARGET)

@@ -1,6 +1,7 @@
 #include "screenshot_tool.hpp"
 
 #include <tesseract/publictypes.h>
+#include <zbar.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -70,6 +71,51 @@ static bool stdin_has_data()
     return available > 0;
 }
 #endif
+
+static void rgba_to_grayscale(const uint8_t* rgba, uint8_t* gray, int width, int height)
+{
+    const int pixels = width * height;
+    for (int i = 0; i < pixels; ++i)
+    {
+        const uint8_t r = rgba[i * 4 + 0];
+        const uint8_t g = rgba[i * 4 + 1];
+        const uint8_t b = rgba[i * 4 + 2];
+
+        // ITU-R BT.601 luminance
+        gray[i] = static_cast<uint8_t>((77 * r + 150 * g + 29 * b) >> 8);
+    }
+}
+
+std::optional<std::string> decode_barcode_rgba(const uint8_t* rgba, int width, int height)
+{
+    std::string          ret;
+    std::vector<uint8_t> gray(width * height);
+    rgba_to_grayscale(rgba, gray.data(), width, height);
+
+    zbar::ImageScanner scanner;
+
+    // Enable (almost) all symbologies
+    scanner.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_ENABLE, 1);
+    scanner.set_config(zbar::ZBAR_I25, zbar::ZBAR_CFG_ENABLE, 0);
+
+    zbar::Image image(width,
+                      height,
+                      "Y800",  // GRAYSCALE
+                      gray.data(),
+                      gray.size());
+
+    if (scanner.scan(image) <= 0)
+        return std::nullopt;
+
+    // Maybe multiple results
+    for (auto symbol = image.symbol_begin(); symbol != image.symbol_end(); ++symbol)
+        ret += symbol->get_data() + "\n\n";
+
+    // Prevent ZBar from freeing your buffer
+    image.set_data(nullptr, 0);
+
+    return ret;
+}
 
 static std::vector<std::string> GetTrainingDataList(const std::string& path)
 {
@@ -200,6 +246,7 @@ void ScreenshotTool::RenderOverlay()
         DrawMenuItems();
         DrawOcrTools();
         DrawTranslationTools();
+        DrawBarDecodeTools();
         ImGui::End();
     }
 }
@@ -598,6 +645,7 @@ void ScreenshotTool::DrawOcrTools()
     static size_t      item_selected_idx = 0;
     static bool        first_frame       = true;
 
+    ImGui::PushID("OcrTools");
     ImGui::SeparatorText("OCR");
 
     static std::vector<std::string> list{ "" };
@@ -689,18 +737,18 @@ end:
         }
         else if (!m_api.Configure(ocr_path.c_str(), ocr_model.c_str()))
         {
-            SetError(InitOcr);
+            SetError(FailedToInitOcr);
         }
         else
         {
             const auto& text = m_api.RecognizeCapture(GetFinalImage());
             if (text)
                 m_ocr_text = m_to_translate_text = *text;
-            ClearError(InitOcr);
+            ClearError(FailedToInitOcr);
         }
     }
 
-    if (HasError(InitOcr))
+    if (HasError(FailedToInitOcr))
     {
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Failed to init OCR!");
@@ -733,6 +781,8 @@ end:
         sender->Send(m_ocr_text);
         ClearError(NoLauncher);
     }
+
+    ImGui::PopID();
 }
 
 void ScreenshotTool::DrawTranslationTools()
@@ -748,6 +798,7 @@ void ScreenshotTool::DrawTranslationTools()
     static ImFont* font_from;
     static ImFont* font_to;
 
+    ImGui::PushID("TranslationTools");
     ImGui::SeparatorText("Translation");
 
     if (first_frame)
@@ -873,10 +924,9 @@ void ScreenshotTool::DrawTranslationTools()
             "##to", &translated_text, ImVec2(width, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
 
         ImGui::PopStyleColor();
-        return;
     }
 
-    if (font_to)
+    else if (font_to)
     {
         ImGui::PushFont(font_to);
         ImGui::InputTextMultiline(
@@ -888,6 +938,67 @@ void ScreenshotTool::DrawTranslationTools()
         ImGui::InputTextMultiline(
             "##to", &translated_text, ImVec2(width, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
     }
+
+    ImGui::PopID();
+}
+
+void ScreenshotTool::DrawBarDecodeTools()
+{
+    ImGui::PushID("BarDecodeTools");
+    ImGui::SeparatorText("QR/Bar Decode");
+
+    if (ImGui::Button("Extract Text"))
+    {
+        const capture_result_t& cap  = GetFinalImage();
+        const auto              text = decode_barcode_rgba(cap.data.data(), cap.region.width, cap.region.height);
+        if (!text)
+        {
+            SetError(FailedToExtractBarCode);
+        }
+        else
+        {
+            m_barcode_text = *text;
+            ClearError(FailedToExtractBarCode);
+        }
+    }
+
+    if (HasError(FailedToExtractBarCode))
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
+        m_barcode_text = "Failed to extract text from bar code";
+        ImGui::InputTextMultiline("##barcode",
+                                  &m_barcode_text,
+                                  ImVec2(-1, ImGui::GetTextLineHeight() * 10),
+                                  config->allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+
+        ImGui::PopStyleColor();
+    }
+    else
+    {
+        ImGui::InputTextMultiline("##barcode",
+                                  &m_barcode_text,
+                                  ImVec2(-1, ImGui::GetTextLineHeight() * 10),
+                                  config->allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+    }
+
+    if (HasError(WarnConnLauncher))
+    {
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Connecting to launcher...");
+    }
+    else if (HasError(NoLauncher))
+    {
+        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
+                           "Please launch oshot with its launcher, in order to copy text/images");
+    }
+    else if (!m_barcode_text.empty() && ImGui::Button("Copy Text"))
+    {
+        if (m_barcode_text.back() == '\n')
+            m_barcode_text.pop_back();
+        sender->Send(m_barcode_text);
+        ClearError(NoLauncher);
+    }
+
+    ImGui::PopID();
 }
 
 void ScreenshotTool::Cancel()

@@ -64,15 +64,16 @@ enum class HandleHovered
 
 enum ErrorState
 {
-    None              = 0,
-    InitOcr           = 1 << 1,
-    InvalidPath       = 1 << 2,
-    InvalidModel      = 1 << 3,
-    FailedTranslation = 1 << 4,
-    InvalidLangFrom   = 1 << 5,
-    InvalidLangTo     = 1 << 6,
-    NoLauncher        = 1 << 7,
-    WarnConnLauncher  = 1 << 8
+    None                   = 0,
+    FailedToInitOcr        = 1 << 1,
+    InvalidPath            = 1 << 2,
+    InvalidModel           = 1 << 3,
+    FailedTranslation      = 1 << 4,
+    InvalidLangFrom        = 1 << 5,
+    InvalidLangTo          = 1 << 6,
+    NoLauncher             = 1 << 7,
+    WarnConnLauncher       = 1 << 8,
+    FailedToExtractBarCode = 1 << 9
 };
 
 class ScreenshotTool
@@ -122,6 +123,7 @@ private:
     void DrawSizeIndicator();
     void DrawOcrTools();
     void DrawTranslationTools();
+    void DrawBarDecodeTools();
 
     void UpdateHandleHoverState();
     void UpdateCursor();
@@ -155,6 +157,7 @@ private:
 
     std::string m_ocr_text;
     std::string m_to_translate_text;
+    std::string m_barcode_text;
 
     std::function<void(SavingOp, const capture_result_t&)> m_on_complete;
     std::function<void()>                                  m_on_cancel;

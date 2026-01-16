@@ -80,6 +80,7 @@ jobs:
             libarchive-dev \
             libdeflate-dev \
             libjbig-dev \
+            libzbar-dev \
             libicu-dev \
             libunistring-dev \
             libkeyutils-dev \
@@ -100,6 +101,7 @@ jobs:
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-minizip
             mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-zbar
             mingw-w64-x86_64-make
             mingw-w64-x86_64-tesseract-ocr
             mingw-w64-x86_64-glfw
