@@ -96,6 +96,7 @@ jobs:
             git
             libcurl-devel
             mingw-w64-x86_64-7zip
+            mingw-w64-x86_64-directx-headers
             mingw-w64-x86_64-ncurses
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-minizip

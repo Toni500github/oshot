@@ -95,7 +95,8 @@ template <typename... Args>
 void debug(const std::string_view fmt, Args&&... args) noexcept
 {
 #if DEBUG
-    fmt::print(fp, BOLD_COLOR((fmt::rgb(fmt::color::hot_pink))),
+    fmt::print(fp,
+               BOLD_COLOR((fmt::rgb(fmt::color::hot_pink))),
                "[{}] [DEBUG]: {}\n",
                std::chrono::system_clock::now(),
                fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
