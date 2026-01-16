@@ -29,24 +29,6 @@
 #pragma comment(lib, "dxgi")
 #endif
 
-// Windows only
-template <typename T>
-struct com_ptr
-{
-    T* ptr = nullptr;
-
-    ~com_ptr()
-    {
-        if (ptr)
-            ptr->Release();
-    }
-
-    T** operator&() { return &ptr; }
-    T*  operator->() const { return ptr; }
-        operator T*() const { return ptr; }
-        operator bool() const { return ptr != nullptr; }
-};
-
 SessionType get_session_type()
 {
 #ifdef _WIN32
@@ -70,10 +52,11 @@ SessionType get_session_type()
     return UNKNOWN;
 }
 
+#ifdef __linux__
 capture_result_t capture_full_screen_x11()
 {
     capture_result_t result;
-#ifdef __linux__
+
     Display* display = XOpenDisplay(nullptr);
     if (!display)
     {
@@ -100,16 +83,15 @@ capture_result_t capture_full_screen_x11()
 
     XDestroyImage(image);
     XCloseDisplay(display);
-#endif
+
     return result;
 }
 
 capture_result_t capture_full_screen_wayland()
 {
     capture_result_t result;
-#ifdef __linux__
-    std::vector<uint8_t> buf;
 
+    std::vector<uint8_t>    buf;
     TinyProcessLib::Process proc(
         { "grim", "-t", "ppm", "-" },
         "",  // cwd
@@ -153,14 +135,25 @@ capture_result_t capture_full_screen_wayland()
     result.data.assign(rgba, rgba + (static_cast<size_t>(w) * static_cast<size_t>(h) * 4));
     stbi_image_free(rgba);
     result.success = true;
-#endif
+
     return result;
 }
+#else
+capture_result_t capture_full_screen_x11()
+{
+    return {};
+}
+capture_result_t capture_full_screen_wayland()
+{
+    return {};
+}
+#endif
 
-capture_result_t capture_full_screen_windows()
+#ifdef _WIN32
+capture_result_t capture_full_screen_windows_fallback()
 {
     capture_result_t result;
-#ifdef _WIN32
+
     int width  = GetSystemMetrics(SM_CXSCREEN);
     int height = GetSystemMetrics(SM_CYSCREEN);
 
@@ -230,125 +223,238 @@ capture_result_t capture_full_screen_windows()
     ReleaseDC(NULL, hScreenDC);
 
     result.success = true;
-#endif
     return result;
 }
 
-capture_result_t capture_full_screen_windows_2()
+static bool hr_failed(HRESULT hr, capture_result_t& result, const char* what)
+{
+    if (FAILED(hr))
+    {
+        result.error_msg = fmt::format("{} failed: 0x{:08X}", what, (unsigned)hr);
+        return true;
+    }
+    return false;
+}
+
+template <typename T>
+struct com_ptr
+{
+    T* ptr = nullptr;
+
+    ~com_ptr()
+    {
+        if (ptr)
+            ptr->Release();
+    }
+
+    T** operator&() { return &ptr; }
+    T*  operator->() const { return ptr; }
+        operator T*() const { return ptr; }
+        operator bool() const { return ptr != nullptr; }
+};
+
+capture_result_t capture_full_screen_windows()
 {
     capture_result_t result;
-#if 0
-    HRESULT hr;
 
-    // Create D3D11 device
+    // DXGI factory
+    com_ptr<IDXGIFactory1> factory;
+    HRESULT                hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory));
+    if (hr_failed(hr, result, "CreateDXGIFactory1"))
+        return capture_full_screen_windows_fallback();
+
+    // Find first desktop-attached output
+    com_ptr<IDXGIAdapter1> adapter;
+    com_ptr<IDXGIOutput>   output;
+
+    bool found_output = false;
+    for (UINT ai = 0; factory->EnumAdapters1(ai, &adapter) != DXGI_ERROR_NOT_FOUND; ++ai)
+    {
+        for (UINT oi = 0; adapter->EnumOutputs(oi, &output) != DXGI_ERROR_NOT_FOUND; ++oi)
+        {
+            DXGI_OUTPUT_DESC od{};
+            output->GetDesc(&od);
+
+            if (od.AttachedToDesktop)
+            {
+                found_output = true;
+                break;
+            }
+
+            if (output)
+            {
+                output->Release();
+                output.ptr = nullptr;
+            }
+        }
+
+        if (found_output)
+            break;
+
+        if (adapter)
+        {
+            adapter->Release();
+            adapter.ptr = nullptr;
+        }
+    }
+
+    if (!found_output)
+    {
+        result.error_msg = "No desktop-attached DXGI output found";
+        return capture_full_screen_windows_fallback();
+    }
+
+    com_ptr<IDXGIOutput1> output1;
+    hr = output->QueryInterface(IID_PPV_ARGS(&output1));
+    if (hr_failed(hr, result, "QueryInterface(IDXGIOutput1)"))
+        return capture_full_screen_windows_fallback();
+
+    // D3D11 device bound to output adapter
     com_ptr<ID3D11Device>        device;
     com_ptr<ID3D11DeviceContext> context;
 
+    UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+#if DEBUG
+    flags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+
     hr = D3D11CreateDevice(
-        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context);
-    if (FAILED(hr))
-    {
-        result.error_msg = "D3D11CreateDevice failed";
+        adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context);
+
+    if (hr_failed(hr, result, "D3D11CreateDevice"))
         return capture_full_screen_windows_fallback();
-    }
 
-    // Get primary output (monitor)
-    com_ptr<IDXGIDevice> dxgiDevice;
-    device->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDevice);
-
-    com_ptr<IDXGIAdapter> adapter;
-    dxgiDevice->GetAdapter(&adapter);
-
-    com_ptr<IDXGIOutput> output;
-    adapter->EnumOutputs(0, &output);  // primary monitor
-
-    com_ptr<IDXGIOutput1> output1;
-    output->QueryInterface(__uuidof(IDXGIOutput1), (void**)&output1);
-
-    // Create duplication
+    // Output duplication
     com_ptr<IDXGIOutputDuplication> duplication;
-
     hr = output1->DuplicateOutput(device, &duplication);
-    if (FAILED(hr))
-    {
-        result.error_msg = "DuplicateOutput failed";
+    if (hr_failed(hr, result, "DuplicateOutput"))
         return capture_full_screen_windows_fallback();
-    }
 
     // Acquire frame
-    DXGI_OUTDUPL_FRAME_INFO frameInfo{};
-    com_ptr<IDXGIResource>  resource;
+    DXGI_OUTDUPL_FRAME_INFO frame_info{};
+    com_ptr<IDXGIResource>  desktop_resource;
 
-    hr = duplication->AcquireNextFrame(16, &frameInfo, &resource);
-    if (FAILED(hr))
+    bool frame_acquired = false;
+
+    hr = duplication->AcquireNextFrame(100, &frame_info, &desktop_resource);
+
+    if (hr == DXGI_ERROR_ACCESS_LOST)
+        return capture_full_screen_windows_fallback();
+
+    if (hr_failed(hr, result, "AcquireNextFrame"))
+        return capture_full_screen_windows_fallback();
+
+    frame_acquired = true;
+
+    if (frame_info.AccumulatedFrames == 0)
     {
-        result.error_msg = "AcquireNextFrame failed";
+        duplication->ReleaseFrame();
         return capture_full_screen_windows_fallback();
     }
 
-    com_ptr<ID3D11Texture2D> gpuTex;
-    resource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&gpuTex);
+    // Desktop texture
+    com_ptr<ID3D11Texture2D> desktop_texture;
+    hr = desktop_resource->QueryInterface(IID_PPV_ARGS(&desktop_texture));
+    if (hr_failed(hr, result, "QueryInterface(ID3D11Texture2D)"))
+    {
+        if (frame_acquired)
+            duplication->ReleaseFrame();
+        return capture_full_screen_windows_fallback();
+    }
 
     D3D11_TEXTURE2D_DESC desc{};
-    gpuTex->GetDesc(&desc);
+    desktop_texture->GetDesc(&desc);
 
-    const int width  = static_cast<int>(desc.Width);
-    const int height = static_cast<int>(desc.Height);
+    // Expect 4 bytes per pixel formats
+    if (desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM && desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB &&
+        desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM && desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
+    {
+        if (frame_acquired)
+            duplication->ReleaseFrame();
+        result.error_msg = fmt::format("Unsupported DXGI format: {}", (unsigned)desc.Format);
+        return capture_full_screen_windows_fallback();
+    }
 
-    result.region.width  = width;
-    result.region.height = height;
-    result.data.resize(width * height * 4);
-
-    // Create staging texture (CPU readable)
-    D3D11_TEXTURE2D_DESC stagingDesc = desc;
-    stagingDesc.Usage                = D3D11_USAGE_STAGING;
-    stagingDesc.BindFlags            = 0;
-    stagingDesc.CPUAccessFlags       = D3D11_CPU_ACCESS_READ;
-    stagingDesc.MiscFlags            = 0;
+    // Staging texture
+    desc.Usage          = D3D11_USAGE_STAGING;
+    desc.BindFlags      = 0;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    desc.MiscFlags      = 0;
 
     com_ptr<ID3D11Texture2D> staging;
-    hr = device->CreateTexture2D(&stagingDesc, nullptr, &staging);
-    if (FAILED(hr))
+    hr = device->CreateTexture2D(&desc, nullptr, &staging);
+    if (hr_failed(hr, result, "CreateTexture2D(staging)"))
     {
-        result.error_msg = "CreateTexture2D (staging) failed";
-        duplication->ReleaseFrame();
+        if (frame_acquired)
+            duplication->ReleaseFrame();
         return capture_full_screen_windows_fallback();
     }
 
-    context->CopyResource(staging, gpuTex);
+    context->CopyResource(staging, desktop_texture);
+    context->Flush();
 
-    // Map and convert BGRA -> RGBA
-    D3D11_MAPPED_SUBRESOURCE map{};
-    hr = context->Map(staging, 0, D3D11_MAP_READ, 0, &map);
-    if (FAILED(hr))
+    // Map staging texture
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    hr = context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped);
+    if (hr_failed(hr, result, "Map"))
     {
-        result.error_msg = "Map failed";
-        duplication->ReleaseFrame();
+        if (frame_acquired)
+            duplication->ReleaseFrame();
         return capture_full_screen_windows_fallback();
     }
 
-    const uint8_t* src = static_cast<const uint8_t*>(map.pData);
-    uint8_t*       dst = result.data.data();
+    // Copy to RGBA buffer
+    const uint8_t* src    = static_cast<const uint8_t*>(mapped.pData);
+    const uint32_t width  = desc.Width;
+    const uint32_t height = desc.Height;
 
-    for (int y = 0; y < height; ++y)
+    result.region.width  = static_cast<int>(width);
+    result.region.height = static_cast<int>(height);
+    result.data.resize(static_cast<size_t>(width) * height * 4);
+
+    if (desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM || desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
     {
-        const uint8_t* row = src + y * map.RowPitch;
-        for (int x = 0; x < width; ++x)
+        for (uint32_t y = 0; y < height; ++y)
         {
-            const int si = x * 4;
-            const int di = (y * width + x) * 4;
+            const uint8_t* row = src + static_cast<size_t>(y) * mapped.RowPitch;
+            uint8_t*       out = result.data.data() + static_cast<size_t>(y) * width * 4;
 
-            dst[di + 0] = row[si + 2];  // R
-            dst[di + 1] = row[si + 1];  // G
-            dst[di + 2] = row[si + 0];  // B
-            dst[di + 3] = 0xff;         // A
+            for (uint32_t x = 0; x < width; ++x)
+            {
+                out[x * 4 + 0] = row[x * 4 + 2];  // R <- B
+                out[x * 4 + 1] = row[x * 4 + 1];  // G <- G
+                out[x * 4 + 2] = row[x * 4 + 0];  // B <- R
+                out[x * 4 + 3] = 0xff;
+            }
+        }
+    }
+    else
+    {
+        // R8G8B8A8
+        for (uint32_t y = 0; y < height; ++y)
+        {
+            const uint8_t* row = src + static_cast<size_t>(y) * mapped.RowPitch;
+            uint8_t*       out = result.data.data() + static_cast<size_t>(y) * width * 4;
+            std::memcpy(out, row, static_cast<size_t>(width) * 4);
         }
     }
 
     context->Unmap(staging, 0);
-    duplication->ReleaseFrame();
+
+    if (frame_acquired)
+        duplication->ReleaseFrame();
 
     result.success = true;
-#endif
+
     return result;
 }
+#else
+capture_result_t capture_full_screen_windows_fallback()
+{
+    return {};
+}
+capture_result_t capture_full_screen_windows()
+{
+    return {};
+}
+#endif
