@@ -68,7 +68,7 @@ LDFLAGS   	+= -L$(BUILDDIR)
 LDLIBS		+= $(wildcard $(BUILDDIR)/*.a) `pkg-config --static --libs glfw3 tesseract libcurl`
 CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
 
-all: imgui fmt tfd getopt-port toml $(TARGET)
+all: imgui fmt tfd tpl getopt-port toml $(TARGET)
 
 imgui:
 ifeq ($(wildcard $(BUILDDIR)/libimgui.a),)
@@ -92,6 +92,11 @@ ifeq ($(wildcard $(BUILDDIR)/tinyfiledialogs.o),)
 	$(MAKE) -C src/libs/tinyfiledialogs BUILDDIR=$(BUILDDIR)
 endif
 
+tpl:
+ifeq ($(wildcard $(BUILDDIR)/libtiny-process-library.a),)
+	$(MAKE) -C src/libs/tiny-process-library BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD)
+endif
+
 getopt-port:
 ifeq ($(wildcard $(BUILDDIR)/getopt.o),)
 	$(MAKE) -C src/libs/getopt_port BUILDDIR=$(BUILDDIR)
@@ -100,7 +105,7 @@ endif
 genver: ./scripts/generateVersion.sh
 	./scripts/generateVersion.sh
 
-$(TARGET): genver fmt toml tfd getopt-port $(OBJ)
+$(TARGET): genver fmt toml tfd tpl getopt-port $(OBJ)
 	mkdir -p $(BUILDDIR)
 	$(CXX) -o $(BUILDDIR)/$(TARGET) $(OBJ) $(BUILDDIR)/*.o $(LDFLAGS) $(LDLIBS)
 
