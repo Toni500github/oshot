@@ -14,6 +14,10 @@
 #include <X11/Xutil.h>
 #include <unistd.h>
 
+#if PORTALS
+#include <gio/gio.h>
+#endif
+
 #include "stb_image.h"
 
 #elif defined(_WIN32)
@@ -53,6 +57,14 @@ SessionType get_session_type()
 }
 
 #ifdef __linux__
+
+#ifdef ENABLE_PORTALS
+capture_result_t capture_full_screen_portal(capture_result_t&);
+#else
+capture_result_t capture_full_screen_portal(capture_result_t& res)
+{ return res; }
+#endif
+
 capture_result_t capture_full_screen_x11()
 {
     capture_result_t result;
@@ -61,7 +73,7 @@ capture_result_t capture_full_screen_x11()
     if (!display)
     {
         result.error_msg = "Failed to open X display";
-        return result;
+        return capture_full_screen_portal(result);
     }
 
     Window            root = DefaultRootWindow(display);
@@ -73,7 +85,7 @@ capture_result_t capture_full_screen_x11()
     {
         result.error_msg = "Failed to capture screen image";
         XCloseDisplay(display);
-        return result;
+        return capture_full_screen_portal(result);
     }
 
     result.data          = ximage_to_rgba(image, attrs.width, attrs.height);
@@ -110,14 +122,14 @@ capture_result_t capture_full_screen_wayland()
     if (exit_code != 0)
     {
         result.error_msg += "\ngrim failed with exit code " + fmt::to_string(exit_code);
-        return result;
+        return capture_full_screen_portal(result);
     }
 
     // stbi_load_from_memory takes an int length
     if (buf.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
     {
         result.error_msg = "Screenshot too large to decode (buffer > INT_MAX).";
-        return result;
+        return capture_full_screen_portal(result);
     }
 
     int      w = 0, h = 0, comp = 0;
@@ -127,7 +139,7 @@ capture_result_t capture_full_screen_wayland()
     {
         const char* reason = stbi_failure_reason();
         result.error_msg   = "Failed to read PPM data: " + std::string(reason ? reason : "Unknown");
-        return result;
+        return capture_full_screen_portal(result);
     }
 
     result.region.width  = w;
@@ -138,7 +150,158 @@ capture_result_t capture_full_screen_wayland()
 
     return result;
 }
-#else
+
+#if ENABLE_PORTALS
+std::string      png_uri;
+capture_result_t cap_portal;
+
+struct State
+{
+    GMainLoop* loop;
+    guint      subscription_id;
+};
+
+static gboolean on_timeout(gpointer user_data)
+{
+    State* st            = reinterpret_cast<State*>(user_data);
+    cap_portal.error_msg = "Timed out waiting for portal response (is xdg-desktop-portal running?)";
+    g_main_loop_quit(st->loop);
+    return G_SOURCE_REMOVE;
+}
+
+static void on_response(GDBusConnection* conn,
+                        const gchar*     sender_name,
+                        const gchar*     object_path,
+                        const gchar*     interface_name,
+                        const gchar*     signal_name,
+                        GVariant*        parameters,
+                        gpointer         user_data)
+{
+    State* st = reinterpret_cast<State*>(user_data);
+
+    guint32      response = 2;
+    GVariant*    results  = NULL;
+    const gchar* uri      = NULL;
+
+    g_variant_get(parameters, "(u@a{sv})", &response, &results);
+
+    if (response != 0)
+        cap_portal.error_msg = fmt::format("Cancelled or failed (response={})", (unsigned)response);
+    else if (!(g_variant_lookup(results, "uri", "&s", &uri) && uri))
+        cap_portal.error_msg = "Success, but portal returned no uri";
+
+    if (results)
+        g_variant_unref(results);
+
+    if (st->subscription_id)
+        g_dbus_connection_signal_unsubscribe(conn, st->subscription_id);
+
+    png_uri = uri;
+    g_main_loop_quit(st->loop);
+}
+
+capture_result_t capture_full_screen_portal(capture_result_t&)
+{
+    GError* error = NULL;
+
+    GDBusConnection* bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
+    if (!bus)
+    {
+        cap_portal.error_msg =
+            "Failed to connect to session bus: " + std::string(error->message ? error->message : "Unknown");
+        if (error)
+            g_error_free(error);
+        return cap_portal;
+    }
+
+    // Call Screenshot portal synchronously so we can fail loudly if the service isn't there.
+    // Screenshot returns a "request handle" object path (type 'o').
+    GVariant* reply = g_dbus_connection_call_sync(bus,
+                                                  "org.freedesktop.portal.Desktop",
+                                                  "/org/freedesktop/portal/desktop",
+                                                  "org.freedesktop.portal.Screenshot",
+                                                  "Screenshot",
+                                                  g_variant_new("(sa{sv})", "", NULL),
+                                                  G_VARIANT_TYPE("(o)"),
+                                                  G_DBUS_CALL_FLAGS_NONE,
+                                                  3000,  // 3s timeout for the method call itself
+                                                  NULL,
+                                                  &error);
+
+    if (!reply)
+    {
+        cap_portal.error_msg = "Portal call failed: " + std::string(error->message ? error->message : "Unknown");
+        if (error)
+            g_error_free(error);
+        g_object_unref(bus);
+        return cap_portal;
+    }
+
+    const char* request_path = NULL;
+    g_variant_get(reply, "(&o)", &request_path);
+
+    if (!request_path || request_path[0] == '\0')
+    {
+        cap_portal.error_msg = "Portal returned an empty request handle";
+        g_variant_unref(reply);
+        g_object_unref(bus);
+        return cap_portal;
+    }
+
+    State st;
+    st.loop = g_main_loop_new(NULL, FALSE);
+
+    // Subscribe specifically to the request object's Response signal.
+    st.subscription_id = g_dbus_connection_signal_subscribe(bus,
+                                                            "org.freedesktop.portal.Desktop",
+                                                            "org.freedesktop.portal.Request",
+                                                            "Response",
+                                                            request_path,
+                                                            NULL,
+                                                            G_DBUS_SIGNAL_FLAGS_NONE,
+                                                            on_response,
+                                                            &st,
+                                                            NULL);
+
+    // Don’t hang forever if nothing responds.
+    g_timeout_add_seconds(5, on_timeout, &st);
+
+    g_main_loop_run(st.loop);
+
+    g_variant_unref(reply);
+    g_main_loop_unref(st.loop);
+    g_object_unref(bus);
+
+    if (png_uri.empty())
+    {
+        if (cap_portal.error_msg.empty())
+            cap_portal.error_msg = "Failed to retrive uri path to screenshot PNG";
+        return cap_portal;
+    }
+
+    replace_str(png_uri, "file://", "");
+
+    int      w = 0, h = 0, comp = 0;
+    uint8_t* rgba = stbi_load(png_uri.c_str(), &w, &h, &comp, STBI_rgb_alpha);
+
+    if (!rgba)
+    {
+        const char* reason   = stbi_failure_reason();
+        cap_portal.error_msg = "Failed to read PNG data: " + std::string(reason ? reason : "Unknown");
+        return cap_portal;
+    }
+
+    cap_portal.region.width  = w;
+    cap_portal.region.height = h;
+    cap_portal.data.assign(rgba, rgba + (static_cast<size_t>(w) * static_cast<size_t>(h) * 4));
+    stbi_image_free(rgba);
+    cap_portal.success = true;
+
+    return cap_portal;
+}
+#endif // ENABLE_PORTALS
+
+#else // __linux__
 capture_result_t capture_full_screen_x11()
 {
     return {};
@@ -147,7 +310,11 @@ capture_result_t capture_full_screen_wayland()
 {
     return {};
 }
-#endif
+capture_result_t capture_full_screen_portal()
+{
+    return {};
+}
+#endif // __linux__
 
 #ifdef _WIN32
 capture_result_t capture_full_screen_windows_fallback()

@@ -186,7 +186,7 @@ bool ScreenshotTool::StartWindow()
     m_state = ToolState::Selecting;
     CreateTexture();
     fit_to_screen(m_screenshot);
-    if (!m_screenshot.success || m_screenshot.data.empty() || !m_screenshot.error_msg.empty() || !m_texture_id)
+    if (!m_screenshot.success || m_screenshot.data.empty() || !m_texture_id)
     {
         m_state = ToolState::Idle;
         error("Failed to do data screenshot: {}", m_screenshot.error_msg);

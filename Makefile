@@ -5,6 +5,8 @@ VARS  	  	?=
 CXXSTD		?= c++20
 
 DEBUG 		?= 0
+WINDOWS_CMD	?= 1
+ENABLE_PORTALS	?= 1
 
 COMPILER := $(shell $(CXX) --version | head -n1)
 
@@ -19,6 +21,10 @@ endif
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
         LDLIBS += -lGL -lX11
+	ifeq ($(ENABLE_PORTALS),1)
+		CXXFLAGS += -DPORTALS=1 `pkg-config --static --cflags gio-2.0`
+		LDLIBS   += `pkg-config --static --libs gio-2.0`
+	endif
 
 else ifeq ($(UNAME_S),Darwin) #APPLE
         LDFLAGS += -L/usr/local/lib -L/opt/local/lib -L/opt/homebrew/lib
