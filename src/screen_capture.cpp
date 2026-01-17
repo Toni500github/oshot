@@ -14,7 +14,7 @@
 #include <X11/Xutil.h>
 #include <unistd.h>
 
-#if PORTALS
+#if ENABLE_PORTALS
 #include <gio/gio.h>
 #endif
 
@@ -202,8 +202,9 @@ static void on_response(GDBusConnection* conn,
 
 capture_result_t capture_full_screen_portal(capture_result_t&)
 {
-    GError* error = NULL;
+    warn("Fallback to portal capture");
 
+    GError* error = NULL;
     GDBusConnection* bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
     if (!bus)
     {

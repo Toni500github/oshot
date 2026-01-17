@@ -166,7 +166,7 @@ bool ScreenshotTool::Start()
         m_screenshot = load_image_rgba(stdin_data_exist, config->_source_file);
     }
 
-    if (!m_screenshot.success || m_screenshot.data.empty() || !m_screenshot.error_msg.empty())
+    if (!m_screenshot.success || m_screenshot.data.empty())
     {
         m_state = ToolState::Idle;
         error("Failed to do data screenshot: {}", m_screenshot.error_msg);
@@ -186,10 +186,10 @@ bool ScreenshotTool::StartWindow()
     m_state = ToolState::Selecting;
     CreateTexture();
     fit_to_screen(m_screenshot);
-    if (!m_screenshot.success || m_screenshot.data.empty() || !m_texture_id)
+    if (!m_texture_id)
     {
         m_state = ToolState::Idle;
-        error("Failed to do data screenshot: {}", m_screenshot.error_msg);
+        error("Failed create openGL texture");
         return false;
     }
     return true;
