@@ -249,6 +249,9 @@ void ScreenshotTool::RenderOverlay()
         DrawBarDecodeTools();
         ImGui::End();
     }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+        Cancel();
 }
 
 void ScreenshotTool::HandleSelectionInput()
@@ -544,9 +547,6 @@ void ScreenshotTool::DrawMenuItems()
     if (ImGui::BeginMenuBar())
     {
         // Handle shortcuts FIRST, before drawing menus
-        if (ImGui::Shortcut(ImGuiKey_Escape))
-            Cancel();
-
         if (ImGui::Shortcut(ImGuiKey_E | ImGuiMod_Ctrl))
             config->allow_ocr_edit = !config->allow_ocr_edit;
 
