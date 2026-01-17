@@ -108,32 +108,49 @@ capture_result_t capture_full_screen_wayland()
 {
     capture_result_t result;
 #ifdef __linux__
-    std::vector<uint8_t>    buf;
+    std::vector<uint8_t> buf;
+
     TinyProcessLib::Process proc(
         { "grim", "-t", "ppm", "-" },
         "",  // cwd
         [&](const char* bytes, size_t n) {
             // stdout (binary)
-            buf.insert(buf.end(), reinterpret_cast<const uint8_t*>(bytes), reinterpret_cast<const uint8_t*>(bytes) + n);
+            const uint8_t* p = reinterpret_cast<const uint8_t*>(bytes);
+            buf.insert(buf.end(), p, p + n);
         },
         [&](const char* bytes, size_t n) {
             // stderr (text)
-            result.error_msg.assign(bytes, n);
+            result.error_msg.append(bytes, n);
         });
 
-    int      w, h, comp;
-    uint8_t* rgba = stbi_load_from_memory(buf.data(), buf.size(), &w, &h, &comp, STBI_rgb_alpha);
+    const int exit_code = proc.get_exit_status();
+
+    if (exit_code != 0)
+    {
+        result.error_msg += "\ngrim failed with exit code " + fmt::to_string(exit_code);
+        return result;
+    }
+
+    // stbi_load_from_memory takes an int length
+    if (buf.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+    {
+        result.error_msg = "Screenshot too large to decode (buffer > INT_MAX).";
+        return result;
+    }
+
+    int      w = 0, h = 0, comp = 0;
+    uint8_t* rgba = stbi_load_from_memory(buf.data(), static_cast<int>(buf.size()), &w, &h, &comp, STBI_rgb_alpha);
+
     if (!rgba)
     {
-        result.error_msg =
-            // It's just a global string return
-            "Failed to read PPM data: " + std::string(stbi_failure_reason() ? stbi_failure_reason() : "Unknown");
+        const char* reason = stbi_failure_reason();
+        result.error_msg   = "Failed to read PPM data: " + std::string(reason ? reason : "Unknown");
         return result;
     }
 
     result.region.width  = w;
     result.region.height = h;
-    result.data.assign(rgba, rgba + (w * h * 4));
+    result.data.assign(rgba, rgba + (static_cast<size_t>(w) * static_cast<size_t>(h) * 4));
     stbi_image_free(rgba);
     result.success = true;
 #endif
