@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 
 #include "fmt/base.h"
@@ -175,10 +176,13 @@ static void glfw_error_callback(int i_error, const char* description)
     error("GLFW Error {}: {}", i_error, description);
 }
 
-int main(int argc, char* argv[])
+#if defined(_WIN32) && !WINDOWS_CMD
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
-#if defined(_WIN32) && !defined(WINDOWS_CMD)
-    // Windows GUI (-mwindows): log to file
+    int argc = 1;
+    char* argv[8];
+    strcpy(argv[0], "oshot");
+    AllocConsole();
     fp = fopen("oshot.log", "w");
     if (!fp)
     {
@@ -191,6 +195,8 @@ int main(int argc, char* argv[])
     freopen_s(&dummy, "CONOUT$", "w", stdout);
     freopen_s(&dummy, "CONOUT$", "w", stderr);
 #else
+int main(int argc, char* argv[])
+{
     fp = stdout;
 #endif
 
