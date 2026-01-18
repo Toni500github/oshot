@@ -1,6 +1,6 @@
 # oshot
 
-A simple and lightweight tool for extracting and translating text from a screenshot (on the fly)
+A simple and lightweight tool for extracting and translating text from a screenshot/image (on the fly)
 
 ## Dependencies
 #### Linux
@@ -11,6 +11,7 @@ If a package is not found, try searching by its base name (e.g., `libglfw3-dev` 
 - `grim` (Wayland only)
 - `libglfw3-dev`
 - `libtesseract` (including necessary language models, e.g `tesseract-ocr-eng`)
+- `libzar-dev`
 - **Python** and **pip**  
   - Python packages:
     ```bash
@@ -69,6 +70,7 @@ Example:
 ```toml
 ocr-path = "C:\\Program Files\\Tesseract-OCR\\tessdata"
 ```
+
 ## Troubleshooting
 ### Windows
 If when starting oshot, it starts to flick the screen black (or it won't launch), try to follow these steps:
@@ -77,7 +79,7 @@ If when starting oshot, it starts to flick the screen black (or it won't launch)
 3. Try to launch it again
 ### Linux
 - If when you try to run oshot gives linking library errors, then try to use the AppImage release instead.
-- If you are using KDE or Gnome in Wayland and running `oshot` or `grim` doesn't work, then you need to take the screenshot from an external tool and either pipe into stdin or use the `-f /path/to/image` flag 
+- If `oshot` doesn't take the screenshot, then you need to take the screenshot from an external tool and either pipe into stdin or use the `-f /path/to/image` flag 
 
 If still errors, please open an [Issue](https://github.com/Toni500github/oshot/issues) and take a screenshot/paste the text of the error appearing in the console when executing oshot
 ## Usage
