@@ -1,16 +1,13 @@
-
 #ifndef _CONFIG_HPP
 #define _CONFIG_HPP
 
-#include <memory>
-
-#include "util.hpp"
-#define TOML_HEADER_ONLY 0
-
 #include <cstdint>
+#include <memory>
 #include <type_traits>
 #include <unordered_map>
 
+#include "util.hpp"
+#define TOML_HEADER_ONLY 0
 #include "toml++/toml.hpp"
 
 enum types
@@ -103,7 +100,7 @@ private:
                 return overrides.at(value.data()).int_value;
 
         const std::optional<T> ret = this->m_tbl.at_path(value).value<T>();
-        if constexpr (toml::is_string<T>)  // if we want to get a value that's a string
+        if constexpr (toml::is_string<T>)
             return ret ? expandVar(ret.value(), dont_expand_var) : expandVar(fallback, dont_expand_var);
         else
             return ret.value_or(fallback);
@@ -155,4 +152,5 @@ GENERAL OPTIONS:
     --gen-config [<PATH>]       Generate default config file. If PATH is omitted, saves to default location.
                                 Prompts before overwriting.
 )");
+
 #endif  // _CONFIG_HPP

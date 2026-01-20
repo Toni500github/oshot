@@ -25,12 +25,13 @@ class SocketSender
 {
 public:
     ~SocketSender() { Close(); };
+
     bool Start(int port = 6015);
     bool Send(const std::string& text);
     bool Send(SendMsg msg, const void* src, size_t size);
-    void Close();
-
     bool IsFailed() { return m_failed; }
+
+    void Close();
 
 private:
 #ifdef _WIN32

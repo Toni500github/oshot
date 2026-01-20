@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 
 #include "screen_capture.hpp"
@@ -46,11 +47,11 @@ private:
     using PixPtr  = std::unique_ptr<PIX, PixDeleter>;
     using TextPtr = std::unique_ptr<char, void (*)(char*)>;
 
-    static PixPtr rgba_to_pix(std::span<const uint8_t> rgba, int w, int h);
-
     std::unique_ptr<tesseract::TessBaseAPI> m_api;
     std::optional<OcrConfig>                m_config;
     bool                                    m_initialized = false;
+
+    static PixPtr rgba_to_pix(std::span<const uint8_t> rgba, int w, int h);
 };
 
 #endif  // !_OCR_HPP_

@@ -36,6 +36,9 @@
 #  include <shellscalingapi.h>  // GetDpiForMonitor
 #  include <windows.h>
 #  pragma comment(lib, "Shcore.lib")
+#else
+#  include <sys/select.h>
+#  include <unistd.h>
 #endif
 
 #if __linux__
@@ -72,6 +75,19 @@ int get_screen_dpi()
         return dpiX;
     return 96;  // fallback
 }
+
+bool stdin_has_data()
+{
+    HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+    if (h == INVALID_HANDLE_VALUE)
+        return false;
+
+    DWORD available = 0;
+    if (!PeekNamedPipe(h, nullptr, 0, nullptr, &available, nullptr))
+        return false;
+
+    return available > 0;
+}
 #else
 int get_screen_dpi()
 {
@@ -87,6 +103,16 @@ int get_screen_dpi()
     // dpi = pixels per inch
     double dpi = width_px / (width_mm / 25.4);
     return static_cast<int>(dpi + 0.5);
+}
+
+bool stdin_has_data()
+{
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+
+    timeval tv{};
+    return select(STDIN_FILENO + 1, &fds, nullptr, nullptr, &tv) > 0;
 }
 #endif
 

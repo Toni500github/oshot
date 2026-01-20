@@ -41,37 +41,6 @@ static ImVec2 origin(0, 0);
 static std::unique_ptr<Translator> translator;
 std::unique_ptr<SocketSender>      sender;
 
-#ifndef _WIN32
-#  include <sys/select.h>
-#  include <unistd.h>
-
-static bool stdin_has_data()
-{
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(STDIN_FILENO, &fds);
-
-    timeval tv{};
-    return select(STDIN_FILENO + 1, &fds, nullptr, nullptr, &tv) > 0;
-}
-#else
-#  include <io.h>
-#  include <windows.h>
-
-static bool stdin_has_data()
-{
-    HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
-    if (h == INVALID_HANDLE_VALUE)
-        return false;
-
-    DWORD available = 0;
-    if (!PeekNamedPipe(h, nullptr, 0, nullptr, &available, nullptr))
-        return false;
-
-    return available > 0;
-}
-#endif
-
 static void rgba_to_grayscale(const uint8_t* rgba, uint8_t* gray, int width, int height)
 {
     const int pixels = width * height;

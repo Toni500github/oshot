@@ -39,6 +39,7 @@ using CaptureCallback = std::function<void(capture_result_t)>;
 capture_result_t capture_full_screen_x11();
 capture_result_t capture_full_screen_wayland();
 capture_result_t capture_full_screen_windows();
-SessionType      get_session_type();
+
+SessionType get_session_type();
 
 #endif  // !_SCREEN_CAPTURE_HPP_

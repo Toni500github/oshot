@@ -1,9 +1,18 @@
 #ifndef _UTIL_HPP_
 #define _UTIL_HPP_
 
+#include <chrono>
+#include <cstdint>
 #include <cstdio>
+#include <filesystem>
+#include <iostream>
+#include <string>
+#include <vector>
 
+#include "fmt/chrono.h"
+#include "fmt/color.h"
 #include "screen_capture.hpp"
+
 enum class SavingOp;
 
 #if defined(__linux__)
@@ -16,18 +25,7 @@ enum class SavingOp;
 #  include <windows.h>
 #endif
 
-#include <chrono>
-#include <cstdint>
-#include <filesystem>
-#include <iostream>
-#include <string>
-#include <vector>
-
-#include "fmt/chrono.h"
-#include "fmt/color.h"
-
 #if ENABLE_NLS
-/* here so it doesn't need to be included elsewhere */
 #  include <libintl.h>
 #  include <locale.h>
 #  define _(str) gettext(str)
@@ -35,6 +33,7 @@ enum class SavingOp;
 #  define _(s) (char*)s
 #endif
 
+// Global variables
 extern int   scr_w, scr_h;
 extern FILE* fp;
 
@@ -42,23 +41,23 @@ extern FILE* fp;
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height);
 #endif
 
-std::string           replace_str(std::string& str, const std::string_view from, const std::string_view to);
-std::string           select_image();
+std::string replace_str(std::string& str, const std::string_view from, const std::string_view to);
+std::string select_image();
+std::string expandVar(std::string ret, bool dont = false);
+
+bool stdin_has_data();
+bool save_png(SavingOp op, const capture_result_t& img);
+
 std::filesystem::path get_font_path(const std::string& font);
 std::filesystem::path get_lang_font_path(const std::string& lang);
-capture_result_t      load_image_rgba(bool stdin_has_data, const std::string& path);
-void                  fit_to_screen(capture_result_t& img);
-bool                  save_png(SavingOp op, const capture_result_t& img);
-int                   get_screen_dpi();
 std::filesystem::path getHomeConfigDir();
 std::filesystem::path getConfigDir();
 
-/* Replace special symbols such as ~ and $ (at the begging) in std::string
- * @param str The string
- * @param dont Don't do it
- * @return The modified string
- */
-std::string expandVar(std::string ret, bool dont = false);
+capture_result_t load_image_rgba(bool stdin_has_data, const std::string& path);
+
+void fit_to_screen(capture_result_t& img);
+
+int get_screen_dpi();
 
 #define BOLD_COLOR(x) (fmt::emphasis::bold | fmt::fg(x))
 template <typename... Args>
@@ -66,7 +65,7 @@ void error(const std::string_view fmt, Args&&... args) noexcept
 {
     fmt::print(fp,
                BOLD_COLOR(fmt::rgb(fmt::color::red)),
-               "[{}] ERROR: {}\n",
+               "[{:%T}] ERROR: {}\n",
                std::chrono::system_clock::now(),
                fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
 }
@@ -82,9 +81,10 @@ template <typename... Args>
 #endif
     fmt::print(fp,
                BOLD_COLOR(fmt::rgb(fmt::color::red)),
-               "[{}] FATAL: {}\n",
+               "[{:%T}] FATAL: {}\n",
                std::chrono::system_clock::now(),
                fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
+
     std::exit(1);
 }
 
@@ -94,7 +94,7 @@ void debug(const std::string_view fmt, Args&&... args) noexcept
 #if DEBUG
     fmt::print(fp,
                BOLD_COLOR((fmt::rgb(fmt::color::hot_pink))),
-               "[{}] [DEBUG]: {}\n",
+               "[{:%T}] [DEBUG]: {}\n",
                std::chrono::system_clock::now(),
                fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
 #endif
@@ -111,7 +111,7 @@ void warn(const std::string_view fmt, Args&&... args) noexcept
 #endif
     fmt::print(fp,
                BOLD_COLOR((fmt::rgb(fmt::color::yellow))),
-               "[{}] WARNING: {}\n",
+               "[{:%T}] WARNING: {}\n",
                std::chrono::system_clock::now(),
                fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
 }
@@ -127,15 +127,9 @@ void info(const std::string_view fmt, Args&&... args) noexcept
 #endif
     fmt::print(fp,
                BOLD_COLOR((fmt::rgb(fmt::color::cyan))),
-               "[{}] INFO: {}\n",
+               "[{:%T}] INFO: {}\n",
                std::chrono::system_clock::now(),
                fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
-}
-
-inline void ctrl_d_handler(const std::istream& cin)
-{
-    if (cin.eof())
-        die(_("Exiting due to CTRL-D or EOF"));
 }
 
 /** Ask the user a yes or no question.
@@ -162,7 +156,8 @@ bool askUserYorN(bool def, const std::string_view fmt, Args&&... args)
     while (std::getline(std::cin, result) && (result.length() > 1))
         fmt::print(BOLD_COLOR(fmt::rgb(fmt::color::yellow)), "Please answear y or n,{}", inputs_str);
 
-    ctrl_d_handler(std::cin);
+    if (std::cin.eof())
+        die(_("Exiting due to CTRL-D or EOF"));
 
     if (result.empty())
         return def;
@@ -173,5 +168,7 @@ bool askUserYorN(bool def, const std::string_view fmt, Args&&... args)
     return !def;
 #endif
 }
+
+#undef BOLD_COLOR
 
 #endif  // !_UTIL_HPP_

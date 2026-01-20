@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <functional>
 #include <future>
+#include <unordered_map>
+#include <utility>
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_internal.h"
@@ -28,7 +30,7 @@ struct selection_rect_t
     point_t end;
 
     float get_x() const { return std::min(start.x, end.x); }
-    float get_y() const { return std::min(start.y, end.y); }
+    float get_y() const { return std::min(start.y, start.y); }
     float get_width() const { return std::abs(end.x - start.x); }
     float get_height() const { return std::abs(end.y - start.y); }
 };
@@ -83,21 +85,27 @@ public:
 
     bool Start();
     bool StartWindow();
+    bool CreateTexture();
+    bool HasError(ErrorState err);
+    bool IsActive() const { return m_state != ToolState::Idle; }
 
-    void RenderOverlay();
-
-    bool             CreateTexture();
     capture_result_t GetFinalImage();
 
-    void Cancel();
+    ImFont* GetOrLoadFontForLanguage(const std::string& lang_code);
 
-    bool IsActive() const { return m_state != ToolState::Idle; }
-    void SetOnComplete(const std::function<void(SavingOp, const capture_result_t&)>& cb) { m_on_complete = cb; }
-    void SetOnCancel(const std::function<void()>& cb) { m_on_cancel = cb; }
+    void RenderOverlay();
+    void Cancel();
+    void ClearError(ErrorState err);
+    void SetError(ErrorState err);
+
+    void SetOnComplete(const std::function<void(SavingOp, const capture_result_t&)>& cb)
+    {
+        m_on_complete = std::move(cb);
+    }
+
+    void SetOnCancel(const std::function<void()>& cb) { m_on_cancel = std::move(cb); }
 
 private:
-    struct ImGuiIO dummy;
-
     static constexpr float HANDLE_DRAW_SIZE  = 4.0f;
     static constexpr float HANDLE_HOVER_SIZE = 10.0f;
 
@@ -115,6 +123,39 @@ private:
         ImRect        rect;
     };
 
+    ImGuiIO&         m_io;
+    OcrAPI           m_api;
+    capture_result_t m_screenshot;
+
+    void*         m_texture_id      = nullptr;
+    ToolState     m_state           = ToolState::Idle;
+    HandleHovered m_handle_hover    = HandleHovered::None;
+    HandleHovered m_dragging_handle = HandleHovered::None;
+    int           m_err_state       = ErrorState::None;
+
+    selection_rect_t m_selection;
+    selection_rect_t m_drag_start_selection;
+
+    bool m_is_selecting{};
+    bool m_is_hovering_ocr{};
+
+    ImVec2 m_drag_start_mouse{};
+    ImVec2 m_image_origin{};
+    ImVec2 m_image_end{};
+
+    std::future<bool> m_connect_future;
+    std::atomic<bool> m_connect_done;
+
+    std::string m_ocr_text;
+    std::string m_to_translate_text;
+    std::string m_barcode_text;
+
+    std::unordered_map<std::string, FontCacheEntry>        m_font_cache;
+    std::function<void()>                                  m_on_cancel;
+    std::function<void(SavingOp, const capture_result_t&)> m_on_complete;
+
+    ImGuiIO dummy;
+
     void HandleSelectionInput();
     void HandleResizeInput();
     void DrawDarkOverlay();
@@ -124,43 +165,9 @@ private:
     void DrawOcrTools();
     void DrawTranslationTools();
     void DrawBarDecodeTools();
-
     void UpdateHandleHoverState();
     void UpdateCursor();
     void UpdateWindowBg();
-
-    ImFont* GetOrLoadFontForLanguage(const std::string& lang_code);
-    bool    HasError(ErrorState err);
-    void    ClearError(ErrorState err);
-    void    SetError(ErrorState err);
-
-    OcrAPI           m_api;
-    ImGuiIO&         m_io;
-    capture_result_t m_screenshot;
-    void*            m_texture_id      = nullptr;  // ImGui texture ID
-    ToolState        m_state           = ToolState::Idle;
-    HandleHovered    m_handle_hover    = HandleHovered::None;
-    HandleHovered    m_dragging_handle = HandleHovered::None;
-    int              m_err_state       = ErrorState::None;
-    selection_rect_t m_selection;
-    selection_rect_t m_drag_start_selection;
-    bool             m_is_selecting{};
-    bool             m_is_hovering_ocr{};
-    ImVec2           m_drag_start_mouse{};
-    ImVec2           m_image_origin{};  // Where screenshot is drawn (top-left)
-    ImVec2           m_image_end{};     // Where screenshot ends (bottom-right)
-
-    std::future<bool> m_connect_future;
-    std::atomic<bool> m_connect_done;
-
-    std::unordered_map<std::string, FontCacheEntry> m_font_cache;
-
-    std::string m_ocr_text;
-    std::string m_to_translate_text;
-    std::string m_barcode_text;
-
-    std::function<void(SavingOp, const capture_result_t&)> m_on_complete;
-    std::function<void()>                                  m_on_cancel;
 };
 
 #endif  // !_SCREENSHOT_TOOL_HPP_
