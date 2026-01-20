@@ -27,12 +27,12 @@ public:
     std::optional<std::string> RecognizeCapture(const capture_result_t& cap);
 
 private:
-    struct OcrConfig
+    struct ocr_config_t
     {
         std::string path;
         std::string model;
 
-        bool operator==(const OcrConfig&) const = default;
+        bool operator==(const ocr_config_t&) const = default;
     };
 
     struct PixDeleter
@@ -48,10 +48,10 @@ private:
     using TextPtr = std::unique_ptr<char, void (*)(char*)>;
 
     std::unique_ptr<tesseract::TessBaseAPI> m_api;
-    std::optional<OcrConfig>                m_config;
+    std::optional<ocr_config_t>             m_config;
     bool                                    m_initialized = false;
 
-    static PixPtr rgba_to_pix(std::span<const uint8_t> rgba, int w, int h);
+    static PixPtr RgbaToPix(std::span<const uint8_t> rgba, int w, int h);
 };
 
 #endif  // !_OCR_HPP_

@@ -7,8 +7,8 @@
 
 static tesseract::PageSegMode choose_psm(int w, int h)
 {
-    if (config->_preferred_psm != 0)
-        return static_cast<tesseract::PageSegMode>(config->_preferred_psm);
+    if (config->Runtime.preferred_psm != 0)
+        return static_cast<tesseract::PageSegMode>(config->Runtime.preferred_psm);
 
     const int   area   = w * h;
     const float aspect = (h > 0) ? float(w) / h : 1.0f;
@@ -40,7 +40,7 @@ OcrAPI::~OcrAPI()
 
 bool OcrAPI::Configure(const char* data_path, const char* model, tesseract::OcrEngineMode oem)
 {
-    OcrConfig next{ data_path, model };
+    ocr_config_t next{ data_path, model };
 
     if (m_config && *m_config == next)
         return true;  // nothing to do
@@ -53,9 +53,7 @@ bool OcrAPI::Configure(const char* data_path, const char* model, tesseract::OcrE
     }
 
     if (m_api->Init(data_path, model, oem) != 0)
-    {
         return false;
-    }
 
     m_config      = std::move(next);
     m_initialized = true;
@@ -73,11 +71,12 @@ std::optional<std::string> OcrAPI::RecognizeCapture(const capture_result_t& cap)
         return std::nullopt;
 
     tesseract::PageSegMode psm = choose_psm(cap.region.width, cap.region.height);
-    PixPtr                 pix = rgba_to_pix(cap.view(), cap.region.width, cap.region.height);
+    PixPtr                 pix = RgbaToPix(cap.view(), cap.region.width, cap.region.height);
     if (!pix)
         return std::nullopt;
 
-    float scale = std::min(static_cast<float>(scr_w) / cap.region.width, static_cast<float>(scr_h) / cap.region.height);
+    float scale =
+        std::min(static_cast<float>(g_scr_w) / cap.region.width, static_cast<float>(g_scr_h) / cap.region.height);
 
     int effective_dpi = static_cast<int>(get_screen_dpi() * scale);
     effective_dpi     = std::clamp(effective_dpi, 70, 300);
@@ -94,7 +93,7 @@ std::optional<std::string> OcrAPI::RecognizeCapture(const capture_result_t& cap)
     return std::string(text.get());
 }
 
-OcrAPI::PixPtr OcrAPI::rgba_to_pix(std::span<const uint8_t> rgba, int w, int h)
+OcrAPI::PixPtr OcrAPI::RgbaToPix(std::span<const uint8_t> rgba, int w, int h)
 {
     const size_t required = static_cast<size_t>(w) * h * 4;
     if (rgba.size() < required)

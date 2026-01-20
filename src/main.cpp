@@ -46,9 +46,10 @@
      : (optarg != NULL))
 // clang-format on
 
+// Extern variables declariaions
 std::unique_ptr<Config> config;
-int                     scr_w{}, scr_h{};
-FILE*                   fp;
+int                     g_scr_w{}, g_scr_h{};
+FILE*                   g_fp_log;
 
 // Print the version and some other infos, then exit successfully
 static void version()
@@ -154,13 +155,13 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
             case 'l':
                 print_languages(); break;
             case 'f':
-                config->_source_file = optarg; break;
+                config->Runtime.source_file = optarg; break;
 
             case "gen-config"_fnv1a16:
                 if (OPTIONAL_ARGUMENT_IS_PRESENT)
-                    config->generateConfig(optarg);
+                    config->GenerateConfig(optarg);
                 else
-                    config->generateConfig(configFile.string());
+                    config->GenerateConfig(configFile.string());
                 exit(EXIT_SUCCESS);
 
             default:
@@ -183,12 +184,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     char* argv[8];
     strcpy(argv[0], "oshot");
     AllocConsole();
-    fp = fopen("oshot.log", "w");
-    if (!fp)
+    g_fp_log = fopen("oshot.log", "w");
+    if (!g_fp_log)
     {
         // fallback
-        fp = stdout;
-        fprintf(stderr, "Failed to open oshot.log, using stdout\n");
+        g_fp_log = stdout;
+        warn("Failed to open oshot.log, using stdout");
     }
 
     FILE* dummy;
@@ -197,12 +198,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #else
 int main(int argc, char* argv[])
 {
-    fp = stdout;
+    g_fp_log = stdout;
 #endif
 
     GLFWwindow* window = nullptr;
 
-    const std::string& configDir      = getConfigDir().string();
+    const std::string& configDir      = get_config_dir().string();
     const std::string& configFile     = parse_config_path(argc, argv, configDir).string();
     const std::string& imgui_ini_path = configDir + "/imgui.ini";
 
@@ -210,7 +211,7 @@ int main(int argc, char* argv[])
     if (!parseargs(argc, argv, configFile))
         return EXIT_FAILURE;
 
-    config->loadConfigFile(configFile);
+    config->LoadConfigFile(configFile);
 
     // Setup Screenshot Tool
     // Calling it before starting the window so that
@@ -277,8 +278,8 @@ int main(int argc, char* argv[])
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);  // Enable vsync
 
-    scr_w = mode->width;
-    scr_h = mode->height;
+    g_scr_w = mode->width;
+    g_scr_h = mode->height;
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -288,9 +289,9 @@ int main(int argc, char* argv[])
     io.IniFilename = imgui_ini_path.c_str();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-    if (!config->font.empty())
+    if (!config->File.font.empty())
     {
-        const auto& path = get_font_path(config->font);
+        const auto& path = get_font_path(config->File.font);
         if (!path.empty())
         io.FontDefault = io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, nullptr, io.Fonts->GetGlyphRangesDefault());
     }

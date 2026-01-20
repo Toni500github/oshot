@@ -28,11 +28,11 @@ Config::Config(const std::string& configFile, const std::string& configDir)
     if (!std::filesystem::exists(configFile))
     {
         warn(_("config file {} not found, generating new one"), configFile);
-        generateConfig(configFile);
+        GenerateConfig(configFile);
     }
 }
 
-void Config::loadConfigFile(const std::string& filename)
+void Config::LoadConfigFile(const std::string& filename)
 {
     try
     {
@@ -49,12 +49,12 @@ void Config::loadConfigFile(const std::string& filename)
             err.source().begin.column);
     }
 
-    ocr_path       = getValue<std::string>("default.ocr-path", "/usr/share/tessdata");
-    ocr_model      = getValue<std::string>("default.ocr-model", "eng");
-    lang_from      = getValue<std::string>("default.lang-from", "auto");
-    lang_to        = getValue<std::string>("default.lang-to", "en-us");
-    font           = getValue<std::string>("default.font", "");
-    allow_ocr_edit = getValue<bool>("default.allow-edit-ocr", false);
+    File.ocr_path       = GetValue<std::string>("default.ocr-path", "/usr/share/tessdata");
+    File.ocr_model      = GetValue<std::string>("default.ocr-model", "eng");
+    File.lang_from      = GetValue<std::string>("default.lang-from", "auto");
+    File.lang_to        = GetValue<std::string>("default.lang-to", "en-us");
+    File.font           = GetValue<std::string>("default.font", "");
+    File.allow_ocr_edit = GetValue<bool>("default.allow-edit-ocr", false);
 
     const toml::table* all_langs_tbl = m_tbl["lang"].as_table();
     if (!all_langs_tbl)
@@ -68,11 +68,11 @@ void Config::loadConfigFile(const std::string& filename)
 
         const std::optional<std::string>& font_str = lang_tbl->at_path("font").value<std::string>();
         if (font_str)
-            this->lang_fonts_paths[lang_code.data()] = font_str.value();
+            this->File.lang_fonts_paths[lang_code.data()] = font_str.value();
     }
 }
 
-void Config::overrideOption(const std::string& opt)
+void Config::OverrideOption(const std::string& opt)
 {
     const size_t pos = opt.find('=');
     if (pos == std::string::npos)
@@ -89,22 +89,22 @@ void Config::overrideOption(const std::string& opt)
         name.insert(0, "config.");
 
     if (value == "true")
-        overrides[name] = { .value_type = TYPE_BOOL, .bool_value = true };
+        m_overrides[name] = { .value_type = ValueType::kBool, .bool_value = true };
     else if (value == "false")
-        overrides[name] = { .value_type = TYPE_BOOL, .bool_value = false };
+        m_overrides[name] = { .value_type = ValueType::kBool, .bool_value = false };
     else if ((value[0] == '"' && value.back() == '"') || (value[0] == '\'' && value.back() == '\''))
-        overrides[name] = { .value_type = TYPE_STR, .string_value = value.substr(1, value.size() - 2) };
+        m_overrides[name] = { .value_type = ValueType::kString, .string_value = value.substr(1, value.size() - 2) };
     else if (is_str_digital(value))
-        overrides[name] = { .value_type = TYPE_INT, .int_value = std::stoi(value) };
+        m_overrides[name] = { .value_type = ValueType::kInt, .int_value = std::stoi(value) };
     else
         die(_("looks like override value '{}' from '{}' is neither a bool, int or string value"), value, name);
 }
 
-void Config::generateConfig(const std::string& filename)
+void Config::GenerateConfig(const std::string& filename)
 {
     if (std::filesystem::exists(filename))
     {
-        if (!askUserYorN(false, "WARNING: config file '{}' already exists. Do you want to overwrite it?", filename))
+        if (!ask_user_yn(false, "WARNING: config file '{}' already exists. Do you want to overwrite it?", filename))
             std::exit(1);
     }
 

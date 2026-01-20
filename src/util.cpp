@@ -17,9 +17,13 @@
 #include "socket.hpp"
 #include "tinyfiledialogs.h"
 
+#define SVPNG_LINKAGE inline
 #define SVPNG_OUTPUT std::vector<uint8_t>* output
 #define SVPNG_PUT(u) output->push_back(static_cast<uint8_t>(u))
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wfree-nonheap-object"
 #include "svpng.h"
+#pragma GCC diagnostic pop
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
@@ -50,7 +54,7 @@ std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
     {
         for (int x = 0; x < width; ++x)
         {
-            uint64_t pixel = XGetPixel(image, x, y);
+            unsigned long pixel = XGetPixel(image, x, y);
 
             int i            = (y * width + x) * 4;
             rgba_data[i + 0] = (pixel >> 16) & 0xff;  // R
@@ -121,13 +125,10 @@ void fit_to_screen(capture_result_t& img)
     const int img_w = img.region.width;
     const int img_h = img.region.height;
 
-    if (img_w <= 0 || img_h <= 0)
+    if (img_w <= g_scr_w && img_h <= g_scr_h)
         return;
 
-    if (img_w <= scr_w && img_h <= scr_h)
-        return;
-
-    float scale = std::min(static_cast<float>(scr_w) / img_w, static_cast<float>(scr_h) / img_h);
+    float scale = std::min(static_cast<float>(g_scr_w) / img_w, static_cast<float>(g_scr_h) / img_h);
 
     int new_w = static_cast<int>(std::round(img_w * scale));
     int new_h = static_cast<int>(std::round(img_h * scale));
@@ -219,16 +220,19 @@ capture_result_t load_image_rgba(bool stdin_has_data, const std::string& path)
 
 bool save_png(SavingOp op, const capture_result_t& img)
 {
+    const size_t w = img.region.width;
+    const size_t h = img.region.height;
     std::vector<uint8_t> data;
-    data.reserve(img.region.width * img.region.height * 4);
-    svpng(&data, img.region.width, img.region.height, img.view().data(), 1);
-    size_t size = data.size();
 
-    if (op == SavingOp::SAVE_CLIPBOARD)
+    data.reserve(w * h * 4);
+    svpng(&data, img.region.width, img.region.height, img.view().data(), 1);
+    const size_t size = data.size();
+
+    if (op == SavingOp::Clipboard)
     {
         if (sender->IsFailed())
             die("Couldn't copy image into clipboard: launcher not respoding/opened");
-        return sender->Send(SendMsg::COPY_IMAGE, data.data(), size);
+        return sender->Send(SendMsg::Image, data.data(), size);
     }
 
     auto        now       = std::chrono::system_clock::now();
@@ -262,7 +266,7 @@ std::string replace_str(std::string& str, const std::string_view from, const std
     return str;
 }
 
-std::string expandVar(std::string ret, bool dont)
+std::string expand_var(std::string ret, bool dont)
 {
     if (ret.empty() || dont)
         return ret;
@@ -299,7 +303,7 @@ std::string expandVar(std::string ret, bool dont)
     return ret;
 }
 
-std::filesystem::path getHomeConfigDir()
+std::filesystem::path get_home_config_dir()
 {
 #if __unix__
     const char* dir = std::getenv("XDG_CONFIG_HOME");
@@ -337,9 +341,9 @@ std::filesystem::path getHomeConfigDir()
 #endif
 }
 
-std::filesystem::path getConfigDir()
+std::filesystem::path get_config_dir()
 {
-    return getHomeConfigDir() / "oshot";
+    return get_home_config_dir() / "oshot";
 }
 
 std::filesystem::path get_font_path(const std::string& font)
@@ -362,7 +366,7 @@ std::filesystem::path get_font_path(const std::string& font)
 
     for (const std::string_view path : default_search_paths)
     {
-        const std::string& font_path = expandVar(fmt::format(FMT_COMPILE("{}{}"), path, font));
+        const std::string& font_path = expand_var(fmt::format(FMT_COMPILE("{}{}"), path, font));
         if (std::filesystem::exists(font_path))
             return font_path;
     }
@@ -372,9 +376,9 @@ std::filesystem::path get_font_path(const std::string& font)
 
 std::filesystem::path get_lang_font_path(const std::string& lang)
 {
-    if (config->lang_fonts_paths.find(lang) != config->lang_fonts_paths.end())
+    if (config->File.lang_fonts_paths.find(lang) != config->File.lang_fonts_paths.end())
     {
-        const std::filesystem::path font_path_config(config->lang_fonts_paths[lang]);
+        const std::filesystem::path font_path_config(config->File.lang_fonts_paths[lang]);
         if (font_path_config.is_absolute())
             return font_path_config;
 

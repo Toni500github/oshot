@@ -1,29 +1,14 @@
-#ifndef _CONFIG_HPP
-#define _CONFIG_HPP
+#ifndef _CONFIG_HPP_
+#define _CONFIG_HPP_
 
-#include <cstdint>
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
 
 #include "util.hpp"
+
 #define TOML_HEADER_ONLY 0
 #include "toml++/toml.hpp"
-
-enum types
-{
-    TYPE_STR,
-    TYPE_BOOL,
-    TYPE_INT
-};
-
-struct override_configs_types
-{
-    types       value_type;
-    std::string string_value = "";
-    bool        bool_value   = false;
-    int         int_value    = 0;
-};
 
 class Config
 {
@@ -31,23 +16,28 @@ public:
     // Create .config directories and files and load the config file (args or default)
     Config(const std::string& configFile, const std::string& configDir);
 
-    // Variables of config file in [default] table
-    std::string ocr_path;
-    std::string ocr_model;
-    std::string lang_from;
-    std::string lang_to;
-    std::string font;
-    bool        allow_ocr_edit = false;
+    // Variables of config file in [default] table.
+    // They can be overwritten from CLI arguments
+    struct config_file_t
+    {
+        std::string ocr_path;
+        std::string ocr_model;
+        std::string lang_from;
+        std::string lang_to;
+        std::string font;
+        bool        allow_ocr_edit = false;
 
-    std::unordered_map<std::string, std::string> lang_fonts_paths;
+        std::unordered_map<std::string, std::string> lang_fonts_paths;
+    } File;
 
-    // From CLI arguments
+    // Only from CLI arguments
     // Or ImGUI window
-    std::string _source_file;
-    int         _preferred_psm  = 0;
-    bool        _enable_handles = true;
-
-    std::unordered_map<std::string, override_configs_types> overrides;
+    struct runtime_settings_t
+    {
+        std::string source_file;
+        int         preferred_psm  = 0;
+        bool        enable_handles = true;
+    } Runtime;
 
     /**
      * Load config file and parse every config variables
@@ -55,13 +45,13 @@ public:
      * @param colors The colors struct where we'll put the default config colors.
      *               It doesn't include the colors in config.alias-colors
      */
-    void loadConfigFile(const std::string& filename);
+    void LoadConfigFile(const std::string& filename);
 
     /**
      * Generate a config file
      * @param filename The config file path
      */
-    void generateConfig(const std::string& filename);
+    void GenerateConfig(const std::string& filename);
 
     /**
      * Override a config value from --override
@@ -69,11 +59,29 @@ public:
      *            Must have a '=' for separating the name and value to override.
      *            NO spaces between
      */
-    void overrideOption(const std::string& opt);
+    void OverrideOption(const std::string& opt);
 
 private:
+    enum class ValueType
+    {
+        kNone,
+        kString,
+        kBool,
+        kInt
+    };
+
+    struct override_config_value_t
+    {
+        ValueType   value_type   = ValueType::kNone;
+        std::string string_value = "";
+        bool        bool_value   = false;
+        int         int_value    = 0;
+    };
+
     // Parsed config from loadConfigFile()
     toml::table m_tbl;
+
+    std::unordered_map<std::string, override_config_value_t> m_overrides;
 
     /**
      * Get value of config variables
@@ -81,27 +89,27 @@ private:
      * @param fallback Default value if couldn't retrive value
      */
     template <typename T>
-    T getValue(const std::string_view value, const T&& fallback, bool dont_expand_var = false) const
+    T GetValue(const std::string_view value, const T&& fallback, bool dont_expand_var = false) const
     {
-        const auto& overridePos = overrides.find(value.data());
+        const auto& overridePos = m_overrides.find(value.data());
 
         // user wants a bool (overridable), we found an override matching the name, and the override is a bool.
         if constexpr (std::is_same<T, bool>())
-            if (overridePos != overrides.end() && overrides.at(value.data()).value_type == TYPE_BOOL)
-                return overrides.at(value.data()).bool_value;
+            if (overridePos != m_overrides.end() && m_overrides.at(value.data()).value_type == ValueType::kBool)
+                return m_overrides.at(value.data()).bool_value;
 
         // user wants a str (overridable), we found an override matching the name, and the override is a str.
         if constexpr (std::is_same<T, std::string>())
-            if (overridePos != overrides.end() && overrides.at(value.data()).value_type == TYPE_STR)
-                return overrides.at(value.data()).string_value;
+            if (overridePos != m_overrides.end() && m_overrides.at(value.data()).value_type == ValueType::kString)
+                return m_overrides.at(value.data()).string_value;
 
-        if constexpr (std::is_same<T, std::uint16_t>())
-            if (overridePos != overrides.end() && overrides.at(value.data()).value_type == TYPE_INT)
-                return overrides.at(value.data()).int_value;
+        if constexpr (std::is_same<T, int>())
+            if (overridePos != m_overrides.end() && m_overrides.at(value.data()).value_type == ValueType::kInt)
+                return m_overrides.at(value.data()).int_value;
 
-        const std::optional<T> ret = this->m_tbl.at_path(value).value<T>();
+        const std::optional<T>& ret = this->m_tbl.at_path(value).value<T>();
         if constexpr (toml::is_string<T>)
-            return ret ? expandVar(ret.value(), dont_expand_var) : expandVar(fallback, dont_expand_var);
+            return ret ? expand_var(ret.value(), dont_expand_var) : expand_var(fallback, dont_expand_var);
         else
             return ret.value_or(fallback);
     }
@@ -153,4 +161,4 @@ GENERAL OPTIONS:
                                 Prompts before overwriting.
 )");
 
-#endif  // _CONFIG_HPP
+#endif  // _CONFIG_HPP_

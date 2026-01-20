@@ -36,7 +36,7 @@
 SessionType get_session_type()
 {
 #ifdef _WIN32
-    return OS_WINDOWS;
+    return SessionType::Windows;
 #endif
 
     const char* xdg     = std::getenv("XDG_SESSION_TYPE");
@@ -44,16 +44,16 @@ SessionType get_session_type()
     const char* x11     = std::getenv("DISPLAY");
 
     if (xdg && strncmp(xdg, "wayland", 8) == 0)
-        return WAYLAND;
+        return SessionType::Wayland;
     if (wayland && wayland[0] != '\0')
-        return WAYLAND;
+        return SessionType::Wayland;
 
     if (x11 && x11[0] != '\0')
-        return X11;
+        return SessionType::X11;
     if (xdg && strncmp(xdg, "x11", 4) == 0)
-        return X11;
+        return SessionType::X11;
 
-    return UNKNOWN;
+    return SessionType::Unknown;
 }
 
 #ifdef __linux__

@@ -17,8 +17,8 @@
 
 enum class SendMsg
 {
-    COPY_TEXT,
-    COPY_IMAGE,
+    Text,
+    Image,
 };
 
 class SocketSender

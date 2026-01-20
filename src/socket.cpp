@@ -48,7 +48,7 @@ bool SocketSender::Send(const std::string& text)
     if (text.empty())
         return false;
 
-    return Send(SendMsg::COPY_TEXT, text.c_str(), text.size());
+    return Send(SendMsg::Text, text.c_str(), text.size());
 }
 
 bool SocketSender::Send(SendMsg msg, const void* src, size_t size)
@@ -59,9 +59,9 @@ bool SocketSender::Send(SendMsg msg, const void* src, size_t size)
     char type;
     switch (msg)
     {
-        case SendMsg::COPY_TEXT:  type = 'T'; break;
-        case SendMsg::COPY_IMAGE: type = 'I'; break;
-        default:                  return false;
+        case SendMsg::Text:  type = 'T'; break;
+        case SendMsg::Image: type = 'I'; break;
+        default:             return false;
     }
 
     if (size > UINT32_MAX)
@@ -88,6 +88,7 @@ bool SocketSender::Send(SendMsg msg, const void* src, size_t size)
 
         sent += n;
     }
+
     return true;
 }
 

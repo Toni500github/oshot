@@ -26,12 +26,12 @@ struct capture_result_t
     std::span<uint8_t>       view() { return data; }
 };
 
-enum SessionType
+enum class SessionType
 {
-    WAYLAND,
+    Wayland,
     X11,
-    OS_WINDOWS,
-    UNKNOWN
+    Windows,
+    Unknown
 };
 
 using CaptureCallback = std::function<void(capture_result_t)>;

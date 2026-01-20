@@ -26,10 +26,6 @@
 #include "translation.hpp"
 #include "util.hpp"
 
-#ifdef None
-#  undef None
-#endif
-
 #ifndef GL_NO_ERROR
 #  define GL_NO_ERROR 0
 #endif
@@ -80,13 +76,13 @@ std::optional<std::string> decode_barcode_rgba(const uint8_t* rgba, int width, i
     for (auto symbol = image.symbol_begin(); symbol != image.symbol_end(); ++symbol)
         ret += symbol->get_data() + "\n\n";
 
-    // Prevent ZBar from freeing your buffer
+    // Prevent ZBar from freeing the buffer
     image.set_data(nullptr, 0);
 
     return ret;
 }
 
-static std::vector<std::string> GetTrainingDataList(const std::string& path)
+static std::vector<std::string> get_training_data_list(const std::string& path)
 {
     if (!std::filesystem::exists(path))
         return {};
@@ -120,19 +116,19 @@ bool ScreenshotTool::Start()
 
     SetError(WarnConnLauncher);
     bool stdin_data_exist = stdin_has_data();
-    if (config->_source_file.empty() && !stdin_data_exist)
+    if (config->Runtime.source_file.empty() && !stdin_data_exist)
     {
         switch (get_session_type())
         {
-            case X11:        m_screenshot = capture_full_screen_x11(); break;
-            case WAYLAND:    m_screenshot = capture_full_screen_wayland(); break;
-            case OS_WINDOWS: m_screenshot = capture_full_screen_windows(); break;
-            default:         ;
+            case SessionType::X11:     m_screenshot = capture_full_screen_x11(); break;
+            case SessionType::Wayland: m_screenshot = capture_full_screen_wayland(); break;
+            case SessionType::Windows: m_screenshot = capture_full_screen_windows(); break;
+            default:                    ;
         }
     }
     else
     {
-        m_screenshot = load_image_rgba(stdin_data_exist, config->_source_file);
+        m_screenshot = load_image_rgba(stdin_data_exist, config->Runtime.source_file);
     }
 
     if (!m_screenshot.success || m_screenshot.data.empty())
@@ -235,7 +231,7 @@ void ScreenshotTool::HandleSelectionInput()
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !m_is_selecting)
     {
         // Check if we're starting to resize from a handle
-        if (m_handle_hover != HandleHovered::None)
+        if (m_handle_hover != HandleHovered::kNone)
         {
             m_dragging_handle      = m_handle_hover;
             m_drag_start_mouse     = mouse_pos;
@@ -273,7 +269,7 @@ void ScreenshotTool::HandleSelectionInput()
     if (m_is_selecting && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
     {
         m_is_selecting    = false;
-        m_dragging_handle = HandleHovered::None;
+        m_dragging_handle = HandleHovered::kNone;
 
         if (m_selection.get_width() > 10 && m_selection.get_height() > 10)
             m_state = ToolState::Selected;
@@ -320,7 +316,7 @@ void ScreenshotTool::HandleResizeInput()
 void ScreenshotTool::UpdateHandleHoverState()
 {
     const ImVec2 mouse_pos = ImGui::GetMousePos();
-    m_handle_hover         = HandleHovered::None;
+    m_handle_hover         = HandleHovered::kNone;
 
     if (m_state != ToolState::Selected && m_state != ToolState::Resizing)
         return;
@@ -332,7 +328,7 @@ void ScreenshotTool::UpdateHandleHoverState()
 
     const float hover_half = HANDLE_HOVER_SIZE / 2.0f;
 
-    const std::array<HandleInfo, 8> handles = {
+    const std::array<handle_info_t, 8> handles = {
         { { .type = HandleHovered::TopLeft,
             .pos  = ImVec2(sel_x, sel_y),
             .rect = ImRect(ImVec2(sel_x - hover_half, sel_y - hover_half),
@@ -386,9 +382,9 @@ void ScreenshotTool::UpdateHandleHoverState()
 
 void ScreenshotTool::UpdateCursor()
 {
-    if (m_handle_hover != HandleHovered::None || m_dragging_handle != HandleHovered::None)
+    if (m_handle_hover != HandleHovered::kNone || m_dragging_handle != HandleHovered::kNone)
     {
-        HandleHovered handle = (m_dragging_handle != HandleHovered::None) ? m_dragging_handle : m_handle_hover;
+        HandleHovered handle = (m_dragging_handle != HandleHovered::kNone) ? m_dragging_handle : m_handle_hover;
 
         switch (handle)
         {
@@ -472,7 +468,7 @@ void ScreenshotTool::DrawSelectionBorder()
     draw_list->AddRect(
         ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h), IM_COL32(0, 150, 255, 255), 0.0f, 0, 1.0f);
 
-    if (!config->_enable_handles)
+    if (!config->Runtime.enable_handles)
         return;
 
     // Draw handles
@@ -502,13 +498,6 @@ void ScreenshotTool::DrawSelectionBorder()
     draw_handle(ImVec2(sel_x + sel_w, sel_y + sel_h / 2), HandleHovered::Right);
 }
 
-// from ImGui::GetShortcutRoutingData(ImGuiKeyChord key_chord)
-// Majority of shortcuts will be Key + any number of Mods
-// We accept _Single_ mod with ImGuiKey_None.
-//  - Shortcut(ImGuiKey_S | ImGuiMod_Ctrl);                    // Legal
-//  - Shortcut(ImGuiKey_S | ImGuiMod_Ctrl | ImGuiMod_Shift);   // Legal
-//  - Shortcut(ImGuiMod_Ctrl);                                 // Legal
-//  - Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift);                // Not legal
 void ScreenshotTool::DrawMenuItems()
 {
     static bool show_about = false;
@@ -517,32 +506,32 @@ void ScreenshotTool::DrawMenuItems()
     {
         // Handle shortcuts FIRST, before drawing menus
         if (ImGui::Shortcut(ImGuiKey_E | ImGuiMod_Ctrl))
-            config->allow_ocr_edit = !config->allow_ocr_edit;
+            config->File.allow_ocr_edit = !config->File.allow_ocr_edit;
 
         if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Ctrl))
-            config->_enable_handles = !config->_enable_handles;
+            config->Runtime.enable_handles = !config->Runtime.enable_handles;
 
         if (ImGui::Shortcut(ImGuiKey_S | ImGuiMod_Ctrl))
             if (m_on_complete)
-                m_on_complete(SavingOp::SAVE_FILE, GetFinalImage());
+                m_on_complete(SavingOp::File, GetFinalImage());
 
         if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl | ImGuiMod_Shift))
             if (!HasError(NoLauncher) && m_on_complete)
-                m_on_complete(SavingOp::SAVE_CLIPBOARD, GetFinalImage());
+                m_on_complete(SavingOp::Clipboard, GetFinalImage());
 
         // Now draw the menus
         if (ImGui::BeginMenu("File"))
         {
             if (ImGui::MenuItem("Save Image", "CTRL+S"))
                 if (m_on_complete)
-                    m_on_complete(SavingOp::SAVE_FILE, GetFinalImage());
+                    m_on_complete(SavingOp::File, GetFinalImage());
             if (ImGui::MenuItem("Copy Image", "CTRL+SHIFT+C"))
             {
                 if (HasError(NoLauncher))
                     ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
                                        "Please launch oshot with its launcher, in order to copy text/images");
                 else if (m_on_complete)
-                    m_on_complete(SavingOp::SAVE_CLIPBOARD, GetFinalImage());
+                    m_on_complete(SavingOp::Clipboard, GetFinalImage());
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Quit", "ESC"))
@@ -553,17 +542,17 @@ void ScreenshotTool::DrawMenuItems()
         {
             if (ImGui::BeginMenu("Optimize OCR for..."))
             {
-                if (ImGui::RadioButton("Automatic", config->_preferred_psm == 0))
-                    config->_preferred_psm = 0;
-                ImGui::RadioButton("Single Word", &config->_preferred_psm, tesseract::PSM_SINGLE_WORD);
-                ImGui::RadioButton("Single Line", &config->_preferred_psm, tesseract::PSM_SINGLE_LINE);
-                ImGui::RadioButton("Block", &config->_preferred_psm, tesseract::PSM_SINGLE_BLOCK);
-                ImGui::RadioButton("Big Region", &config->_preferred_psm, tesseract::PSM_AUTO);
+                if (ImGui::RadioButton("Automatic", config->Runtime.preferred_psm == 0))
+                    config->Runtime.preferred_psm = 0;
+                ImGui::RadioButton("Single Word", &config->Runtime.preferred_psm, tesseract::PSM_SINGLE_WORD);
+                ImGui::RadioButton("Single Line", &config->Runtime.preferred_psm, tesseract::PSM_SINGLE_LINE);
+                ImGui::RadioButton("Block", &config->Runtime.preferred_psm, tesseract::PSM_SINGLE_BLOCK);
+                ImGui::RadioButton("Big Region", &config->Runtime.preferred_psm, tesseract::PSM_AUTO);
                 ImGui::EndMenu();
             }
             ImGui::Separator();
-            ImGui::MenuItem("View Handles", "CTRL+G", &config->_enable_handles);
-            ImGui::MenuItem("Allow OCR edit", "CTRL+E", &config->allow_ocr_edit);
+            ImGui::MenuItem("View Handles", "CTRL+G", &config->Runtime.enable_handles);
+            ImGui::MenuItem("Allow OCR edit", "CTRL+E", &config->File.allow_ocr_edit);
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help"))
@@ -609,8 +598,8 @@ void ScreenshotTool::DrawMenuItems()
 
 void ScreenshotTool::DrawOcrTools()
 {
-    static std::string ocr_path{ config->ocr_path };
-    static std::string ocr_model{ config->ocr_model };
+    static std::string ocr_path{ config->File.ocr_path };
+    static std::string ocr_model{ config->File.ocr_model };
     static size_t      item_selected_idx = 0;
     static bool        first_frame       = true;
 
@@ -619,7 +608,7 @@ void ScreenshotTool::DrawOcrTools()
 
     static std::vector<std::string> list{ "" };
     auto                            check_list = [&]() {
-        list = GetTrainingDataList(ocr_path);
+        list = get_training_data_list(ocr_path);
         if (list.empty())
             SetError(InvalidPath);
         else
@@ -732,7 +721,7 @@ end:
     ImGui::InputTextMultiline("##source",
                               &m_ocr_text,
                               ImVec2(-1, ImGui::GetTextLineHeight() * 10),
-                              config->allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+                              config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
     if (HasError(WarnConnLauncher))
     {
@@ -756,8 +745,8 @@ end:
 
 void ScreenshotTool::DrawTranslationTools()
 {
-    static std::string lang_from{ config->lang_from };
-    static std::string lang_to{ config->lang_to };
+    static std::string lang_from{ config->File.lang_from };
+    static std::string lang_to{ config->File.lang_to };
     static size_t      index_from  = 0;
     static size_t      index_to    = 0;
     static bool        first_frame = true;
@@ -782,8 +771,8 @@ void ScreenshotTool::DrawTranslationTools()
         else
             ClearError(InvalidLangTo);
 
-        font_from   = GetOrLoadFontForLanguage(lang_from);
-        font_to     = GetOrLoadFontForLanguage(lang_to);
+        font_from   = GetFontForLanguage(lang_from);
+        font_to     = GetFontForLanguage(lang_to);
         first_frame = false;
     }
 
@@ -819,7 +808,7 @@ void ScreenshotTool::DrawTranslationTools()
                         {
                             idx  = i;
                             lang = GOOGLE_TRANSLATE_LANGUAGES_ARRAY[idx].first;
-                            font = GetOrLoadFontForLanguage(lang);
+                            font = GetFontForLanguage(lang);
                             (void)font;
                             ClearError(err);
                         }
@@ -938,7 +927,7 @@ void ScreenshotTool::DrawBarDecodeTools()
         ImGui::InputTextMultiline("##barcode",
                                   &m_barcode_text,
                                   ImVec2(-1, ImGui::GetTextLineHeight() * 10),
-                                  config->allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+                                  config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
         ImGui::PopStyleColor();
     }
@@ -947,7 +936,7 @@ void ScreenshotTool::DrawBarDecodeTools()
         ImGui::InputTextMultiline("##barcode",
                                   &m_barcode_text,
                                   ImVec2(-1, ImGui::GetTextLineHeight() * 10),
-                                  config->allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+                                  config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
     }
 
     if (HasError(WarnConnLauncher))
@@ -1077,7 +1066,7 @@ void ScreenshotTool::UpdateWindowBg()
     // clang-format on
 }
 
-ImFont* ScreenshotTool::GetOrLoadFontForLanguage(const std::string& lang_code)
+ImFont* ScreenshotTool::GetFontForLanguage(const std::string& lang_code)
 {
     // Check cache first
     auto it = m_font_cache.find(lang_code);

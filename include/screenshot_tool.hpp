@@ -14,10 +14,6 @@
 #include "ocr.hpp"
 #include "screen_capture.hpp"
 
-#ifdef None
-#  undef None
-#endif
-
 struct point_t
 {
     float x{};
@@ -30,7 +26,7 @@ struct selection_rect_t
     point_t end;
 
     float get_x() const { return std::min(start.x, end.x); }
-    float get_y() const { return std::min(start.y, start.y); }
+    float get_y() const { return std::min(start.y, end.y); }
     float get_width() const { return std::abs(end.x - start.x); }
     float get_height() const { return std::abs(end.y - start.y); }
 };
@@ -46,13 +42,13 @@ enum class ToolState
 
 enum class SavingOp
 {
-    SAVE_CLIPBOARD,
-    SAVE_FILE
+    Clipboard,
+    File
 };
 
 enum class HandleHovered
 {
-    None,
+    kNone,
     Top,
     Bottom,
     Left,
@@ -66,7 +62,7 @@ enum class HandleHovered
 
 enum ErrorState
 {
-    None                   = 0,
+    kNone                  = 0,
     FailedToInitOcr        = 1 << 1,
     InvalidPath            = 1 << 2,
     InvalidModel           = 1 << 3,
@@ -91,7 +87,7 @@ public:
 
     capture_result_t GetFinalImage();
 
-    ImFont* GetOrLoadFontForLanguage(const std::string& lang_code);
+    ImFont* GetFontForLanguage(const std::string& lang_code);
 
     void RenderOverlay();
     void Cancel();
@@ -109,14 +105,14 @@ private:
     static constexpr float HANDLE_DRAW_SIZE  = 4.0f;
     static constexpr float HANDLE_HOVER_SIZE = 10.0f;
 
-    struct FontCacheEntry
+    struct font_cache_t
     {
         std::string font_path;
         ImFont*     font   = nullptr;
         bool        loaded = false;
     };
 
-    struct HandleInfo
+    struct handle_info_t
     {
         HandleHovered type;
         ImVec2        pos;
@@ -129,9 +125,9 @@ private:
 
     void*         m_texture_id      = nullptr;
     ToolState     m_state           = ToolState::Idle;
-    HandleHovered m_handle_hover    = HandleHovered::None;
-    HandleHovered m_dragging_handle = HandleHovered::None;
-    int           m_err_state       = ErrorState::None;
+    HandleHovered m_handle_hover    = HandleHovered::kNone;
+    HandleHovered m_dragging_handle = HandleHovered::kNone;
+    int           m_err_state       = ErrorState::kNone;
 
     selection_rect_t m_selection;
     selection_rect_t m_drag_start_selection;
@@ -150,7 +146,7 @@ private:
     std::string m_to_translate_text;
     std::string m_barcode_text;
 
-    std::unordered_map<std::string, FontCacheEntry>        m_font_cache;
+    std::unordered_map<std::string, font_cache_t>          m_font_cache;
     std::function<void()>                                  m_on_cancel;
     std::function<void(SavingOp, const capture_result_t&)> m_on_complete;
 
