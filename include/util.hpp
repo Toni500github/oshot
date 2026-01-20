@@ -7,13 +7,13 @@
 enum class SavingOp;
 
 #if defined(__linux__)
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
+#  include <X11/Xlib.h>
+#  include <X11/Xutil.h>
 #elif defined(_WIN32)
-#include <combaseapi.h>
-#include <knownfolders.h>
-#include <shlobj.h>
-#include <windows.h>
+#  include <combaseapi.h>
+#  include <knownfolders.h>
+#  include <shlobj.h>
+#  include <windows.h>
 #endif
 
 #include <chrono>
@@ -28,11 +28,11 @@ enum class SavingOp;
 
 #if ENABLE_NLS
 /* here so it doesn't need to be included elsewhere */
-#include <libintl.h>
-#include <locale.h>
-#define _(str) gettext(str)
+#  include <libintl.h>
+#  include <locale.h>
+#  define _(str) gettext(str)
 #else
-#define _(s) (char*)s
+#  define _(s) (char*)s
 #endif
 
 extern int   scr_w, scr_h;

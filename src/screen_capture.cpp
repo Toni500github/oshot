@@ -10,27 +10,27 @@
 #include "util.hpp"
 
 #if defined(__linux__)
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <unistd.h>
+#  include <X11/Xlib.h>
+#  include <X11/Xutil.h>
+#  include <unistd.h>
 
-#if ENABLE_PORTALS
-#include <gio/gio.h>
-#endif
+#  if ENABLE_PORTALS
+#    include <gio/gio.h>
+#  endif
 
-#include "stb_image.h"
+#  include "stb_image.h"
 
 #elif defined(_WIN32)
-#define WIN32_LEAN_AND_MEAN
-#define INITGUID
-#include <d3d11.h>
-#include <dxgi1_2.h>
-#include <stdio.h>
-#include <windows.h>
+#  define WIN32_LEAN_AND_MEAN
+#  define INITGUID
+#  include <d3d11.h>
+#  include <dxgi1_2.h>
+#  include <stdio.h>
+#  include <windows.h>
 
-#include "fmt/format.h"
-#pragma comment(lib, "d3d11")
-#pragma comment(lib, "dxgi")
+#  include "fmt/format.h"
+#  pragma comment(lib, "d3d11")
+#  pragma comment(lib, "dxgi")
 #endif
 
 SessionType get_session_type()
@@ -58,12 +58,14 @@ SessionType get_session_type()
 
 #ifdef __linux__
 
-#ifdef ENABLE_PORTALS
+#  ifdef ENABLE_PORTALS
 capture_result_t capture_full_screen_portal(capture_result_t&);
-#else
+#  else
 capture_result_t capture_full_screen_portal(capture_result_t& res)
-{ return res; }
-#endif
+{
+    return res;
+}
+#  endif
 
 capture_result_t capture_full_screen_x11()
 {
@@ -151,7 +153,7 @@ capture_result_t capture_full_screen_wayland()
     return result;
 }
 
-#if ENABLE_PORTALS
+#  if ENABLE_PORTALS
 std::string      png_uri;
 capture_result_t cap_portal;
 
@@ -204,8 +206,8 @@ capture_result_t capture_full_screen_portal(capture_result_t&)
 {
     warn("Fallback to portal capture");
 
-    GError* error = NULL;
-    GDBusConnection* bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
+    GError*          error = NULL;
+    GDBusConnection* bus   = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
     if (!bus)
     {
         cap_portal.error_msg =
@@ -300,9 +302,9 @@ capture_result_t capture_full_screen_portal(capture_result_t&)
 
     return cap_portal;
 }
-#endif // ENABLE_PORTALS
+#  endif  // ENABLE_PORTALS
 
-#else // __linux__
+#else   // __linux__
 capture_result_t capture_full_screen_x11()
 {
     return {};
@@ -315,7 +317,7 @@ capture_result_t capture_full_screen_portal()
 {
     return {};
 }
-#endif // __linux__
+#endif  // __linux__
 
 #ifdef _WIN32
 capture_result_t capture_full_screen_windows_fallback()
@@ -482,9 +484,9 @@ capture_result_t capture_full_screen_windows()
     com_ptr<ID3D11DeviceContext> context;
 
     UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-#if DEBUG
+#  if DEBUG
     flags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
+#  endif
 
     hr = D3D11CreateDevice(
         adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context);

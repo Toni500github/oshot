@@ -27,11 +27,11 @@
 #include "util.hpp"
 
 #ifdef None
-#undef None
+#  undef None
 #endif
 
 #ifndef GL_NO_ERROR
-#define GL_NO_ERROR 0
+#  define GL_NO_ERROR 0
 #endif
 
 using namespace std::chrono_literals;
@@ -42,8 +42,8 @@ static std::unique_ptr<Translator> translator;
 std::unique_ptr<SocketSender>      sender;
 
 #ifndef _WIN32
-#include <sys/select.h>
-#include <unistd.h>
+#  include <sys/select.h>
+#  include <unistd.h>
 
 static bool stdin_has_data()
 {
@@ -55,8 +55,8 @@ static bool stdin_has_data()
     return select(STDIN_FILENO + 1, &fds, nullptr, nullptr, &tv) > 0;
 }
 #else
-#include <io.h>
-#include <windows.h>
+#  include <io.h>
+#  include <windows.h>
 
 static bool stdin_has_data()
 {

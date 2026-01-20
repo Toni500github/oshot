@@ -13,7 +13,7 @@
 #include "screen_capture.hpp"
 
 #ifdef None
-#undef None
+#  undef None
 #endif
 
 struct point_t

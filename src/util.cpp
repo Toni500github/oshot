@@ -27,15 +27,15 @@
 #include "stb_image_resize2.h"
 
 #ifdef _WIN32
-#ifdef __MINGW64__
-#define NTDDI_VERSION NTDDI_WINBLUE
-#define _WIN32_WINNT _WIN32_WINNT_WINBLUE
-#endif
-#include <fcntl.h>
-#include <io.h>
-#include <shellscalingapi.h>  // GetDpiForMonitor
-#include <windows.h>
-#pragma comment(lib, "Shcore.lib")
+#  ifdef __MINGW64__
+#    define NTDDI_VERSION NTDDI_WINBLUE
+#    define _WIN32_WINNT _WIN32_WINNT_WINBLUE
+#  endif
+#  include <fcntl.h>
+#  include <io.h>
+#  include <shellscalingapi.h>  // GetDpiForMonitor
+#  include <windows.h>
+#  pragma comment(lib, "Shcore.lib")
 #endif
 
 #if __linux__
