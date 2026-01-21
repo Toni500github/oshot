@@ -84,22 +84,15 @@ file(
 add_executable(${PROJECT_NAME} ${SRC})
 enable_lto(${PROJECT_NAME})
 
-# Run version generation at build-time (not configure-time)
-add_custom_target(
-    genver
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/generateVersion.sh
+execute_process(
+    COMMAND ./scripts/generateVersion.sh
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Generating version metadata"
-    VERBATIM
 )
-add_dependencies(${PROJECT_NAME} genver)
 
-target_include_directories(
-    ${PROJECT_NAME}
-    PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/include/libs
-        ${CMAKE_SOURCE_DIR}/include/libs/imgui
+include_directories(
+        include
+        include/libs
+        include/libs/imgui
 )
 
 target_compile_options(
