@@ -116,7 +116,7 @@ bool ScreenshotTool::Start()
 
     SetError(WarnConnLauncher);
     bool stdin_data_exist = stdin_has_data();
-    if (config->Runtime.source_file.empty() && !stdin_data_exist)
+    if (g_config->Runtime.source_file.empty() && !stdin_data_exist)
     {
         switch (get_session_type())
         {
@@ -128,7 +128,7 @@ bool ScreenshotTool::Start()
     }
     else
     {
-        m_screenshot = load_image_rgba(stdin_data_exist, config->Runtime.source_file);
+        m_screenshot = load_image_rgba(stdin_data_exist, g_config->Runtime.source_file);
     }
 
     if (!m_screenshot.success || m_screenshot.data.empty())
@@ -468,7 +468,7 @@ void ScreenshotTool::DrawSelectionBorder()
     draw_list->AddRect(
         ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h), IM_COL32(0, 150, 255, 255), 0.0f, 0, 1.0f);
 
-    if (!config->Runtime.enable_handles)
+    if (!g_config->Runtime.enable_handles)
         return;
 
     // Draw handles
@@ -506,10 +506,10 @@ void ScreenshotTool::DrawMenuItems()
     {
         // Handle shortcuts FIRST, before drawing menus
         if (ImGui::Shortcut(ImGuiKey_E | ImGuiMod_Ctrl))
-            config->File.allow_ocr_edit = !config->File.allow_ocr_edit;
+            g_config->File.allow_ocr_edit = !g_config->File.allow_ocr_edit;
 
         if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Ctrl))
-            config->Runtime.enable_handles = !config->Runtime.enable_handles;
+            g_config->Runtime.enable_handles = !g_config->Runtime.enable_handles;
 
         if (ImGui::Shortcut(ImGuiKey_S | ImGuiMod_Ctrl))
             if (m_on_complete)
@@ -542,17 +542,17 @@ void ScreenshotTool::DrawMenuItems()
         {
             if (ImGui::BeginMenu("Optimize OCR for..."))
             {
-                if (ImGui::RadioButton("Automatic", config->Runtime.preferred_psm == 0))
-                    config->Runtime.preferred_psm = 0;
-                ImGui::RadioButton("Single Word", &config->Runtime.preferred_psm, tesseract::PSM_SINGLE_WORD);
-                ImGui::RadioButton("Single Line", &config->Runtime.preferred_psm, tesseract::PSM_SINGLE_LINE);
-                ImGui::RadioButton("Block", &config->Runtime.preferred_psm, tesseract::PSM_SINGLE_BLOCK);
-                ImGui::RadioButton("Big Region", &config->Runtime.preferred_psm, tesseract::PSM_AUTO);
+                if (ImGui::RadioButton("Automatic", g_config->Runtime.preferred_psm == 0))
+                    g_config->Runtime.preferred_psm = 0;
+                ImGui::RadioButton("Single Word", &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_WORD);
+                ImGui::RadioButton("Single Line", &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_LINE);
+                ImGui::RadioButton("Block", &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_BLOCK);
+                ImGui::RadioButton("Big Region", &g_config->Runtime.preferred_psm, tesseract::PSM_AUTO);
                 ImGui::EndMenu();
             }
             ImGui::Separator();
-            ImGui::MenuItem("View Handles", "CTRL+G", &config->Runtime.enable_handles);
-            ImGui::MenuItem("Allow OCR edit", "CTRL+E", &config->File.allow_ocr_edit);
+            ImGui::MenuItem("View Handles", "CTRL+G", &g_config->Runtime.enable_handles);
+            ImGui::MenuItem("Allow OCR edit", "CTRL+E", &g_config->File.allow_ocr_edit);
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help"))
@@ -598,8 +598,8 @@ void ScreenshotTool::DrawMenuItems()
 
 void ScreenshotTool::DrawOcrTools()
 {
-    static std::string ocr_path{ config->File.ocr_path };
-    static std::string ocr_model{ config->File.ocr_model };
+    static std::string ocr_path{ g_config->File.ocr_path };
+    static std::string ocr_model{ g_config->File.ocr_model };
     static size_t      item_selected_idx = 0;
     static bool        first_frame       = true;
 
@@ -721,7 +721,7 @@ end:
     ImGui::InputTextMultiline("##source",
                               &m_ocr_text,
                               ImVec2(-1, ImGui::GetTextLineHeight() * 10),
-                              config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+                              g_config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
     if (HasError(WarnConnLauncher))
     {
@@ -745,8 +745,8 @@ end:
 
 void ScreenshotTool::DrawTranslationTools()
 {
-    static std::string lang_from{ config->File.lang_from };
-    static std::string lang_to{ config->File.lang_to };
+    static std::string lang_from{ g_config->File.lang_from };
+    static std::string lang_to{ g_config->File.lang_to };
     static size_t      index_from  = 0;
     static size_t      index_to    = 0;
     static bool        first_frame = true;
@@ -927,7 +927,7 @@ void ScreenshotTool::DrawBarDecodeTools()
         ImGui::InputTextMultiline("##barcode",
                                   &m_barcode_text,
                                   ImVec2(-1, ImGui::GetTextLineHeight() * 10),
-                                  config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+                                  g_config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
         ImGui::PopStyleColor();
     }
@@ -936,7 +936,7 @@ void ScreenshotTool::DrawBarDecodeTools()
         ImGui::InputTextMultiline("##barcode",
                                   &m_barcode_text,
                                   ImVec2(-1, ImGui::GetTextLineHeight() * 10),
-                                  config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+                                  g_config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
     }
 
     if (HasError(WarnConnLauncher))

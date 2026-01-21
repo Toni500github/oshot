@@ -376,9 +376,9 @@ std::filesystem::path get_font_path(const std::string& font)
 
 std::filesystem::path get_lang_font_path(const std::string& lang)
 {
-    if (config->File.lang_fonts_paths.find(lang) != config->File.lang_fonts_paths.end())
+    if (g_config->File.lang_fonts_paths.find(lang) != g_config->File.lang_fonts_paths.end())
     {
-        const std::filesystem::path font_path_config(config->File.lang_fonts_paths[lang]);
+        const std::filesystem::path font_path_config(g_config->File.lang_fonts_paths[lang]);
         if (font_path_config.is_absolute())
             return font_path_config;
 

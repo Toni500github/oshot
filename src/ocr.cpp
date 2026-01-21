@@ -7,8 +7,8 @@
 
 static tesseract::PageSegMode choose_psm(int w, int h)
 {
-    if (config->Runtime.preferred_psm != 0)
-        return static_cast<tesseract::PageSegMode>(config->Runtime.preferred_psm);
+    if (g_config->Runtime.preferred_psm != 0)
+        return static_cast<tesseract::PageSegMode>(g_config->Runtime.preferred_psm);
 
     const int   area   = w * h;
     const float aspect = (h > 0) ? float(w) / h : 1.0f;

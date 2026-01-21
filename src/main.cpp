@@ -47,7 +47,7 @@
 // clang-format on
 
 // Extern variables declariaions
-std::unique_ptr<Config> config;
+std::unique_ptr<Config> g_config;
 int                     g_scr_w{}, g_scr_h{};
 FILE*                   g_fp_log;
 
@@ -155,13 +155,13 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
             case 'l':
                 print_languages(); break;
             case 'f':
-                config->Runtime.source_file = optarg; break;
+                g_config->Runtime.source_file = optarg; break;
 
             case "gen-config"_fnv1a16:
                 if (OPTIONAL_ARGUMENT_IS_PRESENT)
-                    config->GenerateConfig(optarg);
+                    g_config->GenerateConfig(optarg);
                 else
-                    config->GenerateConfig(configFile.string());
+                    g_config->GenerateConfig(configFile.string());
                 exit(EXIT_SUCCESS);
 
             default:
@@ -207,11 +207,11 @@ int main(int argc, char* argv[])
     const std::string& configFile     = parse_config_path(argc, argv, configDir).string();
     const std::string& imgui_ini_path = configDir + "/imgui.ini";
 
-    config = std::make_unique<Config>(configFile, configDir);
+    g_config = std::make_unique<Config>(configFile, configDir);
     if (!parseargs(argc, argv, configFile))
         return EXIT_FAILURE;
 
-    config->LoadConfigFile(configFile);
+    g_config->LoadConfigFile(configFile);
 
     // Setup Screenshot Tool
     // Calling it before starting the window so that
@@ -289,9 +289,9 @@ int main(int argc, char* argv[])
     io.IniFilename = imgui_ini_path.c_str();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-    if (!config->File.font.empty())
+    if (!g_config->File.font.empty())
     {
-        const auto& path = get_font_path(config->File.font);
+        const auto& path = get_font_path(g_config->File.font);
         if (!path.empty())
         io.FontDefault = io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, nullptr, io.Fonts->GetGlyphRangesDefault());
     }

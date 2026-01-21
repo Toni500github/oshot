@@ -115,7 +115,7 @@ private:
     }
 };
 
-extern std::unique_ptr<Config> config;
+extern std::unique_ptr<Config> g_config;
 
 // default config
 inline constexpr std::string_view AUTOCONFIG = R"#([default]

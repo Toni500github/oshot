@@ -338,7 +338,7 @@ capture_result_t capture_full_screen_portal()
 {
     return {};
 }
-#endif  // __linux__
+#endif    // __linux__
 
 #ifdef _WIN32
 capture_result_t capture_full_screen_windows_fallback()
