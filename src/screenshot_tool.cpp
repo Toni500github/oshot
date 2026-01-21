@@ -123,7 +123,7 @@ bool ScreenshotTool::Start()
             case SessionType::X11:     m_screenshot = capture_full_screen_x11(); break;
             case SessionType::Wayland: m_screenshot = capture_full_screen_wayland(); break;
             case SessionType::Windows: m_screenshot = capture_full_screen_windows(); break;
-            default:                    ;
+            default:                   ;
         }
     }
     else

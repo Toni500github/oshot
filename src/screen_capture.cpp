@@ -154,7 +154,7 @@ capture_result_t capture_full_screen_wayland()
 }
 
 #  if ENABLE_PORTALS
-std::string      png_uri;
+std::string      png_path;
 capture_result_t cap_portal;
 
 struct State
@@ -169,6 +169,29 @@ static gboolean on_timeout(gpointer user_data)
     cap_portal.error_msg = "Timed out waiting for portal response (is xdg-desktop-portal running?)";
     g_main_loop_quit(st->loop);
     return G_SOURCE_REMOVE;
+}
+
+static std::string uri_to_path(const char* uri, std::string& err_out)
+{
+    GFile* file = g_file_new_for_uri(uri);
+    if (!file)
+    {
+        err_out = "g_file_new_for_uri returned null";
+        return {};
+    }
+
+    char* path = g_file_get_path(file);
+    g_object_unref(file);
+
+    if (!path)
+    {
+        err_out = "URI is not a local file path (g_file_get_path returned NULL)";
+        return {};
+    }
+
+    std::string out(path);
+    g_free(path);
+    return out;
 }
 
 static void on_response(GDBusConnection* conn,
@@ -198,7 +221,7 @@ static void on_response(GDBusConnection* conn,
     if (st->subscription_id)
         g_dbus_connection_signal_unsubscribe(conn, st->subscription_id);
 
-    png_uri = uri;
+    png_path = uri_to_path(uri, cap_portal.error_msg);
     g_main_loop_quit(st->loop);
 }
 
@@ -275,17 +298,15 @@ capture_result_t capture_full_screen_portal(capture_result_t&)
     g_main_loop_unref(st.loop);
     g_object_unref(bus);
 
-    if (png_uri.empty())
+    if (png_path.empty())
     {
         if (cap_portal.error_msg.empty())
             cap_portal.error_msg = "Failed to retrive uri path to screenshot PNG";
         return cap_portal;
     }
 
-    replace_str(png_uri, "file://", "");
-
     int      w = 0, h = 0, comp = 0;
-    uint8_t* rgba = stbi_load(png_uri.c_str(), &w, &h, &comp, STBI_rgb_alpha);
+    uint8_t* rgba = stbi_load(png_path.c_str(), &w, &h, &comp, STBI_rgb_alpha);
 
     if (!rgba)
     {
@@ -296,7 +317,7 @@ capture_result_t capture_full_screen_portal(capture_result_t&)
 
     cap_portal.region.width  = w;
     cap_portal.region.height = h;
-    cap_portal.data.assign(rgba, rgba + (static_cast<size_t>(w) * static_cast<size_t>(h) * 4));
+    cap_portal.data.assign(rgba, rgba + (static_cast<size_t>(w) * h * 4));
     stbi_image_free(rgba);
     cap_portal.success = true;
 
@@ -304,7 +325,7 @@ capture_result_t capture_full_screen_portal(capture_result_t&)
 }
 #  endif  // ENABLE_PORTALS
 
-#else   // __linux__
+#else
 capture_result_t capture_full_screen_x11()
 {
     return {};

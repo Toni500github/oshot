@@ -5,6 +5,10 @@ BasedOnStyle: Google
 # Align assignments and similar statements
 AlignConsecutiveAssignments: Consecutive
 AlignConsecutiveDeclarations: Consecutive
+AlignConsecutiveMacros: Consecutive
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 2
 
 # Align the * in declarations
 DerivePointerAlignment: false
@@ -79,3 +83,5 @@ ExperimentalAutoDetectBinPacking: false
 AllowAllParametersOfDeclarationOnNextLine: false
 IndentPPDirectives: AfterHash
 PPIndentWidth: 2
+FixNamespaceComments: true
+IncludeBlocks: Regroup

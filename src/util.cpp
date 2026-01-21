@@ -18,8 +18,8 @@
 #include "tinyfiledialogs.h"
 
 #define SVPNG_LINKAGE inline
-#define SVPNG_OUTPUT std::vector<uint8_t>* output
-#define SVPNG_PUT(u) output->push_back(static_cast<uint8_t>(u))
+#define SVPNG_OUTPUT  std::vector<uint8_t>* output
+#define SVPNG_PUT(u)  output->push_back(static_cast<uint8_t>(u))
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wfree-nonheap-object"
 #include "svpng.h"
@@ -33,7 +33,7 @@
 #ifdef _WIN32
 #  ifdef __MINGW64__
 #    define NTDDI_VERSION NTDDI_WINBLUE
-#    define _WIN32_WINNT _WIN32_WINNT_WINBLUE
+#    define _WIN32_WINNT  _WIN32_WINNT_WINBLUE
 #  endif
 #  include <fcntl.h>
 #  include <io.h>
@@ -220,8 +220,8 @@ capture_result_t load_image_rgba(bool stdin_has_data, const std::string& path)
 
 bool save_png(SavingOp op, const capture_result_t& img)
 {
-    const size_t w = img.region.width;
-    const size_t h = img.region.height;
+    const size_t         w = img.region.width;
+    const size_t         h = img.region.height;
     std::vector<uint8_t> data;
 
     data.reserve(w * h * 4);

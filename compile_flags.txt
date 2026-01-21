@@ -7,7 +7,7 @@
 -DVERSION="0.2.3"
 -DDEBUG=1
 -DWINDOWS_CMD=1
--DPORTALS=1
+-DENABLE_PORTALS=1
 -I/usr/include/glib-2.0
 -I/usr/lib/glib-2.0/include
 -I/usr/include/sysprof-6
