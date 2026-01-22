@@ -3,6 +3,10 @@
 #include <cstring>
 #include <memory>
 
+#ifdef WIN32
+#include <shellapi.h> // CommandLineToArgvW
+#endif
+
 #include "fmt/base.h"
 #include "fmt/compile.h"
 #include "imgui/imgui.h"
@@ -179,25 +183,91 @@ static void glfw_error_callback(int i_error, const char* description)
 }
 
 #if defined(_WIN32) && !defined(WINDOWS_CMD)
+static std::string wide_to_utf8(const wchar_t* w)
+{
+    if (!w)
+        return {};
+    int needed = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+    if (needed <= 0)
+        return {};
+    std::string out;
+    out.resize(static_cast<size_t>(needed) - 1);
+    WideCharToMultiByte(CP_UTF8, 0, w, -1, out.data(), needed, nullptr, nullptr);
+    return out;
+}
+
+static bool wants_cli_output(int argc, char** argv)
+{
+    for (int i = 1; i < argc; ++i)
+    {
+        const char* a = argv[i];
+        if (!a) continue;
+
+        if (std::strcmp(a, "-h") == 0 || std::strcmp(a, "--help") == 0 ||
+            std::strcmp(a, "-V") == 0 || std::strcmp(a, "--version") == 0 ||
+            std::strcmp(a, "-l") == 0 || std::strcmp(a, "--list") == 0)
+            return true;
+    }
+    return false;
+}
+
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
-    // If started from a terminal, attach to it so stdout/stderr can show up.
-    // If not, this just fails and we fall back to file logging.
-    if (AttachConsole(ATTACH_PARENT_PROCESS))
+    int       argc  = 0;
+    wchar_t** wargv = CommandLineToArgvW(GetCommandLineW(), &argc);
+
+    std::vector<std::string> argv_storage;
+    std::vector<char*>       argv_ptrs;
+
+    if (wargv && argc > 0)
     {
+        argv_storage.reserve(argc);
+        argv_ptrs.reserve(argc + 1);
+
+        for (int i = 0; i < argc; ++i)
+            argv_storage.push_back(wide_to_utf8(wargv[i]));
+
+        for (auto& s : argv_storage)
+            argv_ptrs.push_back(s.data());
+
+        argv_ptrs.push_back(nullptr);
+
+        LocalFree(wargv);
+    }
+    else
+    {
+        // Safe fallback
+        static char argv0[] = "oshot";
+        argv_ptrs           = { argv0, nullptr };
+        argc                = 1;
+    }
+
+    char** argv = argv_ptrs.data();
+
+    // If we need to show CLI output, try to attach to parent console first.
+    // This works when started from cmd.exe / powershell.
+    if (wants_cli_output(argc, argv))
+    {
+        if (!AttachConsole(ATTACH_PARENT_PROCESS))
+        {
+            // MSYS2/mintty often isn't a real Windows console -> attach fails.
+            // Allocate a console so stdout/stderr have somewhere to go.
+            AllocConsole();
+        }
+
         FILE* dummy = nullptr;
         freopen_s(&dummy, "CONOUT$", "w", stdout);
         freopen_s(&dummy, "CONOUT$", "w", stderr);
         freopen_s(&dummy, "CONIN$",  "r", stdin);
+
+        // Line-buffer so help/version prints immediately
+        setvbuf(stdout, nullptr, _IOLBF, 0);
+        setvbuf(stderr, nullptr, _IOLBF, 0);
     }
 
     g_fp_log = std::fopen("oshot.log", "w");
     if (!g_fp_log)
-        g_fp_log = stdout; // fallback; might be redirected to console if attached
-
-    int argc = 1;
-    static char argv0[] = "oshot";
-    char* argv[] = { argv0, nullptr };
+        g_fp_log = stdout;  // fallback; might be redirected to console if attached
 
 #else
 int main(int argc, char* argv[])
@@ -290,7 +360,7 @@ int main(int argc, char* argv[])
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
-    ImGuiIO& io = ImGui::GetIO();
+    ImGuiIO& io    = ImGui::GetIO();
     io.IniFilename = imgui_ini_path.c_str();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
@@ -298,7 +368,8 @@ int main(int argc, char* argv[])
     {
         const auto& path = get_font_path(g_config->File.font);
         if (!path.empty())
-        io.FontDefault = io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, nullptr, io.Fonts->GetGlyphRangesDefault());
+            io.FontDefault =
+                io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, nullptr, io.Fonts->GetGlyphRangesDefault());
     }
 
     // Setup Platform/Renderer backends
