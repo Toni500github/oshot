@@ -1,0 +1,178 @@
+name: CMake CI (Test oshot)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  get-version:
+    name: Get Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from git tag or commit
+        id: get-version
+        run: |
+          if [ -n "$(git tag --points-at HEAD)" ]; then
+            version=$(git describe --tags --abbrev=0)
+            echo "version=$version" >> $GITHUB_OUTPUT
+          else
+            version=$(git rev-parse --short HEAD)
+            echo "version=commit-$version" >> $GITHUB_OUTPUT
+          fi
+          echo "Version: $version"
+
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, ubuntu-22.04, windows-latest ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+          fetch-depth: 0
+
+      - name: Install dependencies (Linux)
+        if: matrix.os != 'windows-latest'
+        run: |
+          sudo apt-get update && sudo apt-get purge firefox -y
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            make \
+            cmake \
+            git \
+            zip \
+            fuse \
+            libx11-dev \
+            libglfw3-dev \
+            libtesseract-dev \
+            libcurl4-openssl-dev \
+            libpng-dev \
+            libjpeg-dev \
+            libopenjp2-7-dev \
+            libgif-dev \
+            libtiff-dev \
+            libwebp-dev \
+            libnghttp2-dev \
+            libidn2-dev \
+            librtmp-dev \
+            libssh-dev \
+            libpsl-dev \
+            libkrb5-dev \
+            libldap2-dev \
+            libbrotli-dev \
+            libleptonica-dev \
+            libarchive-dev \
+            libdeflate-dev \
+            libjbig-dev \
+            libzbar-dev \
+            libicu-dev \
+            libunistring-dev \
+            libkeyutils-dev \
+            libssl-dev \
+            libcrypto++-dev
+
+      - name: Install dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >-
+            zip
+            git
+            libcurl-devel
+            mingw-w64-x86_64-7zip
+            mingw-w64-x86_64-directx-headers
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-minizip
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-zbar
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-tesseract-ocr
+            mingw-w64-x86_64-glfw
+            mingw-w64-x86_64-libpng
+            mingw-w64-x86_64-libjpeg-turbo
+            mingw-w64-x86_64-openjpeg2
+            mingw-w64-x86_64-libwebp
+            mingw-w64-x86_64-libtiff
+            mingw-w64-x86_64-curl
+
+      - name: Build project (Linux)
+        if: matrix.os != 'windows-latest'
+        run: |
+          #make all DEBUG=0 LDFLAGS="-Wl,--as-needed"
+          ./scripts/generateVersion.sh
+          mkdir -p build
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          cd build && make
+          ./build/oshot --version
+
+      - name: Build project (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: msys2 {0}
+        run: |
+          #mingw32-make all DEBUG=0 WINDOWS_CMD=0
+          ./scripts/generateVersion.sh
+          mkdir -p build
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWINDOWS_CMD=ON
+          ninja -C build
+          ./build/oshot.exe --version
+
+      - name: Prepare Linux package
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir -p package/oshot
+          cp ./build/oshot ./launcher/oshot_launcher.py package/oshot/
+          echo "#!/bin/bash" > package/oshot/install.sh
+          echo "cp oshot /usr/local/bin/oshot" >> package/oshot/install.sh
+          echo "cp oshot_launcher.py /usr/local/bin/oshot_launcher" >> package/oshot/install.sh
+          chmod +x package/oshot/install.sh package/oshot/oshot ./launcher/oshot_launcher.py
+          cd package
+          zip -r oshot-linux.zip oshot/
+
+      - name: Prepare AppImage package
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          mkdir -p package/oshot
+          ./scripts/create_appimage.sh ./build/oshot oshot-x86_64.AppImage
+          chmod +x oshot-x86_64.AppImage
+          mv oshot-x86_64.AppImage package/oshot/
+          cp ./launcher/oshot_launcher.py package/oshot/
+          cd package
+          zip -r oshot-appimage.zip oshot/
+
+      - name: Prepare Windows package
+        if: matrix.os == 'windows-latest'
+        shell: msys2 {0}
+        run: |
+          mkdir -p package/oshot
+          sed -i 's|#!/bin/env python3|#!python|' launcher/oshot_launcher.py
+          cp ./build/oshot.exe package/oshot/
+          cp ./launcher/oshot_launcher.py package/oshot/oshot_launcher.pyw
+          # Copy required DLLs
+          ldd ./build/oshot.exe | grep -i mingw | awk '{print $3}' | xargs -I {} cp {} package/oshot/ || true
+          cd package
+          zip -r oshot-windows.zip oshot/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-packages
+          path: package/*.zip
+          if-no-files-found: error
