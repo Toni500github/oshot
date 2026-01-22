@@ -13,13 +13,10 @@
 #  include <X11/Xlib.h>
 #  include <X11/Xutil.h>
 #  include <unistd.h>
-
 #  if ENABLE_PORTALS
 #    include <gio/gio.h>
 #  endif
-
 #  include "stb_image.h"
-
 #elif defined(_WIN32)
 #  define WIN32_LEAN_AND_MEAN
 #  define INITGUID
@@ -37,8 +34,7 @@ SessionType get_session_type()
 {
 #ifdef _WIN32
     return SessionType::Windows;
-#endif
-
+#else
     const char* xdg     = std::getenv("XDG_SESSION_TYPE");
     const char* wayland = std::getenv("WAYLAND_DISPLAY");
     const char* x11     = std::getenv("DISPLAY");
@@ -52,12 +48,12 @@ SessionType get_session_type()
         return SessionType::X11;
     if (xdg && strncmp(xdg, "x11", 4) == 0)
         return SessionType::X11;
+#endif
 
     return SessionType::Unknown;
 }
 
 #ifdef __linux__
-
 #  ifdef ENABLE_PORTALS
 capture_result_t capture_full_screen_portal(capture_result_t&);
 #  else
@@ -65,7 +61,7 @@ capture_result_t capture_full_screen_portal(capture_result_t& res)
 {
     return res;
 }
-#  endif
+#  endif // ENABLE_PORTALS
 
 capture_result_t capture_full_screen_x11()
 {

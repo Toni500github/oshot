@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -177,28 +178,32 @@ static void glfw_error_callback(int i_error, const char* description)
     error("GLFW Error {}: {}", i_error, description);
 }
 
-#if defined(_WIN32) && !WINDOWS_CMD
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+#if defined(_WIN32) && !defined(WINDOWS_CMD)
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
-    int argc = 1;
-    char* argv[8];
-    strcpy(argv[0], "oshot");
-    AllocConsole();
-    g_fp_log = fopen("oshot.log", "w");
-    if (!g_fp_log)
+    // If started from a terminal, attach to it so stdout/stderr can show up.
+    // If not, this just fails and we fall back to file logging.
+    if (AttachConsole(ATTACH_PARENT_PROCESS))
     {
-        // fallback
-        g_fp_log = stdout;
-        warn("Failed to open oshot.log, using stdout");
+        FILE* dummy = nullptr;
+        freopen_s(&dummy, "CONOUT$", "w", stdout);
+        freopen_s(&dummy, "CONOUT$", "w", stderr);
+        freopen_s(&dummy, "CONIN$",  "r", stdin);
     }
 
-    FILE* dummy;
-    freopen_s(&dummy, "CONOUT$", "w", stdout);
-    freopen_s(&dummy, "CONOUT$", "w", stderr);
+    g_fp_log = std::fopen("oshot.log", "w");
+    if (!g_fp_log)
+        g_fp_log = stdout; // fallback; might be redirected to console if attached
+
+    int argc = 1;
+    static char argv0[] = "oshot";
+    char* argv[] = { argv0, nullptr };
+
 #else
 int main(int argc, char* argv[])
 {
     g_fp_log = stdout;
+
 #endif
 
     GLFWwindow* window = nullptr;
@@ -348,6 +353,9 @@ int main(int argc, char* argv[])
     glfwTerminate();
 
     sender->Close();
+
+    if (g_fp_log && g_fp_log != stdout)
+        std::fclose(g_fp_log);
 
     return EXIT_SUCCESS;
 }

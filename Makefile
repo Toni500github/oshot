@@ -40,7 +40,7 @@ else ifeq ($(findstring _NT,$(UNAME_S)),_NT)
 		CXXFLAGS += -mwindows
 		LDFLAGS += -mwindows
 	else
-		CXXFLAGS += -DWINDOWS_CMD=1
+		CXXFLAGS += -DWINDOWS_CMD
 	endif
 endif
 

@@ -161,4 +161,4 @@ GENERAL OPTIONS:
                                 Prompts before overwriting.
 )");
 
-#endif  // _CONFIG_HPP_
+#endif  // !_CONFIG_HPP_
