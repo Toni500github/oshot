@@ -4,7 +4,7 @@
 #include <memory>
 
 #ifdef WIN32
-#include <shellapi.h> // CommandLineToArgvW
+#  include <shellapi.h>  // CommandLineToArgvW
 #endif
 
 #include "fmt/base.h"
@@ -177,6 +177,7 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
     return true;
 }
 
+// clang-format on
 static void glfw_error_callback(int i_error, const char* description)
 {
     error("GLFW Error {}: {}", i_error, description);
@@ -201,11 +202,11 @@ static bool wants_cli_output(int argc, char** argv)
     for (int i = 1; i < argc; ++i)
     {
         const char* a = argv[i];
-        if (!a) continue;
+        if (!a)
+            continue;
 
-        if (std::strcmp(a, "-h") == 0 || std::strcmp(a, "--help") == 0 ||
-            std::strcmp(a, "-V") == 0 || std::strcmp(a, "--version") == 0 ||
-            std::strcmp(a, "-l") == 0 || std::strcmp(a, "--list") == 0)
+        if (std::strcmp(a, "-h") == 0 || std::strcmp(a, "--help") == 0 || std::strcmp(a, "-V") == 0 ||
+            std::strcmp(a, "--version") == 0 || std::strcmp(a, "-l") == 0 || std::strcmp(a, "--list") == 0)
             return true;
     }
     return false;
@@ -258,7 +259,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
         FILE* dummy = nullptr;
         freopen_s(&dummy, "CONOUT$", "w", stdout);
         freopen_s(&dummy, "CONOUT$", "w", stderr);
-        freopen_s(&dummy, "CONIN$",  "r", stdin);
+        freopen_s(&dummy, "CONIN$", "r", stdin);
 
         // Line-buffer so help/version prints immediately
         setvbuf(stdout, nullptr, _IOLBF, 0);

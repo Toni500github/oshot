@@ -61,7 +61,7 @@ capture_result_t capture_full_screen_portal(capture_result_t& res)
 {
     return res;
 }
-#  endif // ENABLE_PORTALS
+#  endif  // ENABLE_PORTALS
 
 capture_result_t capture_full_screen_x11()
 {

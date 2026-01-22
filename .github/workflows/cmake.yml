@@ -120,7 +120,7 @@ jobs:
           ./scripts/generateVersion.sh
           mkdir -p build
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-          cd build && make
+          make -C build
           ./build/oshot --version
 
       - name: Build project (Windows)
