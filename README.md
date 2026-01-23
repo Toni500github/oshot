@@ -28,7 +28,7 @@ If a package is not found, try searching by its base name (e.g., `libglfw3-dev` 
    
 2. Install pip by running the following commands in **CMD**:
     ```bash
-    curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+    curl -LO https://bootstrap.pypa.io/get-pip.py
     python get-pip.py
     ```
 3. Install Python packages:
@@ -73,13 +73,14 @@ ocr-path = "C:\\Program Files\\Tesseract-OCR\\tessdata"
 
 ## Troubleshooting
 ### Windows
-If when starting oshot, it starts to flick the screen black (or it won't launch), try to follow these steps:
+If when starting oshot, it starts to flick a screen black (or it won't launch), try the following steps:
 1. Download [MesaForWindows-x64-20.1.8.7z](https://downloads.fdossena.com/geth.php?r=mesa64-latest)
 2. Extract the `opengl32.dll` file into the directory where `oshot.exe` is located
 3. Try to launch it again
+
 ### Linux
-- If when you try to run oshot gives linking library errors, then try to use the AppImage release instead.
-- If `oshot` doesn't take the screenshot, then you need to take the screenshot from an external tool and either pipe into stdin or use the `-f /path/to/image` flag 
+- If oshot gives linking library errors, when trying to run it, then try to use the AppImage release instead.
+- If `oshot` doesn't take the screenshot, then you need to take the screenshot from an external tool and either pipe into stdin or use the `-f /path/to/image` flag.
 
 If still errors, please open an [Issue](https://github.com/Toni500github/oshot/issues) and take a screenshot/paste the text of the error appearing in the console when executing oshot
 ## Usage
