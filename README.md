@@ -11,7 +11,7 @@ If a package is not found, try searching by its base name (e.g., `libglfw3-dev` 
 - `grim` (Wayland only)
 - `libglfw3-dev`
 - `libtesseract` (including necessary language models, e.g `tesseract-ocr-eng`)
-- `libzar-dev`
+- `libzbar-dev`
 - **Python** and **pip**  
   - Python packages:
     ```bash
