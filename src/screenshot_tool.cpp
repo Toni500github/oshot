@@ -23,6 +23,7 @@
 #include "langs.hpp"
 #include "screen_capture.hpp"
 #include "socket.hpp"
+#include "tinyfiledialogs.h"
 #include "translation.hpp"
 #include "util.hpp"
 
@@ -134,7 +135,7 @@ bool ScreenshotTool::Start()
     if (!m_screenshot.success || m_screenshot.data.empty())
     {
         m_state = ToolState::Idle;
-        error("Failed to do data screenshot: {}", m_screenshot.error_msg);
+        error("Failed to do data with screenshot: {}", m_screenshot.error_msg);
         return false;
     }
 
@@ -145,7 +146,7 @@ bool ScreenshotTool::StartWindow()
 {
     m_io             = ImGui::GetIO();
     m_connect_future = std::async(std::launch::async, [&] {
-        return sender->Start();  // blocking connect()
+        return sender->Start();  // async because of blocking connect()
     });
 
     m_state = ToolState::Selecting;
@@ -522,9 +523,27 @@ void ScreenshotTool::DrawMenuItems()
         // Now draw the menus
         if (ImGui::BeginMenu("File"))
         {
+            if (ImGui::MenuItem("Open Image..."))
+            {
+                const char* filter[]  = { "*.png", "*.jpeg", "*.jpg", "*.bmp" };
+                const char* open_path = tinyfd_openFileDialog("Open Image",
+                                                              "",                // default path
+                                                              4,                 // number of filter patterns
+                                                              filter,            // file filters
+                                                              "Images (*.png)",  // filter description
+                                                              false              // allow multiple selections
+                );
+
+                if (open_path)
+                    OpenImage(open_path);
+            }
+
+            ImGui::Separator();
+
             if (ImGui::MenuItem("Save Image", "CTRL+S"))
                 if (m_on_complete)
                     m_on_complete(SavingOp::File, GetFinalImage());
+
             if (ImGui::MenuItem("Copy Image", "CTRL+SHIFT+C"))
             {
                 if (HasError(NoLauncher))
@@ -533,9 +552,12 @@ void ScreenshotTool::DrawMenuItems()
                 else if (m_on_complete)
                     m_on_complete(SavingOp::Clipboard, GetFinalImage());
             }
+
             ImGui::Separator();
+
             if (ImGui::MenuItem("Quit", "ESC"))
                 Cancel();
+
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Edit"))
@@ -603,9 +625,6 @@ void ScreenshotTool::DrawOcrTools()
     static size_t      item_selected_idx = 0;
     static bool        first_frame       = true;
 
-    ImGui::PushID("OcrTools");
-    ImGui::SeparatorText("OCR");
-
     static std::vector<std::string> list{ "" };
     auto                            check_list = [&]() {
         list = get_training_data_list(ocr_path);
@@ -622,6 +641,9 @@ void ScreenshotTool::DrawOcrTools()
             SetError(InvalidModel);
         first_frame = false;
     }
+
+    ImGui::PushID("OcrTools");
+    ImGui::SeparatorText("OCR");
 
     if (HasError(InvalidPath))
     {
@@ -756,9 +778,6 @@ void ScreenshotTool::DrawTranslationTools()
     static ImFont* font_from;
     static ImFont* font_to;
 
-    ImGui::PushID("TranslationTools");
-    ImGui::SeparatorText("Translation");
-
     if (first_frame)
     {
         if (getNameFromCode(lang_from) == "Unknown")
@@ -775,6 +794,9 @@ void ScreenshotTool::DrawTranslationTools()
         font_to     = GetFontForLanguage(lang_to);
         first_frame = false;
     }
+
+    ImGui::PushID("TranslationTools");
+    ImGui::SeparatorText("Translation");
 
     auto createCombo =
         [&](const char* name, const ErrorState err, int start, std::string& lang, size_t& idx, ImFont* font) {
@@ -976,6 +998,54 @@ void ScreenshotTool::Cancel()
     {
         m_on_cancel();
     }
+}
+
+bool ScreenshotTool::OpenImage(const std::string& path)
+{
+    capture_result_t cap = load_image_rgba(false, path);
+    if (!cap.success || cap.data.empty())
+    {
+        error("Failed to load image: {}", cap.error_msg);
+        return false;
+    }
+
+    m_screenshot = std::move(cap);
+
+    // Recreate texture from the new pixels (CreateTexture() already deletes the old ones)
+    if (!CreateTexture() || !m_texture_id)
+    {
+        error("Failed create openGL texture");
+        return false;
+    }
+
+    fit_to_screen(m_screenshot);
+
+    // Reset everything
+    m_state           = ToolState::Selecting;
+    m_is_selecting    = false;
+    m_is_hovering_ocr = false;
+
+    m_handle_hover    = HandleHovered::kNone;
+    m_dragging_handle = HandleHovered::kNone;
+
+    m_selection            = {};
+    m_drag_start_selection = {};
+    m_drag_start_mouse     = {};
+    // keep m_image_origin/m_image_end since UpdateWindowBg() will set them anyway
+
+    m_ocr_text.clear();
+    m_to_translate_text.clear();
+    m_barcode_text.clear();
+
+    ClearError(FailedToInitOcr);
+    ClearError(InvalidPath);
+    ClearError(InvalidModel);
+    ClearError(FailedTranslation);
+    ClearError(InvalidLangFrom);
+    ClearError(InvalidLangTo);
+    ClearError(FailedToExtractBarCode);
+
+    return true;
 }
 
 capture_result_t ScreenshotTool::GetFinalImage()

@@ -82,6 +82,7 @@ public:
     bool Start();
     bool StartWindow();
     bool CreateTexture();
+    bool OpenImage(const std::string& path);
     bool HasError(ErrorState err);
     bool IsActive() const { return m_state != ToolState::Idle; }
 
@@ -140,7 +141,7 @@ private:
     ImVec2 m_image_end{};
 
     std::future<bool> m_connect_future;
-    std::atomic<bool> m_connect_done;
+    std::atomic<bool> m_connect_done = false;
 
     std::string m_ocr_text;
     std::string m_to_translate_text;
