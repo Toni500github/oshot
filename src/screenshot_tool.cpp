@@ -52,7 +52,7 @@ static void rgba_to_grayscale(const uint8_t* rgba, uint8_t* gray, int width, int
     }
 }
 
-std::optional<std::string> decode_barcode_rgba(const uint8_t* rgba, int width, int height)
+static std::optional<std::string> decode_barcode_rgba(const uint8_t* rgba, int width, int height)
 {
     std::string          ret;
     std::vector<uint8_t> gray(width * height);
@@ -108,6 +108,29 @@ static void HelpMarker(const char* desc)
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
     }
+}
+
+static bool ui_blocks_selection()
+{
+    static ImGuiWindow* overlay_window = nullptr;
+
+    ImGuiContext* ctx = ImGui::GetCurrentContext();
+    if (!ctx)
+        return false;
+
+    if (!overlay_window)
+        overlay_window = ImGui::FindWindowByName("Screenshot Tool");
+
+    ImGuiWindow* hovered = ctx->HoveredWindow;
+    if (!hovered || !overlay_window)
+        return false;
+
+    // Allow selection when hovering the overlay window itself
+    if (hovered->RootWindow == overlay_window)
+        return false;
+
+    // Anything else (Text tools, menu popups, etc.) blocks starting selection
+    return true;
 }
 
 bool ScreenshotTool::Start()
@@ -176,7 +199,7 @@ void ScreenshotTool::RenderOverlay()
         }
     }
 
-    // Create fullscreen overlay window
+    // Overlay window
     ImGui::SetNextWindowPos(origin);
     ImGui::SetNextWindowSize(m_io.DisplaySize);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, origin);
@@ -184,17 +207,15 @@ void ScreenshotTool::RenderOverlay()
                  nullptr,
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
 
-    // Draw the screenshot as background
     UpdateWindowBg();
     ImGui::GetBackgroundDrawList()->AddImage(m_texture_id, m_image_origin, m_image_end);
 
-    if (m_state == ToolState::Selecting || m_state == ToolState::Selected || m_state == ToolState::Resizing)
+    const bool can_show_selection =
+        (m_state == ToolState::Selecting || m_state == ToolState::Selected || m_state == ToolState::Resizing);
+
+    if (can_show_selection)
     {
-        if (!m_is_hovering_ocr)
-        {
-            HandleSelectionInput();
-            DrawDarkOverlay();
-        }
+        DrawDarkOverlay();
         DrawSelectionBorder();
     }
 
@@ -204,11 +225,6 @@ void ScreenshotTool::RenderOverlay()
     if (m_state == ToolState::Selected)
     {
         ImGui::Begin("Text tools", nullptr, ImGuiWindowFlags_MenuBar);
-        ImVec2 window_pos  = ImGui::GetWindowPos();
-        ImVec2 window_size = ImGui::GetWindowSize();
-        m_is_hovering_ocr  = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) ||
-                            (ImGui::IsMouseHoveringRect(
-                                window_pos, ImVec2(window_pos.x + window_size.x, window_pos.y + window_size.y)));
         DrawMenuItems();
         DrawOcrTools();
         DrawTranslationTools();
@@ -216,12 +232,22 @@ void ScreenshotTool::RenderOverlay()
         ImGui::End();
     }
 
+    if (can_show_selection)
+        HandleSelectionInput();
+
     if (ImGui::IsKeyPressed(ImGuiKey_Escape))
         Cancel();
 }
 
 void ScreenshotTool::HandleSelectionInput()
 {
+    // Only block new interactions. Never block an ongoing drag/resize.
+    if (m_input_owner != InputOwner::Selection && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ui_blocks_selection())
+    {
+        m_input_owner = InputOwner::Tools;
+        return;
+    }
+
     const ImVec2& mouse_pos = ImGui::GetMousePos();
     float         sel_x     = m_selection.get_x();
     float         sel_y     = m_selection.get_y();
@@ -231,6 +257,8 @@ void ScreenshotTool::HandleSelectionInput()
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !m_is_selecting)
     {
+        m_input_owner = InputOwner::Selection;
+
         // Check if we're starting to resize from a handle
         if (m_handle_hover != HandleHovered::kNone)
         {
@@ -249,9 +277,9 @@ void ScreenshotTool::HandleSelectionInput()
             m_state                = ToolState::Resizing;
             m_is_selecting         = true;
         }
+        // Start new selection
         else
         {
-            // Start new selection
             m_selection.start = { mouse_pos.x, mouse_pos.y };
             m_selection.end   = m_selection.start;
             m_is_selecting    = true;
@@ -271,6 +299,7 @@ void ScreenshotTool::HandleSelectionInput()
     {
         m_is_selecting    = false;
         m_dragging_handle = HandleHovered::kNone;
+        m_input_owner     = InputOwner::kNone;
 
         if (m_selection.get_width() > 10 && m_selection.get_height() > 10)
             m_state = ToolState::Selected;
@@ -430,7 +459,7 @@ void ScreenshotTool::UpdateCursor()
 
 void ScreenshotTool::DrawDarkOverlay()
 {
-    ImDrawList* draw_list = ImGui::GetForegroundDrawList();
+    ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
 
     float sel_x = m_selection.get_x();
     float sel_y = m_selection.get_y();

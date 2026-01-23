@@ -60,6 +60,13 @@ enum class HandleHovered
     Move
 };
 
+enum class InputOwner
+{
+    kNone,
+    Selection,
+    Tools
+};
+
 enum ErrorState
 {
     kNone                  = 0,
@@ -128,6 +135,7 @@ private:
     ToolState     m_state           = ToolState::Idle;
     HandleHovered m_handle_hover    = HandleHovered::kNone;
     HandleHovered m_dragging_handle = HandleHovered::kNone;
+    InputOwner    m_input_owner     = InputOwner::kNone;
     int           m_err_state       = ErrorState::kNone;
 
     selection_rect_t m_selection;

@@ -132,7 +132,6 @@ jobs:
           mkdir -p build
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWINDOWS_CMD=ON
           ninja -C build
-          ./build/oshot.exe --version
 
       - name: Prepare Linux package
         if: matrix.os == 'ubuntu-latest'
