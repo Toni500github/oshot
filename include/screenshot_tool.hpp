@@ -151,9 +151,11 @@ private:
     std::future<bool> m_connect_future;
     std::atomic<bool> m_connect_done = false;
 
-    std::string m_ocr_text;
-    std::string m_to_translate_text;
-    std::string m_barcode_text;
+    std::string   m_ocr_text;
+    std::string   m_to_translate_text;
+    std::string   m_barcode_text;
+    int           m_ocr_confidence = -1;
+    zbar_result_t m_zbar_scan;
 
     std::unordered_map<std::string, font_cache_t>          m_font_cache;
     std::function<void()>                                  m_on_cancel;

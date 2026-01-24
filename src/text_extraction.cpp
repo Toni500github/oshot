@@ -2,7 +2,10 @@
 
 #include <zbar.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 #include "config.hpp"
@@ -65,20 +68,34 @@ bool OcrAPI::Configure(const char* data_path, const char* model, tesseract::OcrE
     return true;
 }
 
-std::optional<std::string> OcrAPI::RecognizeCapture(const capture_result_t& cap)
+static inline void trim_in_place(std::string& s)
 {
+    auto not_ws = [](unsigned char c) { return !std::isspace(c); };
+    auto b      = std::find_if(s.begin(), s.end(), not_ws);
+    auto e      = std::find_if(s.rbegin(), s.rend(), not_ws).base();
+    if (b >= e)
+    {
+        s.clear();
+        return;
+    }
+    s.assign(b, e);
+}
+
+ocr_result_t OcrAPI::ExtractTextCapture(const capture_result_t& cap)
+{
+    ocr_result_t ret;
+
     if (!m_initialized || cap.view().empty() || cap.region.width <= 0 || cap.region.height <= 0)
-        return std::nullopt;
+        return ret;
 
     const size_t required = static_cast<size_t>(cap.region.width) * cap.region.height * 4;
-
     if (cap.view().size() < required)
-        return std::nullopt;
+        return ret;
 
     tesseract::PageSegMode psm = choose_psm(cap.region.width, cap.region.height);
     PixPtr                 pix = RgbaToPix(cap.view(), cap.region.width, cap.region.height);
     if (!pix)
-        return std::nullopt;
+        return ret;
 
     float scale =
         std::min(static_cast<float>(g_scr_w) / cap.region.width, static_cast<float>(g_scr_h) / cap.region.height);
@@ -90,12 +107,45 @@ std::optional<std::string> OcrAPI::RecognizeCapture(const capture_result_t& cap)
     m_api->SetImage(pix.get());
     m_api->SetSourceResolution(effective_dpi);
 
+    // Make OCR + confidence deterministic
+    if (m_api->Recognize(nullptr) != 0)
+        return ret;
+
     TextPtr text(m_api->GetUTF8Text(), [](char* p) { delete[] p; });
-
     if (!text)
-        return std::nullopt;
+        return ret;
 
-    return std::string(text.get());
+    std::string data(text.get());
+    trim_in_place(data);
+    if (data.empty())
+        return ret;
+
+    ret.data = std::move(data);
+
+    if (tesseract::ResultIterator* ri = m_api->GetIterator())
+    {
+        double sum   = 0.0;
+        int    count = 0;
+
+        do
+        {
+            float conf = ri->Confidence(tesseract::RIL_WORD);
+            if (conf >= 0.0f)
+            {
+                sum += conf;
+                ++count;
+            }
+        } while (ri->Next(tesseract::RIL_WORD));
+
+        ret.confidence = count ? static_cast<int>(std::round(sum / count)) : 0;
+    }
+    else
+    {
+        ret.confidence = m_api->MeanTextConf();
+    }
+
+    ret.success = true;
+    return ret;
 }
 
 OcrAPI::PixPtr OcrAPI::RgbaToPix(std::span<const uint8_t> rgba, int w, int h)
@@ -137,10 +187,11 @@ ZbarAPI::ZbarAPI()
     SetConfig(zbar::ZBAR_I25, false);
 }
 
-std::vector<std::string> ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
+zbar_result_t ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
 {
-    std::vector<std::string> ret;
-    std::vector<uint8_t>     gray(cap.region.width * cap.region.height);
+    zbar_result_t        ret;
+    std::vector<uint8_t> gray(cap.region.width * cap.region.height);
+
     rgba_to_grayscale(cap.view().data(), gray.data(), cap.region.width, cap.region.height);
 
     zbar::Image image(cap.region.width,
@@ -152,8 +203,13 @@ std::vector<std::string> ZbarAPI::ExtractTextsCapture(const capture_result_t& ca
     if (m_scanner.scan(image) <= 0)
         return {};
 
-    for (auto symbol = image.symbol_begin(); symbol != image.symbol_end(); ++symbol)
-        ret.push_back(symbol->get_data());
+    for (auto sym = image.symbol_begin(); sym != image.symbol_end(); ++sym)
+    {
+        ret.datas.push_back(sym->get_data());
+        ret.symbologies[sym->get_type_name()]++;
+    }
+
+    ret.success = !ret.datas.empty() || !ret.symbologies.empty();
 
     // Prevent ZBar from freeing the buffer
     image.set_data(nullptr, 0);

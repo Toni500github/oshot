@@ -16,7 +16,6 @@
 #include <vector>
 
 #include "config.hpp"
-#include "fmt/ranges.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3_loader.h"
 #include "imgui/imgui_internal.h"
@@ -87,6 +86,16 @@ static bool ui_blocks_selection()
 
     // Anything else (Text tools, menu popups, etc.) blocks starting selection
     return true;
+}
+
+static ImVec4 get_confidence_color(const int confidence)
+{
+    if (confidence <= 45)
+        return ImVec4(1, 0, 0, 1);  // red
+    else if (confidence <= 80)
+        return ImVec4(1, 1, 0, 1);  // yellow
+    else
+        return ImVec4(0, 1, 0, 1);  // green
 }
 
 bool ScreenshotTool::Start()
@@ -703,9 +712,12 @@ end:
         }
         else
         {
-            const auto& text = m_ocr_api.RecognizeCapture(GetFinalImage());
-            if (text)
-                m_ocr_text = m_to_translate_text = *text;
+            const ocr_result_t& result = m_ocr_api.ExtractTextCapture(GetFinalImage());
+            if (result.success)
+            {
+                m_ocr_text = m_to_translate_text = result.data;
+                m_ocr_confidence                 = result.confidence;
+            }
             ClearError(FailedToInitOcr);
         }
     }
@@ -720,6 +732,13 @@ end:
     {
         ImGui::SameLine();
         HelpMarker("If the result seems off, you could try selecting an option in Edit > Optimize OCR for...");
+    }
+
+    if (m_ocr_confidence != -1)
+    {
+        ImGui::TextColored(get_confidence_color(m_ocr_confidence), "%d%%", m_ocr_confidence);
+        ImGui::SameLine();
+        HelpMarker("Confidence score");
     }
 
     ImGui::InputTextMultiline("##source",
@@ -911,14 +930,16 @@ void ScreenshotTool::DrawBarDecodeTools()
 
     if (ImGui::Button("Extract Text"))
     {
-        const std::vector<std::string> texts = m_zbar_api.ExtractTextsCapture(GetFinalImage());
-        if (texts.empty())
+        const zbar_result_t& scan = m_zbar_api.ExtractTextsCapture(GetFinalImage());
+        if (!scan.success)
         {
             SetError(FailedToExtractBarCode);
         }
         else
         {
-            m_barcode_text = fmt::format("{}", fmt::join(texts, "\n\n"));
+            m_zbar_scan = std::move(scan);
+            for (const auto& data : m_zbar_scan.datas)
+                m_barcode_text += data + "\n\n";
             ClearError(FailedToExtractBarCode);
         }
     }
@@ -936,6 +957,13 @@ void ScreenshotTool::DrawBarDecodeTools()
     }
     else
     {
+        if (m_zbar_scan.success && ImGui::TreeNode("Details"))
+        {
+            ImGui::Text("Detect barcodes:");
+            for (const auto& [sym, count] : m_zbar_scan.symbologies)
+                ImGui::BulletText("%s (x%d)", sym.c_str(), count);
+            ImGui::TreePop();
+        }
         ImGui::InputTextMultiline("##barcode",
                                   &m_barcode_text,
                                   ImVec2(-1, ImGui::GetTextLineHeight() * 10),

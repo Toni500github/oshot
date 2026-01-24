@@ -13,6 +13,13 @@
 
 #include "screen_capture.hpp"
 
+struct ocr_result_t
+{
+    std::string data;
+    int         confidence = 0;  // 0..100
+    bool        success    = false;
+};
+
 class OcrAPI
 {
 public:
@@ -25,7 +32,7 @@ public:
 
     bool Configure(const char* data_path, const char* model, tesseract::OcrEngineMode oem = tesseract::OEM_LSTM_ONLY);
 
-    std::optional<std::string> RecognizeCapture(const capture_result_t& cap);
+    ocr_result_t ExtractTextCapture(const capture_result_t& cap);
 
 private:
     struct ocr_config_t
@@ -55,13 +62,20 @@ private:
     static PixPtr RgbaToPix(std::span<const uint8_t> rgba, int w, int h);
 };
 
+struct zbar_result_t
+{
+    std::vector<std::string>             datas;        // decoded payload
+    std::unordered_map<std::string, int> symbologies;  // e.g. "QRCODE", "EAN-13", ...
+    bool                                 success = false;
+};
+
 class ZbarAPI
 {
 public:
     ZbarAPI();
 
-    std::vector<std::string> ExtractTextsCapture(const capture_result_t& cap);
-    bool                     SetConfig(zbar::zbar_symbol_type_e zbar_code, int enable);
+    zbar_result_t ExtractTextsCapture(const capture_result_t& cap);
+    bool          SetConfig(zbar::zbar_symbol_type_e zbar_code, int enable);
 
 private:
     zbar::ImageScanner m_scanner;
