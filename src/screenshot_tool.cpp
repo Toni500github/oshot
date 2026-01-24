@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "config.hpp"
+#include "fmt/ranges.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3_loader.h"
 #include "imgui/imgui_internal.h"
@@ -35,53 +36,8 @@ using namespace std::chrono_literals;
 
 static ImVec2 origin(0, 0);
 
-static std::unique_ptr<Translator> translator;
-std::unique_ptr<SocketSender>      sender;
-
-static void rgba_to_grayscale(const uint8_t* rgba, uint8_t* gray, int width, int height)
-{
-    const int pixels = width * height;
-    for (int i = 0; i < pixels; ++i)
-    {
-        const uint8_t r = rgba[i * 4 + 0];
-        const uint8_t g = rgba[i * 4 + 1];
-        const uint8_t b = rgba[i * 4 + 2];
-
-        // ITU-R BT.601 luminance
-        gray[i] = static_cast<uint8_t>((77 * r + 150 * g + 29 * b) >> 8);
-    }
-}
-
-static std::optional<std::string> decode_barcode_rgba(const uint8_t* rgba, int width, int height)
-{
-    std::string          ret;
-    std::vector<uint8_t> gray(width * height);
-    rgba_to_grayscale(rgba, gray.data(), width, height);
-
-    zbar::ImageScanner scanner;
-
-    // Enable (almost) all symbologies
-    scanner.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_ENABLE, 1);
-    scanner.set_config(zbar::ZBAR_I25, zbar::ZBAR_CFG_ENABLE, 0);
-
-    zbar::Image image(width,
-                      height,
-                      "Y800",  // GRAYSCALE
-                      gray.data(),
-                      gray.size());
-
-    if (scanner.scan(image) <= 0)
-        return std::nullopt;
-
-    // Maybe multiple results
-    for (auto symbol = image.symbol_begin(); symbol != image.symbol_end(); ++symbol)
-        ret += symbol->get_data() + "\n\n";
-
-    // Prevent ZBar from freeing the buffer
-    image.set_data(nullptr, 0);
-
-    return ret;
-}
+std::unique_ptr<Translator>   translator;
+std::unique_ptr<SocketSender> sender;
 
 static std::vector<std::string> get_training_data_list(const std::string& path)
 {
@@ -207,6 +163,7 @@ void ScreenshotTool::RenderOverlay()
                  nullptr,
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
 
+    // Screenshot as a centered bg image
     UpdateWindowBg();
     ImGui::GetBackgroundDrawList()->AddImage(m_texture_id, m_image_origin, m_image_end);
 
@@ -233,7 +190,9 @@ void ScreenshotTool::RenderOverlay()
     }
 
     if (can_show_selection)
+    {
         HandleSelectionInput();
+    }
 
     if (ImGui::IsKeyPressed(ImGuiKey_Escape))
         Cancel();
@@ -345,8 +304,8 @@ void ScreenshotTool::HandleResizeInput()
 
 void ScreenshotTool::UpdateHandleHoverState()
 {
-    const ImVec2 mouse_pos = ImGui::GetMousePos();
-    m_handle_hover         = HandleHovered::kNone;
+    const ImVec2& mouse_pos = ImGui::GetMousePos();
+    m_handle_hover          = HandleHovered::kNone;
 
     if (m_state != ToolState::Selected && m_state != ToolState::Resizing)
         return;
@@ -435,7 +394,7 @@ void ScreenshotTool::UpdateCursor()
             default: ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow); break;
         }
     }
-    else if ((m_state == ToolState::Selected || m_state == ToolState::Resizing) && !m_is_hovering_ocr)
+    else if ((m_state == ToolState::Selected || m_state == ToolState::Resizing))
     {
         // Check if mouse is inside the selection (for moving)
         float sel_x = m_selection.get_x();
@@ -620,12 +579,6 @@ void ScreenshotTool::DrawMenuItems()
     {
         ImGui::SetNextWindowSize(ImVec2(200, 200), ImGuiCond_FirstUseEver);
         ImGui::Begin("About", &show_about, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings);
-        ImVec2 window_pos  = ImGui::GetWindowPos();
-        ImVec2 window_size = ImGui::GetWindowSize();
-        m_is_hovering_ocr  = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) ||
-                            (ImGui::IsMouseHoveringRect(
-                                window_pos, ImVec2(window_pos.x + window_size.x, window_pos.y + window_size.y)));
-
         ImGui::Text("oshot");
         ImGui::Separator();
         ImGui::Spacing();
@@ -744,13 +697,13 @@ end:
         {
             SetError(InvalidModel);
         }
-        else if (!m_api.Configure(ocr_path.c_str(), ocr_model.c_str()))
+        else if (!m_ocr_api.Configure(ocr_path.c_str(), ocr_model.c_str()))
         {
             SetError(FailedToInitOcr);
         }
         else
         {
-            const auto& text = m_api.RecognizeCapture(GetFinalImage());
+            const auto& text = m_ocr_api.RecognizeCapture(GetFinalImage());
             if (text)
                 m_ocr_text = m_to_translate_text = *text;
             ClearError(FailedToInitOcr);
@@ -958,15 +911,14 @@ void ScreenshotTool::DrawBarDecodeTools()
 
     if (ImGui::Button("Extract Text"))
     {
-        const capture_result_t& cap  = GetFinalImage();
-        const auto              text = decode_barcode_rgba(cap.data.data(), cap.region.width, cap.region.height);
-        if (!text)
+        const std::vector<std::string> texts = m_zbar_api.ExtractTextsCapture(GetFinalImage());
+        if (texts.empty())
         {
             SetError(FailedToExtractBarCode);
         }
         else
         {
-            m_barcode_text = *text;
+            m_barcode_text = fmt::format("{}", fmt::join(texts, "\n\n"));
             ClearError(FailedToExtractBarCode);
         }
     }
@@ -1051,12 +1003,10 @@ bool ScreenshotTool::OpenImage(const std::string& path)
 
     // Reset everything
     m_state           = ToolState::Selecting;
-    m_is_selecting    = false;
-    m_is_hovering_ocr = false;
-
     m_handle_hover    = HandleHovered::kNone;
     m_dragging_handle = HandleHovered::kNone;
 
+    m_is_selecting         = false;
     m_selection            = {};
     m_drag_start_selection = {};
     m_drag_start_mouse     = {};

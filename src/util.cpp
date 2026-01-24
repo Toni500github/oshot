@@ -255,6 +255,20 @@ bool save_png(SavingOp op, const capture_result_t& img)
     return true;
 }
 
+void rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int height)
+{
+    const int pixels = width * height;
+    for (int i = 0; i < pixels; ++i)
+    {
+        const uint8_t r = rgba[i * 4 + 0];
+        const uint8_t g = rgba[i * 4 + 1];
+        const uint8_t b = rgba[i * 4 + 2];
+
+        // ITU-R BT.601 luminance
+        result[i] = static_cast<uint8_t>((77 * r + 150 * g + 29 * b) >> 8);
+    }
+}
+
 std::string replace_str(std::string& str, const std::string_view from, const std::string_view to)
 {
     size_t start_pos = 0;

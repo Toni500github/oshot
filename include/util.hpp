@@ -55,6 +55,7 @@ std::filesystem::path get_config_dir();
 capture_result_t load_image_rgba(bool stdin_has_data, const std::string& path);
 
 void fit_to_screen(capture_result_t& img);
+void rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int height);
 
 int get_screen_dpi();
 

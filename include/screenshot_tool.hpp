@@ -11,8 +11,8 @@
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_internal.h"
-#include "ocr.hpp"
 #include "screen_capture.hpp"
+#include "text_extraction.hpp"
 
 struct point_t
 {
@@ -111,7 +111,7 @@ public:
 
 private:
     static constexpr float HANDLE_DRAW_SIZE  = 4.0f;
-    static constexpr float HANDLE_HOVER_SIZE = 10.0f;
+    static constexpr float HANDLE_HOVER_SIZE = 16.0f;
 
     struct font_cache_t
     {
@@ -128,7 +128,8 @@ private:
     };
 
     ImGuiIO&         m_io;
-    OcrAPI           m_api;
+    OcrAPI           m_ocr_api;
+    ZbarAPI          m_zbar_api;
     capture_result_t m_screenshot;
 
     void*         m_texture_id      = nullptr;
@@ -142,7 +143,6 @@ private:
     selection_rect_t m_drag_start_selection;
 
     bool m_is_selecting{};
-    bool m_is_hovering_ocr{};
 
     ImVec2 m_drag_start_mouse{};
     ImVec2 m_image_origin{};

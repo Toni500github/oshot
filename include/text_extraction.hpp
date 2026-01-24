@@ -1,8 +1,9 @@
-#ifndef _OCR_HPP_
-#define _OCR_HPP_
+#ifndef _TEXT_EXTRACTION_HPP_
+#define _TEXT_EXTRACTION_HPP_
 
 #include <leptonica/allheaders.h>
 #include <tesseract/baseapi.h>
+#include <zbar.h>
 
 #include <cstdint>
 #include <memory>
@@ -54,4 +55,16 @@ private:
     static PixPtr RgbaToPix(std::span<const uint8_t> rgba, int w, int h);
 };
 
-#endif  // !_OCR_HPP_
+class ZbarAPI
+{
+public:
+    ZbarAPI();
+
+    std::vector<std::string> ExtractTextsCapture(const capture_result_t& cap);
+    bool                     SetConfig(zbar::zbar_symbol_type_e zbar_code, int enable);
+
+private:
+    zbar::ImageScanner m_scanner;
+};
+
+#endif  // !_TEXT_EXTRACTION_HPP_

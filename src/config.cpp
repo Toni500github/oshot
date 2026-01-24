@@ -83,10 +83,10 @@ void Config::OverrideOption(const std::string& opt)
     std::string        name{ opt.substr(0, pos) };
     const std::string& value = opt.substr(pos + 1);
 
-    // usually the user finds incovinient to write "config.foo"
+    // usually the user finds incovinient to write "default.foo"
     // for general config options
     if (name.find('.') == name.npos)
-        name.insert(0, "config.");
+        name.insert(0, "default.");
 
     if (value == "true")
         m_overrides[name] = { .value_type = ValueType::kBool, .bool_value = true };

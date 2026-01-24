@@ -1,10 +1,15 @@
-#include "ocr.hpp"
+#include "text_extraction.hpp"
+
+#include <zbar.h>
 
 #include <cstring>
+#include <vector>
 
 #include "config.hpp"
+#include "screen_capture.hpp"
 #include "util.hpp"
 
+// OCR
 static tesseract::PageSegMode choose_psm(int w, int h)
 {
     if (g_config->Runtime.preferred_psm != 0)
@@ -123,4 +128,40 @@ OcrAPI::PixPtr OcrAPI::RgbaToPix(std::span<const uint8_t> rgba, int w, int h)
     }
 
     return PixPtr(pix);
+}
+
+// Zbar
+ZbarAPI::ZbarAPI()
+{
+    SetConfig(zbar::ZBAR_NONE, true);  // all
+    SetConfig(zbar::ZBAR_I25, false);
+}
+
+std::vector<std::string> ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
+{
+    std::vector<std::string> ret;
+    std::vector<uint8_t>     gray(cap.region.width * cap.region.height);
+    rgba_to_grayscale(cap.view().data(), gray.data(), cap.region.width, cap.region.height);
+
+    zbar::Image image(cap.region.width,
+                      cap.region.height,
+                      "Y800",  // GRAYSCALE
+                      gray.data(),
+                      gray.size());
+
+    if (m_scanner.scan(image) <= 0)
+        return {};
+
+    for (auto symbol = image.symbol_begin(); symbol != image.symbol_end(); ++symbol)
+        ret.push_back(symbol->get_data());
+
+    // Prevent ZBar from freeing the buffer
+    image.set_data(nullptr, 0);
+
+    return ret;
+}
+
+bool ZbarAPI::SetConfig(zbar::zbar_symbol_type_e zbar_code, int enable)
+{
+    return m_scanner.set_config(zbar_code, zbar::ZBAR_CFG_ENABLE, enable) == 0;
 }
