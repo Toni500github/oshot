@@ -35,8 +35,9 @@ public:
     struct runtime_settings_t
     {
         std::string source_file;
-        int         preferred_psm  = 0;
-        bool        enable_handles = true;
+        int         preferred_psm    = 0;
+        bool        enable_handles   = true;
+        bool        only_launch_tray = false;
     } Runtime;
 
     /**

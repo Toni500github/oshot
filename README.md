@@ -4,41 +4,23 @@ A simple and lightweight tool for extracting and translating text from a screens
 
 ## Dependencies
 #### Linux
-Package names may vary by distribution and package manager.  
+Package names may vary by distribution and package manager.
 If a package is not found, try searching by its base name (e.g., `libglfw3-dev` → `glfw`).
 
 - `libx11-dev`
-- `grim` (Wayland only)
+- `libxcb-dev`
+- `libpng-dev`
 - `libglfw3-dev`
 - `libtesseract` (including necessary language models, e.g `tesseract-ocr-eng`)
 - `libzbar-dev`
-- **Python** and **pip**  
-  - Python packages:
-    ```bash
-    pip install --user pillow pystray pyclip pyperclipimg
-    ```
-  - From Arch Linux and based:
-    ```
-    yay -S python-pillow python-pystray python-pyclip python-pyperclipimg
-    ```
+- `libappindicator-gtk3`
+- `grim` (Wayland only)
+- `wl-clipboard` (Wayland only)
 
 #### Windows
-1. Install **Python** from the [Microsoft Store](https://www.microsoft.com/en-us/p/python-3142) or [python.org](https://www.python.org/downloads/release/python-3142/).  
-   **Note**: Make sure to check the "Add Python to PATH" option during installation.
-   
-2. Install pip by running the following commands in **CMD**:
-    ```bash
-    curl -LO https://bootstrap.pypa.io/get-pip.py
-    python get-pip.py
-    ```
-3. Install Python packages:
-    ```bash
-    pip install pillow pystray pyclip pyperclipimg
-    ```
-
-4. Download the required language data for Tesseract from [tessdata](https://github.com/tesseract-ocr/tessdata).
-5. Extract the language files to a directory of your choice.
-6. Configure the Tesseract and language data paths in the `config.toml` file (see *Windows Configuration* section for more details).
+1. Download the required language data for Tesseract from [tessdata](https://github.com/tesseract-ocr/tessdata).
+2. Extract the language files to a directory of your choice.
+3. Configure the Tesseract and language data paths in the `config.toml` file (see *Windows Configuration* section for more details).
 
 ## Building
 ### Make

@@ -18,13 +18,18 @@
 #endif
 #include <GLFW/glfw3.h>  // Will drag system OpenGL headers
 
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+
+#include "clipboard.hpp"
 #include "config.hpp"
 #include "getopt_port/getopt.h"
 #include "langs.hpp"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
-#include "socket.hpp"
 #include "switch_fnv1a.hpp"
+#include "trayapp/tray.hpp"
 #include "util.hpp"
 
 // [Win32] Our example includes a copy of glfw3.lib pre-compiled with VS2010 to maximize ease of testing and
@@ -52,9 +57,10 @@
 // clang-format on
 
 // Extern variables declariaions
-std::unique_ptr<Config> g_config;
-int                     g_scr_w{}, g_scr_h{};
-FILE*                   g_fp_log;
+std::unique_ptr<Config>    g_config;
+std::unique_ptr<Clipboard> g_clipboard;
+int                        g_scr_w{}, g_scr_h{};
+FILE*                      g_fp_log;
 
 // Print the version and some other infos, then exit successfully
 static void version()
@@ -128,11 +134,12 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
     int opt = 0;
     int option_index = 0;
     opterr = 1; // re-enable since before we disabled for "invalid option" error
-    const char *optstring = "-VhlC:f:";
+    const char *optstring = "-VhltC:f:";
     static const struct option opts[] = {
         {"version", no_argument,       0, 'V'},
         {"help",    no_argument,       0, 'h'},
         {"list",    no_argument,       0, 'l'},
+        {"tray",    no_argument,       0, 't'},
         {"config",  required_argument, 0, 'C'},
         {"source",  required_argument, 0, 'f'},
 
@@ -161,6 +168,8 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
                 print_languages(); break;
             case 'f':
                 g_config->Runtime.source_file = optarg; break;
+            case 't':
+                g_config->Runtime.only_launch_tray = true; break;
 
             case "gen-config"_fnv1a16:
                 if (OPTIONAL_ARGUMENT_IS_PRESENT)
@@ -178,9 +187,33 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
 }
 
 // clang-format on
+static std::mutex              mtx;
+static std::condition_variable cv;
+static std::atomic<bool>       quit{ false };
+static bool                    do_capture = false;
+
 static void glfw_error_callback(int i_error, const char* description)
 {
     error("GLFW Error {}: {}", i_error, description);
+}
+
+int main_tool(const std::string imgui_ini_path);
+
+static void capture_worker(const std::string& imgui_ini_path)
+{
+    while (!quit.load())
+    {
+        // wait for command
+        std::unique_lock lk(mtx);
+        cv.wait(lk, [] { return quit.load() || do_capture; });
+        if (quit.load())
+            break;
+
+        do_capture = false;
+        lk.unlock();
+
+        main_tool(imgui_ini_path);
+    }
 }
 
 #if defined(_WIN32) && !defined(WINDOWS_CMD)
@@ -277,8 +310,6 @@ int main(int argc, char* argv[])
 
 #endif
 
-    GLFWwindow* window = nullptr;
-
     const std::string& configDir      = get_config_dir().string();
     const std::string& configFile     = parse_config_path(argc, argv, configDir).string();
     const std::string& imgui_ini_path = configDir + "/imgui.ini";
@@ -288,6 +319,43 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
 
     g_config->LoadConfigFile(configFile);
+
+    if (!g_config->Runtime.only_launch_tray)
+        return main_tool(imgui_ini_path);
+
+    if (!acquire_tray_lock())
+        return 0;
+
+    std::thread worker(capture_worker, imgui_ini_path);
+
+    Tray::Tray tray("oshot", "oshot.png");
+
+    tray.addEntry(Tray::Button("Capture", [&] {
+        std::lock_guard lk(mtx);
+        // only queue if not already queued
+        if (!do_capture)
+        {
+            do_capture = true;
+            cv.notify_one();
+        }
+    }));
+
+    tray.addEntry(Tray::Button("Quit", [&] {
+        quit.store(true);
+        cv.notify_one();
+        tray.exit();
+    }));
+
+    tray.run();  // blocks here (tray main loop)
+
+    worker.join();
+
+    return 0;
+}
+
+int main_tool(const std::string imgui_ini_path)
+{
+    GLFWwindow* window = nullptr;
 
     // Setup Screenshot Tool
     // Calling it before starting the window so that
@@ -423,8 +491,6 @@ int main(int argc, char* argv[])
 
     glfwDestroyWindow(window);
     glfwTerminate();
-
-    sender->Close();
 
     if (g_fp_log && g_fp_log != stdout)
         std::fclose(g_fp_log);

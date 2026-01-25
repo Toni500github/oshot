@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <vector>
 
+#include "clipboard.hpp"
 #include "config.hpp"
 #include "fmt/compile.h"
 #include "fmt/format.h"
@@ -14,7 +15,6 @@
 #include "langs.hpp"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
-#include "socket.hpp"
 #include "tinyfiledialogs.h"
 
 #define SVPNG_LINKAGE inline
@@ -25,11 +25,15 @@
 #include "svpng.h"
 #pragma GCC diagnostic pop
 
+#define STBI_WRITE_NO_STDIO
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image.h"
 #include "stb_image_resize2.h"
+#include "stb_image_write.h"
 
+// clang-format off
 #ifdef _WIN32
 #  ifdef __MINGW64__
 #    define NTDDI_VERSION NTDDI_WINBLUE
@@ -38,12 +42,19 @@
 #  include <fcntl.h>
 #  include <io.h>
 #  include <shellscalingapi.h>  // GetDpiForMonitor
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
 #  include <windows.h>
 #  pragma comment(lib, "Shcore.lib")
+#  pragma comment(lib, "ws2_32.lib")
 #else
+#  include <arpa/inet.h>
+#  include <netdb.h>
 #  include <sys/select.h>
+#  include <sys/socket.h>
 #  include <unistd.h>
 #endif
+// clang-format on
 
 #if __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
@@ -69,6 +80,25 @@ std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
 #endif
 
 #ifdef _WIN32
+static HANDLE g_tray_mutex = nullptr;
+
+bool acquire_tray_lock()
+{
+    // "Local\\" is per-user session; "Global\\" is system-wide and needs privileges sometimes.
+    g_tray_mutex = CreateMutexW(nullptr, TRUE, L"Local\\oshot_tray_daemon");
+    if (!g_tray_mutex)
+        return false;
+
+    if (GetLastError() == ERROR_ALREADY_EXISTS)
+    {
+        CloseHandle(g_tray_mutex);
+        g_tray_mutex = nullptr;
+        return false;  // already running
+    }
+
+    return true;  // we own it
+}
+
 int get_screen_dpi()
 {
     uint32_t dpiX = 96;
@@ -93,6 +123,33 @@ bool stdin_has_data()
     return available > 0;
 }
 #else
+static int g_lock_sock = -1;
+
+bool acquire_tray_lock()
+{
+    g_lock_sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (g_lock_sock < 0)
+        return false;
+
+    sockaddr_in addr{};
+    addr.sin_family      = AF_INET;
+    addr.sin_port        = htons(6015);
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);  // 127.0.0.1
+
+    int yes = 1;
+    setsockopt(g_lock_sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+
+    if (bind(g_lock_sock, (sockaddr*)&addr, sizeof(addr)) < 0)
+    {
+        close(g_lock_sock);
+        g_lock_sock = -1;
+        return false;
+    }
+
+    listen(g_lock_sock, 1);
+    return true;
+}
+
 int get_screen_dpi()
 {
     Display* dpy = XOpenDisplay(nullptr);
@@ -230,9 +287,7 @@ bool save_png(SavingOp op, const capture_result_t& img)
 
     if (op == SavingOp::Clipboard)
     {
-        if (sender->IsFailed())
-            die("Couldn't copy image into clipboard: launcher not respoding/opened");
-        return sender->Send(SendMsg::Image, data.data(), size);
+        return g_clipboard->CopyImage(img);
     }
 
     auto        now       = std::chrono::system_clock::now();

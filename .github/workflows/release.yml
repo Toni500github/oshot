@@ -60,6 +60,7 @@ jobs:
             zip \
             fuse \
             libx11-dev \
+            libxcb-dev \
             libglfw3-dev \
             libtesseract-dev \
             libcurl4-openssl-dev \
@@ -86,7 +87,8 @@ jobs:
             libunistring-dev \
             libkeyutils-dev \
             libssl-dev \
-            libcrypto++-dev
+            libcrypto++-dev \
+            libappindicator3-dev
 
       - name: Install dependencies (Windows)
         if: matrix.os == 'windows-latest'
@@ -137,11 +139,10 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           mkdir -p package/oshot
-          cp ./build/oshot ./launcher/oshot_launcher.py package/oshot/
+          cp ./build/oshot package/oshot/
           echo "#!/bin/bash" > package/oshot/install.sh
           echo "cp oshot /usr/local/bin/oshot" >> package/oshot/install.sh
-          echo "cp oshot_launcher.py /usr/local/bin/oshot_launcher" >> package/oshot/install.sh
-          chmod +x package/oshot/install.sh package/oshot/oshot ./launcher/oshot_launcher.py
+          chmod +x package/oshot/install.sh package/oshot/oshot
           cd package
           zip -r oshot-linux.zip oshot/
 
@@ -152,7 +153,6 @@ jobs:
           ./scripts/create_appimage.sh ./build/oshot oshot-x86_64.AppImage
           chmod +x oshot-x86_64.AppImage
           mv oshot-x86_64.AppImage package/oshot/
-          cp ./launcher/oshot_launcher.py package/oshot/
           cd package
           zip -r oshot-appimage.zip oshot/
 
@@ -161,9 +161,7 @@ jobs:
         shell: msys2 {0}
         run: |
           mkdir -p package/oshot
-          sed -i 's|#!/bin/env python3|#!python|' launcher/oshot_launcher.py
           cp ./build/oshot.exe package/oshot/
-          cp ./launcher/oshot_launcher.py package/oshot/oshot_launcher.pyw
           # Copy required DLLs
           ldd ./build/oshot.exe | grep -i mingw | awk '{print $3}' | xargs -I {} cp {} package/oshot/ || true
           cd package

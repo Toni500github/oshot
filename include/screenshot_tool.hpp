@@ -2,10 +2,8 @@
 #define _SCREENSHOT_TOOL_HPP_
 
 #include <algorithm>
-#include <atomic>
 #include <cstdlib>
 #include <functional>
-#include <future>
 #include <unordered_map>
 #include <utility>
 
@@ -76,9 +74,7 @@ enum ErrorState
     FailedTranslation      = 1 << 4,
     InvalidLangFrom        = 1 << 5,
     InvalidLangTo          = 1 << 6,
-    NoLauncher             = 1 << 7,
-    WarnConnLauncher       = 1 << 8,
-    FailedToExtractBarCode = 1 << 9
+    FailedToExtractBarCode = 1 << 7
 };
 
 class ScreenshotTool
@@ -147,9 +143,6 @@ private:
     ImVec2 m_drag_start_mouse{};
     ImVec2 m_image_origin{};
     ImVec2 m_image_end{};
-
-    std::future<bool> m_connect_future;
-    std::atomic<bool> m_connect_done = false;
 
     std::string   m_ocr_text;
     std::string   m_to_translate_text;

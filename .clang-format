@@ -6,9 +6,9 @@ BasedOnStyle: Google
 AlignConsecutiveAssignments: Consecutive
 AlignConsecutiveDeclarations: Consecutive
 AlignConsecutiveMacros: Consecutive
-AlignTrailingComments:
-  Kind: Always
-  OverEmptyLines: 2
+#AlignTrailingComments:
+#  Kind: Always
+#  OverEmptyLines: 2
 
 # Align the * in declarations
 DerivePointerAlignment: false

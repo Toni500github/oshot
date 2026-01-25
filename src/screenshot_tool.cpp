@@ -8,13 +8,13 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
-#include <future>
 #include <memory>
 #include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "clipboard.hpp"
 #include "config.hpp"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3_loader.h"
@@ -22,7 +22,6 @@
 #include "imgui/imgui_stdlib.h"
 #include "langs.hpp"
 #include "screen_capture.hpp"
-#include "socket.hpp"
 #include "tinyfiledialogs.h"
 #include "translation.hpp"
 #include "util.hpp"
@@ -35,8 +34,7 @@ using namespace std::chrono_literals;
 
 static ImVec2 origin(0, 0);
 
-std::unique_ptr<Translator>   translator;
-std::unique_ptr<SocketSender> sender;
+static std::unique_ptr<Translator> translator;
 
 static std::vector<std::string> get_training_data_list(const std::string& path)
 {
@@ -101,13 +99,13 @@ static ImVec4 get_confidence_color(const int confidence)
 bool ScreenshotTool::Start()
 {
     translator = std::make_unique<Translator>();
-    sender     = std::make_unique<SocketSender>();
 
-    SetError(WarnConnLauncher);
     bool stdin_data_exist = stdin_has_data();
     if (g_config->Runtime.source_file.empty() && !stdin_data_exist)
     {
-        switch (get_session_type())
+        SessionType type = get_session_type();
+        g_clipboard      = std::make_unique<Clipboard>(type);
+        switch (type)
         {
             case SessionType::X11:     m_screenshot = capture_full_screen_x11(); break;
             case SessionType::Wayland: m_screenshot = capture_full_screen_wayland(); break;
@@ -132,11 +130,7 @@ bool ScreenshotTool::Start()
 
 bool ScreenshotTool::StartWindow()
 {
-    m_io             = ImGui::GetIO();
-    m_connect_future = std::async(std::launch::async, [&] {
-        return sender->Start();  // async because of blocking connect()
-    });
-
+    m_io    = ImGui::GetIO();
     m_state = ToolState::Selecting;
     CreateTexture();
     fit_to_screen(m_screenshot);
@@ -146,24 +140,12 @@ bool ScreenshotTool::StartWindow()
         error("Failed create openGL texture");
         return false;
     }
+
     return true;
 }
 
 void ScreenshotTool::RenderOverlay()
 {
-    if (!m_connect_done.load(std::memory_order_acquire))
-    {
-        if (m_connect_future.valid() && m_connect_future.wait_for(0ms) == std::future_status::ready)
-        {
-            bool success = m_connect_future.get();
-            m_connect_done.store(true, std::memory_order_release);
-
-            ClearError(WarnConnLauncher);
-            if (!success)
-                SetError(NoLauncher);
-        }
-    }
-
     // Overlay window
     ImGui::SetNextWindowPos(origin);
     ImGui::SetNextWindowSize(m_io.DisplaySize);
@@ -514,7 +496,7 @@ void ScreenshotTool::DrawMenuItems()
                 m_on_complete(SavingOp::File, GetFinalImage());
 
         if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl | ImGuiMod_Shift))
-            if (!HasError(NoLauncher) && m_on_complete)
+            if (m_on_complete)
                 m_on_complete(SavingOp::Clipboard, GetFinalImage());
 
         // Now draw the menus
@@ -542,13 +524,8 @@ void ScreenshotTool::DrawMenuItems()
                     m_on_complete(SavingOp::File, GetFinalImage());
 
             if (ImGui::MenuItem("Copy Image", "CTRL+SHIFT+C"))
-            {
-                if (HasError(NoLauncher))
-                    ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
-                                       "Please launch oshot with its launcher, in order to copy text/images");
-                else if (m_on_complete)
+                if (m_on_complete)
                     m_on_complete(SavingOp::Clipboard, GetFinalImage());
-            }
 
             ImGui::Separator();
 
@@ -746,21 +723,11 @@ end:
                               ImVec2(-1, ImGui::GetTextLineHeight() * 10),
                               g_config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
-    if (HasError(WarnConnLauncher))
-    {
-        ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Connecting to launcher...");
-    }
-    else if (HasError(NoLauncher))
-    {
-        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
-                           "Please launch oshot with its launcher, in order to copy text/images");
-    }
-    else if (!m_ocr_text.empty() && ImGui::Button("Copy Text"))
+    if (!m_ocr_text.empty() && ImGui::Button("Copy Text"))
     {
         if (m_ocr_text.back() == '\n')
             m_ocr_text.pop_back();
-        sender->Send(m_ocr_text);
-        ClearError(NoLauncher);
+        g_clipboard->CopyText(m_ocr_text);
     }
 
     ImGui::PopID();
@@ -970,21 +937,11 @@ void ScreenshotTool::DrawBarDecodeTools()
                                   g_config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
     }
 
-    if (HasError(WarnConnLauncher))
-    {
-        ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Connecting to launcher...");
-    }
-    else if (HasError(NoLauncher))
-    {
-        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
-                           "Please launch oshot with its launcher, in order to copy text/images");
-    }
-    else if (!m_barcode_text.empty() && ImGui::Button("Copy Text"))
+    if (!m_barcode_text.empty() && ImGui::Button("Copy Text"))
     {
         if (m_barcode_text.back() == '\n')
             m_barcode_text.pop_back();
-        sender->Send(m_barcode_text);
-        ClearError(NoLauncher);
+        g_clipboard->CopyText(m_barcode_text);
     }
 
     ImGui::PopID();
@@ -1020,7 +977,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
 
     m_screenshot = std::move(cap);
 
-    // Recreate texture from the new pixels (CreateTexture() already deletes the old ones)
+    // Recreate texture (CreateTexture() already deletes the old ones)
     if (!CreateTexture() || !m_texture_id)
     {
         error("Failed create openGL texture");
@@ -1038,7 +995,8 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     m_selection            = {};
     m_drag_start_selection = {};
     m_drag_start_mouse     = {};
-    // keep m_image_origin/m_image_end since UpdateWindowBg() will set them anyway
+    m_image_origin         = {};
+    m_image_end            = {};
 
     m_ocr_text.clear();
     m_to_translate_text.clear();
@@ -1130,12 +1088,12 @@ void ScreenshotTool::UpdateWindowBg()
         static_cast<float>(m_screenshot.region.width),
         static_cast<float>(m_screenshot.region.height)
     );
-    
+
     m_image_origin = ImVec2(
         vp->Pos.x + (vp->Size.x - image_size.x) * 0.5f,
         vp->Pos.y + (vp->Size.y - image_size.y) * 0.5f
     );
-    
+
     m_image_end = ImVec2(
         m_image_origin.x + image_size.x,
         m_image_origin.y + image_size.y

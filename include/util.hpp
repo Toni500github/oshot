@@ -44,6 +44,7 @@ std::string replace_str(std::string& str, const std::string_view from, const std
 std::string select_image();
 std::string expand_var(std::string ret, bool dont = false);
 
+bool acquire_tray_lock();
 bool stdin_has_data();
 bool save_png(SavingOp op, const capture_result_t& img);
 

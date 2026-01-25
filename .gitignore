@@ -43,3 +43,4 @@ AppDir
 *.app
 .cache
 imgui.ini
+compile_commands.json
