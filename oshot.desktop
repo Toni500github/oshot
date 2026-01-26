@@ -1,6 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=oshot
-Exec=oshot
+Exec=oshot %U
 Icon=oshot
 Categories=Utility;
+Terminal=false
+StartupNotify=true

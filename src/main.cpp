@@ -3,8 +3,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <mutex>
+#include <system_error>
 
 #ifdef WIN32
 #  include <shellapi.h>  // CommandLineToArgvW
@@ -26,6 +29,7 @@
 #include "clipboard.hpp"
 #include "config.hpp"
 #include "langs.hpp"
+#include "png.h"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "switch_fnv1a.hpp"
@@ -327,7 +331,18 @@ int main(int argc, char* argv[])
 
     std::thread worker(capture_worker, imgui_ini_path);
 
-    Tray::Tray tray("oshot", "oshot.png");
+#ifdef _WIN32
+    Tray::Tray tray("oshot", "oshot.ico");
+#else
+    std::error_code ec;
+    const auto&     path = std::filesystem::temp_directory_path() / "oshot.png";
+    std::filesystem::create_directories(std::filesystem::temp_directory_path(), ec);
+    std::ofstream out(path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
+
+    out.write(reinterpret_cast<const char*>(oshot_png), static_cast<std::streamsize>(oshot_png_len));
+    out.close();
+    Tray::Tray tray("oshot", path.string());
+#endif
 
     tray.addEntry(Tray::Button("Capture", [&] {
         std::lock_guard lk(mtx);
@@ -415,7 +430,7 @@ int main_tool(const std::string imgui_ini_path)
     GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
 
-    window = glfwCreateWindow(mode->width, mode->height, "OCRshot", nullptr, nullptr);
+    window = glfwCreateWindow(mode->width, mode->height, "oshot", nullptr, nullptr);
     if (!window)
         return EXIT_FAILURE;
     glfwMakeContextCurrent(window);

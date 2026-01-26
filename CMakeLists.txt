@@ -11,9 +11,6 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
-# Options
-option(WINDOWS_CMD "Enable terminal support on Windows" OFF)
-
 # LTO helper
 function(enable_lto target)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -39,10 +36,13 @@ macro(add_option OPTION_NAME OPTION_TEXT OPTION_DEFAULT DEFINE_OPTION)
         set(${OPTION_NAME} $ENV{${OPTION_NAME}})
     endif()
     if(${OPTION_NAME} AND DEFINE_OPTION)
-        add_definitions(-D${OPTION_NAME})
+        add_definitions(-D${OPTION_NAME}=1)
     endif()
     message(STATUS "  ${OPTION_NAME}: ${${OPTION_NAME}}")
 endmacro()
+
+# Options
+add_option(WINDOWS_CMD "Enable terminal support on Windows" OFF OFF)
 
 # -----------------------------
 # Dependencies
@@ -137,9 +137,7 @@ if(WIN32)
         ${PROJECT_NAME}
         PRIVATE ws2_32 shcore d3d11 dxgi)
 
-    if(WINDOWS_CMD)
-        target_compile_definitions(${PROJECT_NAME} PRIVATE WINDOWS_CMD=1)
-    else()
+    if(NOT WINDOWS_CMD)
         set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
 elseif(UNIX AND NOT APPLE)

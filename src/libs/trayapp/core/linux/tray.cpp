@@ -21,6 +21,10 @@ Tray::Tray::Tray(std::string identifier, Icon icon) : BaseTray(std::move(identif
 
     appIndicator = app_indicator_new(this->identifier.c_str(), this->icon, APP_INDICATOR_CATEGORY_APPLICATION_STATUS);
     app_indicator_set_status(appIndicator, APP_INDICATOR_STATUS_ACTIVE);
+
+    // If `this->icon` looks like a path, treat it as a path:
+    if (this->icon && strchr(this->icon, '/'))
+        app_indicator_set_icon_full(appIndicator, this->icon, this->identifier.c_str());
 }
 
 void Tray::Tray::exit()

@@ -160,7 +160,7 @@ jobs:
         shell: msys2 {0}
         run: |
           mkdir -p package/oshot
-          cp ./build/oshot.exe package/oshot/
+          cp ./build/oshot.exe ./oshot.ico package/oshot/
           # Copy required DLLs
           ldd ./build/oshot.exe | grep -i mingw | awk '{print $3}' | xargs -I {} cp {} package/oshot/ || true
           cd package
