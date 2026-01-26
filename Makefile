@@ -21,10 +21,8 @@ endif
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
         LDLIBS += -lGL -lX11
-	ifeq ($(ENABLE_PORTALS),1)
-		CXXFLAGS += -DENABLE_PORTALS=1 `pkg-config --static --cflags gio-2.0`
-		LDLIBS   += `pkg-config --static --libs gio-2.0`
-	endif
+	CXXFLAGS += `pkg-config --static --cflags gio-2.0 appindicator3-0.1 libpng` -DCLIP_ENABLE_IMAGE=1 -DCLIP_X11_WITH_PNG=1 -DHAVE_PNG_H=1
+	LDLIBS   += `pkg-config --static --libs gio-2.0 appindicator3-0.1 libpng`
 
 else ifeq ($(UNAME_S),Darwin) #APPLE
         LDFLAGS += -L/usr/local/lib -L/opt/local/lib -L/opt/homebrew/lib
@@ -35,7 +33,7 @@ else ifeq ($(UNAME_S),Darwin) #APPLE
         CXXFLAGS += -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include
 
 else ifeq ($(findstring _NT,$(UNAME_S)),_NT)
-        LDLIBS += -ld3d11 -ldxgi -lgdi32 -lopengl32 -limm32 -lole32 -lcomdlg32 -luuid -lshcore
+        LDLIBS += -ld3d11 -ldxgi -lgdi32 -lopengl32 -limm32 -lole32 -lcomdlg32 -luuid -lshcore -lshlwapi -lwindowscodecs
 	ifneq ($(WINDOWS_CMD),1)
 		CXXFLAGS += -mwindows
 		LDFLAGS += -mwindows
@@ -48,11 +46,11 @@ endif
 # WAY easier way to build debug and release builds
 ifeq ($(DEBUG), 1)
         BUILDDIR  := build/debug
-	LTO_FLAGS  = -fno-lto
+	LTO_FLAGS := -fno-lto
 	SAN_FLAGS ?= -fsanitize=address -fsanitize=undefined
-        CXXFLAGS  := -ggdb3 -Wall -Wextra -pedantic -Wno-unused-parameter $(SAN_FLAGS) \
+        CXXFLAGS  := -ggdb3 -Wall -Wextra -pedantic -Wno-unused-parameter \
 			-DDEBUG=1 -fno-omit-frame-pointer $(DEBUG_CXXFLAGS) $(CXXFLAGS)
-        LDFLAGS	  += $(SAN_FLAGS) -fno-lto -Wl,-rpath,$(BUILDDIR)
+        LDFLAGS	  += -Wl,-rpath,$(BUILDDIR)
 else
 	# Check if an optimization flag is not already set
 	ifneq ($(filter -O%,$(CXXFLAGS)),)
@@ -60,7 +58,6 @@ else
 	else
     		CXXFLAGS := -O3 $(CXXFLAGS)
 	endif
-	LDFLAGS   += $(LTO_FLAGS)
         BUILDDIR  := build/release
 endif
 
@@ -70,27 +67,37 @@ OLDVERSION	 = 0.2.2
 VERSION    	 = 0.2.3
 SRC	 	 = $(wildcard src/*.cpp)
 OBJ	 	 = $(SRC:.cpp=.o)
-LDFLAGS   	+= -L$(BUILDDIR)
+LDFLAGS   	+= -L$(BUILDDIR) $(LTO_FLAGS)
 LDLIBS		+= $(wildcard $(BUILDDIR)/*.a) `pkg-config --static --libs glfw3 tesseract libcurl zbar`
-CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
+CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -Iinclude/libs/trayapp -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
 
-all: imgui fmt tfd tpl getopt-port toml $(TARGET)
+all: imgui fmt tfd tpl clip trayapp getopt-port toml $(TARGET)
 
 imgui:
 ifeq ($(wildcard $(BUILDDIR)/libimgui.a),)
 	mkdir -p $(BUILDDIR)
-	$(MAKE) -C src/libs/imgui BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD)
+	$(MAKE) -C src/libs/imgui BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
 endif
 
 fmt:
 ifeq ($(wildcard $(BUILDDIR)/libfmt.a),)
 	mkdir -p $(BUILDDIR)
-	$(MAKE) -C src/libs/fmt BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD)
+	$(MAKE) -C src/libs/fmt BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
 endif
 
 toml:
 ifeq ($(wildcard $(BUILDDIR)/toml.o),)
-	$(MAKE) -C src/libs/toml++ BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD)
+	$(MAKE) -C src/libs/toml++ BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
+endif
+
+clip:
+ifeq ($(wildcard $(BUILDDIR)/libclip.a),)
+	$(MAKE) -C src/libs/clip BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
+endif
+
+trayapp:
+ifeq ($(wildcard $(BUILDDIR)/libtrayapp.a),)
+	$(MAKE) -C src/libs/trayapp BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
 endif
 
 tfd:
@@ -100,7 +107,7 @@ endif
 
 tpl:
 ifeq ($(wildcard $(BUILDDIR)/libtiny-process-library.a),)
-	$(MAKE) -C src/libs/tiny-process-library BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD)
+	$(MAKE) -C src/libs/tiny-process-library BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
 endif
 
 getopt-port:
@@ -111,7 +118,7 @@ endif
 genver: ./scripts/generateVersion.sh
 	./scripts/generateVersion.sh
 
-$(TARGET): genver fmt toml tfd tpl getopt-port $(OBJ)
+$(TARGET): genver fmt toml tfd tpl clip trayapp getopt-port $(OBJ)
 	mkdir -p $(BUILDDIR)
 	$(CXX) -o $(BUILDDIR)/$(TARGET) $(OBJ) $(BUILDDIR)/*.o $(LDFLAGS) $(LDLIBS)
 
@@ -130,4 +137,4 @@ distclean:
 updatever:
 	sed -i "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml) CMakeLists.txt compile_flags.txt
 
-.PHONY: $(TARGET) updatever distclean clean imgui fmt tpl toml getopt-port dist all
+.PHONY: $(TARGET) updatever distclean clean imgui fmt tpl toml getopt-port clip trayapp dist all

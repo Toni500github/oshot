@@ -2,8 +2,8 @@
 
 #include <cstdint>
 
-#include "clip.h"
-#include "process.hpp"
+#include "clip/clip.h"
+#include "tiny-process-library/process.hpp"
 
 #define SVPNG_LINKAGE inline
 #define SVPNG_OUTPUT  std::vector<uint8_t>* output

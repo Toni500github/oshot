@@ -5,7 +5,14 @@
 CXX		?= g++
 CXXSTD		?= c++20
 # CXX_DEFINES 	= -DFMT_LIB_EXPORT -Dfmt_EXPORTS
-CXXFLAGS 	= -I../../../include/libs -O3 -std=$(CXXSTD) -DNDEBUG $(LTO_FLAGS) -fvisibility=hidden -fvisibility-inlines-hidden -fPIC
+CXXFLAGS 	= -I../../../include/libs -std=$(CXXSTD) $(LTO_FLAGS) -fvisibility=hidden -fvisibility-inlines-hidden -fPIC
+
+ifeq ($(DEBUG),1)
+	CXXFLAGS  := -ggdb3 -Wall -Wextra -pedantic -Wno-unused-parameter \
+                        -DDEBUG=1 -fno-omit-frame-pointer $(DEBUG_CXXFLAGS) $(CXXFLAGS)
+else
+	CXXFLAGS += -O3 -DNDEBUG
+endif
 
 all: fmt
 

@@ -1,10 +1,12 @@
+PKG_FLAGS	:= `pkg-config --cflags appindicator3-0.1`
+
 CXX		?= g++
 CXXSTD		?= c++20
-CXXFLAGS 	 = -std=$(CXXSTD) $(LTO_FLAGS) -I../../../include/libs/imgui -fvisibility=hidden -fvisibility-inlines-hidden -fPIC
+CXXFLAGS 	 = $(PKG_FLAGS) -std=$(CXXSTD) $(LTO_FLAGS) -I../../../include/libs/trayapp -fvisibility=hidden -fvisibility-inlines-hidden -fPIC
 
-SRC		:= $(wildcard *.cpp)
+SRC		:= $(wildcard ./*/*.cpp ./*/*/*.cpp)
 OBJ		:= $(SRC:.cpp=.o)
-LIBNAME		:= libimgui.a
+LIBNAME		:= libtrayapp.a
 
 ifeq ($(DEBUG),1)
 	CXXFLAGS  := -ggdb3 -Wall -Wextra -pedantic -Wno-unused-parameter \

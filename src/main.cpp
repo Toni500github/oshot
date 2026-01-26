@@ -1,7 +1,10 @@
+#include <atomic>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <mutex>
 
 #ifdef WIN32
 #  include <shellapi.h>  // CommandLineToArgvW
@@ -9,27 +12,23 @@
 
 #include "fmt/base.h"
 #include "fmt/compile.h"
+#include "getopt_port/getopt.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_opengl3.h"
+#include "trayapp/tray.hpp"
 #define GL_SILENCE_DEPRECATION
 #if defined(IMGUI_IMPL_OPENGL_ES2)
 #  include <GLES2/gl2.h>
 #endif
 #include <GLFW/glfw3.h>  // Will drag system OpenGL headers
 
-#include <atomic>
-#include <condition_variable>
-#include <mutex>
-
 #include "clipboard.hpp"
 #include "config.hpp"
-#include "getopt_port/getopt.h"
 #include "langs.hpp"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "switch_fnv1a.hpp"
-#include "trayapp/tray.hpp"
 #include "util.hpp"
 
 // [Win32] Our example includes a copy of glfw3.lib pre-compiled with VS2010 to maximize ease of testing and

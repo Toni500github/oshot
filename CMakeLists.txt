@@ -197,7 +197,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
 
 file(
     GLOB TRAYAPP_SOURCES
-    src/libs/trayapp/*.cpp
     src/libs/trayapp/*/*.cpp
     src/libs/trayapp/*/*/*.cpp
 )
