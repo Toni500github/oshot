@@ -12,7 +12,6 @@ set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 # Options
-option(ENABLE_PORTALS "Enable XDG Portal usage in case of failure" ON)
 option(WINDOWS_CMD "Enable terminal support on Windows" OFF)
 
 # LTO helper
@@ -147,17 +146,15 @@ elseif(UNIX AND NOT APPLE)
     find_package(X11 REQUIRED)
     target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
     pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
-    if(ENABLE_PORTALS)
-        pkg_check_modules(GIO REQUIRED gio-2.0)
-        target_include_directories(
-            ${PROJECT_NAME}
-            PRIVATE
-            SYSTEM
-            ${GIO_INCLUDE_DIRS}
-        )
-        target_link_libraries(${PROJECT_NAME} PRIVATE ${GIO_LIBRARIES})
-        target_compile_options(${PROJECT_NAME} PRIVATE ${GIO_CFLAGS_OTHER})
-    endif()
+    pkg_check_modules(GIO REQUIRED gio-2.0)
+    target_include_directories(
+         ${PROJECT_NAME}
+         PRIVATE
+         SYSTEM
+         ${GIO_INCLUDE_DIRS}
+    )
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${GIO_LIBRARIES})
+    target_compile_options(${PROJECT_NAME} PRIVATE ${GIO_CFLAGS_OTHER})
 endif()
 
 # -----------------------------

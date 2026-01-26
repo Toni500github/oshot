@@ -6,7 +6,6 @@ CXXSTD		?= c++20
 
 DEBUG 		?= 0
 WINDOWS_CMD	?= 0
-ENABLE_PORTALS	?= 1
 
 COMPILER := $(shell $(CXX) --version | head -n1)
 

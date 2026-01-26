@@ -13,7 +13,7 @@ If a package is not found, try searching by its base name (e.g., `libglfw3-dev` 
 - `libglfw3-dev`
 - `libtesseract` (including necessary language models, e.g `tesseract-ocr-eng`)
 - `libzbar-dev`
-- `libappindicator-gtk3`
+- `libappindicator3-dev`
 - `grim` (Wayland only)
 - `wl-clipboard` (Wayland only)
 

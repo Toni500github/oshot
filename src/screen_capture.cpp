@@ -12,10 +12,9 @@
 #if defined(__linux__)
 #  include <X11/Xlib.h>
 #  include <X11/Xutil.h>
+#  include <gio/gio.h>
 #  include <unistd.h>
-#  if ENABLE_PORTALS
-#    include <gio/gio.h>
-#  endif
+
 #  include "stb_image.h"
 #elif defined(_WIN32)
 #  define WIN32_LEAN_AND_MEAN
@@ -54,14 +53,7 @@ SessionType get_session_type()
 }
 
 #ifdef __linux__
-#  ifdef ENABLE_PORTALS
 capture_result_t capture_full_screen_portal(capture_result_t&);
-#  else
-capture_result_t capture_full_screen_portal(capture_result_t& res)
-{
-    return res;
-}
-#  endif  // ENABLE_PORTALS
 
 capture_result_t capture_full_screen_x11()
 {
@@ -149,7 +141,6 @@ capture_result_t capture_full_screen_wayland()
     return result;
 }
 
-#  if ENABLE_PORTALS
 std::string      png_path;
 capture_result_t cap_portal;
 
@@ -319,7 +310,6 @@ capture_result_t capture_full_screen_portal(capture_result_t&)
 
     return cap_portal;
 }
-#  endif  // ENABLE_PORTALS
 
 #else
 capture_result_t capture_full_screen_x11()
@@ -334,7 +324,7 @@ capture_result_t capture_full_screen_portal()
 {
     return {};
 }
-#endif    // __linux__
+#endif  // __linux__
 
 #ifdef _WIN32
 capture_result_t capture_full_screen_windows_fallback()
