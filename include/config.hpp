@@ -120,8 +120,9 @@ extern std::unique_ptr<Config> g_config;
 
 // default config
 inline constexpr std::string_view AUTOCONFIG = R"#([default]
-# Default Path to where we'll use all the '.traineddata' tesseract models.
-ocr-path = "/usr/share/tessdata/"
+# Default Path to where we'll use all the '.traineddata' models.
+#ocr-path = "/usr/share/tessdata/"
+ocr-path = "./models"
 
 # Default OCR model.
 ocr-model = "eng"
@@ -157,6 +158,7 @@ GENERAL OPTIONS:
     -f, --source <PATH>         Path to the image to use as background (use - for reading stdin)
     -C, --config <PATH>         Path to the config file to use (default: ~/.config/oshot/config.toml).
     -l, --list                  List all available translatable languages along side their codenames.
+    -t, --tray                  Launch system tray
 
     --gen-config [<PATH>]       Generate default config file. If PATH is omitted, saves to default location.
                                 Prompts before overwriting.

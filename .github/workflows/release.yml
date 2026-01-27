@@ -66,28 +66,10 @@ jobs:
             libcurl4-openssl-dev \
             libpng-dev \
             libjpeg-dev \
-            libopenjp2-7-dev \
             libgif-dev \
             libtiff-dev \
             libwebp-dev \
-            libnghttp2-dev \
-            libidn2-dev \
-            librtmp-dev \
-            libssh-dev \
-            libpsl-dev \
-            libkrb5-dev \
-            libldap2-dev \
-            libbrotli-dev \
-            libleptonica-dev \
-            libarchive-dev \
-            libdeflate-dev \
-            libjbig-dev \
             libzbar-dev \
-            libicu-dev \
-            libunistring-dev \
-            libkeyutils-dev \
-            libssl-dev \
-            libcrypto++-dev \
             libappindicator3-dev
 
       - name: Install dependencies (Windows)
@@ -138,21 +120,23 @@ jobs:
       - name: Prepare Linux package
         if: matrix.os == 'ubuntu-latest'
         run: |
-          mkdir -p package/oshot
+          mkdir -p package/oshot/models
           cp ./build/oshot package/oshot/
           echo "#!/bin/bash" > package/oshot/install.sh
           echo "cp oshot /usr/local/bin/oshot" >> package/oshot/install.sh
           chmod +x package/oshot/install.sh package/oshot/oshot
+          wget https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -O package/oshot/models/eng.traineddata
           cd package
           zip -r oshot-linux.zip oshot/
 
       - name: Prepare AppImage package
         if: matrix.os == 'ubuntu-22.04'
         run: |
-          mkdir -p package/oshot
+          mkdir -p package/oshot/models
           ./scripts/create_appimage.sh ./build/oshot oshot-x86_64.AppImage
           chmod +x oshot-x86_64.AppImage
           mv oshot-x86_64.AppImage package/oshot/
+          wget https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -O package/oshot/models/eng.traineddata
           cd package
           zip -r oshot-appimage.zip oshot/
 
@@ -160,10 +144,11 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
-          mkdir -p package/oshot
+          mkdir -p package/oshot/models
           cp ./build/oshot.exe ./oshot.ico package/oshot/
           # Copy required DLLs
           ldd ./build/oshot.exe | grep -i mingw | awk '{print $3}' | xargs -I {} cp {} package/oshot/ || true
+          curl -L https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -o package/oshot/models/eng.traineddata
           cd package
           zip -r oshot-windows.zip oshot/
 
