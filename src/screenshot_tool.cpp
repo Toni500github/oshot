@@ -146,6 +146,10 @@ bool ScreenshotTool::StartWindow()
 
 void ScreenshotTool::RenderOverlay()
 {
+    static constexpr int minimal_win_flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
+                                             ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoResize |
+                                             ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                                             ImGuiWindowFlags_NoBackground;
     // Overlay window
     ImGui::SetNextWindowPos(origin);
     ImGui::SetNextWindowSize(m_io.DisplaySize);
@@ -158,22 +162,22 @@ void ScreenshotTool::RenderOverlay()
     UpdateWindowBg();
     ImGui::GetBackgroundDrawList()->AddImage(m_texture_id, m_image_origin, m_image_end);
 
-    if ((m_selection.get_width() == 0 || m_selection.get_height() == 0) && !m_is_selecting)
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape))
     {
-        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_FirstUseEver, ImVec2(0.5f, 0.5f));
-        ImGui::Begin("Begin",
-                     nullptr,
-                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs |
-                         ImGuiWindowFlags_NoResize);
-        ImGui::Text("   Select an area   ");
+        Cancel();
+    }
+
+    if (m_selection.get_width() == 0 || m_selection.get_height() == 0)
+    {
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+        ImGui::Begin("##select_area", nullptr, minimal_win_flags);
+        ImGui::TextColored(get_confidence_color(100), "Select an area");
         ImGui::End();
     }
 
-    const bool can_show_selection =
-        (m_state == ToolState::Selecting || m_state == ToolState::Selected || m_state == ToolState::Resizing);
-
-    if (can_show_selection)
+    if (m_state == ToolState::Selecting || m_state == ToolState::Selected || m_state == ToolState::Resizing)
     {
+        HandleSelectionInput();
         DrawDarkOverlay();
         DrawSelectionBorder();
     }
@@ -190,14 +194,6 @@ void ScreenshotTool::RenderOverlay()
         DrawBarDecodeTools();
         ImGui::End();
     }
-
-    if (can_show_selection)
-    {
-        HandleSelectionInput();
-    }
-
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape))
-        Cancel();
 }
 
 void ScreenshotTool::HandleSelectionInput()
@@ -218,7 +214,8 @@ void ScreenshotTool::HandleSelectionInput()
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !m_is_selecting)
     {
-        m_input_owner = InputOwner::Selection;
+        m_input_owner  = InputOwner::Selection;
+        m_is_selecting = true;
 
         // Check if we're starting to resize from a handle
         if (m_handle_hover != HandleHovered::kNone)
@@ -227,7 +224,6 @@ void ScreenshotTool::HandleSelectionInput()
             m_drag_start_mouse     = mouse_pos;
             m_drag_start_selection = m_selection;
             m_state                = ToolState::Resizing;
-            m_is_selecting         = true;
         }
         // Check if we're clicking inside the selection to move it
         else if (selection_rect.Contains(mouse_pos))
@@ -236,14 +232,12 @@ void ScreenshotTool::HandleSelectionInput()
             m_drag_start_mouse     = mouse_pos;
             m_drag_start_selection = m_selection;
             m_state                = ToolState::Resizing;
-            m_is_selecting         = true;
         }
         // Start new selection
         else
         {
             m_selection.start = { mouse_pos.x, mouse_pos.y };
             m_selection.end   = m_selection.start;
-            m_is_selecting    = true;
             m_state           = ToolState::Selecting;
         }
     }
@@ -621,6 +615,8 @@ void ScreenshotTool::DrawOcrTools()
         first_frame = false;
     }
 
+    float button_size = ImGui::GetFrameHeight();
+
     ImGui::PushID("OcrTools");
     ImGui::SeparatorText("OCR");
 
@@ -628,8 +624,10 @@ void ScreenshotTool::DrawOcrTools()
     {
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
 
-        if (ImGui::InputText("Path", &ocr_path))
+        ImGui::PushItemWidth(ImGui::CalcItemWidth() - button_size);
+        if (ImGui::InputText("##ocr_path", &ocr_path))
             check_list();
+        ImGui::PopItemWidth();
 
         ImGui::PopStyleColor();
         ImGui::SameLine();
@@ -641,9 +639,43 @@ void ScreenshotTool::DrawOcrTools()
     }
     else
     {
-        if (ImGui::InputText("Path", &ocr_path))
+        ImGui::PushItemWidth(ImGui::CalcItemWidth() - button_size);
+        if (ImGui::InputText("##ocr_path", &ocr_path))
             check_list();
+        ImGui::PopItemWidth();
     }
+
+    // If user drops onto the input text, take it
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && !g_dropped_paths.empty())
+    {
+        ocr_path = g_dropped_paths.back();
+        g_dropped_paths.clear();
+        check_list();
+    }
+
+    ImGui::SameLine(0, 0);
+    if (ImGui::Button("...", ImVec2(button_size, button_size)))
+    {
+        const char* path = tinyfd_selectFolderDialog("Open model folder", nullptr);
+        if (path)
+        {
+            ocr_path.assign(path);
+            check_list();
+        }
+    }
+
+    // Same thing with the button
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && !g_dropped_paths.empty())
+    {
+        ocr_path = g_dropped_paths.back();
+        g_dropped_paths.clear();
+        check_list();
+    }
+
+    ImGui::SameLine(0, 3);
+    ImGui::Text("Path");
+    ImGui::SameLine();
+    HelpMarker("Path to the OCR models (.traineddata). Supports drag-and-drop too");
 
     if (HasError(InvalidModel))
     {
@@ -948,7 +980,7 @@ void ScreenshotTool::DrawBarDecodeTools()
                                   g_config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
     }
 
-    if (!m_barcode_text.empty() && ImGui::Button("Copy Text"))
+    if (!HasError(FailedToExtractBarCode) && !m_barcode_text.empty() && ImGui::Button("Copy Text"))
     {
         if (m_barcode_text.back() == '\n')
             m_barcode_text.pop_back();

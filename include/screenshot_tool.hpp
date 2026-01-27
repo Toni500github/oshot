@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <deque>
 #include <functional>
 #include <unordered_map>
 #include <utility>
@@ -169,5 +170,7 @@ private:
     void UpdateCursor();
     void UpdateWindowBg();
 };
+
+extern std::deque<std::string> g_dropped_paths;
 
 #endif  // !_SCREENSHOT_TOOL_HPP_

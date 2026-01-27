@@ -60,6 +60,7 @@
 // clang-format on
 
 // Extern variables declariaions
+std::deque<std::string>    g_dropped_paths;
 std::unique_ptr<Config>    g_config;
 std::unique_ptr<Clipboard> g_clipboard;
 int                        g_scr_w{}, g_scr_h{};
@@ -200,9 +201,15 @@ static void glfw_error_callback(int i_error, const char* description)
     error("GLFW Error {}: {}", i_error, description);
 }
 
+static void glfw_drop_callback(GLFWwindow*, int count, const char** paths)
+{
+    for (int i = 0; i < count; ++i)
+        g_dropped_paths.emplace_back(paths[i]);
+}
+
 int main_tool(const std::string imgui_ini_path);
 
-static void capture_worker(const std::string& imgui_ini_path)
+void capture_worker(const std::string& imgui_ini_path)
 {
     while (!quit.load())
     {
@@ -434,6 +441,7 @@ int main_tool(const std::string imgui_ini_path)
     if (!window)
         return EXIT_FAILURE;
     glfwMakeContextCurrent(window);
+    glfwSetDropCallback(window, glfw_drop_callback);
     glfwSwapInterval(1);  // Enable vsync
 
     g_scr_w = mode->width;
