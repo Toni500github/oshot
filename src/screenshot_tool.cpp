@@ -158,6 +158,17 @@ void ScreenshotTool::RenderOverlay()
     UpdateWindowBg();
     ImGui::GetBackgroundDrawList()->AddImage(m_texture_id, m_image_origin, m_image_end);
 
+    if ((m_selection.get_width() == 0 || m_selection.get_height() == 0) && !m_is_selecting)
+    {
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_FirstUseEver, ImVec2(0.5f, 0.5f));
+        ImGui::Begin("Begin",
+                     nullptr,
+                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs |
+                         ImGuiWindowFlags_NoResize);
+        ImGui::Text("   Select an area   ");
+        ImGui::End();
+    }
+
     const bool can_show_selection =
         (m_state == ToolState::Selecting || m_state == ToolState::Selected || m_state == ToolState::Resizing);
 
