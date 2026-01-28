@@ -45,15 +45,15 @@ std::string select_image();
 std::string expand_var(std::string ret, bool dont = false);
 
 bool acquire_tray_lock();
-bool stdin_has_data();
 bool save_png(SavingOp op, const capture_result_t& img);
 
 std::filesystem::path get_font_path(const std::string& font);
 std::filesystem::path get_lang_font_path(const std::string& lang);
 std::filesystem::path get_home_config_dir();
+std::filesystem::path get_home_dir();
 std::filesystem::path get_config_dir();
 
-capture_result_t load_image_rgba(bool stdin_has_data, const std::string& path);
+capture_result_t load_image_rgba(const std::string& path);
 
 void fit_to_screen(capture_result_t& img);
 void rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int height);

@@ -100,8 +100,11 @@ bool ScreenshotTool::Start()
 {
     translator = std::make_unique<Translator>();
 
-    bool stdin_data_exist = stdin_has_data();
-    if (g_config->Runtime.source_file.empty() && !stdin_data_exist)
+    if (!g_config->Runtime.source_file.empty())
+    {
+        m_screenshot = load_image_rgba(g_config->Runtime.source_file);
+    }
+    else
     {
         SessionType type = get_session_type();
         g_clipboard      = std::make_unique<Clipboard>(type);
@@ -112,10 +115,6 @@ bool ScreenshotTool::Start()
             case SessionType::Windows: m_screenshot = capture_full_screen_windows(); break;
             default:                   ;
         }
-    }
-    else
-    {
-        m_screenshot = load_image_rgba(stdin_data_exist, g_config->Runtime.source_file);
     }
 
     if (!m_screenshot.success || m_screenshot.data.empty())
@@ -1011,7 +1010,7 @@ void ScreenshotTool::Cancel()
 
 bool ScreenshotTool::OpenImage(const std::string& path)
 {
-    capture_result_t cap = load_image_rgba(false, path);
+    capture_result_t cap = load_image_rgba(path);
     if (!cap.success || cap.data.empty())
     {
         error("Failed to load image: {}", cap.error_msg);

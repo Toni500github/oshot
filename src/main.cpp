@@ -341,7 +341,7 @@ int main(int argc, char* argv[])
 #else
     std::error_code ec;
     const auto&     path = std::filesystem::temp_directory_path() / "oshot.png";
-    std::filesystem::create_directories(std::filesystem::temp_directory_path(), ec);
+    std::filesystem::create_directories(path.parent_path(), ec);
     std::ofstream out(path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
 
     out.write(reinterpret_cast<const char*>(oshot_png), static_cast<std::streamsize>(oshot_png_len));

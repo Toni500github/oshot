@@ -4,11 +4,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <vector>
 
 #include "clipboard.hpp"
 #include "config.hpp"
+#include "dotenv.h"
 #include "fmt/compile.h"
 #include "fmt/format.h"
 #include "frozen/string.h"
@@ -42,6 +44,7 @@
 #  include <fcntl.h>
 #  include <io.h>
 #  include <shellscalingapi.h>  // GetDpiForMonitor
+#  include <shlobj.h>
 #  include <winsock2.h>
 #  include <ws2tcpip.h>
 #  include <windows.h>
@@ -50,6 +53,7 @@
 #else
 #  include <arpa/inet.h>
 #  include <netdb.h>
+#  include <pwd.h>
 #  include <sys/select.h>
 #  include <sys/socket.h>
 #  include <unistd.h>
@@ -109,19 +113,6 @@ int get_screen_dpi()
         return dpiX;
     return 96;  // fallback
 }
-
-bool stdin_has_data()
-{
-    HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
-    if (h == INVALID_HANDLE_VALUE)
-        return false;
-
-    DWORD available = 0;
-    if (!PeekNamedPipe(h, nullptr, 0, nullptr, &available, nullptr))
-        return false;
-
-    return available > 0;
-}
 #else
 static int g_lock_sock = -1;
 
@@ -164,16 +155,6 @@ int get_screen_dpi()
     // dpi = pixels per inch
     double dpi = width_px / (width_mm / 25.4);
     return static_cast<int>(dpi + 0.5);
-}
-
-bool stdin_has_data()
-{
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(STDIN_FILENO, &fds);
-
-    timeval tv{};
-    return select(STDIN_FILENO + 1, &fds, nullptr, nullptr, &tv) > 0;
 }
 #endif
 
@@ -223,7 +204,7 @@ static std::vector<uint8_t> read_stdin_binary()
     return buffer;
 }
 
-capture_result_t load_image_rgba(bool stdin_has_data, const std::string& path)
+capture_result_t load_image_rgba(const std::string& path)
 {
     capture_result_t result{};
 
@@ -233,7 +214,7 @@ capture_result_t load_image_rgba(bool stdin_has_data, const std::string& path)
 
     // Force RGBA output (4 channels)
     stbi_uc* pixels = nullptr;
-    if (!stdin_has_data)
+    if (path != "-")
     {
         pixels = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
     }
@@ -335,59 +316,56 @@ std::string replace_str(std::string& str, const std::string_view from, const std
     return str;
 }
 
+std::filesystem::path get_home_dir()
+{
+#ifdef _WIN32
+    if (const char* h = std::getenv("USERPROFILE"))
+        return h;
+
+    const char* d = std::getenv("HOMEDRIVE");
+    const char* p = std::getenv("HOMEPATH");
+    if (d && p)
+        return std::string(d) + p;
+
+    char buf[MAX_PATH];
+    if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_PROFILE, NULL, 0, buf)))
+        return buf;
+#else
+    if (const char* h = std::getenv("HOME"))
+        return h;
+
+    struct passwd* pw = getpwuid(getuid());
+    if (pw && pw->pw_dir)
+        return pw->pw_dir;
+
+#endif
+    die("Cannot determine home directory");
+}
+
 std::string expand_var(std::string ret, bool dont)
 {
     if (ret.empty() || dont)
         return ret;
 
-    const char* env;
     if (ret.front() == '~')
     {
-        env = std::getenv("HOME");
-        if (env == nullptr)
-            die(_("FATAL: $HOME enviroment variable is not set (how?)"));
-
-        ret.replace(0, 1, env);  // replace ~ with the $HOME value
+        ret.replace(0, 1, get_home_dir().string());
     }
-    else if (ret.front() == '$')
-    {
-        ret.erase(0, 1);
 
-        std::string   temp;
-        const size_t& pos = ret.find('/');
-        if (pos != std::string::npos)
-        {
-            temp = ret.substr(pos);
-            ret.erase(pos);
-        }
-
-        env = std::getenv(ret.c_str());
-        if (env == nullptr)
-            die(_("No such enviroment variable: {}"), ret);
-
-        ret = env;
-        ret += temp;
-    }
+    Dotenv env;
+    env.parse_line(ret);
 
     return ret;
 }
 
 std::filesystem::path get_home_config_dir()
 {
-#if __unix__
+#ifndef _WIN32
     const char* dir = std::getenv("XDG_CONFIG_HOME");
     if (dir != NULL && dir[0] != '\0' && std::filesystem::exists(dir))
-    {
         return std::filesystem::path(dir);
-    }
     else
-    {
-        const char* home = std::getenv("HOME");
-        if (home == nullptr)
-            die(_("Failed to find $HOME, set it to your home directory!"));
-
-        return std::filesystem::path(home) / ".config";
-    }
+        return get_home_dir() / ".config";
 #else
     PWSTR widePath = nullptr;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &widePath)))

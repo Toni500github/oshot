@@ -155,7 +155,7 @@ NOTE: Boolean flags [<BOOL>] accept: "true", 1, "enable", or empty. Any other va
 GENERAL OPTIONS:
     -h, --help                  Print this help menu.
     -V, --version               Print version and other infos about the build.
-    -f, --source <PATH>         Path to the image to use as background (use - for reading stdin)
+    -f, --source <PATH>         Path to the image to use as background (use '-' for reading from stdin)
     -C, --config <PATH>         Path to the config file to use (default: ~/.config/oshot/config.toml).
     -l, --list                  List all available translatable languages along side their codenames.
     -t, --tray                  Launch system tray
