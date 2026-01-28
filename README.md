@@ -74,7 +74,7 @@ If when starting oshot, it starts to flick a screen black (or it won't launch), 
 
 ### Linux
 - If oshot gives linking library errors, when trying to run it, then try to use the AppImage release instead.
-- If `oshot` doesn't take the screenshot, then you need to take the screenshot from an external tool and either pipe into stdin or use the `-f /path/to/image` flag.
+- If you try to copy the text into the clipboard and doesn't work, try to launch `oshot --tray` and then from the system tray you launch oshot
 
 If still errors, please open an [Issue](https://github.com/Toni500github/oshot/issues) and take a screenshot/paste the text of the error appearing in the console when executing oshot
 ## Usage
