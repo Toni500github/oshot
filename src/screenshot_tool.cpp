@@ -491,7 +491,10 @@ void ScreenshotTool::DrawMenuItems()
     {
         // Handle shortcuts FIRST, before drawing menus
         if (ImGui::Shortcut(ImGuiKey_E | ImGuiMod_Ctrl))
+        {
             g_config->File.allow_ocr_edit = !g_config->File.allow_ocr_edit;
+            ImGui::ClearActiveID();  // avoid flipping InputText flags while editing
+        }
 
         if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Ctrl))
             g_config->Runtime.enable_handles = !g_config->Runtime.enable_handles;
@@ -553,7 +556,9 @@ void ScreenshotTool::DrawMenuItems()
             }
             ImGui::Separator();
             ImGui::MenuItem("View Handles", "CTRL+G", &g_config->Runtime.enable_handles);
-            ImGui::MenuItem("Allow OCR edit", "CTRL+E", &g_config->File.allow_ocr_edit);
+            if (ImGui::MenuItem("Allow OCR edit", "CTRL+E", &g_config->File.allow_ocr_edit))
+                ImGui::ClearActiveID();
+
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help"))
@@ -598,20 +603,30 @@ void ScreenshotTool::DrawOcrTools()
     static size_t      item_selected_idx = 0;
     static bool        first_frame       = true;
 
-    static std::vector<std::string> list{ "" };
-    auto                            check_list = [&]() {
-        list = get_training_data_list(ocr_path);
-        if (list.empty())
+    static std::vector<std::string> models_list;
+
+    auto refresh_models = [&]() {
+        models_list = get_training_data_list(ocr_path);
+        if (models_list.empty())
+        {
             SetError(InvalidPath);
+        }
         else
+        {
             ClearError(InvalidPath);
+            // Find current model in list
+            const auto& it    = std::find(models_list.begin(), models_list.end(), ocr_model);
+            item_selected_idx = (it != models_list.end()) ? std::distance(models_list.begin(), it) : 0;
+            if (it == models_list.end())
+                SetError(InvalidModel);
+            else
+                ClearError(InvalidModel);
+        }
     };
 
     if (first_frame)
     {
-        check_list();
-        if (std::find(list.begin(), list.end(), ocr_model) == list.end())
-            SetError(InvalidModel);
+        refresh_models();
         first_frame = false;
     }
 
@@ -620,37 +635,22 @@ void ScreenshotTool::DrawOcrTools()
     ImGui::PushID("OcrTools");
     ImGui::SeparatorText("OCR");
 
-    if (HasError(InvalidPath))
-    {
+    // Snapshot of the error for not crashing the program
+    bool invalid_path = HasError(InvalidPath);
+    if (invalid_path)
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
 
-        ImGui::PushItemWidth(ImGui::CalcItemWidth() - button_size);
-        if (ImGui::InputText("##ocr_path", &ocr_path))
-            check_list();
-        ImGui::PopItemWidth();
-
-        ImGui::PopStyleColor();
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1, 0, 0, 1), "Invalid/Empty!");
-
-        ImGui::TextDisabled("Model: %s", ocr_model.empty() ? "Select path first" : ocr_model.c_str());
-
-        goto end;
-    }
-    else
-    {
-        ImGui::PushItemWidth(ImGui::CalcItemWidth() - button_size);
-        if (ImGui::InputText("##ocr_path", &ocr_path))
-            check_list();
-        ImGui::PopItemWidth();
-    }
+    ImGui::PushItemWidth(ImGui::CalcItemWidth() - button_size);
+    if (ImGui::InputText("##ocr_path", &ocr_path))
+        refresh_models();
+    ImGui::PopItemWidth();
 
     // If user drops onto the input text, take it
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && !g_dropped_paths.empty())
     {
         ocr_path = g_dropped_paths.back();
         g_dropped_paths.clear();
-        check_list();
+        refresh_models();
     }
 
     ImGui::SameLine(0, 0);
@@ -660,7 +660,7 @@ void ScreenshotTool::DrawOcrTools()
         if (path)
         {
             ocr_path.assign(path);
-            check_list();
+            refresh_models();
         }
     }
 
@@ -669,76 +669,77 @@ void ScreenshotTool::DrawOcrTools()
     {
         ocr_path = g_dropped_paths.back();
         g_dropped_paths.clear();
-        check_list();
+        refresh_models();
     }
 
     ImGui::SameLine(0, 3);
     ImGui::Text("Path");
+    if (invalid_path)
+    {
+        ImGui::SameLine();
+        ImGui::Text("Invalid!");
+        ImGui::PopStyleColor();
+    }
     ImGui::SameLine();
     HelpMarker("Path to the OCR models (.traineddata). Supports drag-and-drop too");
 
-    if (HasError(InvalidModel))
+    if (!invalid_path)
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
-    }
+        bool invalid_model = HasError(InvalidModel);
+        if (invalid_model)
+            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
 
-    if (!HasError(InvalidPath) && ImGui::BeginCombo("Model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge))
-    {
-        static ImGuiTextFilter filter;
-        if (ImGui::IsWindowAppearing())
+        if (ImGui::BeginCombo("Model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge))
         {
-            ImGui::SetKeyboardFocusHere();
-            filter.Clear();
+            static ImGuiTextFilter filter;
+            if (ImGui::IsWindowAppearing())
+            {
+                ImGui::SetKeyboardFocusHere();
+                filter.Clear();
+            }
+
+            ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F);
+            filter.Draw("##Filter", -FLT_MIN);
+
+            for (size_t i = 0; i < models_list.size(); ++i)
+            {
+                bool is_selected = (item_selected_idx == i);
+                if (filter.PassFilter(models_list[i].c_str()))
+                {
+                    if (ImGui::Selectable(models_list[i].c_str(), is_selected))
+                    {
+                        item_selected_idx = i;
+                        ocr_model         = models_list[i];
+                        ClearError(InvalidModel);
+                    }
+                }
+            }
+            ImGui::EndCombo();
         }
 
-        ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F);
-        filter.Draw("##Filter", -FLT_MIN);
-
-        for (size_t i = 0; i < list.size(); ++i)
+        if (invalid_model)
         {
-            bool is_selected = item_selected_idx == i;
-            if (filter.PassFilter(list[i].c_str()))
-                if (ImGui::Selectable(list[i].c_str(), is_selected))
-                    item_selected_idx = i;
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1, 0, 0, 1), "Invalid!");
         }
-        ocr_model = list[item_selected_idx];
-        ClearError(InvalidModel);
-        ImGui::EndCombo();
-    }
-    else if (HasError(InvalidPath))
-    {
-        // If combo is not open, we might need to update ocr_model from item_selected_idx
-        if (!list.empty() && item_selected_idx < list.size())
-            ocr_model = list[item_selected_idx];
     }
 
-    if (HasError(InvalidModel))
-    {
-        ImGui::PopStyleColor();
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1, 0, 0, 1), "Invalid!");
-    }
-
-end:
     if (!HasError(InvalidModel) && !HasError(InvalidPath) && ImGui::Button("Extract Text"))
     {
-        if (std::find(list.begin(), list.end(), ocr_model) == list.end())
-        {
-            SetError(InvalidModel);
-        }
-        else if (!m_ocr_api.Configure(ocr_path.c_str(), ocr_model.c_str()))
+        if (!m_ocr_api.Configure(ocr_path.c_str(), ocr_model.c_str()))
         {
             SetError(FailedToInitOcr);
         }
         else
         {
+            ClearError(FailedToInitOcr);
             const ocr_result_t& result = m_ocr_api.ExtractTextCapture(GetFinalImage());
             if (result.success)
             {
                 m_ocr_text = m_to_translate_text = result.data;
                 m_ocr_confidence                 = result.confidence;
             }
-            ClearError(FailedToInitOcr);
         }
     }
 
