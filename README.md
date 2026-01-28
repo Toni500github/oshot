@@ -3,7 +3,7 @@
 A simple and lightweight tool for extracting and translating text from a screenshot/image (on the fly)
 
 ## Dependencies
-#### Linux
+### Linux
 Package names may vary by distribution and package manager.
 If a package is not found, try searching by its base name (e.g., `libglfw3-dev` → `glfw`).
 
@@ -16,11 +16,6 @@ If a package is not found, try searching by its base name (e.g., `libglfw3-dev` 
 - `libappindicator3-dev`
 - `grim` (Wayland only)
 - `wl-clipboard` (Wayland only)
-
-#### Windows
-1. Download the required language data for Tesseract from [tessdata](https://github.com/tesseract-ocr/tessdata).
-2. Extract the language files to a directory of your choice.
-3. Configure the Tesseract and language data paths in the `config.toml` file (see *Windows Configuration* section for more details).
 
 ## Building
 ### Make
@@ -42,16 +37,33 @@ $ ninja
 $ ./oshot
 ```
 
-## Windows Configuration
-After installing Tesseract:
-1. Open the `%APPDATA%` directory (press Win+R and type `%APPDATA%`)
-2. Navigate to the `oshot` directory
-3. Edit `config.toml` and set the `ocr-path` variable to your Tesseract data directory
-   - Use double backslashes in the path: `C:\\Users\\Name\\tessdata`
-Example:
-```toml
-ocr-path = "C:\\Program Files\\Tesseract-OCR\\tessdata"
-```
+## Downloading additional language models
+Tesseract uses separate language model files (`.traineddata`) for each language.  
+You can store these files anywhere you like, as long as the path is configured correctly.
+
+1. Download the required language model(s) from the official Tesseract repository:  
+   https://github.com/tesseract-ocr/tessdata
+
+2. Place the downloaded `.traineddata` files in one of the following locations:
+   - The `models/` directory next to the `oshot` binary (recommended)
+   - Or any other directory of your choice (configure the path in the config file)
+
+3. Configure the language data path in `config.toml`:
+   - Windows: `%APPDATA%/oshot/config.toml`
+   - Linux: `~/.config/oshot/config.toml`
+
+   Set the `ocr-path` variable to the directory containing the `.traineddata` files.
+
+   Example (Windows):
+   ```toml
+   ocr-path = "C:\\Users\\Name\\oshot\\models"
+   ```
+   Example (Linux):
+   ```toml
+   ocr-path = "/home/name/oshot/models"
+   ```
+
+> Note: On Windows, make sure to use double backslashes (`\\`) in paths.
 
 ## Troubleshooting
 ### Windows
