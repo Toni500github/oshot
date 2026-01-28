@@ -4,7 +4,7 @@
 -Wextra
 -Wpedantic
 -std=c++20
--DVERSION="0.2.3"
+-DVERSION="0.3.0"
 -DDEBUG=1
 -DWINDOWS_CMD=1
 -DENABLE_PORTALS=1

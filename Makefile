@@ -62,8 +62,8 @@ endif
 
 NAME		 = oshot
 TARGET		?= $(NAME)
-OLDVERSION	 = 0.2.2
-VERSION    	 = 0.2.3
+OLDVERSION	 = 0.2.3
+VERSION    	 = 0.3.0
 SRC	 	 = $(wildcard src/*.cpp)
 OBJ	 	 = $(SRC:.cpp=.o)
 LDFLAGS   	+= -L$(BUILDDIR) $(LTO_FLAGS)

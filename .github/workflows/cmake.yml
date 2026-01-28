@@ -59,6 +59,7 @@ jobs:
             zip \
             fuse \
             libx11-dev \
+            libxcb1-dev \
             libglfw3-dev \
             libtesseract-dev \
             libcurl4-openssl-dev \

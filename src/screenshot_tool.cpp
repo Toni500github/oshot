@@ -680,7 +680,7 @@ void ScreenshotTool::DrawOcrTools()
         ImGui::PopStyleColor();
     }
     ImGui::SameLine();
-    HelpMarker("Path to the OCR models (.traineddata). Supports drag-and-drop too");
+    HelpMarker("Full-Path to the OCR models (.traineddata). Supports drag-and-drop too");
 
     if (!invalid_path)
     {
