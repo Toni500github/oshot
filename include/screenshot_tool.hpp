@@ -108,7 +108,7 @@ public:
 
 private:
     static constexpr float HANDLE_DRAW_SIZE  = 4.0f;
-    static constexpr float HANDLE_HOVER_SIZE = 16.0f;
+    static constexpr float HANDLE_HOVER_SIZE = 20.0f;
 
     struct font_cache_t
     {

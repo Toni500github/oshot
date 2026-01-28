@@ -171,7 +171,7 @@ void ScreenshotTool::RenderOverlay()
     {
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
         ImGui::Begin("##select_area", nullptr, minimal_win_flags);
-        ImGui::TextColored(get_confidence_color(100), "Select an area");
+        ImGui::TextColored(ImVec4(0,1,0,1), "Select an area");
         ImGui::End();
     }
 
@@ -890,7 +890,6 @@ void ScreenshotTool::DrawTranslationTools()
     static constexpr float spacing = 4.0f;   // Spacing between inputs
     static constexpr float padding = 10.0f;  // Padding on right side
 
-    // Calculate available width minus spacing and padding
     float available_width = ImGui::GetContentRegionAvail().x - spacing - padding;
     float width           = available_width / 2.0f;
 
