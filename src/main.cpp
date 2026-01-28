@@ -280,7 +280,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     }
     else
     {
-        // Safe fallback
         static char argv0[] = "oshot";
         argv_ptrs           = { argv0, nullptr };
         argc                = 1;
@@ -311,8 +310,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
     g_fp_log = std::fopen("oshot.log", "w");
     if (!g_fp_log)
-        g_fp_log = stdout;  // fallback; might be redirected to console if attached
-
+        g_fp_log = stdout;
 #else
 int main(int argc, char* argv[])
 {
@@ -334,7 +332,7 @@ int main(int argc, char* argv[])
         return main_tool(imgui_ini_path);
 
     if (!acquire_tray_lock())
-        return 0;
+        return EXIT_FAILURE;
 
     std::thread worker(capture_worker, imgui_ini_path);
 
@@ -367,11 +365,11 @@ int main(int argc, char* argv[])
         tray.exit();
     }));
 
-    tray.run();  // blocks here (tray main loop)
+    tray.run();
 
     worker.join();
 
-    return 0;
+    return EXIT_SUCCESS;
 }
 
 int main_tool(const std::string imgui_ini_path)
