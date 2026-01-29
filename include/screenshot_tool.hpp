@@ -2,6 +2,7 @@
 #define _SCREENSHOT_TOOL_HPP_
 
 #include <algorithm>
+#include <bitset>
 #include <cstdlib>
 #include <deque>
 #include <functional>
@@ -66,16 +67,17 @@ enum class InputOwner
     Tools
 };
 
-enum ErrorState
+enum ErrorFlag : size_t
 {
-    kNone                  = 0,
-    FailedToInitOcr        = 1 << 1,
-    InvalidPath            = 1 << 2,
-    InvalidModel           = 1 << 3,
-    FailedTranslation      = 1 << 4,
-    InvalidLangFrom        = 1 << 5,
-    InvalidLangTo          = 1 << 6,
-    FailedToExtractBarCode = 1 << 7
+    kNone = 0,
+    FailedToInitOcr,
+    InvalidPath,
+    InvalidModel,
+    FailedTranslation,
+    InvalidLangFrom,
+    InvalidLangTo,
+    FailedToExtractBarCode,
+    COUNT
 };
 
 class ScreenshotTool
@@ -87,7 +89,6 @@ public:
     bool StartWindow();
     bool CreateTexture();
     bool OpenImage(const std::string& path);
-    bool HasError(ErrorState err);
     bool IsActive() const { return m_state != ToolState::Idle; }
 
     capture_result_t GetFinalImage();
@@ -96,8 +97,10 @@ public:
 
     void RenderOverlay();
     void Cancel();
-    void ClearError(ErrorState err);
-    void SetError(ErrorState err);
+
+    void SetError(ErrorFlag f) { m_errors.set(static_cast<size_t>(f)); }
+    void ClearError(ErrorFlag f) { m_errors.reset(static_cast<size_t>(f)); }
+    bool HasError(ErrorFlag f) const { return m_errors.test(static_cast<size_t>(f)); }
 
     void SetOnComplete(const std::function<void(SavingOp, const capture_result_t&)>& cb)
     {
@@ -134,7 +137,8 @@ private:
     HandleHovered m_handle_hover    = HandleHovered::kNone;
     HandleHovered m_dragging_handle = HandleHovered::kNone;
     InputOwner    m_input_owner     = InputOwner::kNone;
-    int           m_err_state       = ErrorState::kNone;
+
+    std::bitset<static_cast<size_t>(ErrorFlag::COUNT)> m_errors;
 
     selection_rect_t m_selection;
     selection_rect_t m_drag_start_selection;

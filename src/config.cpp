@@ -1,5 +1,6 @@
 #include "config.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
@@ -7,15 +8,6 @@
 #include "fmt/os.h"
 #include "toml++/toml.hpp"
 #include "util.hpp"
-
-static bool is_str_digital(const std::string& str)
-{
-    for (size_t i = 0; i < str.size(); ++i)
-        if (!(str[i] >= '0' && str[i] <= '9'))
-            return false;
-
-    return true;
-}
 
 Config::Config(const std::string& configFile, const std::string& configDir)
 {
@@ -94,7 +86,7 @@ void Config::OverrideOption(const std::string& opt)
         m_overrides[name] = { .value_type = ValueType::kBool, .bool_value = false };
     else if ((value[0] == '"' && value.back() == '"') || (value[0] == '\'' && value.back() == '\''))
         m_overrides[name] = { .value_type = ValueType::kString, .string_value = value.substr(1, value.size() - 2) };
-    else if (is_str_digital(value))
+    else if (std::ranges::all_of(value, ::isdigit))
         m_overrides[name] = { .value_type = ValueType::kInt, .int_value = std::stoi(value) };
     else
         die(_("looks like override value '{}' from '{}' is neither a bool, int or string value"), value, name);

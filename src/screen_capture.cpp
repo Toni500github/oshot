@@ -53,7 +53,7 @@ SessionType get_session_type()
 }
 
 #ifdef __linux__
-capture_result_t capture_full_screen_portal(capture_result_t&);
+capture_result_t capture_full_screen_portal();
 
 capture_result_t capture_full_screen_x11()
 {
@@ -62,8 +62,8 @@ capture_result_t capture_full_screen_x11()
     Display* display = XOpenDisplay(nullptr);
     if (!display)
     {
-        result.error_msg = "Failed to open X display";
-        return capture_full_screen_portal(result);
+        warn("Failed to open X display");
+        return capture_full_screen_portal();
     }
 
     Window            root = DefaultRootWindow(display);
@@ -73,15 +73,15 @@ capture_result_t capture_full_screen_x11()
     XImage* image = XGetImage(display, root, 0, 0, attrs.width, attrs.height, AllPlanes, ZPixmap);
     if (!image)
     {
-        result.error_msg = "Failed to capture screen image";
+        warn("Failed to capture screen image");
         XCloseDisplay(display);
-        return capture_full_screen_portal(result);
+        return capture_full_screen_portal();
     }
 
-    result.data          = ximage_to_rgba(image, attrs.width, attrs.height);
-    result.region.width  = attrs.width;
-    result.region.height = attrs.height;
-    result.success       = true;
+    result.data    = ximage_to_rgba(image, attrs.width, attrs.height);
+    result.w       = attrs.width;
+    result.h       = attrs.height;
+    result.success = true;
 
     XDestroyImage(image);
     XCloseDisplay(display);
@@ -111,15 +111,15 @@ capture_result_t capture_full_screen_wayland()
 
     if (exit_code != 0)
     {
-        result.error_msg += "\ngrim failed with exit code " + fmt::to_string(exit_code);
-        return capture_full_screen_portal(result);
+        warn("grim failed with exit code {}", exit_code);
+        return capture_full_screen_portal();
     }
 
     // stbi_load_from_memory takes an int length
     if (buf.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
     {
-        result.error_msg = "Screenshot too large to decode (buffer > INT_MAX).";
-        return capture_full_screen_portal(result);
+        warn("Screenshot too large to decode (buffer > INT_MAX).");
+        return capture_full_screen_portal();
     }
 
     int      w = 0, h = 0, comp = 0;
@@ -128,12 +128,12 @@ capture_result_t capture_full_screen_wayland()
     if (!rgba)
     {
         const char* reason = stbi_failure_reason();
-        result.error_msg   = "Failed to read PPM data: " + std::string(reason ? reason : "Unknown");
-        return capture_full_screen_portal(result);
+        warn("Failed to read PPM data: {}", reason ? reason : "Unknown");
+        return capture_full_screen_portal();
     }
 
-    result.region.width  = w;
-    result.region.height = h;
+    result.w = w;
+    result.h = h;
     result.data.assign(rgba, rgba + (static_cast<size_t>(w) * static_cast<size_t>(h) * 4));
     stbi_image_free(rgba);
     result.success = true;
@@ -212,7 +212,7 @@ static void on_response(GDBusConnection* conn,
     g_main_loop_quit(st->loop);
 }
 
-capture_result_t capture_full_screen_portal(capture_result_t&)
+capture_result_t capture_full_screen_portal()
 {
     warn("Fallback to portal capture");
 
@@ -302,8 +302,8 @@ capture_result_t capture_full_screen_portal(capture_result_t&)
         return cap_portal;
     }
 
-    cap_portal.region.width  = w;
-    cap_portal.region.height = h;
+    cap_portal.w = w;
+    cap_portal.h = h;
     cap_portal.data.assign(rgba, rgba + (static_cast<size_t>(w) * h * 4));
     stbi_image_free(rgba);
     cap_portal.success = true;
@@ -334,8 +334,8 @@ capture_result_t capture_full_screen_windows_fallback()
     int width  = GetSystemMetrics(SM_CXSCREEN);
     int height = GetSystemMetrics(SM_CYSCREEN);
 
-    result.region.width  = width;
-    result.region.height = height;
+    result.w = width;
+    result.h = height;
     result.data.resize(width * height * 4);
     std::fill(result.data.begin(), result.data.end(), 0);
 
@@ -585,8 +585,8 @@ capture_result_t capture_full_screen_windows()
     const uint32_t width  = desc.Width;
     const uint32_t height = desc.Height;
 
-    result.region.width  = static_cast<int>(width);
-    result.region.height = static_cast<int>(height);
+    result.w = static_cast<int>(width);
+    result.h = static_cast<int>(height);
     result.data.resize(static_cast<size_t>(width) * height * 4);
 
     if (desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM || desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)

@@ -32,8 +32,8 @@ std::optional<std::string> Translator::Translate(const std::string& lang_from,
 std::string Translator::parseGoogleResponse(const std::string& json)
 {
     // Parse JSON: [[["translated text","original",null]],null,"en"]
-    std::regex  pattern(R"(\[\"([^\"]+)\")");
-    std::smatch match;
+    static const std::regex pattern(R"(\[\"([^\"]+)\")");
+    std::smatch             match;
     if (std::regex_search(json, match, pattern))
         return httplib::decode_uri_component(match[1]);
     return "";

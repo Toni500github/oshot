@@ -71,34 +71,27 @@ bool OcrAPI::Configure(const char* data_path, const char* model, tesseract::OcrE
 static inline void trim_in_place(std::string& s)
 {
     auto not_ws = [](unsigned char c) { return !std::isspace(c); };
-    auto b      = std::find_if(s.begin(), s.end(), not_ws);
-    auto e      = std::find_if(s.rbegin(), s.rend(), not_ws).base();
-    if (b >= e)
-    {
-        s.clear();
-        return;
-    }
-    s.assign(b, e);
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), not_ws));
+    s.erase(std::find_if(s.rbegin(), s.rend(), not_ws).base(), s.end());
 }
 
 ocr_result_t OcrAPI::ExtractTextCapture(const capture_result_t& cap)
 {
     ocr_result_t ret;
 
-    if (!m_initialized || cap.view().empty() || cap.region.width <= 0 || cap.region.height <= 0)
+    if (!m_initialized || cap.view().empty() || cap.w <= 0 || cap.h <= 0)
         return ret;
 
-    const size_t required = static_cast<size_t>(cap.region.width) * cap.region.height * 4;
+    const size_t required = static_cast<size_t>(cap.w) * cap.h * 4;
     if (cap.view().size() < required)
         return ret;
 
-    tesseract::PageSegMode psm = choose_psm(cap.region.width, cap.region.height);
-    PixPtr                 pix = RgbaToPix(cap.view(), cap.region.width, cap.region.height);
+    tesseract::PageSegMode psm = choose_psm(cap.w, cap.h);
+    PixPtr                 pix = RgbaToPix(cap.view(), cap.w, cap.h);
     if (!pix)
         return ret;
 
-    float scale =
-        std::min(static_cast<float>(g_scr_w) / cap.region.width, static_cast<float>(g_scr_h) / cap.region.height);
+    float scale = std::min(static_cast<float>(g_scr_w) / cap.w, static_cast<float>(g_scr_h) / cap.h);
 
     int effective_dpi = static_cast<int>(get_screen_dpi() * scale);
     effective_dpi     = std::clamp(effective_dpi, 70, 300);
@@ -190,12 +183,12 @@ ZbarAPI::ZbarAPI()
 zbar_result_t ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
 {
     zbar_result_t        ret;
-    std::vector<uint8_t> gray(cap.region.width * cap.region.height);
+    std::vector<uint8_t> gray(cap.w * cap.h);
 
-    rgba_to_grayscale(cap.view().data(), gray.data(), cap.region.width, cap.region.height);
+    rgba_to_grayscale(cap.view().data(), gray.data(), cap.w, cap.h);
 
-    zbar::Image image(cap.region.width,
-                      cap.region.height,
+    zbar::Image image(cap.w,
+                      cap.h,
                       "Y800",  // GRAYSCALE
                       gray.data(),
                       gray.size());

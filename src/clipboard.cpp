@@ -27,15 +27,15 @@ bool Clipboard::CopyText(const std::string& text)
 
 bool Clipboard::CopyImage(const capture_result_t& cap)
 {
-    if (cap.region.width <= 0 || cap.region.height <= 0)
+    if (cap.w <= 0 || cap.h <= 0)
         return false;
 
     if (m_session == SessionType::Wayland)
     {
         std::vector<uint8_t> png;
-        png.reserve(static_cast<size_t>(cap.region.width) * cap.region.height);
+        png.reserve(static_cast<size_t>(cap.w) * cap.h * 4);
 
-        svpng(&png, cap.region.width, cap.region.height, cap.view().data(), 1);
+        svpng(&png, cap.w, cap.h, cap.view().data(), 1);
 
         // Use foreground mode so the process doesn't fork away from our pipes.
         TinyProcessLib::Process proc({ "wl-copy", "--foreground", "--type", "image/png" }, "");
@@ -48,10 +48,10 @@ bool Clipboard::CopyImage(const capture_result_t& cap)
     }
 
     clip::image_spec spec;
-    spec.width          = cap.region.width;
-    spec.height         = cap.region.height;
+    spec.width          = cap.w;
+    spec.height         = cap.h;
     spec.bits_per_pixel = 32;
-    spec.bytes_per_row  = cap.region.width * 4;
+    spec.bytes_per_row  = cap.w * 4;
 
     spec.red_mask    = 0xff;
     spec.green_mask  = 0xff00;

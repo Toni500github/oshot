@@ -170,7 +170,7 @@ void ScreenshotTool::RenderOverlay()
     {
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
         ImGui::Begin("##select_area", nullptr, minimal_win_flags);
-        ImGui::TextColored(ImVec4(0,1,0,1), "Select an area");
+        ImGui::TextColored(ImVec4(0, 1, 0, 1), "Select an area");
         ImGui::End();
     }
 
@@ -810,7 +810,7 @@ void ScreenshotTool::DrawTranslationTools()
     ImGui::SeparatorText("Translation");
 
     auto createCombo =
-        [&](const char* name, const ErrorState err, int start, std::string& lang, size_t& idx, ImFont* font) {
+        [&](const char* name, const ErrorFlag err, int start, std::string& lang, size_t& idx, ImFont* font) {
             ImGui::PushID(name);
 
             bool style_pushed = false;
@@ -1067,21 +1067,22 @@ capture_result_t ScreenshotTool::GetFinalImage()
     };
 
     capture_result_t result;
-    result.region  = region;
+    result.w       = region.width;
+    result.h       = region.height;
     result.success = true;
     result.data.resize(static_cast<size_t>(region.width) * region.height * 4);
 
     std::span<const uint8_t> src_data(m_screenshot.view());
     std::span<uint8_t>       dst_data(result.data);
 
-    const int src_width = m_screenshot.region.width;
+    const int src_width = m_screenshot.w;
     const int dst_width = region.width;
 
     // Calculate bounds
     const int start_y = std::max(0, -region.y);
-    const int end_y   = std::min(region.height, m_screenshot.region.height - region.y);
+    const int end_y   = std::min(region.height, m_screenshot.h - region.y);
     const int start_x = std::max(0, -region.x);
-    const int end_x   = std::min(region.width, m_screenshot.region.width - region.x);
+    const int end_x   = std::min(region.width, m_screenshot.w - region.x);
 
     // Copy only the valid region
     for (int y = start_y; y < end_y; ++y)
@@ -1106,29 +1107,14 @@ capture_result_t ScreenshotTool::GetFinalImage()
     return result;
 }
 
-bool ScreenshotTool::HasError(ErrorState err)
-{
-    return m_err_state & err;
-}
-
-void ScreenshotTool::SetError(ErrorState err)
-{
-    m_err_state |= err;
-}
-
-void ScreenshotTool::ClearError(ErrorState err)
-{
-    m_err_state &= ~err;
-}
-
 void ScreenshotTool::UpdateWindowBg()
 {
     // Calculate where the screenshot will be drawn (centered)
     // clang-format off
     auto* vp = ImGui::GetMainViewport();
     ImVec2 image_size(
-        static_cast<float>(m_screenshot.region.width),
-        static_cast<float>(m_screenshot.region.height)
+        static_cast<float>(m_screenshot.w),
+        static_cast<float>(m_screenshot.h)
     );
 
     m_image_origin = ImVec2(
@@ -1198,8 +1184,8 @@ bool ScreenshotTool::CreateTexture()
     glTexImage2D(GL_TEXTURE_2D,
                  0,
                  GL_RGBA,
-                 m_screenshot.region.width,
-                 m_screenshot.region.height,
+                 m_screenshot.w,
+                 m_screenshot.h,
                  0,
                  GL_RGBA,
                  GL_UNSIGNED_BYTE,

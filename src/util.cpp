@@ -160,8 +160,8 @@ int get_screen_dpi()
 
 void fit_to_screen(capture_result_t& img)
 {
-    const int img_w = img.region.width;
-    const int img_h = img.region.height;
+    const int img_w = img.w;
+    const int img_h = img.h;
 
     if (img_w <= g_scr_w && img_h <= g_scr_h)
         return;
@@ -183,16 +183,16 @@ void fit_to_screen(capture_result_t& img)
         return;
     }
 
-    img.data          = std::move(resized);
-    img.region.width  = new_w;
-    img.region.height = new_h;
+    img.data = std::move(resized);
+    img.w    = new_w;
+    img.h    = new_h;
 }
 
 static std::vector<uint8_t> read_stdin_binary()
 {
     std::vector<uint8_t> buffer;
 
-    uint8_t temp[4096];
+    uint8_t temp[UINT16_MAX];
     while (true)
     {
         size_t n = fread(temp, 1, sizeof(temp), stdin);
@@ -243,8 +243,8 @@ capture_result_t load_image_rgba(const std::string& path)
         return result;
     }
 
-    result.region.width  = width;
-    result.region.height = height;
+    result.w = width;
+    result.h = height;
 
     const size_t size = static_cast<size_t>(width) * height * 4;
     result.data.assign(pixels, pixels + size);
@@ -258,18 +258,14 @@ capture_result_t load_image_rgba(const std::string& path)
 
 bool save_png(SavingOp op, const capture_result_t& img)
 {
-    const size_t         w = img.region.width;
-    const size_t         h = img.region.height;
     std::vector<uint8_t> data;
+    data.reserve(static_cast<size_t>(img.w) * img.h * 4);
 
-    data.reserve(w * h * 4);
-    svpng(&data, img.region.width, img.region.height, img.view().data(), 1);
+    svpng(&data, img.w, img.h, img.view().data(), 1);
     const size_t size = data.size();
 
     if (op == SavingOp::Clipboard)
-    {
         return g_clipboard->CopyImage(img);
-    }
 
     auto        now       = std::chrono::system_clock::now();
     const char* filter[]  = { "*.png" };
@@ -279,6 +275,7 @@ bool save_png(SavingOp op, const capture_result_t& img)
                                                   filter,           // file filters
                                                   "Images (*.png)"  // filter description
     );
+
     if (!save_path)
         return false;
 

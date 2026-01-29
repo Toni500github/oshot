@@ -19,7 +19,8 @@ struct capture_result_t
 {
     std::vector<uint8_t> data;  // RGBA
     bool                 success = false;
-    region_t             region;
+    int                  w       = 0;
+    int                  h       = 0;
     std::string          error_msg;
 
     std::span<const uint8_t> view() const { return data; }
