@@ -53,17 +53,11 @@ You can store these files anywhere you like, as long as the path is configured c
    - Linux: `~/.config/oshot/config.toml`
 
    Set the `ocr-path` variable to the directory containing the `.traineddata` files.
-
-   Example (Windows):
+   Example:
    ```toml
-   ocr-path = "C:\\Users\\Name\\oshot\\models"
+   # Works on windows too
+   ocr-path = "~/Downloads/oshot/models"
    ```
-   Example (Linux):
-   ```toml
-   ocr-path = "/home/name/oshot/models"
-   ```
-
-> Note: On Windows, make sure to use double backslashes (`\\`) in paths.
 
 ## Troubleshooting
 ### Windows
