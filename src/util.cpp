@@ -326,6 +326,18 @@ std::filesystem::path get_home_dir()
     die("Cannot determine home directory");
 }
 
+void debug_msg(const std::string_view msg) noexcept
+{
+    if (g_config && g_config->File.debug_print)
+    {
+        fmt::print(g_fp_log,
+                   BOLD_COLOR((fmt::rgb(fmt::color::hot_pink))),
+                   "[ {:%T} ] [DEBUG]: {}\n",
+                   std::chrono::system_clock::now(),
+                   msg);
+    }
+}
+
 std::string expand_var(std::string ret, bool dont)
 {
     if (ret.empty() || dont)

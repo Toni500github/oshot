@@ -28,6 +28,12 @@ public:
         std::string font;
         bool        allow_ocr_edit = false;
 
+#if DEBUG
+        bool debug_print = true;
+#else
+        bool debug_print = false;
+#endif
+
         std::unordered_map<std::string, std::string> lang_fonts_paths;
     } File;
 
@@ -151,8 +157,6 @@ font = "arial.ttf"
 inline constexpr std::string_view oshot_help = (R"(Usage: oshot [OPTIONS]...
 Lightweight Screenshot tool to extract and translate text on the fly.
 
-NOTE: Boolean flags [<BOOL>] accept: "true", 1, "enable", or empty. Any other value is treated as false.
-
 GENERAL OPTIONS:
     -h, --help                  Print this help menu.
     -V, --version               Print version and other infos about the build.
@@ -160,6 +164,8 @@ GENERAL OPTIONS:
     -C, --config <PATH>         Path to the config file to use (default: ~/.config/oshot/config.toml).
     -l, --list                  List all available translatable languages along side their codenames.
     -t, --tray                  Launch system tray
+
+    --debug                     Print debug statments
 
     --gen-config [<PATH>]       Generate default config file. If PATH is omitted, saves to default location.
                                 Prompts before overwriting.

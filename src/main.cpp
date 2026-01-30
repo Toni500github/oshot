@@ -147,6 +147,7 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
         {"config",  required_argument, 0, 'C'},
         {"source",  required_argument, 0, 'f'},
 
+        {"debug",      no_argument,       0, "debug"_fnv1a16},
         {"gen-config", optional_argument, 0, "gen-config"_fnv1a16},
 
         {0,0,0,0}
@@ -174,6 +175,8 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
                 g_config->Runtime.source_file = optarg; break;
             case 't':
                 g_config->Runtime.only_launch_tray = true; break;
+            case "debug"_fnv1a16:
+                g_config->File.debug_print = true; break;
 
             case "gen-config"_fnv1a16:
                 if (OPTIONAL_ARGUMENT_IS_PRESENT)
