@@ -46,12 +46,12 @@ OcrAPI::~OcrAPI()
         m_api->End();
 }
 
-bool OcrAPI::Configure(const char* data_path, const char* model, tesseract::OcrEngineMode oem)
+Result<bool> OcrAPI::Configure(const char* data_path, const char* model, tesseract::OcrEngineMode oem)
 {
     ocr_config_t next{ data_path, model };
 
     if (m_config && *m_config == next)
-        return true;  // nothing to do
+        return Ok();  // nothing to do
 
     // Tear down old engine
     if (m_initialized)
@@ -61,35 +61,39 @@ bool OcrAPI::Configure(const char* data_path, const char* model, tesseract::OcrE
     }
 
     if (m_api->Init(data_path, model, oem) != 0)
-        return false;
+        return Err("Failed to Init OCR engine");
 
     m_config      = std::move(next);
     m_initialized = true;
-    return true;
+    return Ok();
 }
 
-static inline void trim_in_place(std::string& s)
+// From "  hello world  \n  " to "hello world"
+static void trim_in_place(std::string& s)
 {
     auto not_ws = [](unsigned char c) { return !std::isspace(c); };
     s.erase(s.begin(), std::find_if(s.begin(), s.end(), not_ws));
     s.erase(std::find_if(s.rbegin(), s.rend(), not_ws).base(), s.end());
 }
 
-ocr_result_t OcrAPI::ExtractTextCapture(const capture_result_t& cap)
+Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
 {
     ocr_result_t ret;
 
-    if (!m_initialized || cap.view().empty() || cap.w <= 0 || cap.h <= 0)
-        return ret;
+    if (!m_initialized)
+        return Err("Initialize the engine first");
+
+    if (cap.view().empty() || cap.w <= 0 || cap.h <= 0)
+        return Err("Image is empty");
 
     const size_t required = static_cast<size_t>(cap.w) * cap.h * 4;
     if (cap.view().size() < required)
-        return ret;
+        return Err("Image size is larger than required");
 
     tesseract::PageSegMode psm = choose_psm(cap.w, cap.h);
     PixPtr                 pix = RgbaToPix(cap.view(), cap.w, cap.h);
     if (!pix)
-        return ret;
+        return Err("Failed to convert image into Pix format");
 
     float scale = std::min(static_cast<float>(g_scr_w) / cap.w, static_cast<float>(g_scr_h) / cap.h);
 
@@ -102,16 +106,16 @@ ocr_result_t OcrAPI::ExtractTextCapture(const capture_result_t& cap)
 
     // Make OCR + confidence deterministic
     if (m_api->Recognize(nullptr) != 0)
-        return ret;
+        return Err("tesseract::Recognize() failed");
 
     TextPtr text(m_api->GetUTF8Text(), [](char* p) { delete[] p; });
     if (!text)
-        return ret;
+        return Err("Failed to get recognized text");
 
     std::string data(text.get());
     trim_in_place(data);
     if (data.empty())
-        return ret;
+        return Err("String is empty");
 
     ret.data = std::move(data);
 
@@ -137,8 +141,7 @@ ocr_result_t OcrAPI::ExtractTextCapture(const capture_result_t& cap)
         ret.confidence = m_api->MeanTextConf();
     }
 
-    ret.success = true;
-    return ret;
+    return Ok(ret);
 }
 
 OcrAPI::PixPtr OcrAPI::RgbaToPix(std::span<const uint8_t> rgba, int w, int h)
@@ -180,7 +183,7 @@ ZbarAPI::ZbarAPI()
     SetConfig(zbar::ZBAR_I25, false);
 }
 
-zbar_result_t ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
+Result<zbar_result_t> ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
 {
     zbar_result_t        ret;
     std::vector<uint8_t> gray(cap.w * cap.h);
@@ -194,7 +197,7 @@ zbar_result_t ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
                       gray.size());
 
     if (m_scanner.scan(image) <= 0)
-        return {};
+        return Err("Failed to scan image");
 
     for (auto sym = image.symbol_begin(); sym != image.symbol_end(); ++sym)
     {
@@ -202,12 +205,13 @@ zbar_result_t ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
         ret.symbologies[sym->get_type_name()]++;
     }
 
-    ret.success = !ret.datas.empty() || !ret.symbologies.empty();
+    if (!ret.datas.empty() || !ret.symbologies.empty())
+        return Err("Failed to decode barcode from image");
 
     // Prevent ZBar from freeing the buffer
     image.set_data(nullptr, 0);
 
-    return ret;
+    return Ok(ret);
 }
 
 bool ZbarAPI::SetConfig(zbar::zbar_symbol_type_e zbar_code, int enable)

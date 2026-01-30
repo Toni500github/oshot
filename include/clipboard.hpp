@@ -10,8 +10,8 @@ class Clipboard
 {
 public:
     Clipboard(SessionType session) : m_session(session) {}
-    bool CopyText(const std::string& text);
-    bool CopyImage(const capture_result_t& cap);
+    Result<> CopyText(const std::string& text);
+    Result<> CopyImage(const capture_result_t& cap);
 
 private:
     SessionType m_session;

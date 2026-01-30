@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <string>
 
+#include "fmt/base.h"
 #include "fmt/os.h"
 #include "toml++/toml.hpp"
 #include "util.hpp"

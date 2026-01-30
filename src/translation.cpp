@@ -1,13 +1,13 @@
-#include "translation.hpp"
-
-#include <optional>
-#include <string>
-
+// clang-format off
 #include "httplib.h"
 
-std::optional<std::string> Translator::Translate(const std::string& lang_from,
-                                                 const std::string& lang_to,
-                                                 const std::string& text)
+#include "translation.hpp"
+
+#include <string>
+
+Result<std::string> Translator::Translate(const std::string& lang_from,
+                                          const std::string& lang_to,
+                                          const std::string& text)
 {
     static httplib::Client  cli("translate.googleapis.com");
     static httplib::Headers headers = { { "Content-Type", "application/x-www-form-urlencoded" },
@@ -26,15 +26,15 @@ std::optional<std::string> Translator::Translate(const std::string& lang_from,
         if (res->status == 200)
             return parseGoogleResponse(res->body);
 
-    return {};
+    return Err("Failed to retrieve text");
 }
 
-std::string Translator::parseGoogleResponse(const std::string& json)
+Result<std::string> Translator::parseGoogleResponse(const std::string& json)
 {
     // Parse JSON: [[["translated text","original",null]],null,"en"]
     static const std::regex pattern(R"(\[\"([^\"]+)\")");
     std::smatch             match;
     if (std::regex_search(json, match, pattern))
-        return httplib::decode_uri_component(match[1]);
-    return "";
+        return Ok(httplib::decode_uri_component(match[1]));
+    return Err("Failed to parse translated text response");
 }

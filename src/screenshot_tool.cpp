@@ -9,7 +9,6 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
-#include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -96,13 +95,14 @@ static ImVec4 get_confidence_color(const int confidence)
         return ImVec4(0, 1, 0, 1);  // green
 }
 
-bool ScreenshotTool::Start()
+Result<> ScreenshotTool::Start()
 {
     translator = std::make_unique<Translator>();
+    Result<capture_result_t> result{ Err() };
 
     if (!g_config->Runtime.source_file.empty())
     {
-        m_screenshot = load_image_rgba(g_config->Runtime.source_file);
+        result = load_image_rgba(g_config->Runtime.source_file);
     }
     else
     {
@@ -110,37 +110,30 @@ bool ScreenshotTool::Start()
         g_clipboard      = std::make_unique<Clipboard>(type);
         switch (type)
         {
-            case SessionType::X11:     m_screenshot = capture_full_screen_x11(); break;
-            case SessionType::Wayland: m_screenshot = capture_full_screen_wayland(); break;
-            case SessionType::Windows: m_screenshot = capture_full_screen_windows(); break;
-            default:                   ;
+            case SessionType::X11:     result = capture_full_screen_x11(); break;
+            case SessionType::Wayland: result = capture_full_screen_wayland(); break;
+            case SessionType::Windows: result = capture_full_screen_windows(); break;
+            default:                   return Err("Unknown platform");
         }
     }
 
-    if (!m_screenshot.success || m_screenshot.data.empty())
-    {
-        m_state = ToolState::Idle;
-        error("Failed to do data with screenshot: {}", m_screenshot.error_msg);
-        return false;
-    }
+    if (!result.ok())
+        return Err("Failed to do data with screenshot: " + result.error().value);
 
-    return true;
+    m_screenshot = std::move(result.get());
+    return Ok();
 }
 
-bool ScreenshotTool::StartWindow()
+Result<> ScreenshotTool::StartWindow()
 {
-    m_io    = ImGui::GetIO();
-    m_state = ToolState::Selecting;
-    CreateTexture();
-    fit_to_screen(m_screenshot);
-    if (!m_texture_id)
-    {
-        m_state = ToolState::Idle;
-        error("Failed create openGL texture");
-        return false;
-    }
+    m_io         = ImGui::GetIO();
+    m_state      = ToolState::Selecting;
+    Result<> res = CreateTexture();
+    if (!res.ok())
+        return Err("Failed create openGL texture: " + res.error().value);
 
-    return true;
+    fit_to_screen(m_screenshot);
+    return Ok();
 }
 
 void ScreenshotTool::RenderOverlay()
@@ -500,11 +493,11 @@ void ScreenshotTool::DrawMenuItems()
 
         if (ImGui::Shortcut(ImGuiKey_S | ImGuiMod_Ctrl))
             if (m_on_complete)
-                m_on_complete(SavingOp::File, GetFinalImage());
+                m_on_complete(SavingOp::File, Ok(GetFinalImage()));
 
         if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl | ImGuiMod_Shift))
             if (m_on_complete)
-                m_on_complete(SavingOp::Clipboard, GetFinalImage());
+                m_on_complete(SavingOp::Clipboard, Ok(GetFinalImage()));
 
         // Now draw the menus
         if (ImGui::BeginMenu("File"))
@@ -528,11 +521,11 @@ void ScreenshotTool::DrawMenuItems()
 
             if (ImGui::MenuItem("Save Image", "CTRL+S"))
                 if (m_on_complete)
-                    m_on_complete(SavingOp::File, GetFinalImage());
+                    m_on_complete(SavingOp::File, Ok(GetFinalImage()));
 
             if (ImGui::MenuItem("Copy Image", "CTRL+SHIFT+C"))
                 if (m_on_complete)
-                    m_on_complete(SavingOp::Clipboard, GetFinalImage());
+                    m_on_complete(SavingOp::Clipboard, Ok(GetFinalImage()));
 
             ImGui::Separator();
 
@@ -726,18 +719,19 @@ void ScreenshotTool::DrawOcrTools()
 
     if (!HasError(InvalidModel) && !HasError(InvalidPath) && ImGui::Button("Extract Text"))
     {
-        if (!m_ocr_api.Configure(ocr_path.c_str(), ocr_model.c_str()))
+        const Result<bool>& res = m_ocr_api.Configure(ocr_path.c_str(), ocr_model.c_str());
+        if (!res.ok())
         {
-            SetError(FailedToInitOcr);
+            SetError(FailedToInitOcr, res.error().value);
         }
         else
         {
             ClearError(FailedToInitOcr);
-            const ocr_result_t& result = m_ocr_api.ExtractTextCapture(GetFinalImage());
-            if (result.success)
+            const Result<ocr_result_t>& result = m_ocr_api.ExtractTextCapture(GetFinalImage());
+            if (result.ok())
             {
-                m_ocr_text = m_to_translate_text = result.data;
-                m_ocr_confidence                 = result.confidence;
+                m_ocr_text = m_to_translate_text = result.get().data;
+                m_ocr_confidence                 = result.get().confidence;
             }
         }
     }
@@ -870,15 +864,15 @@ void ScreenshotTool::DrawTranslationTools()
     if (!(HasError(InvalidLangFrom) || HasError(InvalidLangTo)) && !m_to_translate_text.empty() &&
         ImGui::Button("Translate"))
     {
-        const auto& translation = translator->Translate(lang_from, lang_to, m_to_translate_text);
-        if (translation)
+        const Result<std::string>& translation = translator->Translate(lang_from, lang_to, m_to_translate_text);
+        if (!translation.ok())
         {
-            translated_text = *translation;
-            ClearError(FailedTranslation);
+            SetError(FailedTranslation, translation.error().value);
         }
         else
         {
-            SetError(FailedTranslation);
+            translated_text = translation.get();
+            ClearError(FailedTranslation);
         }
     }
 
@@ -909,7 +903,7 @@ void ScreenshotTool::DrawTranslationTools()
     if (HasError(FailedTranslation))
     {
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
-        translated_text = "Failed to translate text";
+        translated_text = "Failed to translate text: " + m_curr_err_text;
         ImGui::InputTextMultiline(
             "##to", &translated_text, ImVec2(width, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
 
@@ -939,14 +933,14 @@ void ScreenshotTool::DrawBarDecodeTools()
 
     if (ImGui::Button("Extract Text"))
     {
-        const zbar_result_t& scan = m_zbar_api.ExtractTextsCapture(GetFinalImage());
-        if (!scan.success)
+        const Result<zbar_result_t>& scan = m_zbar_api.ExtractTextsCapture(GetFinalImage());
+        if (!scan.ok())
         {
-            SetError(FailedToExtractBarCode);
+            SetError(FailedToExtractBarCode, scan.error().value);
         }
         else
         {
-            m_zbar_scan = std::move(scan);
+            m_zbar_scan = std::move(scan.get());
             for (const auto& data : m_zbar_scan.datas)
                 m_barcode_text += data + "\n\n";
             ClearError(FailedToExtractBarCode);
@@ -956,7 +950,7 @@ void ScreenshotTool::DrawBarDecodeTools()
     if (HasError(FailedToExtractBarCode))
     {
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
-        m_barcode_text = "Failed to extract text from bar code";
+        m_barcode_text = "Failed to extract text from bar code: " + m_curr_err_text;
         ImGui::InputTextMultiline("##barcode",
                                   &m_barcode_text,
                                   ImVec2(-1, ImGui::GetTextLineHeight() * 10),
@@ -966,9 +960,9 @@ void ScreenshotTool::DrawBarDecodeTools()
     }
     else
     {
-        if (m_zbar_scan.success && ImGui::TreeNode("Details"))
+        if (!m_zbar_scan.datas.empty() && ImGui::TreeNode("Details"))
         {
-            ImGui::Text("Detect barcodes:");
+            ImGui::Text("Detected barcodes:");
             for (const auto& [sym, count] : m_zbar_scan.symbologies)
                 ImGui::BulletText("%s (x%d)", sym.c_str(), count);
             ImGui::TreePop();
@@ -1010,17 +1004,17 @@ void ScreenshotTool::Cancel()
 
 bool ScreenshotTool::OpenImage(const std::string& path)
 {
-    capture_result_t cap = load_image_rgba(path);
-    if (!cap.success || cap.data.empty())
+    Result<capture_result_t> cap = load_image_rgba(path);
+    if (!cap.ok())
     {
-        error("Failed to load image: {}", cap.error_msg);
+        error("Failed to load image: {}", cap.error());
         return false;
     }
 
-    m_screenshot = std::move(cap);
+    m_screenshot = std::move(cap.get());
 
     // Recreate texture (CreateTexture() already deletes the old ones)
-    if (!CreateTexture() || !m_texture_id)
+    if (!CreateTexture().ok() || !m_texture_id)
     {
         error("Failed create openGL texture");
         return false;
@@ -1067,9 +1061,8 @@ capture_result_t ScreenshotTool::GetFinalImage()
     };
 
     capture_result_t result;
-    result.w       = region.width;
-    result.h       = region.height;
-    result.success = true;
+    result.w = region.width;
+    result.h = region.height;
     result.data.resize(static_cast<size_t>(region.width) * region.height * 4);
 
     std::span<const uint8_t> src_data(m_screenshot.view());
@@ -1161,7 +1154,7 @@ ImFont* ScreenshotTool::GetFontForLanguage(const std::string& lang_code)
     return font;
 }
 
-bool ScreenshotTool::CreateTexture()
+Result<> ScreenshotTool::CreateTexture()
 {
     // Delete old texture first
     if (m_texture_id)
@@ -1172,8 +1165,9 @@ bool ScreenshotTool::CreateTexture()
 
     GLuint texture;
     glGenTextures(1, &texture);
-    if (glGetError() != GL_NO_ERROR)
-        return false;
+    int err = glGetError();
+    if (err != GL_NO_ERROR)
+        return Err("glGetError() returned error: " + fmt::to_string(err));
 
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -1192,5 +1186,5 @@ bool ScreenshotTool::CreateTexture()
                  m_screenshot.view().data());
 
     m_texture_id = (void*)(intptr_t)texture;
-    return true;
+    return Ok();
 }

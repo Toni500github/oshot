@@ -5,7 +5,8 @@
 #include <type_traits>
 #include <unordered_map>
 
-#include "util.hpp"
+// util.hpp
+std::string expand_var(std::string ret, bool dont = false);
 
 #define TOML_HEADER_ONLY 0
 #include "toml++/toml.hpp"

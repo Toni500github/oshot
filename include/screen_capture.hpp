@@ -4,8 +4,9 @@
 #include <cstdint>
 #include <functional>
 #include <span>
-#include <string>
 #include <vector>
+
+#include "util.hpp"
 
 struct region_t
 {
@@ -18,10 +19,8 @@ struct region_t
 struct capture_result_t
 {
     std::vector<uint8_t> data;  // RGBA
-    bool                 success = false;
-    int                  w       = 0;
-    int                  h       = 0;
-    std::string          error_msg;
+    int                  w = 0;
+    int                  h = 0;
 
     std::span<const uint8_t> view() const { return data; }
     std::span<uint8_t>       view() { return data; }
@@ -37,9 +36,9 @@ enum class SessionType
 
 using CaptureCallback = std::function<void(capture_result_t)>;
 
-capture_result_t capture_full_screen_x11();
-capture_result_t capture_full_screen_wayland();
-capture_result_t capture_full_screen_windows();
+Result<capture_result_t> capture_full_screen_x11();
+Result<capture_result_t> capture_full_screen_wayland();
+Result<capture_result_t> capture_full_screen_windows();
 
 SessionType get_session_type();
 

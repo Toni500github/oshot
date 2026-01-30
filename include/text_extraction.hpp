@@ -12,12 +12,12 @@
 #include <string>
 
 #include "screen_capture.hpp"
+#include "util.hpp"
 
 struct ocr_result_t
 {
     std::string data;
     int         confidence = 0;  // 0..100
-    bool        success    = false;
 };
 
 class OcrAPI
@@ -30,9 +30,10 @@ public:
     OcrAPI(const OcrAPI&)            = delete;
     OcrAPI& operator=(const OcrAPI&) = delete;
 
-    bool Configure(const char* data_path, const char* model, tesseract::OcrEngineMode oem = tesseract::OEM_LSTM_ONLY);
-
-    ocr_result_t ExtractTextCapture(const capture_result_t& cap);
+    Result<bool>         Configure(const char*              data_path,
+                                   const char*              model,
+                                   tesseract::OcrEngineMode oem = tesseract::OEM_LSTM_ONLY);
+    Result<ocr_result_t> ExtractTextCapture(const capture_result_t& cap);
 
 private:
     struct ocr_config_t
@@ -66,7 +67,6 @@ struct zbar_result_t
 {
     std::vector<std::string>             datas;        // decoded payload
     std::unordered_map<std::string, int> symbologies;  // e.g. "QRCODE", "EAN-13", ...
-    bool                                 success = false;
 };
 
 class ZbarAPI
@@ -74,8 +74,8 @@ class ZbarAPI
 public:
     ZbarAPI();
 
-    zbar_result_t ExtractTextsCapture(const capture_result_t& cap);
-    bool          SetConfig(zbar::zbar_symbol_type_e zbar_code, int enable);
+    Result<zbar_result_t> ExtractTextsCapture(const capture_result_t& cap);
+    bool                  SetConfig(zbar::zbar_symbol_type_e zbar_code, int enable);
 
 private:
     zbar::ImageScanner m_scanner;

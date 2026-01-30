@@ -85,11 +85,11 @@ class ScreenshotTool
 public:
     ScreenshotTool() : m_io(dummy) {}
 
-    bool Start();
-    bool StartWindow();
-    bool CreateTexture();
-    bool OpenImage(const std::string& path);
-    bool IsActive() const { return m_state != ToolState::Idle; }
+    Result<> Start();
+    Result<> StartWindow();
+    Result<> CreateTexture();
+    bool     OpenImage(const std::string& path);
+    bool     IsActive() const { return m_state != ToolState::Idle; }
 
     capture_result_t GetFinalImage();
 
@@ -98,11 +98,11 @@ public:
     void RenderOverlay();
     void Cancel();
 
-    void SetError(ErrorFlag f) { m_errors.set(static_cast<size_t>(f)); }
+    void SetError(ErrorFlag f, const std::string& err = "") { m_errors.set(static_cast<size_t>(f)); m_curr_err_text = std::move(err); }
     void ClearError(ErrorFlag f) { m_errors.reset(static_cast<size_t>(f)); }
     bool HasError(ErrorFlag f) const { return m_errors.test(static_cast<size_t>(f)); }
 
-    void SetOnComplete(const std::function<void(SavingOp, const capture_result_t&)>& cb)
+    void SetOnComplete(const std::function<void(SavingOp, const Result<capture_result_t>&)>& cb)
     {
         m_on_complete = std::move(cb);
     }
@@ -152,12 +152,13 @@ private:
     std::string   m_ocr_text;
     std::string   m_to_translate_text;
     std::string   m_barcode_text;
+    std::string   m_curr_err_text;
     int           m_ocr_confidence = -1;
     zbar_result_t m_zbar_scan;
 
-    std::unordered_map<std::string, font_cache_t>          m_font_cache;
-    std::function<void()>                                  m_on_cancel;
-    std::function<void(SavingOp, const capture_result_t&)> m_on_complete;
+    std::unordered_map<std::string, font_cache_t>           m_font_cache;
+    std::function<void()>                                   m_on_cancel;
+    std::function<void(SavingOp, Result<capture_result_t>)> m_on_complete;
 
     ImGuiIO dummy;
 

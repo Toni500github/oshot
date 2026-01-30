@@ -53,9 +53,9 @@ SessionType get_session_type()
 }
 
 #ifdef __linux__
-capture_result_t capture_full_screen_portal();
+Result<capture_result_t> capture_full_screen_portal();
 
-capture_result_t capture_full_screen_x11()
+Result<capture_result_t> capture_full_screen_x11()
 {
     capture_result_t result;
 
@@ -78,34 +78,28 @@ capture_result_t capture_full_screen_x11()
         return capture_full_screen_portal();
     }
 
-    result.data    = ximage_to_rgba(image, attrs.width, attrs.height);
-    result.w       = attrs.width;
-    result.h       = attrs.height;
-    result.success = true;
+    result.data = ximage_to_rgba(image, attrs.width, attrs.height);
+    result.w    = attrs.width;
+    result.h    = attrs.height;
 
     XDestroyImage(image);
     XCloseDisplay(display);
 
-    return result;
+    return Ok(result);
 }
 
-capture_result_t capture_full_screen_wayland()
+Result<capture_result_t> capture_full_screen_wayland()
 {
     capture_result_t result;
 
     std::vector<uint8_t>    buf;
-    TinyProcessLib::Process proc(
-        { "grim", "-t", "ppm", "-" },
-        "",  // cwd
-        [&](const char* bytes, size_t n) {
-            // stdout (binary)
-            const uint8_t* p = reinterpret_cast<const uint8_t*>(bytes);
-            buf.insert(buf.end(), p, p + n);
-        },
-        [&](const char* bytes, size_t n) {
-            // stderr (text)
-            result.error_msg.append(bytes, n);
-        });
+    TinyProcessLib::Process proc({ "grim", "-t", "ppm", "-" },
+                                 "",  // cwd
+                                 [&](const char* bytes, size_t n) {
+                                     // stdout (binary)
+                                     const uint8_t* p = reinterpret_cast<const uint8_t*>(bytes);
+                                     buf.insert(buf.end(), p, p + n);
+                                 });
 
     const int exit_code = proc.get_exit_status();
 
@@ -136,15 +130,18 @@ capture_result_t capture_full_screen_wayland()
     result.h = h;
     result.data.assign(rgba, rgba + (static_cast<size_t>(w) * static_cast<size_t>(h) * 4));
     stbi_image_free(rgba);
-    result.success = true;
 
-    return result;
+    return Ok(result);
 }
 
-std::string      png_path;
-capture_result_t cap_portal;
+struct portal_cap_context
+{
+    std::string      png_path;
+    std::string      error_msg;
+    capture_result_t cap;
+} cap_portal;
 
-struct State
+struct g_state_t
 {
     GMainLoop* loop;
     guint      subscription_id;
@@ -152,7 +149,7 @@ struct State
 
 static gboolean on_timeout(gpointer user_data)
 {
-    State* st            = reinterpret_cast<State*>(user_data);
+    g_state_t* st        = reinterpret_cast<g_state_t*>(user_data);
     cap_portal.error_msg = "Timed out waiting for portal response (is xdg-desktop-portal running?)";
     g_main_loop_quit(st->loop);
     return G_SOURCE_REMOVE;
@@ -189,7 +186,7 @@ static void on_response(GDBusConnection* conn,
                         GVariant*        parameters,
                         gpointer         user_data)
 {
-    State* st = reinterpret_cast<State*>(user_data);
+    g_state_t* st = reinterpret_cast<g_state_t*>(user_data);
 
     guint32      response = 2;
     GVariant*    results  = NULL;
@@ -208,11 +205,11 @@ static void on_response(GDBusConnection* conn,
     if (st->subscription_id)
         g_dbus_connection_signal_unsubscribe(conn, st->subscription_id);
 
-    png_path = uri_to_path(uri, cap_portal.error_msg);
+    cap_portal.png_path = uri_to_path(uri, cap_portal.error_msg);
     g_main_loop_quit(st->loop);
 }
 
-capture_result_t capture_full_screen_portal()
+Result<capture_result_t> capture_full_screen_portal()
 {
     warn("Fallback to portal capture");
 
@@ -224,7 +221,7 @@ capture_result_t capture_full_screen_portal()
             "Failed to connect to session bus: " + std::string(error->message ? error->message : "Unknown");
         if (error)
             g_error_free(error);
-        return cap_portal;
+        return Err(cap_portal.error_msg);
     }
 
     // Call Screenshot portal synchronously so we can fail loudly if the service isn't there.
@@ -247,7 +244,7 @@ capture_result_t capture_full_screen_portal()
         if (error)
             g_error_free(error);
         g_object_unref(bus);
-        return cap_portal;
+        return Err(cap_portal.error_msg);
     }
 
     const char* request_path = NULL;
@@ -255,13 +252,12 @@ capture_result_t capture_full_screen_portal()
 
     if (!request_path || request_path[0] == '\0')
     {
-        cap_portal.error_msg = "Portal returned an empty request handle";
         g_variant_unref(reply);
         g_object_unref(bus);
-        return cap_portal;
+        return Err("Portal returned an empty request handle");
     }
 
-    State st;
+    g_state_t st;
     st.loop = g_main_loop_new(NULL, FALSE);
 
     // Subscribe specifically to the request object's Response signal.
@@ -285,49 +281,47 @@ capture_result_t capture_full_screen_portal()
     g_main_loop_unref(st.loop);
     g_object_unref(bus);
 
-    if (png_path.empty())
+    if (cap_portal.png_path.empty())
     {
         if (cap_portal.error_msg.empty())
-            cap_portal.error_msg = "Failed to retrive uri path to screenshot PNG";
-        return cap_portal;
+            return Err("Failed to retrive uri path to screenshot PNG");
+        return Err(cap_portal.error_msg);
     }
 
     int      w = 0, h = 0, comp = 0;
-    uint8_t* rgba = stbi_load(png_path.c_str(), &w, &h, &comp, STBI_rgb_alpha);
+    uint8_t* rgba = stbi_load(cap_portal.png_path.c_str(), &w, &h, &comp, STBI_rgb_alpha);
 
     if (!rgba)
     {
-        const char* reason   = stbi_failure_reason();
-        cap_portal.error_msg = "Failed to read PNG data: " + std::string(reason ? reason : "Unknown");
-        return cap_portal;
+        const char* reason = stbi_failure_reason();
+        return Err("Failed to read PNG data: " + std::string(reason ? reason : "Unknown"));
     }
 
-    cap_portal.w = w;
-    cap_portal.h = h;
-    cap_portal.data.assign(rgba, rgba + (static_cast<size_t>(w) * h * 4));
+    cap_portal.cap.w = w;
+    cap_portal.cap.h = h;
+    cap_portal.cap.data.assign(rgba, rgba + (static_cast<size_t>(w) * h * 4));
     stbi_image_free(rgba);
-    cap_portal.success = true;
 
-    return cap_portal;
+    return Ok(cap_portal.cap);
 }
 
 #else
-capture_result_t capture_full_screen_x11()
+Result<capture_result_t> capture_full_screen_x11()
 {
-    return {};
+    return Err();
 }
-capture_result_t capture_full_screen_wayland()
+Result<capture_result_t> capture_full_screen_wayland()
 {
-    return {};
+    return Err();
 }
-capture_result_t capture_full_screen_portal()
+Result<capture_result_t> capture_full_screen_portal()
 {
-    return {};
+    return Err();
 }
 #endif  // __linux__
 
 #ifdef _WIN32
-capture_result_t capture_full_screen_windows_fallback()
+Result<capture_result_t> capture_full_screen_windows_fallback()
 {
     capture_result_t result;
 
@@ -360,8 +354,7 @@ capture_result_t capture_full_screen_windows_fallback()
     {
         DeleteDC(hMemoryDC);
         ReleaseDC(NULL, hScreenDC);
-        result.error_msg = "Failed to create DIB section";
-        return result;
+        return Err("Failed to create DIB section");
     }
 
     // Select the bitmap into the memory DC
@@ -399,15 +392,14 @@ capture_result_t capture_full_screen_windows_fallback()
     DeleteDC(hMemoryDC);
     ReleaseDC(NULL, hScreenDC);
 
-    result.success = true;
-    return result;
+    return Ok(result);
 }
 
-static bool hr_failed(HRESULT hr, capture_result_t& result, const char* what)
+static bool hr_failed(HRESULT hr, const char* what)
 {
     if (FAILED(hr))
     {
-        result.error_msg = fmt::format("{} failed: 0x{:08X}", what, (unsigned)hr);
+        debug("{} failed: 0x{:08X}", what, static_cast<unsigned>(hr));
         return true;
     }
     return false;
@@ -430,14 +422,13 @@ struct com_ptr
         operator bool() const { return ptr != nullptr; }
 };
 
-capture_result_t capture_full_screen_windows()
+Result<capture_result_t> capture_full_screen_windows()
 {
     capture_result_t result;
 
-    // DXGI factory
     com_ptr<IDXGIFactory1> factory;
     HRESULT                hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory));
-    if (hr_failed(hr, result, "CreateDXGIFactory1"))
+    if (hr_failed(hr, "CreateDXGIFactory1"))
         return capture_full_screen_windows_fallback();
 
     // Find first desktop-attached output
@@ -477,13 +468,13 @@ capture_result_t capture_full_screen_windows()
 
     if (!found_output)
     {
-        result.error_msg = "No desktop-attached DXGI output found";
+        debug("No desktop-attached DXGI output found");
         return capture_full_screen_windows_fallback();
     }
 
     com_ptr<IDXGIOutput1> output1;
     hr = output->QueryInterface(IID_PPV_ARGS(&output1));
-    if (hr_failed(hr, result, "QueryInterface(IDXGIOutput1)"))
+    if (hr_failed(hr, "QueryInterface(IDXGIOutput1)"))
         return capture_full_screen_windows_fallback();
 
     // D3D11 device bound to output adapter
@@ -498,13 +489,13 @@ capture_result_t capture_full_screen_windows()
     hr = D3D11CreateDevice(
         adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context);
 
-    if (hr_failed(hr, result, "D3D11CreateDevice"))
+    if (hr_failed(hr, "D3D11CreateDevice"))
         return capture_full_screen_windows_fallback();
 
     // Output duplication
     com_ptr<IDXGIOutputDuplication> duplication;
     hr = output1->DuplicateOutput(device, &duplication);
-    if (hr_failed(hr, result, "DuplicateOutput"))
+    if (hr_failed(hr, "DuplicateOutput"))
         return capture_full_screen_windows_fallback();
 
     // Acquire frame
@@ -518,7 +509,7 @@ capture_result_t capture_full_screen_windows()
     if (hr == DXGI_ERROR_ACCESS_LOST)
         return capture_full_screen_windows_fallback();
 
-    if (hr_failed(hr, result, "AcquireNextFrame"))
+    if (hr_failed(hr, "AcquireNextFrame"))
         return capture_full_screen_windows_fallback();
 
     frame_acquired = true;
@@ -532,7 +523,7 @@ capture_result_t capture_full_screen_windows()
     // Desktop texture
     com_ptr<ID3D11Texture2D> desktop_texture;
     hr = desktop_resource->QueryInterface(IID_PPV_ARGS(&desktop_texture));
-    if (hr_failed(hr, result, "QueryInterface(ID3D11Texture2D)"))
+    if (hr_failed(hr, "QueryInterface(ID3D11Texture2D)"))
     {
         if (frame_acquired)
             duplication->ReleaseFrame();
@@ -548,7 +539,7 @@ capture_result_t capture_full_screen_windows()
     {
         if (frame_acquired)
             duplication->ReleaseFrame();
-        result.error_msg = fmt::format("Unsupported DXGI format: {}", (unsigned)desc.Format);
+        debug("Unsupported DXGI format: {}", static_cast<unsigned>(desc.Format));
         return capture_full_screen_windows_fallback();
     }
 
@@ -560,7 +551,7 @@ capture_result_t capture_full_screen_windows()
 
     com_ptr<ID3D11Texture2D> staging;
     hr = device->CreateTexture2D(&desc, nullptr, &staging);
-    if (hr_failed(hr, result, "CreateTexture2D(staging)"))
+    if (hr_failed(hr, "CreateTexture2D(staging)"))
     {
         if (frame_acquired)
             duplication->ReleaseFrame();
@@ -573,7 +564,7 @@ capture_result_t capture_full_screen_windows()
     // Map staging texture
     D3D11_MAPPED_SUBRESOURCE mapped{};
     hr = context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped);
-    if (hr_failed(hr, result, "Map"))
+    if (hr_failed(hr, "Map"))
     {
         if (frame_acquired)
             duplication->ReleaseFrame();
@@ -621,17 +612,15 @@ capture_result_t capture_full_screen_windows()
     if (frame_acquired)
         duplication->ReleaseFrame();
 
-    result.success = true;
-
-    return result;
+    return Ok(result);
 }
 #else
-capture_result_t capture_full_screen_windows_fallback()
+Result<capture_result_t> capture_full_screen_windows_fallback()
 {
-    return {};
+    return Err();
 }
-capture_result_t capture_full_screen_windows()
+Result<capture_result_t> capture_full_screen_windows()
 {
-    return {};
+    return Err();
 }
 #endif

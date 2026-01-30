@@ -384,16 +384,20 @@ int main_tool(const std::string imgui_ini_path)
         fmt::println(stderr, "Cancelled screenshot");
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
-    ss_tool.SetOnComplete([&](SavingOp op, const capture_result_t& result) {
-        if (!result.success)
-            error("Screenshot failed: {}", result.error_msg);
-
-        save_png(op, result);
+    ss_tool.SetOnComplete([&](SavingOp op, const Result<capture_result_t>& result) {
+        if (!result.ok())
+            error("Screenshot failed: {}", result.error());
+        else
+            save_png(op, result.get());
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
 
-    if (!ss_tool.Start())
+    Result<> res = ss_tool.Start();
+    if (!res.ok())
+    {
+        error("Failed to start capture: {}", res.error());
         return EXIT_FAILURE;
+    }
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -465,8 +469,12 @@ int main_tool(const std::string imgui_ini_path)
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    if (!ss_tool.StartWindow())
+    res = ss_tool.StartWindow();
+    if (!res.ok())
+    {
+        error("Failed to start tool window: {}", res.error());
         return EXIT_FAILURE;
+    }
 
     while (!glfwWindowShouldClose(window) && ss_tool.IsActive())
     {

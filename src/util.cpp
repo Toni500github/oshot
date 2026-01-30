@@ -177,11 +177,7 @@ void fit_to_screen(capture_result_t& img)
         stbir_resize_uint8_linear(img.view().data(), img_w, img_h, 0, resized.data(), new_w, new_h, 0, STBIR_RGBA);
 
     if (!ok)
-    {
-        img.success   = false;
-        img.error_msg = "Image resize failed";
         return;
-    }
 
     img.data = std::move(resized);
     img.w    = new_w;
@@ -204,7 +200,7 @@ static std::vector<uint8_t> read_stdin_binary()
     return buffer;
 }
 
-capture_result_t load_image_rgba(const std::string& path)
+Result<capture_result_t> load_image_rgba(const std::string& path)
 {
     capture_result_t result{};
 
@@ -226,22 +222,15 @@ capture_result_t load_image_rgba(const std::string& path)
 
         std::vector<uint8_t> input = read_stdin_binary();
         if (input.empty())
-        {
-            result.success   = false;
-            result.error_msg = "stdin reported data but was empty";
-            return result;
-        }
+            return Err("stdin reported data but was empty");
 
         pixels = stbi_load_from_memory(
             input.data(), static_cast<int>(input.size()), &width, &height, &channels, STBI_rgb_alpha);
     }
 
     if (!pixels)
-    {
-        result.success   = false;
-        result.error_msg = stbi_failure_reason() ? stbi_failure_reason() : "Unknown Error";
-        return result;
-    }
+        return Err("Failed to load image: " +
+                   (stbi_failure_reason() ? std::string(stbi_failure_reason()) : "Unknown Error"));
 
     result.w = width;
     result.h = height;
@@ -249,14 +238,12 @@ capture_result_t load_image_rgba(const std::string& path)
     const size_t size = static_cast<size_t>(width) * height * 4;
     result.data.assign(pixels, pixels + size);
 
-    result.success = true;
-
     stbi_image_free(pixels);
 
-    return result;
+    return Ok(result);
 }
 
-bool save_png(SavingOp op, const capture_result_t& img)
+Result<> save_png(SavingOp op, const capture_result_t& img)
 {
     std::vector<uint8_t> data;
     data.reserve(static_cast<size_t>(img.w) * img.h * 4);
@@ -277,7 +264,7 @@ bool save_png(SavingOp op, const capture_result_t& img)
     );
 
     if (!save_path)
-        return false;
+        return Ok(false);  // Not really a bug, maybe the user cancelled
 
     FILE* fp = fopen(save_path, "wb");
     if (!fp)
@@ -285,7 +272,7 @@ bool save_png(SavingOp op, const capture_result_t& img)
 
     fwrite(data.data(), 1, size, fp);
     fclose(fp);
-    return true;
+    return Ok(true);
 }
 
 void rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int height)

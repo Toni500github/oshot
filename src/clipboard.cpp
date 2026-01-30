@@ -13,23 +13,33 @@
 #include "svpng.h"
 #pragma GCC diagnostic pop
 
-bool Clipboard::CopyText(const std::string& text)
+Result<> Clipboard::CopyText(const std::string& text)
 {
     // Fuck you, fuck your software monopoly
     // and fuck your stupid standards that nobody wants to follow
     if (m_session != SessionType::Wayland)
-        return clip::set_text(text);
+    {
+        if (clip::set_text(text))
+            return Ok();
+        return Err("Failed to copy text into clipboard");
+    }
+
+    std::string err;
 
     // Use foreground mode so the process doesn't fork away from our pipes.
-    TinyProcessLib::Process proc({ "wl-copy", "--foreground", text }, "");
-    return proc.get_exit_status() == 0;
+    TinyProcessLib::Process proc(
+        { "wl-copy", "--foreground", text }, "", nullptr, [&](const char* b, size_t n) { err.append(b, n); });
+    if (proc.get_exit_status() == 0)
+        return Ok();
+    return Err("Failed to copy text into clipboard: " + err);
 }
 
-bool Clipboard::CopyImage(const capture_result_t& cap)
+Result<> Clipboard::CopyImage(const capture_result_t& cap)
 {
     if (cap.w <= 0 || cap.h <= 0)
-        return false;
+        return Err("Image size is 0");
 
+    std::string err;
     if (m_session == SessionType::Wayland)
     {
         std::vector<uint8_t> png;
@@ -38,13 +48,18 @@ bool Clipboard::CopyImage(const capture_result_t& cap)
         svpng(&png, cap.w, cap.h, cap.view().data(), 1);
 
         // Use foreground mode so the process doesn't fork away from our pipes.
-        TinyProcessLib::Process proc({ "wl-copy", "--foreground", "--type", "image/png" }, "");
+        TinyProcessLib::Process proc(
+            { "wl-copy", "--foreground", "--type", "image/png" }, "", nullptr, [&](const char* b, size_t n) {
+                err.append(b, n);
+            });
 
         if (!proc.write(reinterpret_cast<const char*>(png.data()), png.size()))
-            return false;
+            return Err("Failed to write image to stdin");
 
         proc.close_stdin();
-        return proc.get_exit_status() == 0;
+        if (proc.get_exit_status() == 0)
+            return Ok();
+        return Err("Failed copy image into clipboard");
     }
 
     clip::image_spec spec;
@@ -63,5 +78,7 @@ bool Clipboard::CopyImage(const capture_result_t& cap)
     spec.alpha_shift = 24;
 
     clip::image img(cap.view().data(), spec);
-    return clip::set_image(img);
+    if (clip::set_image(img))
+        return Ok();
+    return Err("Failed copy image into clipboard");
 }
