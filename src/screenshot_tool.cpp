@@ -100,14 +100,15 @@ Result<> ScreenshotTool::Start()
     translator = std::make_unique<Translator>();
     Result<capture_result_t> result{ Err() };
 
+    SessionType type = get_session_type();
+    g_clipboard      = std::make_unique<Clipboard>(type);
+
     if (!g_config->Runtime.source_file.empty())
     {
         result = load_image_rgba(g_config->Runtime.source_file);
     }
     else
     {
-        SessionType type = get_session_type();
-        g_clipboard      = std::make_unique<Clipboard>(type);
         switch (type)
         {
             case SessionType::X11:     result = capture_full_screen_x11(); break;
