@@ -98,7 +98,11 @@ public:
     void RenderOverlay();
     void Cancel();
 
-    void SetError(ErrorFlag f, const std::string& err = "") { m_errors.set(static_cast<size_t>(f)); m_curr_err_text = std::move(err); }
+    void SetError(ErrorFlag f, const std::string& err = "")
+    {
+        m_errors.set(static_cast<size_t>(f));
+        m_curr_err_text = std::move(err);
+    }
     void ClearError(ErrorFlag f) { m_errors.reset(static_cast<size_t>(f)); }
     bool HasError(ErrorFlag f) const { return m_errors.test(static_cast<size_t>(f)); }
 

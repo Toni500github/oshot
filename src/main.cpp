@@ -3,8 +3,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <filesystem>
 #include <fstream>
+#include <ios>
 #include <memory>
 #include <mutex>
 #include <system_error>
@@ -19,6 +21,7 @@
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_opengl3.h"
+#include "switch_fnv1a.hpp"
 #include "trayapp/tray.hpp"
 #define GL_SILENCE_DEPRECATION
 #if defined(IMGUI_IMPL_OPENGL_ES2)
@@ -29,10 +32,9 @@
 #include "clipboard.hpp"
 #include "config.hpp"
 #include "langs.hpp"
-#include "png.h"
+#include "oshot_png.hpp"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
-#include "switch_fnv1a.hpp"
 #include "util.hpp"
 
 // [Win32] Our example includes a copy of glfw3.lib pre-compiled with VS2010 to maximize ease of testing and
