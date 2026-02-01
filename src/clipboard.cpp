@@ -29,6 +29,7 @@ Result<> Clipboard::CopyText(const std::string& text)
     // Use foreground mode so the process doesn't fork away from our pipes.
     TinyProcessLib::Process proc(
         { "wl-copy", "--foreground", text }, "", nullptr, [&](const char* b, size_t n) { err.append(b, n); });
+
     if (proc.get_exit_status() == 0)
         return Ok();
     return Err("Failed to copy text into clipboard: " + err);
@@ -59,7 +60,7 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
         proc.close_stdin();
         if (proc.get_exit_status() == 0)
             return Ok();
-        return Err("Failed copy image into clipboard");
+        return Err("Failed to copy image into clipboard");
     }
 
     clip::image_spec spec;
@@ -80,5 +81,5 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
     clip::image img(cap.view().data(), spec);
     if (clip::set_image(img))
         return Ok();
-    return Err("Failed copy image into clipboard");
+    return Err("Failed to copy image into clipboard");
 }

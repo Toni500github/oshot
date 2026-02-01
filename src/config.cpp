@@ -47,7 +47,9 @@ void Config::LoadConfigFile(const std::string& filename)
     File.lang_from      = GetValue<std::string>("default.lang-from", "auto");
     File.lang_to        = GetValue<std::string>("default.lang-to", "en-us");
     File.font           = GetValue<std::string>("default.font", "");
+    File.delay          = GetValue<int>("default.delay", -1);
     File.allow_ocr_edit = GetValue<bool>("default.allow-edit-ocr", false);
+    File.allow_ocr_edit = GetValue<bool>("default.allow-edit", File.allow_ocr_edit);
 
     const toml::table* all_langs_tbl = m_tbl["lang"].as_table();
     if (!all_langs_tbl)

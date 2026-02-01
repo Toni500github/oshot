@@ -4,12 +4,14 @@
 #include <zbar.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <memory>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -109,6 +111,9 @@ Result<> ScreenshotTool::Start()
     }
     else
     {
+        if (g_config->File.delay > 0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(g_config->File.delay));
+
         switch (type)
         {
             case SessionType::X11:     result = capture_full_screen_x11(); break;

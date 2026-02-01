@@ -140,12 +140,13 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
     int opt = 0;
     int option_index = 0;
     opterr = 1; // re-enable since before we disabled for "invalid option" error
-    const char *optstring = "-VhltC:f:";
+    const char *optstring = "-Vhltd:C:f:";
     static const struct option opts[] = {
         {"version", no_argument,       0, 'V'},
         {"help",    no_argument,       0, 'h'},
         {"list",    no_argument,       0, 'l'},
         {"tray",    no_argument,       0, 't'},
+        {"delay",   required_argument, 0, 'd'},
         {"config",  required_argument, 0, 'C'},
         {"source",  required_argument, 0, 'f'},
 
@@ -175,10 +176,12 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
                 print_languages(); break;
             case 'f':
                 g_config->Runtime.source_file = optarg; break;
+            case 'd':
+                g_config->OverrideOption("default.delay", std::atoi(optarg)); break;
             case 't':
                 g_config->Runtime.only_launch_tray = true; break;
             case "debug"_fnv1a16:
-                g_config->File.debug_print = true; break;
+                g_config->Runtime.debug_print = true; break;
 
             case "gen-config"_fnv1a16:
                 if (OPTIONAL_ARGUMENT_IS_PRESENT)

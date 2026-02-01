@@ -359,7 +359,7 @@ std::filesystem::path get_home_dir()
 
 void debug_msg(const std::string_view msg) noexcept
 {
-    if (g_config && g_config->File.debug_print)
+    if (g_config && g_config->Runtime.debug_print)
     {
         fmt::print(g_fp_log,
                    BOLD_COLOR((fmt::rgb(fmt::color::hot_pink))),

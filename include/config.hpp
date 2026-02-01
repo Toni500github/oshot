@@ -11,6 +11,22 @@ std::string expand_var(std::string ret, bool dont = false);
 #define TOML_HEADER_ONLY 0
 #include "toml++/toml.hpp"
 
+enum class ValueType
+{
+    kNone,
+    kString,
+    kBool,
+    kInt
+};
+
+struct override_config_value_t
+{
+    ValueType   value_type   = ValueType::kNone;
+    std::string string_value = "";
+    bool        bool_value   = false;
+    int         int_value    = 0;
+};
+
 class Config
 {
 public:
@@ -26,13 +42,8 @@ public:
         std::string lang_from;
         std::string lang_to;
         std::string font;
+        int         delay          = -1;
         bool        allow_ocr_edit = false;
-
-#if DEBUG
-        bool debug_print = true;
-#else
-        bool debug_print = false;
-#endif
 
         std::unordered_map<std::string, std::string> lang_fonts_paths;
     } File;
@@ -45,6 +56,11 @@ public:
         int         preferred_psm    = 0;
         bool        enable_handles   = true;
         bool        only_launch_tray = false;
+#if DEBUG
+        bool debug_print = true;
+#else
+        bool debug_print = false;
+#endif
     } Runtime;
 
     /**
@@ -69,23 +85,37 @@ public:
      */
     void OverrideOption(const std::string& opt);
 
+    /**
+     * Override a config value from --override
+     * @param key The value name to override.
+     *            Must have a '=' for separating the name and value to override.
+     *            NO spaces between
+     * @param value The value that will overwrite
+     */
+    template <typename T>
+    void OverrideOption(const std::string& key, const T& value)
+    {
+        override_config_value_t o;
+        if constexpr (std::is_same_v<T, bool>)
+        {
+            o.value_type = ValueType::kBool;
+            o.bool_value = value;
+        }
+        else if constexpr (std::is_convertible_v<T, std::string>)
+        {
+            o.value_type   = ValueType::kString;
+            o.string_value = value;
+        }
+        else if constexpr (std::is_convertible_v<T, int>)
+        {
+            o.value_type = ValueType::kInt;
+            o.int_value  = value;
+        }
+
+        m_overrides[key] = std::move(o);
+    }
+
 private:
-    enum class ValueType
-    {
-        kNone,
-        kString,
-        kBool,
-        kInt
-    };
-
-    struct override_config_value_t
-    {
-        ValueType   value_type   = ValueType::kNone;
-        std::string string_value = "";
-        bool        bool_value   = false;
-        int         int_value    = 0;
-    };
-
     // Parsed config from loadConfigFile()
     toml::table m_tbl;
 
@@ -97,7 +127,7 @@ private:
      * @param fallback Default value if couldn't retrive value
      */
     template <typename T>
-    T GetValue(const std::string_view value, const T&& fallback, bool dont_expand_var = false) const
+    T GetValue(const std::string_view value, const T& fallback, bool dont_expand_var = false) const
     {
         const auto& overridePos = m_overrides.find(value.data());
 
@@ -134,14 +164,18 @@ ocr-path = "./models"
 # Default OCR model.
 ocr-model = "eng"
 
+# Delay the app before acquiring a screenshot (in milliseconds)
+# Doesn't affect if opening external image (i.e. -f flag)
+delay = 500
+
 # Default from language codename translate
 lang-from = "auto"
 
 # Default to language codename translate
 lang-to = "en-us"
 
-# Allow the OCR proccessed output to be editable
-allow-edit-ocr = false
+# Allow the extracted output to be editable
+allow-edit = false
 
 # Default font (absolute path or just name) for the whole application.
 # Leave/Make it empty, or commment it, to use ImGUI default font.
@@ -162,11 +196,12 @@ GENERAL OPTIONS:
     -V, --version               Print version and other infos about the build.
     -f, --source <PATH>         Path to the image to use as background (use '-' for reading from stdin)
     -C, --config <PATH>         Path to the config file to use (default: ~/.config/oshot/config.toml).
+    -d, --delay <MILLIS>        Delay the app before acquiring the screenshot by milliseconds.
+                                Won't affect if using the -f flag
+
     -l, --list                  List all available translatable languages along side their codenames.
     -t, --tray                  Launch system tray
-
     --debug                     Print debug statments
-
     --gen-config [<PATH>]       Generate default config file. If PATH is omitted, saves to default location.
                                 Prompts before overwriting.
 )");
