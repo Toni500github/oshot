@@ -55,7 +55,7 @@ else
 	ifneq ($(filter -O%,$(CXXFLAGS)),)
     		$(info Keeping the existing optimization flag in CXXFLAGS)
 	else
-    		CXXFLAGS := -O3 $(CXXFLAGS)
+    		CXXFLAGS := -O3 -march=native $(CXXFLAGS)
 	endif
         BUILDDIR  := build/release
 endif

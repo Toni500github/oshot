@@ -127,9 +127,9 @@ Result<> ScreenshotTool::Start()
 
 Result<> ScreenshotTool::StartWindow()
 {
-    m_io         = ImGui::GetIO();
-    m_state      = ToolState::Selecting;
-    Result<> res = CreateTexture();
+    m_io                = ImGui::GetIO();
+    m_state             = ToolState::Selecting;
+    const Result<>& res = CreateTexture();
     if (!res.ok())
         return Err("Failed create openGL texture: " + res.error().value);
 
@@ -720,7 +720,7 @@ void ScreenshotTool::DrawOcrTools()
 
     if (!HasError(InvalidModel) && !HasError(InvalidPath) && ImGui::Button("Extract Text"))
     {
-        const Result<bool>& res = m_ocr_api.Configure(ocr_path.c_str(), ocr_model.c_str());
+        const Result<>& res = m_ocr_api.Configure(ocr_path.c_str(), ocr_model.c_str());
         if (!res.ok())
         {
             SetError(FailedToInitOcr, res.error().value);
@@ -1005,7 +1005,7 @@ void ScreenshotTool::Cancel()
 
 bool ScreenshotTool::OpenImage(const std::string& path)
 {
-    Result<capture_result_t> cap = load_image_rgba(path);
+    const Result<capture_result_t>& cap = load_image_rgba(path);
     if (!cap.ok())
     {
         error("Failed to load image: {}", cap.error());
@@ -1066,8 +1066,8 @@ capture_result_t ScreenshotTool::GetFinalImage()
     result.h = region.height;
     result.data.resize(static_cast<size_t>(region.width) * region.height * 4);
 
-    std::span<const uint8_t> src_data(m_screenshot.view());
-    std::span<uint8_t>       dst_data(result.data);
+    std::span<const uint8_t> src(m_screenshot.view());
+    std::span<uint8_t>       dst(result.data);
 
     const int src_width = m_screenshot.w;
     const int dst_width = region.width;
@@ -1079,23 +1079,19 @@ capture_result_t ScreenshotTool::GetFinalImage()
     const int end_x   = std::min(region.width, m_screenshot.w - region.x);
 
     // Copy only the valid region
+    const size_t bytes_to_copy = static_cast<size_t>(end_x - start_x) * 4;
+
     for (int y = start_y; y < end_y; ++y)
     {
         const int src_y = region.y + y;
 
-        const size_t src_row_start = (static_cast<size_t>(src_y) * src_width + region.x + start_x) * 4;
-        const size_t dst_row_start = static_cast<size_t>(y * dst_width + start_x) * 4;
-        const size_t bytes_to_copy = static_cast<size_t>(end_x - start_x) * 4;
+        const size_t src_row_start = (static_cast<size_t>(src_y) * src_width + (region.x + start_x)) * 4;
+        const size_t dst_row_start = (static_cast<size_t>(y) * dst_width + start_x) * 4;
 
-#if DEBUG
-        assert(src_row_start + bytes_to_copy <= src_data.size());
-        assert(dst_row_start + bytes_to_copy <= dst_data.size());
-#else
-        if (src_row_start + bytes_to_copy > src_data.size() || dst_row_start + bytes_to_copy > dst_data.size())
+        if (src_row_start + bytes_to_copy > src.size() || dst_row_start + bytes_to_copy > dst.size())
             return result;
-#endif
 
-        std::memcpy(dst_data.data() + dst_row_start, src_data.data() + src_row_start, bytes_to_copy);
+        std::memcpy(dst.data() + dst_row_start, src.data() + src_row_start, bytes_to_copy);
     }
 
     return result;

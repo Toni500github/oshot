@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 #include "tiny-process-library/process.hpp"
@@ -85,7 +86,7 @@ Result<capture_result_t> capture_full_screen_x11()
     XDestroyImage(image);
     XCloseDisplay(display);
 
-    return Ok(result);
+    return Ok(std::move(result));
 }
 
 Result<capture_result_t> capture_full_screen_wayland()
@@ -131,7 +132,7 @@ Result<capture_result_t> capture_full_screen_wayland()
     result.data.assign(rgba, rgba + (static_cast<size_t>(w) * static_cast<size_t>(h) * 4));
     stbi_image_free(rgba);
 
-    return Ok(result);
+    return Ok(std::move(result));
 }
 
 struct portal_cap_context
@@ -302,7 +303,7 @@ Result<capture_result_t> capture_full_screen_portal()
     cap_portal.cap.data.assign(rgba, rgba + (static_cast<size_t>(w) * h * 4));
     stbi_image_free(rgba);
 
-    return Ok(cap_portal.cap);
+    return Ok(std::move(cap_portal.cap));
 }
 
 #else
@@ -374,16 +375,19 @@ Result<capture_result_t> capture_full_screen_windows_fallback()
 
     // Now we have the RGB data in pBits, but we need to convert to RGBA
     // The DIB section gives us BGRA format in memory
-    std::span<const uint8_t> src(static_cast<const uint8_t*>(pBits), width * height * 4);
-    std::span<uint8_t>       dst(result.data);
+    const uint32_t* s = reinterpret_cast<const uint32_t*>(pBits);
+    uint32_t*       d = reinterpret_cast<uint32_t*>(result.data.data());
 
-    // Convert BGRA to RGBA
-    for (int i = 0; i < width * height; ++i)
+    const int n = width * height;
+    for (int i = 0; i < n; ++i)
     {
-        dst[i * 4 + 0] = src[i * 4 + 2];  // R <- B
-        dst[i * 4 + 1] = src[i * 4 + 1];  // G <- G
-        dst[i * 4 + 2] = src[i * 4 + 0];  // B <- R
-        dst[i * 4 + 3] = 0xff;
+        uint32_t bgra = s[i];
+        // bgra: [BB][GG][RR][AA] in memory ordering for 32-bit little-endian DIB (commonly)
+        uint32_t rb = (bgra & 0x00FF00FFu);
+        uint32_t g  = (bgra & 0x0000FF00u);
+        uint32_t r  = (rb & 0x000000FFu) << 16;
+        uint32_t b  = (rb & 0x00FF0000u) >> 16;
+        d[i]        = 0xFF000000u | r | g | b;
     }
 
     // Cleanup
@@ -392,7 +396,7 @@ Result<capture_result_t> capture_full_screen_windows_fallback()
     DeleteDC(hMemoryDC);
     ReleaseDC(NULL, hScreenDC);
 
-    return Ok(result);
+    return Ok(std::move(result));
 }
 
 static bool hr_failed(HRESULT hr, const char* what)
@@ -612,7 +616,7 @@ Result<capture_result_t> capture_full_screen_windows()
     if (frame_acquired)
         duplication->ReleaseFrame();
 
-    return Ok(result);
+    return Ok(std::move(result));
 }
 #else
 Result<capture_result_t> capture_full_screen_windows_fallback()

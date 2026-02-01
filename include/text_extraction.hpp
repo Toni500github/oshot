@@ -30,7 +30,7 @@ public:
     OcrAPI(const OcrAPI&)            = delete;
     OcrAPI& operator=(const OcrAPI&) = delete;
 
-    Result<bool>         Configure(const char*              data_path,
+    Result<>             Configure(const char*              data_path,
                                    const char*              model,
                                    tesseract::OcrEngineMode oem = tesseract::OEM_LSTM_ONLY);
     Result<ocr_result_t> ExtractTextCapture(const capture_result_t& cap);

@@ -63,23 +63,54 @@
 #if __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
 {
-    std::vector<uint8_t> rgba_data(width * height * 4);
+    std::vector<uint8_t> out(static_cast<size_t>(width) * height * 4);
+
+    // 32bpp packed pixels
+    // Faster method than XGetPixel() if possible
+    if (image && image->bits_per_pixel == 32 && image->data && image->bytes_per_line >= width * 4)
+    {
+        if ((image->red_mask == 0x00ff0000ul) && (image->green_mask == 0x0000ff00ul) &&
+            (image->blue_mask == 0x000000fful))
+        {
+            for (int y = 0; y < height; ++y)
+            {
+                const uint8_t* row =
+                    reinterpret_cast<const uint8_t*>(image->data) + static_cast<size_t>(y) * image->bytes_per_line;
+
+                uint8_t* dst = out.data() + static_cast<size_t>(y) * width * 4;
+
+                // Row is 4 bytes/pixel, order is typically B,G,R,X or X,R,G,B depending on endianness.
+                // On little-endian with these masks, reading as uint32_t and extracting works.
+                const uint32_t* px = reinterpret_cast<const uint32_t*>(row);
+
+                for (int x = 0; x < width; ++x)
+                {
+                    uint32_t p     = px[x];
+                    dst[x * 4 + 0] = static_cast<uint8_t>((p >> 16) & 0xff);  // R
+                    dst[x * 4 + 1] = static_cast<uint8_t>((p >> 8) & 0xff);   // G
+                    dst[x * 4 + 2] = static_cast<uint8_t>((p >> 0) & 0xff);   // B
+                    dst[x * 4 + 3] = 0xff;                                    // A
+                }
+            }
+            return out;
+        }
+    }
 
     for (int y = 0; y < height; ++y)
     {
         for (int x = 0; x < width; ++x)
         {
-            unsigned long pixel = XGetPixel(image, x, y);
+            uint32_t p = XGetPixel(image, x, y);
 
-            int i            = (y * width + x) * 4;
-            rgba_data[i + 0] = (pixel >> 16) & 0xff;  // R
-            rgba_data[i + 1] = (pixel >> 8) & 0xff;   // G
-            rgba_data[i + 2] = (pixel) & 0xff;        // B
-            rgba_data[i + 3] = 0xff;                  // A
+            int i      = (y * width + x) * 4;
+            out[i + 0] = (p >> 16) & 0xff;  // R
+            out[i + 1] = (p >> 8) & 0xff;   // G
+            out[i + 2] = (p) & 0xff;        // B
+            out[i + 3] = 0xff;              // A
         }
     }
 
-    return rgba_data;
+    return out;
 }
 #endif
 
@@ -240,7 +271,7 @@ Result<capture_result_t> load_image_rgba(const std::string& path)
 
     stbi_image_free(pixels);
 
-    return Ok(result);
+    return Ok(std::move(result));
 }
 
 Result<> save_png(SavingOp op, const capture_result_t& img)
@@ -264,15 +295,15 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
     );
 
     if (!save_path)
-        return Ok(false);  // Not really a bug, maybe the user cancelled
+        return Ok();  // Not really an error, maybe the user cancelled
 
     FILE* fp = fopen(save_path, "wb");
     if (!fp)
-        die("Failed to open file");
+        return Err("Failed to open file to write");
 
     fwrite(data.data(), 1, size, fp);
     fclose(fp);
-    return Ok(true);
+    return Ok();
 }
 
 void rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int height)

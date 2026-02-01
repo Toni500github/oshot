@@ -46,7 +46,7 @@ OcrAPI::~OcrAPI()
         m_api->End();
 }
 
-Result<bool> OcrAPI::Configure(const char* data_path, const char* model, tesseract::OcrEngineMode oem)
+Result<> OcrAPI::Configure(const char* data_path, const char* model, tesseract::OcrEngineMode oem)
 {
     ocr_config_t next{ data_path, model };
 
@@ -141,7 +141,7 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
         ret.confidence = m_api->MeanTextConf();
     }
 
-    return Ok(ret);
+    return Ok(std::move(ret));
 }
 
 OcrAPI::PixPtr OcrAPI::RgbaToPix(std::span<const uint8_t> rgba, int w, int h)
@@ -211,7 +211,7 @@ Result<zbar_result_t> ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
     // Prevent ZBar from freeing the buffer
     image.set_data(nullptr, 0);
 
-    return Ok(ret);
+    return Ok(std::move(ret));
 }
 
 bool ZbarAPI::SetConfig(zbar::zbar_symbol_type_e zbar_code, int enable)

@@ -391,17 +391,25 @@ int main_tool(const std::string imgui_ini_path)
     });
     ss_tool.SetOnComplete([&](SavingOp op, const Result<capture_result_t>& result) {
         if (!result.ok())
+        {
             error("Screenshot failed: {}", result.error());
+        }
         else
-            save_png(op, result.get());
+        {
+            const Result<>& res = save_png(op, result.get());
+            if (!res.ok())
+                error("Failed to save as PNG: {}", result.error());
+        }
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
 
-    Result<> res = ss_tool.Start();
-    if (!res.ok())
     {
-        error("Failed to start capture: {}", res.error());
-        return EXIT_FAILURE;
+        const Result<>& res = ss_tool.Start();
+        if (!res.ok())
+        {
+            error("Failed to start capture: {}", res.error());
+            return EXIT_FAILURE;
+        }
     }
 
     glfwSetErrorCallback(glfw_error_callback);
@@ -474,11 +482,13 @@ int main_tool(const std::string imgui_ini_path)
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    res = ss_tool.StartWindow();
-    if (!res.ok())
     {
-        error("Failed to start tool window: {}", res.error());
-        return EXIT_FAILURE;
+        const Result<>& res = ss_tool.StartWindow();
+        if (!res.ok())
+        {
+            error("Failed to start tool window: {}", res.error());
+            return EXIT_FAILURE;
+        }
     }
 
     while (!glfwWindowShouldClose(window) && ss_tool.IsActive())

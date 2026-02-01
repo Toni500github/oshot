@@ -160,9 +160,9 @@ private:
     int           m_ocr_confidence = -1;
     zbar_result_t m_zbar_scan;
 
-    std::unordered_map<std::string, font_cache_t>           m_font_cache;
-    std::function<void()>                                   m_on_cancel;
-    std::function<void(SavingOp, Result<capture_result_t>)> m_on_complete;
+    std::unordered_map<std::string, font_cache_t>                  m_font_cache;
+    std::function<void()>                                          m_on_cancel;
+    std::function<void(SavingOp, const Result<capture_result_t>&)> m_on_complete;
 
     ImGuiIO dummy;
 
