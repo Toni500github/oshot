@@ -909,7 +909,7 @@ void ScreenshotTool::DrawTranslationTools()
     if (HasError(FailedTranslation))
     {
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
-        translated_text = "Failed to translate text: " + m_curr_err_text;
+        translated_text = "Failed to translate text: " + m_err_texts[FailedTranslation];
         ImGui::InputTextMultiline(
             "##to", &translated_text, ImVec2(width, ImGui::GetTextLineHeight() * 10), ImGuiInputTextFlags_ReadOnly);
 
@@ -956,7 +956,7 @@ void ScreenshotTool::DrawBarDecodeTools()
     if (HasError(FailedToExtractBarCode))
     {
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
-        m_barcode_text = "Failed to extract text from bar code: " + m_curr_err_text;
+        m_barcode_text = "Failed to extract text from bar code: " + m_err_texts[FailedToExtractBarCode];
         ImGui::InputTextMultiline("##barcode",
                                   &m_barcode_text,
                                   ImVec2(-1, ImGui::GetTextLineHeight() * 10),

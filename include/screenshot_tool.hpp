@@ -101,7 +101,7 @@ public:
     void SetError(ErrorFlag f, const std::string& err = "")
     {
         m_errors.set(static_cast<size_t>(f));
-        m_curr_err_text = std::move(err);
+        m_err_texts[f] = err;
     }
     void ClearError(ErrorFlag f) { m_errors.reset(static_cast<size_t>(f)); }
     bool HasError(ErrorFlag f) const { return m_errors.test(static_cast<size_t>(f)); }
@@ -156,10 +156,10 @@ private:
     std::string   m_ocr_text;
     std::string   m_to_translate_text;
     std::string   m_barcode_text;
-    std::string   m_curr_err_text;
     int           m_ocr_confidence = -1;
     zbar_result_t m_zbar_scan;
 
+    std::unordered_map<ErrorFlag, std::string>                     m_err_texts;
     std::unordered_map<std::string, font_cache_t>                  m_font_cache;
     std::function<void()>                                          m_on_cancel;
     std::function<void(SavingOp, const Result<capture_result_t>&)> m_on_complete;

@@ -166,7 +166,7 @@ ocr-model = "eng"
 
 # Delay the app before acquiring a screenshot (in milliseconds)
 # Doesn't affect if opening external image (i.e. -f flag)
-delay = 500
+delay = 200
 
 # Default from language codename translate
 lang-from = "auto"
