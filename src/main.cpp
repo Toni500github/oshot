@@ -390,6 +390,7 @@ int main_tool(const std::string imgui_ini_path)
     ScreenshotTool ss_tool;
     ss_tool.SetOnCancel([&]() {
         fmt::println(stderr, "Cancelled screenshot");
+        glfwSwapInterval(0); // Disable vsync
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
     ss_tool.SetOnComplete([&](SavingOp op, const Result<capture_result_t>& result) {
@@ -403,6 +404,7 @@ int main_tool(const std::string imgui_ini_path)
             if (!res.ok())
                 error("Failed to save as PNG: {}", result.error());
         }
+        glfwSwapInterval(0); // Disable vsync
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
 
@@ -448,14 +450,18 @@ int main_tool(const std::string imgui_ini_path)
 #endif
 
 #if !DEBUG
+    // Don't make the window actually fullscreen if debug build
+    // this because on windows it hanged in gdb and everytime had to restart the VM
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);  // Borderless
     glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);    // Always on top
+    glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE);
+    glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
 #endif
 
     GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
 
-    window = glfwCreateWindow(mode->width, mode->height, "oshot", nullptr, nullptr);
+    window = glfwCreateWindow(mode->width, mode->height, "oshot", monitor, nullptr);
     if (!window)
         return EXIT_FAILURE;
     glfwMakeContextCurrent(window);
