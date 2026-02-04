@@ -10,6 +10,7 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <span>
 #include <string_view>
 #include <thread>
 #include <utility>
@@ -25,6 +26,7 @@
 #include "screen_capture.hpp"
 #include "tinyfiledialogs.h"
 #include "translation.hpp"
+#include "ui_icons.h"
 #include "util.hpp"
 
 #ifndef GL_NO_ERROR
@@ -132,12 +134,13 @@ Result<> ScreenshotTool::Start()
 
 Result<> ScreenshotTool::StartWindow()
 {
-    m_io                = ImGui::GetIO();
-    m_state             = ToolState::Selecting;
-    const Result<>& res = CreateTexture();
+    m_io                     = ImGui::GetIO();
+    m_state                  = ToolState::Selecting;
+    const Result<void*>& res = CreateTexture(m_texture_id, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
     if (!res.ok())
         return Err("Failed create openGL texture: " + res.error().value);
 
+    m_texture_id = res.get();
     fit_to_screen(m_screenshot);
     return Ok();
 }
@@ -178,6 +181,13 @@ void ScreenshotTool::RenderOverlay()
         HandleSelectionInput();
         DrawDarkOverlay();
         DrawSelectionBorder();
+        DrawAnnotations();
+    }
+
+    if (m_state == ToolState::Selected)
+    {
+        HandleAnnotationInput();
+        DrawAnnotationToolbar();
     }
 
     ImGui::End();
@@ -197,7 +207,9 @@ void ScreenshotTool::RenderOverlay()
 void ScreenshotTool::HandleSelectionInput()
 {
     // Only block new interactions. Never block an ongoing drag/resize.
-    if (m_input_owner != InputOwner::Selection && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ui_blocks_selection())
+    if ((m_input_owner != InputOwner::Selection && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+         ui_blocks_selection()) ||
+        m_current_tool != ToolType::kNone)
     {
         m_input_owner = InputOwner::Tools;
         return;
@@ -293,6 +305,64 @@ void ScreenshotTool::HandleResizeInput()
             m_selection.end.y   = m_drag_start_selection.end.y + delta.y;
             break;
         default: break;
+    }
+}
+
+void ScreenshotTool::HandleAnnotationInput()
+{
+    const ImVec2& mouse_pos = ImGui::GetMousePos();
+
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ui_blocks_selection())
+    {
+        m_is_drawing                   = true;
+        m_current_annotation.type      = m_current_tool;
+        m_current_annotation.start     = { mouse_pos.x, mouse_pos.y };
+        m_current_annotation.end       = m_current_annotation.start;
+        m_current_annotation.color     = m_current_color;
+        m_current_annotation.thickness = m_current_thickness;
+        m_current_annotation.points.clear();
+
+        if (m_current_tool == ToolType::Pencil)
+            m_current_annotation.points.push_back(m_current_annotation.start);
+    }
+
+    if (m_is_drawing && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+    {
+        m_current_annotation.end = { mouse_pos.x, mouse_pos.y };
+
+        if (m_current_tool == ToolType::Pencil)
+        {
+            // Add point if it's far enough from the last one
+            if (!m_current_annotation.points.empty())
+            {
+                const point_t& last = m_current_annotation.points.back();
+                float          dx   = mouse_pos.x - last.x;
+                float          dy   = mouse_pos.y - last.y;
+                if (dx * dx + dy * dy > 4.0f)  // Minimum distance squared
+                    m_current_annotation.points.push_back({ mouse_pos.x, mouse_pos.y });
+            }
+        }
+    }
+
+    if (m_is_drawing && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+    {
+        m_is_drawing = false;
+
+        // Only add annotation if it has meaningful size or points
+        bool should_add = false;
+        if (m_current_tool == ToolType::Pencil)
+            should_add = m_current_annotation.points.size() > 1;
+        else
+        {
+            float dx   = m_current_annotation.end.x - m_current_annotation.start.x;
+            float dy   = m_current_annotation.end.y - m_current_annotation.start.y;
+            should_add = (dx * dx + dy * dy) > 25.0f;  // Minimum 5px distance
+        }
+
+        if (should_add)
+            m_annotations.push_back(m_current_annotation);
+
+        m_current_annotation = annotation_t{};
     }
 }
 
@@ -989,6 +1059,210 @@ void ScreenshotTool::DrawBarDecodeTools()
     ImGui::PopID();
 }
 
+void ScreenshotTool::DrawAnnotationToolbar()
+{
+    float sel_x = m_selection.get_x();
+    float sel_y = m_selection.get_y();
+    float sel_h = m_selection.get_height();
+
+    // Position toolbar below the selection
+    ImVec2 toolbar_pos(sel_x, sel_y + sel_h + 10);
+
+    ImGui::SetNextWindowPos(toolbar_pos);
+    ImGui::SetNextWindowBgAlpha(0.9f);
+
+    ImGui::Begin("##annotation_toolbar",
+                 nullptr,
+                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize);
+
+    static void* rectangle_tex = CreateTexture(nullptr, ICON_RECT_RGBA, ICON_RECT_W, ICON_RECT_H).get();
+    static void* line_tex      = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
+    static void* circle_tex    = CreateTexture(nullptr, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
+    static void* arrow_tex     = CreateTexture(nullptr, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
+    static void* pencil_tex    = CreateTexture(nullptr, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
+
+    // Tool selection buttons
+    auto DrawSetButton = [&](ToolType tool, const char* id, void* texture) {
+        const bool  selected   = (m_current_tool == tool);
+        ImTextureID texture_id = (ImTextureID)(intptr_t)texture;
+
+        if (selected)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.6f, 1.0f, 1.0f));
+
+        if (ImGui::ImageButton(id, texture_id, ImVec2(32, 32)))
+            m_current_tool = selected ? ToolType::kNone : tool;
+
+        if (selected)
+            ImGui::PopStyleColor();
+
+        // Right-click popup on this item
+        if (selected && ImGui::BeginPopupContextItem())
+        {
+            static ImVec4 col(1, 0, 0, 1);
+            ImGui::TextUnformatted("Annotation Settings");
+            ImGui::ColorPicker4("Color",
+                                reinterpret_cast<float*>(&col),
+                                ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_PickerHueBar);
+            m_current_color = ImGui::ColorConvertFloat4ToU32(col);
+            ImGui::EndPopup();
+        }
+
+        ImGui::SameLine();
+    };
+
+    DrawSetButton(ToolType::Arrow, "##Arrow", arrow_tex);
+    DrawSetButton(ToolType::Rectangle, "##Rectangle", rectangle_tex);
+    DrawSetButton(ToolType::Circle, "##Circle", circle_tex);
+    DrawSetButton(ToolType::Line, "##Line", line_tex);
+    DrawSetButton(ToolType::Pencil, "##Pencil", pencil_tex);
+
+    ImGui::Separator();
+
+    // Thickness slider
+    ImGui::SameLine();
+    ImGui::Separator();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(100);
+    ImGui::SliderFloat("##thickness", &m_current_thickness, 1.0f, 10.0f, "%.1f");
+
+    ImGui::SameLine();
+    if (ImGui::Button("Undo") && !m_annotations.empty())
+        m_annotations.pop_back();
+
+    ImGui::End();
+}
+
+void ScreenshotTool::DrawAnnotations()
+{
+    ImDrawList* draw_list = ImGui::GetForegroundDrawList();
+
+    // Render all completed annotations
+    for (const auto& ann : m_annotations)
+    {
+        ImVec2 p1(ann.start.x, ann.start.y);
+        ImVec2 p2(ann.end.x, ann.end.y);
+
+        switch (ann.type)
+        {
+            case ToolType::Line: draw_list->AddLine(p1, p2, ann.color, ann.thickness); break;
+
+            case ToolType::Arrow:
+            {
+                draw_list->AddLine(p1, p2, ann.color, ann.thickness);
+
+                // Draw arrowhead
+                float dx  = p2.x - p1.x;
+                float dy  = p2.y - p1.y;
+                float len = std::sqrt(dx * dx + dy * dy);
+                if (len > 0.1f)
+                {
+                    dx /= len;
+                    dy /= len;
+
+                    float  arrow_size = 15.0f + ann.thickness;
+                    ImVec2 arrow_tip  = p2;
+                    ImVec2 arrow_left(p2.x - arrow_size * dx + arrow_size * 0.5f * dy,
+                                      p2.y - arrow_size * dy - arrow_size * 0.5f * dx);
+                    ImVec2 arrow_right(p2.x - arrow_size * dx - arrow_size * 0.5f * dy,
+                                       p2.y - arrow_size * dy + arrow_size * 0.5f * dx);
+
+                    draw_list->AddTriangleFilled(arrow_tip, arrow_left, arrow_right, ann.color);
+                }
+                break;
+            }
+
+            case ToolType::Rectangle: draw_list->AddRect(p1, p2, ann.color, 0.0f, 0, ann.thickness); break;
+
+            case ToolType::Circle:
+            {
+                float dx     = p2.x - p1.x;
+                float dy     = p2.y - p1.y;
+                float radius = std::sqrt(dx * dx + dy * dy);
+                draw_list->AddCircle(p1, radius, ann.color, 0, ann.thickness);
+                break;
+            }
+
+            case ToolType::Pencil:
+            {
+                for (size_t i = 1; i < ann.points.size(); ++i)
+                {
+                    ImVec2 pt1(ann.points[i - 1].x, ann.points[i - 1].y);
+                    ImVec2 pt2(ann.points[i].x, ann.points[i].y);
+                    draw_list->AddLine(pt1, pt2, ann.color, ann.thickness);
+                }
+                break;
+            }
+
+            default: break;
+        }
+    }
+
+    // Render current annotation being drawn
+    if (m_is_drawing)
+    {
+        ImVec2 p1(m_current_annotation.start.x, m_current_annotation.start.y);
+        ImVec2 p2(m_current_annotation.end.x, m_current_annotation.end.y);
+
+        switch (m_current_annotation.type)
+        {
+            case ToolType::Line:
+                draw_list->AddLine(p1, p2, m_current_annotation.color, m_current_annotation.thickness);
+                break;
+
+            case ToolType::Arrow:
+            {
+                draw_list->AddLine(p1, p2, m_current_annotation.color, m_current_annotation.thickness);
+
+                float dx  = p2.x - p1.x;
+                float dy  = p2.y - p1.y;
+                float len = std::sqrt(dx * dx + dy * dy);
+                if (len > 0.1f)
+                {
+                    dx /= len;
+                    dy /= len;
+
+                    float  arrow_size = 15.0f + m_current_annotation.thickness;
+                    ImVec2 arrow_tip  = p2;
+                    ImVec2 arrow_left(p2.x - arrow_size * dx + arrow_size * 0.5f * dy,
+                                      p2.y - arrow_size * dy - arrow_size * 0.5f * dx);
+                    ImVec2 arrow_right(p2.x - arrow_size * dx - arrow_size * 0.5f * dy,
+                                       p2.y - arrow_size * dy + arrow_size * 0.5f * dx);
+
+                    draw_list->AddTriangleFilled(arrow_tip, arrow_left, arrow_right, m_current_annotation.color);
+                }
+                break;
+            }
+
+            case ToolType::Rectangle:
+                draw_list->AddRect(p1, p2, m_current_annotation.color, 0.0f, 0, m_current_annotation.thickness);
+                break;
+
+            case ToolType::Circle:
+            {
+                float dx     = p2.x - p1.x;
+                float dy     = p2.y - p1.y;
+                float radius = std::sqrt(dx * dx + dy * dy);
+                draw_list->AddCircle(p1, radius, m_current_annotation.color, 0, m_current_annotation.thickness);
+                break;
+            }
+
+            case ToolType::Pencil:
+            {
+                for (size_t i = 1; i < m_current_annotation.points.size(); ++i)
+                {
+                    ImVec2 pt1(m_current_annotation.points[i - 1].x, m_current_annotation.points[i - 1].y);
+                    ImVec2 pt2(m_current_annotation.points[i].x, m_current_annotation.points[i].y);
+                    draw_list->AddLine(pt1, pt2, m_current_annotation.color, m_current_annotation.thickness);
+                }
+                break;
+            }
+
+            default: break;
+        }
+    }
+}
+
 void ScreenshotTool::Cancel()
 {
     m_state = ToolState::Idle;
@@ -1020,12 +1294,14 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     m_screenshot = std::move(cap.get());
 
     // Recreate texture (CreateTexture() already deletes the old ones)
-    if (!CreateTexture().ok() || !m_texture_id)
+    const Result<void*>& r = CreateTexture(m_texture_id, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
+    if (!r.ok())
     {
-        error("Failed create openGL texture");
+        error("Failed create openGL texture: " + r.error().value);
         return false;
     }
 
+    m_texture_id = r.get();
     fit_to_screen(m_screenshot);
 
     // Reset everything
@@ -1099,6 +1375,149 @@ capture_result_t ScreenshotTool::GetFinalImage()
         std::memcpy(dst.data() + dst_row_start, src.data() + src_row_start, bytes_to_copy);
     }
 
+    // Render annotations to the final image
+    float offset_x = m_selection.get_x();
+    float offset_y = m_selection.get_y();
+
+    auto SetPixel = [&](int x, int y, uint32_t color) {
+        if (x >= 0 && x < result.w && y >= 0 && y < result.h)
+        {
+            size_t idx           = (static_cast<size_t>(y) * result.w + x) * 4;
+            result.data[idx + 0] = (color >> 0) & 0xFF;   // R
+            result.data[idx + 1] = (color >> 8) & 0xFF;   // G
+            result.data[idx + 2] = (color >> 16) & 0xFF;  // B
+            result.data[idx + 3] = (color >> 24) & 0xFF;  // A
+        }
+    };
+
+    auto DrawLine = [&](int x0, int y0, int x1, int y1, uint32_t color, float thickness) {
+        // Bresenham's line algorithm with thickness
+        int dx     = std::abs(x1 - x0);
+        int dy     = std::abs(y1 - y0);
+        int sx     = x0 < x1 ? 1 : -1;
+        int sy     = y0 < y1 ? 1 : -1;
+        int err    = dx - dy;
+        int radius = static_cast<int>(thickness / 2.0f);
+
+        while (true)
+        {
+            // Draw thick point
+            for (int oy = -radius; oy <= radius; ++oy)
+                for (int ox = -radius; ox <= radius; ++ox)
+                    if (ox * ox + oy * oy <= radius * radius)
+                        SetPixel(x0 + ox, y0 + oy, color);
+
+            if (x0 == x1 && y0 == y1)
+                break;
+
+            int e2 = 2 * err;
+            if (e2 > -dy)
+            {
+                err -= dy;
+                x0 += sx;
+            }
+            if (e2 < dx)
+            {
+                err += dx;
+                y0 += sy;
+            }
+        }
+    };
+
+    for (const auto& ann : m_annotations)
+    {
+        int x1 = static_cast<int>(ann.start.x - offset_x);
+        int y1 = static_cast<int>(ann.start.y - offset_y);
+        int x2 = static_cast<int>(ann.end.x - offset_x);
+        int y2 = static_cast<int>(ann.end.y - offset_y);
+
+        switch (ann.type)
+        {
+            case ToolType::Line:
+            case ToolType::Arrow:
+                DrawLine(x1, y1, x2, y2, ann.color, ann.thickness);
+                if (ann.type == ToolType::Arrow)
+                {
+                    // Draw arrowhead
+                    float dx  = x2 - x1;
+                    float dy  = y2 - y1;
+                    float len = std::sqrt(dx * dx + dy * dy);
+                    if (len > 0.1f)
+                    {
+                        dx /= len;
+                        dy /= len;
+                        float arrow_size = 15.0f + ann.thickness;
+                        int   ax1        = static_cast<int>(x2 - arrow_size * dx + arrow_size * 0.5f * dy);
+                        int   ay1        = static_cast<int>(y2 - arrow_size * dy - arrow_size * 0.5f * dx);
+                        int   ax2        = static_cast<int>(x2 - arrow_size * dx - arrow_size * 0.5f * dy);
+                        int   ay2        = static_cast<int>(y2 - arrow_size * dy + arrow_size * 0.5f * dx);
+                        DrawLine(x2, y2, ax1, ay1, ann.color, ann.thickness);
+                        DrawLine(x2, y2, ax2, ay2, ann.color, ann.thickness);
+                    }
+                }
+                break;
+
+            case ToolType::Rectangle:
+                DrawLine(x1, y1, x2, y1, ann.color, ann.thickness);
+                DrawLine(x2, y1, x2, y2, ann.color, ann.thickness);
+                DrawLine(x2, y2, x1, y2, ann.color, ann.thickness);
+                DrawLine(x1, y2, x1, y1, ann.color, ann.thickness);
+                break;
+
+            case ToolType::Circle:
+            {
+                int cx     = x1;
+                int cy     = y1;
+                int radius = static_cast<int>(std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)));
+
+                // Midpoint circle algorithm
+                int x       = radius;
+                int y       = 0;
+                int err     = 0;
+                int thick_r = static_cast<int>(ann.thickness / 2.0f);
+
+                while (x >= y)
+                {
+                    for (int oy = -thick_r; oy <= thick_r; ++oy)
+                        for (int ox = -thick_r; ox <= thick_r; ++ox)
+                            if (ox * ox + oy * oy <= thick_r * thick_r)
+                            {
+                                SetPixel(cx + x + ox, cy + y + oy, ann.color);
+                                SetPixel(cx + y + ox, cy + x + oy, ann.color);
+                                SetPixel(cx - y + ox, cy + x + oy, ann.color);
+                                SetPixel(cx - x + ox, cy + y + oy, ann.color);
+                                SetPixel(cx - x + ox, cy - y + oy, ann.color);
+                                SetPixel(cx - y + ox, cy - x + oy, ann.color);
+                                SetPixel(cx + y + ox, cy - x + oy, ann.color);
+                                SetPixel(cx + x + ox, cy - y + oy, ann.color);
+                            }
+
+                    y += 1;
+                    err += 1 + 2 * y;
+                    if (2 * (err - x) + 1 > 0)
+                    {
+                        x -= 1;
+                        err += 1 - 2 * x;
+                    }
+                }
+                break;
+            }
+
+            case ToolType::Pencil:
+                for (size_t i = 1; i < ann.points.size(); ++i)
+                {
+                    int px1 = static_cast<int>(ann.points[i - 1].x - offset_x);
+                    int py1 = static_cast<int>(ann.points[i - 1].y - offset_y);
+                    int px2 = static_cast<int>(ann.points[i].x - offset_x);
+                    int py2 = static_cast<int>(ann.points[i].y - offset_y);
+                    DrawLine(px1, py1, px2, py2, ann.color, ann.thickness);
+                }
+                break;
+
+            default: break;
+        }
+    }
+
     return result;
 }
 
@@ -1156,12 +1575,12 @@ ImFont* ScreenshotTool::GetFontForLanguage(const std::string& lang_code)
     return font;
 }
 
-Result<> ScreenshotTool::CreateTexture()
+Result<void*> ScreenshotTool::CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h)
 {
     // Delete old texture first
-    if (m_texture_id)
+    if (tex)
     {
-        GLuint old_texture = (GLuint)(intptr_t)m_texture_id;
+        GLuint old_texture = (GLuint)(intptr_t)tex;
         glDeleteTextures(1, &old_texture);
     }
 
@@ -1172,21 +1591,13 @@ Result<> ScreenshotTool::CreateTexture()
         return Err("glGetError() returned error: " + fmt::to_string(err));
 
     glBindTexture(GL_TEXTURE_2D, texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    glTexImage2D(GL_TEXTURE_2D,
-                 0,
-                 GL_RGBA,
-                 m_screenshot.w,
-                 m_screenshot.h,
-                 0,
-                 GL_RGBA,
-                 GL_UNSIGNED_BYTE,
-                 m_screenshot.view().data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data.data());
 
-    m_texture_id = (void*)(intptr_t)texture;
-    return Ok();
+    tex = (void*)(intptr_t)texture;
+    return Ok(tex);
 }

@@ -14,21 +14,14 @@
 #include "screen_capture.hpp"
 #include "text_extraction.hpp"
 
-struct point_t
+enum class ToolType
 {
-    float x{};
-    float y{};
-};
-
-struct selection_rect_t
-{
-    point_t start;
-    point_t end;
-
-    float get_x() const { return std::min(start.x, end.x); }
-    float get_y() const { return std::min(start.y, end.y); }
-    float get_width() const { return std::abs(end.x - start.x); }
-    float get_height() const { return std::abs(end.y - start.y); }
+    kNone,
+    Arrow,
+    Rectangle,
+    Circle,
+    Line,
+    Pencil
 };
 
 enum class ToolState
@@ -80,16 +73,43 @@ enum ErrorFlag : size_t
     COUNT
 };
 
+struct point_t
+{
+    float x{};
+    float y{};
+};
+
+struct selection_rect_t
+{
+    point_t start;
+    point_t end;
+
+    float get_x() const { return std::min(start.x, end.x); }
+    float get_y() const { return std::min(start.y, end.y); }
+    float get_width() const { return std::abs(end.x - start.x); }
+    float get_height() const { return std::abs(end.y - start.y); }
+};
+
+struct annotation_t
+{
+    ToolType             type = ToolType::kNone;
+    point_t              start;
+    point_t              end;
+    std::vector<point_t> points;                  // For pencil tool
+    uint32_t             color     = 0xFF0000FF;  // RGBA
+    float                thickness = 3.0f;
+};
+
 class ScreenshotTool
 {
 public:
     ScreenshotTool() : m_io(dummy) {}
 
-    Result<> Start();
-    Result<> StartWindow();
-    Result<> CreateTexture();
-    bool     OpenImage(const std::string& path);
-    bool     IsActive() const { return m_state != ToolState::Idle; }
+    Result<>      Start();
+    Result<>      StartWindow();
+    Result<void*> CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h);
+    bool          OpenImage(const std::string& path);
+    bool          IsActive() const { return m_state != ToolState::Idle; }
 
     capture_result_t GetFinalImage();
 
@@ -147,11 +167,11 @@ private:
     selection_rect_t m_selection;
     selection_rect_t m_drag_start_selection;
 
-    bool m_is_selecting{};
+    bool m_is_selecting = false;
 
-    ImVec2 m_drag_start_mouse{};
-    ImVec2 m_image_origin{};
-    ImVec2 m_image_end{};
+    ImVec2 m_drag_start_mouse;
+    ImVec2 m_image_origin;
+    ImVec2 m_image_end;
 
     std::string   m_ocr_text;
     std::string   m_to_translate_text;
@@ -166,15 +186,27 @@ private:
 
     ImGuiIO dummy;
 
+    ToolType                  m_current_tool = ToolType::kNone;
+    std::vector<annotation_t> m_annotations;
+    annotation_t              m_current_annotation;
+    bool                      m_is_drawing        = false;
+    uint32_t                  m_current_color     = 0xFF0000FF;
+    float                     m_current_thickness = 3.0f;
+
     void HandleSelectionInput();
     void HandleResizeInput();
+    void HandleAnnotationInput();
+
     void DrawDarkOverlay();
+    void DrawAnnotations();
     void DrawMenuItems();
     void DrawSelectionBorder();
-    void DrawSizeIndicator();
+
     void DrawOcrTools();
     void DrawTranslationTools();
     void DrawBarDecodeTools();
+    void DrawAnnotationToolbar();
+
     void UpdateHandleHoverState();
     void UpdateCursor();
     void UpdateWindowBg();

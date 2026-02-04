@@ -390,7 +390,7 @@ int main_tool(const std::string imgui_ini_path)
     ScreenshotTool ss_tool;
     ss_tool.SetOnCancel([&]() {
         fmt::println(stderr, "Cancelled screenshot");
-        glfwSwapInterval(0); // Disable vsync
+        glfwSwapInterval(0);  // Disable vsync
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
     ss_tool.SetOnComplete([&](SavingOp op, const Result<capture_result_t>& result) {
@@ -404,7 +404,7 @@ int main_tool(const std::string imgui_ini_path)
             if (!res.ok())
                 error("Failed to save as PNG: {}", result.error());
         }
-        glfwSwapInterval(0); // Disable vsync
+        glfwSwapInterval(0);  // Disable vsync
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
 
