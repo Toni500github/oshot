@@ -25,8 +25,8 @@
 #include "langs.hpp"
 #include "screen_capture.hpp"
 #include "tinyfiledialogs.h"
+#include "tool_icons.h"
 #include "translation.hpp"
-#include "ui_icons.h"
 #include "util.hpp"
 
 #ifndef GL_NO_ERROR
@@ -35,9 +35,14 @@
 
 using namespace std::chrono_literals;
 
-static ImVec2 origin(0, 0);
-
 static std::unique_ptr<Translator> translator;
+
+static ImVec2 origin(0, 0);
+static void*  rectangle_tex;
+static void*  line_tex;
+static void*  circle_tex;
+static void*  arrow_tex;
+static void*  pencil_tex;
 
 static std::vector<std::string> get_training_data_list(const std::string& path)
 {
@@ -142,6 +147,14 @@ Result<> ScreenshotTool::StartWindow()
 
     m_texture_id = res.get();
     fit_to_screen(m_screenshot);
+
+    // Since the creation of the screenshot texture was fine, suppose the other too
+    rectangle_tex = CreateTexture(nullptr, ICON_SQUARE_RGBA, ICON_SQUARE_W, ICON_SQUARE_H).get();
+    line_tex      = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
+    circle_tex    = CreateTexture(nullptr, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
+    arrow_tex     = CreateTexture(nullptr, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
+    pencil_tex    = CreateTexture(nullptr, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
+
     return Ok();
 }
 
@@ -435,7 +448,11 @@ void ScreenshotTool::UpdateHandleHoverState()
 
 void ScreenshotTool::UpdateCursor()
 {
-    if (m_handle_hover != HandleHovered::kNone || m_dragging_handle != HandleHovered::kNone)
+    if (m_current_tool != ToolType::kNone)
+    {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
+    }
+    else if (m_handle_hover != HandleHovered::kNone || m_dragging_handle != HandleHovered::kNone)
     {
         HandleHovered handle = (m_dragging_handle != HandleHovered::kNone) ? m_dragging_handle : m_handle_hover;
 
@@ -458,7 +475,7 @@ void ScreenshotTool::UpdateCursor()
             default: ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow); break;
         }
     }
-    else if ((m_state == ToolState::Selected || m_state == ToolState::Resizing))
+    else if (m_state == ToolState::Selected || m_state == ToolState::Resizing)
     {
         // Check if mouse is inside the selection (for moving)
         float sel_x = m_selection.get_x();
@@ -1076,12 +1093,6 @@ void ScreenshotTool::DrawAnnotationToolbar()
                  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                      ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize);
 
-    static void* rectangle_tex = CreateTexture(nullptr, ICON_RECT_RGBA, ICON_RECT_W, ICON_RECT_H).get();
-    static void* line_tex      = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
-    static void* circle_tex    = CreateTexture(nullptr, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
-    static void* arrow_tex     = CreateTexture(nullptr, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
-    static void* pencil_tex    = CreateTexture(nullptr, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
-
     // Tool selection buttons
     auto DrawSetButton = [&](ToolType tool, const char* id, void* texture) {
         const bool  selected   = (m_current_tool == tool);
@@ -1090,7 +1101,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
         if (selected)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.6f, 1.0f, 1.0f));
 
-        if (ImGui::ImageButton(id, texture_id, ImVec2(32, 32)))
+        if (ImGui::ImageButton(id, texture_id, ImVec2(24, 24)))
             m_current_tool = selected ? ToolType::kNone : tool;
 
         if (selected)
@@ -1121,10 +1132,8 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
     // Thickness slider
     ImGui::SameLine();
-    ImGui::Separator();
-    ImGui::SameLine();
     ImGui::SetNextItemWidth(100);
-    ImGui::SliderFloat("##thickness", &m_current_thickness, 1.0f, 10.0f, "%.1f");
+    ImGui::SliderFloat("##thickness", &m_current_thickness, 1.0f, 10.0f, "%.2f");
 
     ImGui::SameLine();
     if (ImGui::Button("Undo") && !m_annotations.empty())
@@ -1266,20 +1275,28 @@ void ScreenshotTool::DrawAnnotations()
 void ScreenshotTool::Cancel()
 {
     m_state = ToolState::Idle;
-    if (m_texture_id)
-    {
-        GLuint texture = (GLuint)(intptr_t)m_texture_id;
-        glDeleteTextures(1, &texture);
-        m_texture_id = nullptr;
-    }
+
+    auto delete_texture = [](void* tex) {
+        if (tex)
+        {
+            GLuint texture = (GLuint)(intptr_t)tex;
+            glDeleteTextures(1, &texture);
+            tex = nullptr;
+        }
+    };
+
+    delete_texture(m_texture_id);
+    delete_texture(line_tex);
+    delete_texture(pencil_tex);
+    delete_texture(rectangle_tex);
+    delete_texture(circle_tex);
+    delete_texture(arrow_tex);
 
     // (just clears our references, not the actual ImGui fonts)
     m_font_cache.clear();
 
     if (m_on_cancel)
-    {
         m_on_cancel();
-    }
 }
 
 bool ScreenshotTool::OpenImage(const std::string& path)
