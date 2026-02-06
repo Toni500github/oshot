@@ -332,7 +332,7 @@ void ScreenshotTool::HandleAnnotationInput()
         m_current_annotation.start     = { mouse_pos.x, mouse_pos.y };
         m_current_annotation.end       = m_current_annotation.start;
         m_current_annotation.color     = m_current_color;
-        m_current_annotation.thickness = m_current_thickness;
+        m_current_annotation.thickness = m_tool_thickness[m_current_tool];
         m_current_annotation.points.clear();
 
         if (m_current_tool == ToolType::Pencil)
@@ -1078,6 +1078,9 @@ void ScreenshotTool::DrawBarDecodeTools()
 
 void ScreenshotTool::DrawAnnotationToolbar()
 {
+    static int                   item_picker      = 0;
+    static constexpr const char* color_pickers[2] = { "Bar - Square", "Wheel - Triangle" };
+
     float sel_x = m_selection.get_x();
     float sel_y = m_selection.get_y();
     float sel_h = m_selection.get_height();
@@ -1086,8 +1089,6 @@ void ScreenshotTool::DrawAnnotationToolbar()
     ImVec2 toolbar_pos(sel_x, sel_y + sel_h + 10);
 
     ImGui::SetNextWindowPos(toolbar_pos);
-    ImGui::SetNextWindowBgAlpha(0.9f);
-
     ImGui::Begin("##annotation_toolbar",
                  nullptr,
                  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
@@ -1110,12 +1111,37 @@ void ScreenshotTool::DrawAnnotationToolbar()
         // Right-click popup on this item
         if (selected && ImGui::BeginPopupContextItem())
         {
-            static ImVec4 col(1, 0, 0, 1);
+            if (m_tool_thickness[m_current_tool] < 1.0)
+                m_tool_thickness[m_current_tool] = 1.0;
+
+            static ImVec4              color(1, 0, 0, 1);
+            static ImGuiColorEditFlags color_picker_flags = ImGuiColorEditFlags_AlphaBar;
+
             ImGui::TextUnformatted("Annotation Settings");
-            ImGui::ColorPicker4("Color",
-                                reinterpret_cast<float*>(&col),
-                                ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_PickerHueBar);
-            m_current_color = ImGui::ColorConvertFloat4ToU32(col);
+            ImGui::Separator();
+            ImGui::SetNextItemWidth(100);
+            ImGui::SliderFloat("##thickness", &m_tool_thickness[m_current_tool], 1.0f, 10.0f, "%.2f");
+            ImGui::SameLine();
+            ImGui::TextUnformatted("Thickness");
+
+            ImGui::Combo("Color picker", &item_picker, color_pickers, IM_ARRAYSIZE(color_pickers));
+            switch (item_picker)
+            {
+                case 0:
+                    color_picker_flags |= ImGuiColorEditFlags_PickerHueBar;
+                    color_picker_flags &= ~ImGuiColorEditFlags_PickerHueWheel;
+                    break;
+                case 1:
+                    color_picker_flags |= ImGuiColorEditFlags_PickerHueWheel;
+                    color_picker_flags &= ~ImGuiColorEditFlags_PickerHueBar;
+                    break;
+            }
+            ImGui::CheckboxFlags("Disable alpha edit", &color_picker_flags, ImGuiColorEditFlags_NoAlpha);
+            if (!(color_picker_flags & ImGuiColorEditFlags_NoAlpha))
+                ImGui::CheckboxFlags("Show alpha bar", &color_picker_flags, ImGuiColorEditFlags_AlphaBar);
+            ImGui::ColorPicker4("Color", reinterpret_cast<float*>(&color), color_picker_flags);
+
+            m_current_color = ImGui::ColorConvertFloat4ToU32(color);
             ImGui::EndPopup();
         }
 
@@ -1130,11 +1156,6 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
     ImGui::Separator();
 
-    // Thickness slider
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(100);
-    ImGui::SliderFloat("##thickness", &m_current_thickness, 1.0f, 10.0f, "%.2f");
-
     ImGui::SameLine();
     if (ImGui::Button("Undo") && !m_annotations.empty())
         m_annotations.pop_back();
@@ -1144,9 +1165,8 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
 void ScreenshotTool::DrawAnnotations()
 {
-    ImDrawList* draw_list = ImGui::GetForegroundDrawList();
+    ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
 
-    // Render all completed annotations
     for (const auto& ann : m_annotations)
     {
         ImVec2 p1(ann.start.x, ann.start.y);

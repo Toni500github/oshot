@@ -186,12 +186,12 @@ private:
 
     ImGuiIO dummy;
 
-    ToolType                  m_current_tool = ToolType::kNone;
-    std::vector<annotation_t> m_annotations;
-    annotation_t              m_current_annotation;
-    bool                      m_is_drawing        = false;
-    uint32_t                  m_current_color     = 0xFF0000FF;
-    float                     m_current_thickness = 3.0f;
+    ToolType                            m_current_tool = ToolType::kNone;
+    std::vector<annotation_t>           m_annotations;
+    annotation_t                        m_current_annotation;
+    bool                                m_is_drawing    = false;
+    uint32_t                            m_current_color = 0xFF0000FF;
+    std::unordered_map<ToolType, float> m_tool_thickness;
 
     void HandleSelectionInput();
     void HandleResizeInput();
