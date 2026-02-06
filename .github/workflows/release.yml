@@ -106,6 +106,7 @@ jobs:
           mkdir -p build
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cd build && make
+          strip --strip-unneeded ./oshot
 
       - name: Build project (Windows)
         if: matrix.os == 'windows-latest'
@@ -116,6 +117,7 @@ jobs:
           mkdir -p build
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DWINDOWS_CMD=OFF
           ninja -C build
+          cd build && strip --strip-unneeded ./oshot
 
       - name: Prepare Linux package
         if: matrix.os == 'ubuntu-latest'
