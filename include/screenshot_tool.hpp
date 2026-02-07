@@ -19,7 +19,9 @@ enum class ToolType : size_t
     kNone,
     Arrow,
     Rectangle,
+    RectangleFilled,
     Circle,
+    CircleFilled,
     Line,
     Pencil,
     Count

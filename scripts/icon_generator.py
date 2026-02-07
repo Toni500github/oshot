@@ -72,6 +72,30 @@ def create_square_pixels(thickness=1.5):
     
     return pixels
 
+def create_filled_circle_pixels(radius=7.0):
+    """White filled circle"""
+    size = 24
+    pixels = []
+    center = 11.5
+
+    for y in range(size):
+        for x in range(size):
+            dx = x - center
+            dy = y - center
+            dist = (dx * dx + dy * dy) ** 0.5
+
+            if dist <= radius:
+                # Simple edge smoothing
+                if dist <= radius - 0.5:
+                    alpha = 255
+                else:
+                    alpha = int(255 * (radius + 0.5 - dist))
+                pixels.extend([255, 255, 255, alpha])
+            else:
+                pixels.extend([0, 0, 0, 0])
+
+    return pixels
+
 def create_line_pixels(thickness=1.5):
     """White diagonal line from top-right to bottom-left"""
     size = 24
@@ -95,53 +119,18 @@ def create_line_pixels(thickness=1.5):
     
     return pixels
 
-def create_arrow_pixels(thickness=2):
-    """White diagonal arrow from bottom-left to top-right with right-angle arrow head"""
+def create_filled_rectangle_pixels(margin=5):
+    """White filled rectangle"""
     size = 24
     pixels = []
-    half_thickness = thickness / 2.0
-    
+
     for y in range(size):
         for x in range(size):
-            # Diagonal line from (7,17) to (17,7)
-            dist_to_line = abs(y + x - 24) / (2**0.5)
-            
-            line_alpha = 0
-            if dist_to_line <= half_thickness and x >= 7 and x <= 17 and y >= 7 and y <= 17:
-                if dist_to_line <= half_thickness - 0.5:
-                    line_alpha = 255
-                else:
-                    line_alpha = int(255 * (half_thickness + 0.5 - dist_to_line))
-            
-            # Arrow head at START (bottom-left) - right angle
-            head_alpha = 0
-            
-            # Horizontal arm (pointing left)
-            if y >= 16 and y <= 18 and x >= 4 and x <= 6:
-                head_alpha = 255
-            
-            # Vertical arm (pointing down)
-            if x >= 5 and x <= 7 and y >= 17 and y <= 19:
-                head_alpha = 255
-            
-            # Arrow head at END (top-right) - right angle
-            end_head_alpha = 0
-            
-            # Horizontal arm (pointing right)
-            if y >= 6 and y <= 8 and x >= 18 and x <= 20:
-                end_head_alpha = 255
-            
-            # Vertical arm (pointing up)
-            if x >= 17 and x <= 19 and y >= 4 and y <= 6:
-                end_head_alpha = 255
-            
-            alpha = max(line_alpha, head_alpha, end_head_alpha)
-            
-            if alpha > 0:
-                pixels.extend([255, 255, 255, alpha])
+            if margin <= x < size - margin and margin <= y < size - margin:
+                pixels.extend([255, 255, 255, 255])
             else:
                 pixels.extend([0, 0, 0, 0])
-    
+
     return pixels
 
 def create_icon_from_image(image_path, thickness=2):
@@ -195,7 +184,9 @@ def format_c_array(name, pixels):
 def main():
     icons = [
         ("ICON_CIRCLE", create_circle_pixels()),
+        ("ICON_CIRCLE_FILLED", create_filled_circle_pixels()),
         ("ICON_SQUARE", create_square_pixels()),
+        ("ICON_RECT_FILLED", create_filled_rectangle_pixels()),
         ("ICON_LINE", create_line_pixels()),
     ]
     

@@ -4,6 +4,7 @@
 #include <zbar.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -36,13 +37,9 @@
 using namespace std::chrono_literals;
 
 static std::unique_ptr<Translator> translator;
-
 static ImVec2 origin(0, 0);
-static void*  rectangle_tex;
-static void*  line_tex;
-static void*  circle_tex;
-static void*  arrow_tex;
-static void*  pencil_tex;
+
+static std::array<void*, idx(ToolType::Count)> tool_textures;
 
 static std::vector<std::string> get_training_data_list(const std::string& path)
 {
@@ -150,11 +147,16 @@ Result<> ScreenshotTool::StartWindow()
     fit_to_screen(m_screenshot);
 
     // Since the creation of the screenshot texture was fine, suppose the other too
-    rectangle_tex = CreateTexture(nullptr, ICON_SQUARE_RGBA, ICON_SQUARE_W, ICON_SQUARE_H).get();
-    line_tex      = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
-    circle_tex    = CreateTexture(nullptr, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
-    arrow_tex     = CreateTexture(nullptr, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
-    pencil_tex    = CreateTexture(nullptr, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
+    tool_textures[idx(ToolType::Rectangle)] =
+        CreateTexture(nullptr, ICON_SQUARE_RGBA, ICON_SQUARE_W, ICON_SQUARE_H).get();
+    tool_textures[idx(ToolType::RectangleFilled)] =
+        CreateTexture(nullptr, ICON_RECT_FILLED_RGBA, ICON_RECT_FILLED_W, ICON_RECT_FILLED_H).get();
+    tool_textures[idx(ToolType::Line)]   = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
+    tool_textures[idx(ToolType::Circle)] = CreateTexture(nullptr, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
+    tool_textures[idx(ToolType::CircleFilled)] =
+        CreateTexture(nullptr, ICON_CIRCLE_FILLED_RGBA, ICON_CIRCLE_FILLED_W, ICON_CIRCLE_FILLED_H).get();
+    tool_textures[idx(ToolType::Arrow)]  = CreateTexture(nullptr, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
+    tool_textures[idx(ToolType::Pencil)] = CreateTexture(nullptr, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
 
     return Ok();
 }
@@ -1150,11 +1152,13 @@ void ScreenshotTool::DrawAnnotationToolbar()
         ImGui::SameLine();
     };
 
-    DrawSetButton(ToolType::Arrow, "##Arrow", arrow_tex);
-    DrawSetButton(ToolType::Rectangle, "##Rectangle", rectangle_tex);
-    DrawSetButton(ToolType::Circle, "##Circle", circle_tex);
-    DrawSetButton(ToolType::Line, "##Line", line_tex);
-    DrawSetButton(ToolType::Pencil, "##Pencil", pencil_tex);
+    DrawSetButton(ToolType::Arrow, "##Arrow", tool_textures[idx(ToolType::Arrow)]);
+    DrawSetButton(ToolType::Rectangle, "##Rectangle", tool_textures[idx(ToolType::Rectangle)]);
+    DrawSetButton(ToolType::RectangleFilled, "##Rectangle_filled", tool_textures[idx(ToolType::RectangleFilled)]);
+    DrawSetButton(ToolType::Circle, "##Circle", tool_textures[idx(ToolType::Circle)]);
+    DrawSetButton(ToolType::CircleFilled, "##Circle_filled", tool_textures[idx(ToolType::CircleFilled)]);
+    DrawSetButton(ToolType::Line, "##Line", tool_textures[idx(ToolType::Line)]);
+    DrawSetButton(ToolType::Pencil, "##Pencil", tool_textures[idx(ToolType::Pencil)]);
 
     ImGui::Separator();
 
@@ -1180,11 +1184,24 @@ void ScreenshotTool::DrawAnnotations()
         draw_list->AddRect(min, max, ann.color, 0.0f, 0, t);
     };
 
+    auto draw_rectangle_filled = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2) {
+        ImVec2 min(std::min(p1.x, p2.x), std::min(p1.y, p2.y));
+        ImVec2 max(std::max(p1.x, p2.x), std::max(p1.y, p2.y));
+        draw_list->AddRectFilled(min, max, ann.color, 0.0f, 0);
+    };
+
     auto draw_circle = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
         float dx     = p2.x - p1.x;
         float dy     = p2.y - p1.y;
         float radius = std::sqrt(dx * dx + dy * dy);
         draw_list->AddCircle(p1, radius, ann.color, 0, t);
+    };
+
+    auto draw_circle_filled = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2) {
+        float dx     = p2.x - p1.x;
+        float dy     = p2.y - p1.y;
+        float radius = std::sqrt(dx * dx + dy * dy);
+        draw_list->AddCircleFilled(p1, radius, ann.color, 0);
     };
 
     auto draw_pencil = [&](const annotation_t& ann, const float t) {
@@ -1231,11 +1248,13 @@ void ScreenshotTool::DrawAnnotations()
 
         switch (ann.type)
         {
-            case ToolType::Line:      draw_line(ann, p1, p2, t); break;
-            case ToolType::Arrow:     draw_arrow(ann, p1, p2, t); break;
-            case ToolType::Rectangle: draw_rectangle(ann, p1, p2, t); break;
-            case ToolType::Circle:    draw_circle(ann, p1, p2, t); break;
-            case ToolType::Pencil:    draw_pencil(ann, t); break;
+            case ToolType::Line:            draw_line(ann, p1, p2, t); break;
+            case ToolType::Arrow:           draw_arrow(ann, p1, p2, t); break;
+            case ToolType::Rectangle:       draw_rectangle(ann, p1, p2, t); break;
+            case ToolType::RectangleFilled: draw_rectangle_filled(ann, p1, p2); break;
+            case ToolType::Circle:          draw_circle(ann, p1, p2, t); break;
+            case ToolType::CircleFilled:    draw_circle_filled(ann, p1, p2); break;
+            case ToolType::Pencil:          draw_pencil(ann, t); break;
 
             default: break;
         }
@@ -1250,11 +1269,13 @@ void ScreenshotTool::DrawAnnotations()
 
         switch (m_current_annotation.type)
         {
-            case ToolType::Line:      draw_line(m_current_annotation, p1, p2, t); break;
-            case ToolType::Arrow:     draw_arrow(m_current_annotation, p1, p2, t); break;
-            case ToolType::Rectangle: draw_rectangle(m_current_annotation, p1, p2, t); break;
-            case ToolType::Circle:    draw_circle(m_current_annotation, p1, p2, t); break;
-            case ToolType::Pencil:    draw_pencil(m_current_annotation, t); break;
+            case ToolType::Line:            draw_line(m_current_annotation, p1, p2, t); break;
+            case ToolType::Arrow:           draw_arrow(m_current_annotation, p1, p2, t); break;
+            case ToolType::Rectangle:       draw_rectangle(m_current_annotation, p1, p2, t); break;
+            case ToolType::RectangleFilled: draw_rectangle_filled(m_current_annotation, p1, p2); break;
+            case ToolType::Circle:          draw_circle(m_current_annotation, p1, p2, t); break;
+            case ToolType::CircleFilled:    draw_circle_filled(m_current_annotation, p1, p2); break;
+            case ToolType::Pencil:          draw_pencil(m_current_annotation, t); break;
 
             default: break;
         }
@@ -1275,11 +1296,8 @@ void ScreenshotTool::Cancel()
     };
 
     delete_texture(m_texture_id);
-    delete_texture(line_tex);
-    delete_texture(pencil_tex);
-    delete_texture(rectangle_tex);
-    delete_texture(circle_tex);
-    delete_texture(arrow_tex);
+    for (auto& tex : tool_textures)
+        delete_texture(tex);
 
     // (just clears our references, not the actual ImGui fonts)
     m_font_cache.clear();
