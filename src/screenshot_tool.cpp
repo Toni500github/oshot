@@ -134,6 +134,7 @@ Result<> ScreenshotTool::Start()
         return Err("Failed to do data with screenshot: " + result.error().value);
 
     m_screenshot = std::move(result.get());
+    m_tool_thickness.fill(3.0f);
     return Ok();
 }
 
@@ -332,7 +333,7 @@ void ScreenshotTool::HandleAnnotationInput()
         m_current_annotation.start     = { mouse_pos.x, mouse_pos.y };
         m_current_annotation.end       = m_current_annotation.start;
         m_current_annotation.color     = m_current_color;
-        m_current_annotation.thickness = m_tool_thickness[m_current_tool];
+        m_current_annotation.thickness = m_tool_thickness[idx(m_current_tool)];
         m_current_annotation.points.clear();
 
         if (m_current_tool == ToolType::Pencil)
@@ -364,7 +365,9 @@ void ScreenshotTool::HandleAnnotationInput()
         // Only add annotation if it has meaningful size or points
         bool should_add = false;
         if (m_current_tool == ToolType::Pencil)
-            should_add = m_current_annotation.points.size() > 1;
+        {
+            should_add = (m_current_annotation.points.size() > 1);
+        }
         else
         {
             float dx   = m_current_annotation.end.x - m_current_annotation.start.x;
@@ -1111,8 +1114,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
         // Right-click popup on this item
         if (selected && ImGui::BeginPopupContextItem())
         {
-            if (m_tool_thickness[m_current_tool] < 1.0)
-                m_tool_thickness[m_current_tool] = 1.0;
+            m_tool_thickness[idx(m_current_tool)] = std::clamp(m_tool_thickness[idx(m_current_tool)], 1.0f, 10.0f);
 
             static ImVec4              color(1, 0, 0, 1);
             static ImGuiColorEditFlags color_picker_flags = ImGuiColorEditFlags_AlphaBar;
@@ -1120,7 +1122,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
             ImGui::TextUnformatted("Annotation Settings");
             ImGui::Separator();
             ImGui::SetNextItemWidth(100);
-            ImGui::SliderFloat("##thickness", &m_tool_thickness[m_current_tool], 1.0f, 10.0f, "%.2f");
+            ImGui::SliderFloat("##thickness", &m_tool_thickness[idx(m_current_tool)], 1.0f, 10.0f, "%.2f");
             ImGui::SameLine();
             ImGui::TextUnformatted("Thickness");
 
@@ -1166,62 +1168,74 @@ void ScreenshotTool::DrawAnnotationToolbar()
 void ScreenshotTool::DrawAnnotations()
 {
     ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
+    const float dpi       = m_io.DisplayFramebufferScale.x;
+
+    auto draw_line = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
+        draw_list->AddLine(p1, p2, ann.color, t);
+    };
+
+    auto draw_rectangle = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
+        ImVec2 min(std::min(p1.x, p2.x), std::min(p1.y, p2.y));
+        ImVec2 max(std::max(p1.x, p2.x), std::max(p1.y, p2.y));
+        draw_list->AddRect(min, max, ann.color, 0.0f, 0, t);
+    };
+
+    auto draw_circle = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
+        float dx     = p2.x - p1.x;
+        float dy     = p2.y - p1.y;
+        float radius = std::sqrt(dx * dx + dy * dy);
+        draw_list->AddCircle(p1, radius, ann.color, 0, t);
+    };
+
+    auto draw_pencil = [&](const annotation_t& ann, const float t) {
+        if (ann.points.size() >= 2)
+        {
+            std::vector<ImVec2> pts;
+            pts.reserve(ann.points.size());
+            for (const auto& p : ann.points)
+                pts.emplace_back(p.x, p.y);
+            draw_list->AddPolyline(pts.data(), static_cast<int>(pts.size()), ann.color, ImDrawFlags_None, t);
+        }
+    };
+
+    auto draw_arrow = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
+        ImVec2 v(p2.x - p1.x, p2.y - p1.y);
+        float  len = sqrtf(v.x * v.x + v.y * v.y);
+        if (len < 1.0f)
+            return;
+
+        ImVec2 dir(v.x / len, v.y / len);
+        ImVec2 perp(-dir.y, dir.x);  // unit perpendicular
+
+        float head_len = 6.0f * t;
+        float head_w   = 4.0f * t;
+
+        head_len = std::min(head_len, len * 0.6f);
+
+        ImVec2 base(p2.x - dir.x * head_len, p2.y - dir.y * head_len);
+        ImVec2 left(base.x + perp.x * (head_w * 0.5f), base.y + perp.y * (head_w * 0.5f));
+        ImVec2 right(base.x - perp.x * (head_w * 0.5f), base.y - perp.y * (head_w * 0.5f));
+
+        // shaft
+        draw_list->AddLine(p1, base, ann.color, t);
+
+        // head
+        draw_list->AddTriangleFilled(p2, left, right, ann.color);
+    };
 
     for (const auto& ann : m_annotations)
     {
-        ImVec2 p1(ann.start.x, ann.start.y);
-        ImVec2 p2(ann.end.x, ann.end.y);
+        const ImVec2 p1(ann.start.x, ann.start.y);
+        const ImVec2 p2(ann.end.x, ann.end.y);
+        const float  t = ann.thickness * dpi;
 
         switch (ann.type)
         {
-            case ToolType::Line: draw_list->AddLine(p1, p2, ann.color, ann.thickness); break;
-
-            case ToolType::Arrow:
-            {
-                draw_list->AddLine(p1, p2, ann.color, ann.thickness);
-
-                // Draw arrowhead
-                float dx  = p2.x - p1.x;
-                float dy  = p2.y - p1.y;
-                float len = std::sqrt(dx * dx + dy * dy);
-                if (len > 0.1f)
-                {
-                    dx /= len;
-                    dy /= len;
-
-                    float  arrow_size = 15.0f + ann.thickness;
-                    ImVec2 arrow_tip  = p2;
-                    ImVec2 arrow_left(p2.x - arrow_size * dx + arrow_size * 0.5f * dy,
-                                      p2.y - arrow_size * dy - arrow_size * 0.5f * dx);
-                    ImVec2 arrow_right(p2.x - arrow_size * dx - arrow_size * 0.5f * dy,
-                                       p2.y - arrow_size * dy + arrow_size * 0.5f * dx);
-
-                    draw_list->AddTriangleFilled(arrow_tip, arrow_left, arrow_right, ann.color);
-                }
-                break;
-            }
-
-            case ToolType::Rectangle: draw_list->AddRect(p1, p2, ann.color, 0.0f, 0, ann.thickness); break;
-
-            case ToolType::Circle:
-            {
-                float dx     = p2.x - p1.x;
-                float dy     = p2.y - p1.y;
-                float radius = std::sqrt(dx * dx + dy * dy);
-                draw_list->AddCircle(p1, radius, ann.color, 0, ann.thickness);
-                break;
-            }
-
-            case ToolType::Pencil:
-            {
-                for (size_t i = 1; i < ann.points.size(); ++i)
-                {
-                    ImVec2 pt1(ann.points[i - 1].x, ann.points[i - 1].y);
-                    ImVec2 pt2(ann.points[i].x, ann.points[i].y);
-                    draw_list->AddLine(pt1, pt2, ann.color, ann.thickness);
-                }
-                break;
-            }
+            case ToolType::Line:      draw_line(ann, p1, p2, t); break;
+            case ToolType::Arrow:     draw_arrow(ann, p1, p2, t); break;
+            case ToolType::Rectangle: draw_rectangle(ann, p1, p2, t); break;
+            case ToolType::Circle:    draw_circle(ann, p1, p2, t); break;
+            case ToolType::Pencil:    draw_pencil(ann, t); break;
 
             default: break;
         }
@@ -1230,62 +1244,17 @@ void ScreenshotTool::DrawAnnotations()
     // Render current annotation being drawn
     if (m_is_drawing)
     {
-        ImVec2 p1(m_current_annotation.start.x, m_current_annotation.start.y);
-        ImVec2 p2(m_current_annotation.end.x, m_current_annotation.end.y);
+        ImVec2      p1(m_current_annotation.start.x, m_current_annotation.start.y);
+        ImVec2      p2(m_current_annotation.end.x, m_current_annotation.end.y);
+        const float t = m_current_annotation.thickness * dpi;
 
         switch (m_current_annotation.type)
         {
-            case ToolType::Line:
-                draw_list->AddLine(p1, p2, m_current_annotation.color, m_current_annotation.thickness);
-                break;
-
-            case ToolType::Arrow:
-            {
-                draw_list->AddLine(p1, p2, m_current_annotation.color, m_current_annotation.thickness);
-
-                float dx  = p2.x - p1.x;
-                float dy  = p2.y - p1.y;
-                float len = std::sqrt(dx * dx + dy * dy);
-                if (len > 0.1f)
-                {
-                    dx /= len;
-                    dy /= len;
-
-                    float  arrow_size = 15.0f + m_current_annotation.thickness;
-                    ImVec2 arrow_tip  = p2;
-                    ImVec2 arrow_left(p2.x - arrow_size * dx + arrow_size * 0.5f * dy,
-                                      p2.y - arrow_size * dy - arrow_size * 0.5f * dx);
-                    ImVec2 arrow_right(p2.x - arrow_size * dx - arrow_size * 0.5f * dy,
-                                       p2.y - arrow_size * dy + arrow_size * 0.5f * dx);
-
-                    draw_list->AddTriangleFilled(arrow_tip, arrow_left, arrow_right, m_current_annotation.color);
-                }
-                break;
-            }
-
-            case ToolType::Rectangle:
-                draw_list->AddRect(p1, p2, m_current_annotation.color, 0.0f, 0, m_current_annotation.thickness);
-                break;
-
-            case ToolType::Circle:
-            {
-                float dx     = p2.x - p1.x;
-                float dy     = p2.y - p1.y;
-                float radius = std::sqrt(dx * dx + dy * dy);
-                draw_list->AddCircle(p1, radius, m_current_annotation.color, 0, m_current_annotation.thickness);
-                break;
-            }
-
-            case ToolType::Pencil:
-            {
-                for (size_t i = 1; i < m_current_annotation.points.size(); ++i)
-                {
-                    ImVec2 pt1(m_current_annotation.points[i - 1].x, m_current_annotation.points[i - 1].y);
-                    ImVec2 pt2(m_current_annotation.points[i].x, m_current_annotation.points[i].y);
-                    draw_list->AddLine(pt1, pt2, m_current_annotation.color, m_current_annotation.thickness);
-                }
-                break;
-            }
+            case ToolType::Line:      draw_line(m_current_annotation, p1, p2, t); break;
+            case ToolType::Arrow:     draw_arrow(m_current_annotation, p1, p2, t); break;
+            case ToolType::Rectangle: draw_rectangle(m_current_annotation, p1, p2, t); break;
+            case ToolType::Circle:    draw_circle(m_current_annotation, p1, p2, t); break;
+            case ToolType::Pencil:    draw_pencil(m_current_annotation, t); break;
 
             default: break;
         }

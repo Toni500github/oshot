@@ -14,14 +14,15 @@
 #include "screen_capture.hpp"
 #include "text_extraction.hpp"
 
-enum class ToolType
+enum class ToolType : size_t
 {
     kNone,
     Arrow,
     Rectangle,
     Circle,
     Line,
-    Pencil
+    Pencil,
+    Count
 };
 
 enum class ToolState
@@ -99,6 +100,13 @@ struct annotation_t
     uint32_t             color     = 0xFF0000FF;  // RGBA
     float                thickness = 3.0f;
 };
+
+template <typename E>
+constexpr size_t idx(E e) noexcept
+{
+    static_assert(std::is_enum_v<E>);
+    return static_cast<size_t>(e);
+}
 
 class ScreenshotTool
 {
@@ -186,12 +194,12 @@ private:
 
     ImGuiIO dummy;
 
-    ToolType                            m_current_tool = ToolType::kNone;
-    std::vector<annotation_t>           m_annotations;
-    annotation_t                        m_current_annotation;
-    bool                                m_is_drawing    = false;
-    uint32_t                            m_current_color = 0xFF0000FF;
-    std::unordered_map<ToolType, float> m_tool_thickness;
+    ToolType                                m_current_tool = ToolType::kNone;
+    std::vector<annotation_t>               m_annotations;
+    annotation_t                            m_current_annotation;
+    bool                                    m_is_drawing    = false;
+    uint32_t                                m_current_color = 0xFF0000FF;
+    std::array<float, idx(ToolType::Count)> m_tool_thickness;
 
     void HandleSelectionInput();
     void HandleResizeInput();
