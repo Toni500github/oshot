@@ -60,6 +60,8 @@
 #endif
 // clang-format on
 
+int g_lock_sock = -1;
+
 #if __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
 {
@@ -145,8 +147,6 @@ int get_screen_dpi()
     return 96;  // fallback
 }
 #else
-static int g_lock_sock = -1;
-
 bool acquire_tray_lock()
 {
     g_lock_sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -161,7 +161,7 @@ bool acquire_tray_lock()
     int yes = 1;
     setsockopt(g_lock_sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 
-    if (bind(g_lock_sock, (sockaddr*)&addr, sizeof(addr)) < 0)
+    if (bind(g_lock_sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
     {
         close(g_lock_sock);
         g_lock_sock = -1;

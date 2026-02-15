@@ -5,11 +5,13 @@
 
 #include <algorithm>
 #include <array>
+#include <future>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -25,6 +27,7 @@
 #include "imgui/imgui_stdlib.h"
 #include "langs.hpp"
 #include "screen_capture.hpp"
+#include "socket.hpp"
 #include "tinyfiledialogs.h"
 #include "tool_icons.h"
 #include "translation.hpp"
@@ -37,7 +40,7 @@
 using namespace std::chrono_literals;
 
 static std::unique_ptr<Translator> translator;
-static ImVec2 origin(0, 0);
+static ImVec2                      origin(0, 0);
 
 static std::array<void*, idx(ToolType::Count)> tool_textures;
 
@@ -104,10 +107,8 @@ static ImVec4 get_confidence_color(const int confidence)
 Result<> ScreenshotTool::Start()
 {
     translator = std::make_unique<Translator>();
+    g_sender   = std::make_unique<SocketSender>();
     Result<capture_result_t> result{ Err() };
-
-    SessionType type = get_session_type();
-    g_clipboard      = std::make_unique<Clipboard>(type);
 
     if (!g_config->Runtime.source_file.empty())
     {
@@ -118,7 +119,7 @@ Result<> ScreenshotTool::Start()
         if (g_config->File.delay > 0)
             std::this_thread::sleep_for(std::chrono::milliseconds(g_config->File.delay));
 
-        switch (type)
+        switch (get_session_type())
         {
             case SessionType::X11:     result = capture_full_screen_x11(); break;
             case SessionType::Wayland: result = capture_full_screen_wayland(); break;
@@ -137,8 +138,13 @@ Result<> ScreenshotTool::Start()
 
 Result<> ScreenshotTool::StartWindow()
 {
-    m_io                     = ImGui::GetIO();
-    m_state                  = ToolState::Selecting;
+    m_io    = ImGui::GetIO();
+    m_state = ToolState::Selecting;
+
+    auto v = std::async(std::launch::async, [&] {
+        return g_sender->Start();  // async because of blocking connect()
+    });
+
     const Result<void*>& res = CreateTexture(m_texture_id, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
     if (!res.ok())
         return Err("Failed create openGL texture: " + res.error().value);

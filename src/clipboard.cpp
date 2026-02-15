@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "clip/clip.h"
+#include "socket.hpp"
 #include "tiny-process-library/process.hpp"
 
 #define SVPNG_LINKAGE inline
@@ -19,6 +20,13 @@ Result<> Clipboard::CopyText(const std::string& text)
     // and fuck your stupid standards that nobody wants to follow
     if (m_session != SessionType::Wayland)
     {
+        if (!g_is_clipboard_server)
+        {
+            if (g_sender->Send(text))
+                return Ok();
+            return Err("Failed to send");
+        }
+
         if (clip::set_text(text))
             return Ok();
         return Err("Failed to copy text into clipboard");
@@ -61,6 +69,24 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
         if (proc.get_exit_status() == 0)
             return Ok();
         return Err("Failed to copy image into clipboard");
+    }
+
+    if (!g_is_clipboard_server)
+    {
+        const uint32_t w_be = htonl(static_cast<uint32_t>(cap.w));
+        const uint32_t h_be = htonl(static_cast<uint32_t>(cap.h));
+
+        const size_t         size = static_cast<size_t>(cap.w) * cap.h * 4;
+        std::vector<uint8_t> payload;
+        payload.resize(8 + size);
+
+        std::memcpy(payload.data() + 0, &w_be, 4);
+        std::memcpy(payload.data() + 4, &h_be, 4);
+        std::memcpy(payload.data() + 8, cap.view().data(), size);
+
+        if (g_sender->Send(SendMsg::Image, payload.data(), payload.size()))
+            return Ok();
+        return Err("Failed to send");
     }
 
     clip::image_spec spec;

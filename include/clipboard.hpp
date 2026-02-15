@@ -17,6 +17,7 @@ private:
     SessionType m_session;
 };
 
+extern bool                       g_is_clipboard_server;
 extern std::unique_ptr<Clipboard> g_clipboard;
 
 #endif  // !_CLIPBOARD_HPP_

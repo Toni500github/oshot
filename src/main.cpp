@@ -10,9 +10,12 @@
 #include <memory>
 #include <mutex>
 #include <system_error>
+#include <utility>
 
 #ifdef WIN32
 #  include <shellapi.h>  // CommandLineToArgvW
+#else
+#  include <netinet/in.h>
 #endif
 
 #include "fmt/base.h"
@@ -35,6 +38,8 @@
 #include "oshot_png.hpp"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
+#include "socket.hpp"
+#include "switch_fnv1a.hpp"
 #include "util.hpp"
 
 // [Win32] Our example includes a copy of glfw3.lib pre-compiled with VS2010 to maximize ease of testing and
@@ -65,6 +70,7 @@
 std::deque<std::string>    g_dropped_paths;
 std::unique_ptr<Config>    g_config;
 std::unique_ptr<Clipboard> g_clipboard;
+bool                       g_is_clipboard_server = false;
 int                        g_scr_w{}, g_scr_h{};
 FILE*                      g_fp_log;
 
@@ -100,6 +106,20 @@ static constexpr void print_languages()
     for (const auto& [code, name] : GOOGLE_TRANSLATE_LANGUAGES_ARRAY)
         fmt::print(FMT_COMPILE("{}: {}\n"), name, code);
     std::exit(EXIT_SUCCESS);
+}
+
+static bool recv_all(int fd, void* dst, size_t n)
+{
+    uint8_t* p = static_cast<uint8_t*>(dst);
+    while (n)
+    {
+        const ssize_t r = ::recv(fd, p, n, 0);
+        if (r <= 0)
+            return false;
+        p += static_cast<size_t>(r);
+        n -= static_cast<size_t>(r);
+    }
+    return true;
 }
 
 // clang-format off
@@ -330,7 +350,8 @@ int main(int argc, char* argv[])
     const std::string& configFile     = parse_config_path(argc, argv, configDir).string();
     const std::string& imgui_ini_path = configDir + "/imgui.ini";
 
-    g_config = std::make_unique<Config>(configFile, configDir);
+    g_clipboard = std::make_unique<Clipboard>(get_session_type());
+    g_config    = std::make_unique<Config>(configFile, configDir);
     if (!parseargs(argc, argv, configFile))
         return EXIT_FAILURE;
 
@@ -339,10 +360,71 @@ int main(int argc, char* argv[])
     if (!g_config->Runtime.only_launch_tray)
         return main_tool(imgui_ini_path);
 
+    g_is_clipboard_server = true;
+
     if (!acquire_tray_lock())
         return EXIT_FAILURE;
 
     std::thread worker(capture_worker, imgui_ini_path);
+
+#ifndef _WIN32
+    std::thread ipc([&] {
+        while (!quit.load())
+        {
+            const int client = ::accept(g_lock_sock, nullptr, nullptr);
+            if (client < 0)
+            {
+                if (quit.load())
+                    break;
+                continue;
+            }
+
+            char     type    = 0;
+            uint32_t net_len = 0;
+
+            bool ok = recv_all(client, &type, 1) && recv_all(client, &net_len, sizeof(net_len));
+
+            const uint32_t       len = ntohl(net_len);
+            std::vector<uint8_t> payload;
+            payload.resize(len);
+
+            if (ok && len > 0)
+                ok = recv_all(client, payload.data(), payload.size());
+
+            ::close(client);
+
+            if (!ok)
+                continue;
+
+            if (type == 'T')
+            {
+                std::string text(payload.begin(), payload.end());
+                g_clipboard->CopyText(text);
+            }
+            else if (type == 'I')
+            {
+                if (payload.size() < 8)
+                    continue;
+
+                uint32_t w_be = 0, h_be = 0;
+                std::memcpy(&w_be, payload.data() + 0, 4);
+                std::memcpy(&h_be, payload.data() + 4, 4);
+
+                const int w = static_cast<int>(ntohl(w_be));
+                const int h = static_cast<int>(ntohl(h_be));
+                if (w <= 0 || h <= 0)
+                    continue;
+
+                const size_t expected = static_cast<size_t>(w) * h * 4;
+                if (payload.size() != expected + 8)
+                    continue;
+
+                capture_result_t cap{ std::move(payload), w, h };
+                g_clipboard->CopyImage(cap);
+            }
+        }
+    });
+#endif
 
 #ifdef _WIN32
     Tray::Tray tray("oshot", "oshot.ico");
@@ -363,19 +445,32 @@ int main(int argc, char* argv[])
         if (!do_capture)
         {
             do_capture = true;
-            cv.notify_one();
+            cv.notify_all();
         }
     }));
 
     tray.addEntry(Tray::Button("Quit", [&] {
         quit.store(true);
-        cv.notify_one();
+#ifndef _WIN32
+        if (g_lock_sock >= 0)
+        {
+            ::shutdown(g_lock_sock, SHUT_RDWR);
+            ::close(g_lock_sock);
+            g_lock_sock = -1;
+        }
+#endif
+        cv.notify_all();
         tray.exit();
     }));
 
     tray.run();
 
+    // Quitted the tray
     worker.join();
+#ifndef _WIN32
+    if (ipc.joinable())
+        ipc.join();
+#endif
 
     return EXIT_SUCCESS;
 }
@@ -543,6 +638,8 @@ int main_tool(const std::string imgui_ini_path)
 
     glfwDestroyWindow(window);
     glfwTerminate();
+
+    g_sender->Close();
 
     if (g_fp_log && g_fp_log != stdout)
         std::fclose(g_fp_log);
