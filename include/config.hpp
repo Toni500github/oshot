@@ -181,11 +181,12 @@ allow-edit = false
 # Leave/Make it empty, or commment it, to use ImGUI default font.
 font = "arial.ttf"
 
+# Translation-only
 # These sections are dedicated for being able to display languages with their appropriated fonts.
 # based on the language code, you can write a table (e.g [lang.en-us]) and
 # put a variable called "font" which can be an absolute path or just the name of the font.
-#[lang.en-us]
-#font = "DejaVuSans.ttf" # Or C:\\Windows\\Fonts\\DejaVuSans.ttf or ~/.fonts/DejaVuSans.ttf
+[lang.en-us]
+font = "DejaVuSans.ttf" # Or C:\\Windows\\Fonts\\DejaVuSans.ttf or ~/.fonts/DejaVuSans.ttf
 )#";
 
 inline constexpr std::string_view oshot_help = (R"(Usage: oshot [OPTIONS]...

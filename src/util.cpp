@@ -435,14 +435,45 @@ std::filesystem::path get_font_path(const std::string& font)
         "~/.local/share/fonts/",
     };
 #endif
+
     if (std::filesystem::path(font).is_absolute())
         return font;
 
-    for (const std::string_view path : default_search_paths)
+    // Direct join (fast)
+    for (const std::string_view root_sv : default_search_paths)
     {
-        const std::string& font_path = expand_var(fmt::format(FMT_COMPILE("{}{}"), path, font));
-        if (std::filesystem::exists(font_path))
-            return font_path;
+        const std::filesystem::path& root      = expand_var(std::string(root_sv));
+        const std::filesystem::path& candidate = root / font;
+        std::error_code       ec;
+        if (std::filesystem::exists(candidate, ec) && !ec)
+            return candidate;
+    }
+
+    // Recursive filename match (correct)
+    for (const std::string_view root_sv : default_search_paths)
+    {
+        const std::filesystem::path& root = expand_var(std::string(root_sv));
+        std::error_code       ec;
+        if (!std::filesystem::exists(root, ec) || ec)
+            continue;
+
+        for (std::filesystem::recursive_directory_iterator it(
+                 root, std::filesystem::directory_options::skip_permission_denied, ec);
+             it != std::filesystem::recursive_directory_iterator();
+             it.increment(ec))
+        {
+            if (ec)
+            {
+                ec.clear();
+                continue;
+            }
+            const auto& e = *it;
+            if (!e.is_regular_file(ec))
+                continue;
+
+            if (e.path().filename() == font)
+                return e.path();
+        }
     }
 
     return {};
