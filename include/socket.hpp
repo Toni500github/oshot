@@ -4,11 +4,7 @@
 #include <memory>
 #include <string>
 
-#ifdef _WIN32
-#  include <winsock2.h>
-#  include <ws2tcpip.h>
-#  pragma comment(lib, "ws2_32.lib")
-#else
+#ifndef _WIN32
 #  include <arpa/inet.h>
 #  include <netdb.h>
 #  include <sys/socket.h>
@@ -34,11 +30,7 @@ public:
     void Close();
 
 private:
-#ifdef _WIN32
-    size_t m_sock{};
-#else
-    int m_sock{};
-#endif
+    int  m_sock{};
     bool m_failed{};
 };
 

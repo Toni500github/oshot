@@ -11,20 +11,11 @@ std::unique_ptr<SocketSender> g_sender;
 
 bool SocketSender::Start(int port)
 {
-#ifdef _WIN32
-    WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
-        return false;
-#endif
+#ifndef _WIN32
 
     m_sock = socket(AF_INET, SOCK_STREAM, 0);
-#ifdef _WIN32
-    if (m_sock == INVALID_SOCKET)
-        return false;
-#else
     if (m_sock < 0)
         return false;
-#endif
 
     sockaddr_in serv_addr{};
     serv_addr.sin_family = AF_INET;
@@ -34,27 +25,26 @@ bool SocketSender::Start(int port)
 
     m_failed = (connect(m_sock, reinterpret_cast<struct sockaddr*>(&serv_addr), sizeof(serv_addr)) < 0);
 
-#ifdef _WIN32
-    if (m_failed)
-        error("connect to launcher failed: {}", WSAGetLastError());
-#else
     if (m_failed)
         error("connecting to launcher failed: {}", strerror(errno));
-#endif
 
     return !m_failed;
+#endif
 }
 
 bool SocketSender::Send(const std::string& text)
 {
+#ifndef _WIN32
     if (text.empty())
         return false;
 
     return Send(SendMsg::Text, text.c_str(), text.size());
+#endif
 }
 
 bool SocketSender::Send(SendMsg msg, const void* src, size_t size)
 {
+#ifndef _WIN32
     if (!src || size < 2)
         return false;
 
@@ -92,17 +82,12 @@ bool SocketSender::Send(SendMsg msg, const void* src, size_t size)
     }
 
     return true;
+#endif
 }
 
 void SocketSender::Close()
 {
-#ifdef _WIN32
-    if (m_sock != INVALID_SOCKET)
-    {
-        closesocket(m_sock);
-        m_sock = INVALID_SOCKET;
-    }
-#else
+#ifndef _WIN32
     if (m_sock >= 0)
     {
         close(m_sock);

@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <array>
-#include <future>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>

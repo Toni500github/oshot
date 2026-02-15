@@ -12,9 +12,7 @@
 #include <system_error>
 #include <utility>
 
-#ifdef WIN32
-#  include <shellapi.h>  // CommandLineToArgvW
-#else
+#ifndef _WIN32
 #  include <netinet/in.h>
 #endif
 
@@ -108,6 +106,7 @@ static constexpr void print_languages()
     std::exit(EXIT_SUCCESS);
 }
 
+#ifndef _WIN32
 static bool recv_all(int fd, void* dst, size_t n)
 {
     uint8_t* p = static_cast<uint8_t*>(dst);
@@ -121,6 +120,7 @@ static bool recv_all(int fd, void* dst, size_t n)
     }
     return true;
 }
+#endif
 
 // clang-format off
 // parseargs() but only for parsing the user config path trough args
