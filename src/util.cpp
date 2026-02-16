@@ -444,7 +444,7 @@ std::filesystem::path get_font_path(const std::string& font)
     {
         const std::filesystem::path& root      = expand_var(std::string(root_sv));
         const std::filesystem::path& candidate = root / font;
-        std::error_code       ec;
+        std::error_code              ec;
         if (std::filesystem::exists(candidate, ec) && !ec)
             return candidate;
     }
@@ -453,7 +453,7 @@ std::filesystem::path get_font_path(const std::string& font)
     for (const std::string_view root_sv : default_search_paths)
     {
         const std::filesystem::path& root = expand_var(std::string(root_sv));
-        std::error_code       ec;
+        std::error_code              ec;
         if (!std::filesystem::exists(root, ec) || ec)
             continue;
 
@@ -467,6 +467,7 @@ std::filesystem::path get_font_path(const std::string& font)
                 ec.clear();
                 continue;
             }
+
             const auto& e = *it;
             if (!e.is_regular_file(ec))
                 continue;

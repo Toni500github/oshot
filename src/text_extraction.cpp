@@ -205,7 +205,7 @@ Result<zbar_result_t> ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
         ret.symbologies[sym->get_type_name()]++;
     }
 
-    if (!ret.datas.empty() || !ret.symbologies.empty())
+    if (ret.datas.empty() || ret.symbologies.empty())
         return Err("Failed to decode barcode from image");
 
     // Prevent ZBar from freeing the buffer
