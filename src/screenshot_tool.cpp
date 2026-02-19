@@ -1462,6 +1462,9 @@ capture_result_t ScreenshotTool::GetFinalImage()
 
         switch (ann.type)
         {
+            case ToolType::kNone:
+            case ToolType::Count: break;
+
             case ToolType::Line:
             case ToolType::Arrow:
                 DrawLine(x1, y1, x2, y2, ann.color, ann.thickness);
@@ -1492,6 +1495,18 @@ capture_result_t ScreenshotTool::GetFinalImage()
                 DrawLine(x2, y2, x1, y2, ann.color, ann.thickness);
                 DrawLine(x1, y2, x1, y1, ann.color, ann.thickness);
                 break;
+
+            case ToolType::RectangleFilled:
+            {
+                int rx1 = std::min(x1, x2);
+                int rx2 = std::max(x1, x2);
+                int ry1 = std::min(y1, y2);
+                int ry2 = std::max(y1, y2);
+                for (int fy = ry1; fy <= ry2; ++fy)
+                    for (int fx = rx1; fx <= rx2; ++fx)
+                        SetPixel(fx, fy, ann.color);
+                break;
+            }
 
             case ToolType::Circle:
             {
@@ -1532,6 +1547,18 @@ capture_result_t ScreenshotTool::GetFinalImage()
                 break;
             }
 
+            case ToolType::CircleFilled:
+            {
+                int cx     = x1;
+                int cy     = y1;
+                int radius = static_cast<int>(std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)));
+                for (int fy = cy - radius; fy <= cy + radius; ++fy)
+                    for (int fx = cx - radius; fx <= cx + radius; ++fx)
+                        if ((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy) <= radius * radius)
+                            SetPixel(fx, fy, ann.color);
+                break;
+            }
+
             case ToolType::Pencil:
                 for (size_t i = 1; i < ann.points.size(); ++i)
                 {
@@ -1542,8 +1569,6 @@ capture_result_t ScreenshotTool::GetFinalImage()
                     DrawLine(px1, py1, px2, py2, ann.color, ann.thickness);
                 }
                 break;
-
-            default: break;
         }
     }
 
