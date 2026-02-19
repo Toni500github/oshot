@@ -207,7 +207,11 @@ void ScreenshotTool::RenderOverlay()
 
     if (m_state == ToolState::Selected)
     {
-        HandleAnnotationInput();
+        if (m_is_color_picking)
+            HandleColorPickerInput();
+        else
+            HandleAnnotationInput();
+
         DrawAnnotationToolbar();
     }
 
@@ -387,6 +391,52 @@ void ScreenshotTool::HandleAnnotationInput()
 
         m_current_annotation = annotation_t{};
     }
+}
+
+void ScreenshotTool::HandleColorPickerInput()
+{
+    ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
+
+    const ImVec2& mp = ImGui::GetMousePos();
+    const int     px = static_cast<int>(mp.x - m_image_origin.x);
+    const int     py = static_cast<int>(mp.y - m_image_origin.y);
+
+    const bool in_image = px >= 0 && px < m_screenshot.w && py >= 0 && py < m_screenshot.h;
+
+    // Show a color preview tooltip following the cursor
+    ImGui::BeginTooltip();
+    if (!in_image)
+    {
+        ImGui::TextUnformatted("Outside image");
+    }
+    else
+    {
+        const size_t  off = (static_cast<size_t>(py) * m_screenshot.w + px) * 4;
+        const uint8_t r   = m_screenshot.data[off + 0];
+        const uint8_t g   = m_screenshot.data[off + 1];
+        const uint8_t b   = m_screenshot.data[off + 2];
+        const uint8_t a   = m_screenshot.data[off + 3];
+
+        ImVec4 hovered_color(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
+        ImGui::ColorButton("##eyedropper_preview",
+                           hovered_color,
+                           ImGuiColorEditFlags_NoPicker | ImGuiColorEditFlags_AlphaPreview,
+                           ImVec2(48, 48));
+        ImGui::SameLine();
+        ImGui::Text("#%02X%02X%02X%02X\nR:%d G:%d B:%d A:%d ", r, g, b, a, r, g, b, a);
+
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        {
+            m_picker_color     = hovered_color;
+            m_current_color    = IM_COL32(r, g, b, a);
+            m_is_color_picking = false;
+        }
+    }
+    ImGui::EndTooltip();
+
+    // Cancel picking with right-click or Escape
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+        m_is_color_picking = false;
 }
 
 void ScreenshotTool::UpdateHandleHoverState()
@@ -1123,7 +1173,6 @@ void ScreenshotTool::DrawAnnotationToolbar()
         {
             m_tool_thickness[idx(m_current_tool)] = std::clamp(m_tool_thickness[idx(m_current_tool)], 1.0f, 10.0f);
 
-            static ImVec4              color(1, 0, 0, 1);
             static ImGuiColorEditFlags color_picker_flags = ImGuiColorEditFlags_AlphaBar;
 
             ImGui::TextUnformatted("Annotation Settings");
@@ -1148,9 +1197,18 @@ void ScreenshotTool::DrawAnnotationToolbar()
             ImGui::CheckboxFlags("Disable alpha edit", &color_picker_flags, ImGuiColorEditFlags_NoAlpha);
             if (!(color_picker_flags & ImGuiColorEditFlags_NoAlpha))
                 ImGui::CheckboxFlags("Show alpha bar", &color_picker_flags, ImGuiColorEditFlags_AlphaBar);
-            ImGui::ColorPicker4("Color", reinterpret_cast<float*>(&color), color_picker_flags);
 
-            m_current_color = ImGui::ColorConvertFloat4ToU32(color);
+            if (ImGui::Button("Pick from screen"))
+            {
+                m_is_color_picking = true;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            HelpMarker("Click anywhere on the screenshot to pick a color\n(Note: Won't detect annotations)");
+
+            ImGui::ColorPicker4("Color", reinterpret_cast<float*>(&m_picker_color), color_picker_flags);
+
+            m_current_color = ImGui::ColorConvertFloat4ToU32(m_picker_color);
             ImGui::EndPopup();
         }
 

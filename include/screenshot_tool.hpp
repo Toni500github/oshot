@@ -202,10 +202,13 @@ private:
     bool                                    m_is_drawing    = false;
     uint32_t                                m_current_color = 0xFF0000FF;
     std::array<float, idx(ToolType::Count)> m_tool_thickness;
+    ImVec4                                  m_picker_color{ 1, 0, 0, 1 };
+    bool                                    m_is_color_picking = false;
 
     void HandleSelectionInput();
     void HandleResizeInput();
     void HandleAnnotationInput();
+    void HandleColorPickerInput();
 
     void DrawDarkOverlay();
     void DrawAnnotations();
