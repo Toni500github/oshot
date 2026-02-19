@@ -18,23 +18,133 @@ static tesseract::PageSegMode choose_psm(int w, int h)
     if (g_config->Runtime.preferred_psm != 0)
         return static_cast<tesseract::PageSegMode>(g_config->Runtime.preferred_psm);
 
-    const int   area   = w * h;
-    const float aspect = (h > 0) ? float(w) / h : 1.0f;
+    const size_t area   = static_cast<size_t>(w) * h;
+    const float  aspect = (h > 0) ? static_cast<float>(w) / static_cast<float>(h) : 1.0f;
 
-    // Extremely small selections (icons, buttons, single words)
-    if (area < 20'000 && aspect < 2.0f)
+    // Single character: tiny and roughly square
+    if (area < 2'500 && aspect > 0.3f && aspect < 3.0f)
+        return tesseract::PSM_SINGLE_CHAR;
+
+    // Single word: small area, not excessively wide
+    if (area < 15'000 && aspect < 5.0f)
         return tesseract::PSM_SINGLE_WORD;
 
-    // Short, wide regions (menu entries, labels)
-    if (aspect > 4.0f && h < 120)
+    // Single line: wide-and-short, or very small height regardless of width
+    // Use relative height rather than a fixed pixel threshold so it scales with DPI
+    if (aspect > 4.0f && h < w / 4)
         return tesseract::PSM_SINGLE_LINE;
 
-    // Typical UI panels, paragraphs
-    if (area < 300'000)
-        return tesseract::PSM_SINGLE_BLOCK;
+    // Vertical text: tall and narrow (e.g. rotated sidebar labels)
+    if (aspect < 0.25f)
+        return tesseract::PSM_SINGLE_BLOCK_VERT_TEXT;
 
-    // Large regions / near-full window
-    return tesseract::PSM_AUTO;
+    // Large/sparse region (full screen, desktop, busy UI panel)
+    // Sparse text avoids Tesseract choking on whitespace-heavy layouts
+    if (area > 500'000)
+        return tesseract::PSM_SPARSE_TEXT;
+
+    // Mid-size blocks: paragraphs, dialog boxes, panels
+    return tesseract::PSM_SINGLE_BLOCK;
+}
+
+static PIX* preprocess_pix(PIX* src)
+{
+    // Remove alpha and convert to grayscale
+    // pixConvertRGBToGray doesn't handle 32bpp RGBA correctly
+    PIX* no_alpha = pixRemoveAlpha(src);  // returns new 24bpp RGB Pix
+    if (!no_alpha)
+        no_alpha = pixClone(src);
+
+    PIX* gray = pixConvertRGBToGray(no_alpha, 0.299f, 0.587f, 0.114f);
+    pixDestroy(&no_alpha);
+    if (!gray)
+        return pixClone(src);
+
+    // Detect dark background and invert
+    // Sample the average luminance of the grayscale image.
+    // If the mean pixel value is below 128, the background is dark, thus invert.
+    l_float32 mean_val = 0.f;
+    if (pixGetAverageMasked(gray, nullptr, 0, 0, 1, L_MEAN_ABSVAL, &mean_val) == 0 && mean_val < 128.f)
+    {
+        PIX* inverted = pixInvert(nullptr, gray);
+        if (inverted)
+        {
+            pixDestroy(&gray);
+            gray = inverted;
+        }
+    }
+
+    // Time to Deskew
+    PIX*      bin_for_skew = pixThresholdToBinary(gray, 128);
+    l_float32 angle = 0.f, conf = 0.f;
+    PIX*      result_gray = gray;
+
+    // Upscale tiny text before binarization (helps for <12px font sizes)
+    if (pixGetHeight(gray) < 200)
+    {
+        PIX* scaled = pixScale(gray, 2.0f, 2.0f);
+        if (scaled)
+        {
+            pixDestroy(&gray);
+            gray = result_gray = scaled;
+        }
+    }
+
+    if (bin_for_skew && pixFindSkew(bin_for_skew, &angle, &conf) == 0 && std::abs(angle) > 0.4f && conf > 1.5f)
+    {
+        l_float32 rad     = -angle * (static_cast<l_float32>(M_PI) / 180.f);
+        PIX*      rotated = pixRotate(gray, rad, L_ROTATE_AREA_MAP, L_BRING_IN_WHITE, 0, 0);
+        if (rotated)
+        {
+            pixDestroy(&gray);
+            result_gray = rotated;
+        }
+    }
+
+    if (bin_for_skew)
+        pixDestroy(&bin_for_skew);
+
+    // Sauvola binarization
+    // Increase whsize from 15->20 for terminal/code fonts which have thinner strokes
+    PIX* bin = nullptr;
+    if (pixSauvolaBinarize(result_gray, 20, 0.35f, 1, nullptr, nullptr, nullptr, &bin) != 0 || !bin)
+        bin = pixThresholdToBinary(result_gray, 128);
+
+    pixDestroy(&result_gray);
+    return bin;
+}
+
+static Pix* rgba_to_pix(std::span<const uint8_t> rgba, int w, int h)
+{
+    const size_t required = static_cast<size_t>(w) * h * 4;
+    if (rgba.size() < required)
+        return nullptr;
+
+    PIX* pix = pixCreate(w, h, 32);
+    if (!pix)
+        return nullptr;
+
+    const uint8_t* src    = rgba.data();
+    uint32_t*      dst    = pixGetData(pix);
+    const int      stride = pixGetWpl(pix);
+
+    for (int y = 0; y < h; ++y)
+    {
+        uint32_t* row = dst + y * stride;
+        for (int x = 0; x < w; ++x)
+        {
+            const uint8_t* p = src + (static_cast<size_t>(y) * w + x) * 4;
+            // Leptonica 32bpp word layout (big-endian word): R G B A
+            SET_DATA_FOUR_BYTES(row,
+                                x,
+                                (static_cast<uint32_t>(p[0]) << 24) |      // R
+                                    (static_cast<uint32_t>(p[1]) << 16) |  // G
+                                    (static_cast<uint32_t>(p[2]) << 8) |   // B
+                                    (static_cast<uint32_t>(p[3])));        // A
+        }
+    }
+
+    return pix;
 }
 
 OcrAPI::OcrAPI() : m_api(std::make_unique<tesseract::TessBaseAPI>())
@@ -69,7 +179,7 @@ Result<> OcrAPI::Configure(const char* data_path, const char* model, tesseract::
 }
 
 // From "  hello world  \n  " to "hello world"
-static void trim_in_place(std::string& s)
+static void trim(std::string& s)
 {
     auto not_ws = [](unsigned char c) { return !std::isspace(c); };
     s.erase(s.begin(), std::find_if(s.begin(), s.end(), not_ws));
@@ -90,15 +200,25 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
     if (cap.view().size() < required)
         return Err("Image size is larger than required");
 
-    tesseract::PageSegMode psm = choose_psm(cap.w, cap.h);
-    PixPtr                 pix = RgbaToPix(cap.view(), cap.w, cap.h);
-    if (!pix)
+    PixPtr raw_pix(rgba_to_pix(cap.view(), cap.w, cap.h));
+    if (!raw_pix)
         return Err("Failed to convert image into Pix format");
 
-    float scale = std::min(static_cast<float>(g_scr_w) / cap.w, static_cast<float>(g_scr_h) / cap.h);
+    // Preprocess: deskew + Sauvola binarize
+    // The result is 1bpp which makes Tesseract skip its own (worse) binarization
+    PixPtr pix(preprocess_pix(raw_pix.get()));
+    if (!pix)
+        return Err("Failed to preprocess image");
 
-    int effective_dpi = static_cast<int>(get_screen_dpi() * scale);
-    effective_dpi     = std::clamp(effective_dpi, 70, 300);
+    // Use the binarized pix dimensions for PSM (they may differ after deskew rotation)
+    const int proc_w = pixGetWidth(pix.get());
+    const int proc_h = pixGetHeight(pix.get());
+
+    tesseract::PageSegMode psm = choose_psm(proc_w, proc_h);
+
+    float scale         = std::min(static_cast<float>(g_scr_w) / cap.w, static_cast<float>(g_scr_h) / cap.h);
+    int   effective_dpi = static_cast<int>(get_screen_dpi() * scale);
+    effective_dpi       = std::clamp(effective_dpi, 150, 300);
 
     m_api->SetPageSegMode(psm);
     m_api->SetImage(pix.get());
@@ -113,7 +233,7 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
         return Err("Failed to get recognized text");
 
     std::string data(text.get());
-    trim_in_place(data);
+    trim(data);
     if (data.empty())
         return Err("String is empty");
 
@@ -123,7 +243,6 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
     {
         double sum   = 0.0;
         int    count = 0;
-
         do
         {
             float conf = ri->Confidence(tesseract::RIL_WORD);
@@ -135,6 +254,7 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
         } while (ri->Next(tesseract::RIL_WORD));
 
         ret.confidence = count ? static_cast<int>(std::round(sum / count)) : 0;
+        delete ri;
     }
     else
     {
@@ -142,38 +262,6 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
     }
 
     return Ok(std::move(ret));
-}
-
-OcrAPI::PixPtr OcrAPI::RgbaToPix(std::span<const uint8_t> rgba, int w, int h)
-{
-    const size_t required = static_cast<size_t>(w) * h * 4;
-    if (rgba.size() < required)
-        return PixPtr(nullptr);
-
-    PIX* pix = pixCreate(w, h, 32);
-    if (!pix)
-        return PixPtr(nullptr);
-
-    uint32_t* data   = pixGetData(pix);
-    int       stride = pixGetWpl(pix);
-
-    for (int y = 0; y < h; ++y)
-    {
-        for (int x = 0; x < w; ++x)
-        {
-            size_t      index = static_cast<size_t>(y) * w + x;
-            const auto* p     = &rgba[index * 4];
-            uint32_t*   dst   = data + y * stride + x;
-
-            // RGBA → Leptonica BGRA
-            *dst = (p[2] << 24) |  // B
-                   (p[1] << 16) |  // G
-                   (p[0] << 8) |   // R
-                   (p[3]);         // A
-        }
-    }
-
-    return PixPtr(pix);
 }
 
 // Zbar

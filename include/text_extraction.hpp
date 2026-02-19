@@ -5,10 +5,8 @@
 #include <tesseract/baseapi.h>
 #include <zbar.h>
 
-#include <cstdint>
 #include <memory>
 #include <optional>
-#include <span>
 #include <string>
 
 #include "screen_capture.hpp"
@@ -59,8 +57,6 @@ private:
     std::unique_ptr<tesseract::TessBaseAPI> m_api;
     std::optional<ocr_config_t>             m_config;
     bool                                    m_initialized = false;
-
-    static PixPtr RgbaToPix(std::span<const uint8_t> rgba, int w, int h);
 };
 
 struct zbar_result_t
