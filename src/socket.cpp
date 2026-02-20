@@ -12,7 +12,6 @@ std::unique_ptr<SocketSender> g_sender;
 bool SocketSender::Start(int port)
 {
 #ifndef _WIN32
-
     m_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (m_sock < 0)
         return false;
@@ -29,17 +28,17 @@ bool SocketSender::Start(int port)
         error("connecting to launcher failed: {}", strerror(errno));
 
     return !m_failed;
+#else
+    return true;
 #endif
 }
 
 bool SocketSender::Send(const std::string& text)
 {
-#ifndef _WIN32
     if (text.empty())
         return false;
 
     return Send(SendMsg::Text, text.c_str(), text.size());
-#endif
 }
 
 bool SocketSender::Send(SendMsg msg, const void* src, size_t size)
@@ -80,9 +79,8 @@ bool SocketSender::Send(SendMsg msg, const void* src, size_t size)
 
         sent += n;
     }
-
-    return true;
 #endif
+    return true;
 }
 
 void SocketSender::Close()

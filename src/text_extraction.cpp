@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <numbers>
 #include <utility>
 #include <vector>
 
@@ -92,7 +93,7 @@ static PIX* preprocess_pix(PIX* src)
 
     if (bin_for_skew && pixFindSkew(bin_for_skew, &angle, &conf) == 0 && std::abs(angle) > 0.4f && conf > 1.5f)
     {
-        l_float32 rad     = -angle * (static_cast<l_float32>(M_PI) / 180.f);
+        l_float32 rad     = -angle * (std::numbers::pi_v<l_float32> / 180.f);
         PIX*      rotated = pixRotate(gray, rad, L_ROTATE_AREA_MAP, L_BRING_IN_WHITE, 0, 0);
         if (rotated)
         {
