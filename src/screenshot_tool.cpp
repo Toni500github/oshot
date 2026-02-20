@@ -45,11 +45,11 @@ static std::array<void*, idx(ToolType::Count)> tool_textures;
 
 static std::vector<std::string> get_training_data_list(const std::string& path)
 {
-    if (!std::filesystem::exists(path))
+    if (!fs::exists(path))
         return {};
 
     std::vector<std::string> list;
-    for (auto const& dir_entry : std::filesystem::directory_iterator{ path })
+    for (auto const& dir_entry : fs::directory_iterator{ path })
         if (dir_entry.path().extension() == ".traineddata")
             list.push_back(dir_entry.path().stem().string());
     return list;

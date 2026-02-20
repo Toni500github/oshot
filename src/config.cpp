@@ -12,13 +12,13 @@
 
 Config::Config(const std::string& configFile, const std::string& configDir)
 {
-    if (!std::filesystem::exists(configDir))
+    if (!fs::exists(configDir))
     {
         warn(_("oshot config folder was not found, Creating folders at {}!"), configDir);
-        std::filesystem::create_directories(configDir);
+        fs::create_directories(configDir);
     }
 
-    if (!std::filesystem::exists(configFile))
+    if (!fs::exists(configFile))
     {
         warn(_("config file {} not found, generating new one"), configFile);
         GenerateConfig(configFile);
@@ -97,7 +97,7 @@ void Config::OverrideOption(const std::string& opt)
 
 void Config::GenerateConfig(const std::string& filename)
 {
-    if (std::filesystem::exists(filename))
+    if (fs::exists(filename))
     {
         if (!ask_user_yn(false, "WARNING: config file '{}' already exists. Do you want to overwrite it?", filename))
             std::exit(1);

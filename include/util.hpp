@@ -15,6 +15,7 @@
 #include "fmt/chrono.h"
 #include "fmt/color.h"
 
+namespace fs = std::filesystem;
 enum class SavingOp;
 
 #if defined(__linux__)
@@ -115,11 +116,11 @@ std::string select_image();
 
 bool acquire_tray_lock();
 
-std::filesystem::path get_font_path(const std::string& font);
-std::filesystem::path get_lang_font_path(const std::string& lang);
-std::filesystem::path get_home_config_dir();
-std::filesystem::path get_home_dir();
-std::filesystem::path get_config_dir();
+fs::path get_font_path(const std::string& font);
+fs::path get_lang_font_path(const std::string& lang);
+fs::path get_home_config_dir();
+fs::path get_home_dir();
+fs::path get_config_dir();
 
 Result<capture_result_t> load_image_rgba(const std::string& path);
 Result<>                 save_png(SavingOp op, const capture_result_t& img);

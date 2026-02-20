@@ -331,7 +331,7 @@ std::string replace_str(std::string& str, const std::string_view from, const std
     return str;
 }
 
-std::filesystem::path get_home_dir()
+fs::path get_home_dir()
 {
 #ifdef _WIN32
     if (const char* h = std::getenv("USERPROFILE"))
@@ -385,12 +385,12 @@ std::string expand_var(std::string ret, bool dont)
     return ret;
 }
 
-std::filesystem::path get_home_config_dir()
+fs::path get_home_config_dir()
 {
 #ifndef _WIN32
     const char* dir = std::getenv("XDG_CONFIG_HOME");
-    if (dir != NULL && dir[0] != '\0' && std::filesystem::exists(dir))
-        return std::filesystem::path(dir);
+    if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
+        return fs::path(dir);
     else
         return get_home_dir() / ".config";
 #else
@@ -408,19 +408,19 @@ std::filesystem::path get_home_config_dir()
         return narrowPath;
     }
     const char* dir = std::getenv("APPDATA");
-    if (dir != NULL && dir[0] != '\0' && std::filesystem::exists(dir))
-        return std::filesystem::path(dir);
+    if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
+        return fs::path(dir);
     else
         die("Failed to get %APPDATA% path");
 #endif
 }
 
-std::filesystem::path get_config_dir()
+fs::path get_config_dir()
 {
     return get_home_config_dir() / "oshot";
 }
 
-std::filesystem::path get_font_path(const std::string& font)
+fs::path get_font_path(const std::string& font)
 {
 #ifdef _WIN32
     static constexpr std::array<std::string_view, 2> default_search_paths = {
@@ -436,30 +436,29 @@ std::filesystem::path get_font_path(const std::string& font)
     };
 #endif
 
-    if (std::filesystem::path(font).is_absolute())
+    if (fs::path(font).is_absolute())
         return font;
 
     // Direct join (fast)
     for (const std::string_view root_sv : default_search_paths)
     {
-        const std::filesystem::path& root      = expand_var(std::string(root_sv));
-        const std::filesystem::path& candidate = root / font;
-        std::error_code              ec;
-        if (std::filesystem::exists(candidate, ec) && !ec)
+        const fs::path& root      = expand_var(std::string(root_sv));
+        const fs::path& candidate = root / font;
+        std::error_code ec;
+        if (fs::exists(candidate, ec) && !ec)
             return candidate;
     }
 
     // Recursive filename match (correct)
     for (const std::string_view root_sv : default_search_paths)
     {
-        const std::filesystem::path& root = expand_var(std::string(root_sv));
-        std::error_code              ec;
-        if (!std::filesystem::exists(root, ec) || ec)
+        const fs::path& root = expand_var(std::string(root_sv));
+        std::error_code ec;
+        if (!fs::exists(root, ec) || ec)
             continue;
 
-        for (std::filesystem::recursive_directory_iterator it(
-                 root, std::filesystem::directory_options::skip_permission_denied, ec);
-             it != std::filesystem::recursive_directory_iterator();
+        for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
+             it != fs::recursive_directory_iterator();
              it.increment(ec))
         {
             if (ec)
@@ -480,11 +479,11 @@ std::filesystem::path get_font_path(const std::string& font)
     return {};
 }
 
-std::filesystem::path get_lang_font_path(const std::string& lang)
+fs::path get_lang_font_path(const std::string& lang)
 {
     if (g_config->File.lang_fonts_paths.find(lang) != g_config->File.lang_fonts_paths.end())
     {
-        const std::filesystem::path font_path_config(g_config->File.lang_fonts_paths[lang]);
+        const fs::path font_path_config(g_config->File.lang_fonts_paths[lang]);
         if (font_path_config.is_absolute())
             return font_path_config;
 

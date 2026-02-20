@@ -126,7 +126,7 @@ static bool recv_all(int fd, void* dst, size_t n)
 // clang-format off
 // parseargs() but only for parsing the user config path trough args
 // and so we can directly construct Config
-static std::filesystem::path parse_config_path(int argc, char* argv[], const std::filesystem::path& configDir)
+static fs::path parse_config_path(int argc, char* argv[], const fs::path& configDir)
 {
     int opt = 0;
     int option_index = 0;
@@ -147,7 +147,7 @@ static std::filesystem::path parse_config_path(int argc, char* argv[], const std
                 break;
 
             case 'C':
-                if (!std::filesystem::exists(optarg))
+                if (!fs::exists(optarg))
                     die(_("config file '{}' doesn't exist"), optarg);
                 return optarg;
         }
@@ -156,7 +156,7 @@ static std::filesystem::path parse_config_path(int argc, char* argv[], const std
     return configDir / "config.toml";
 }
 
-static bool parseargs(int argc, char* argv[], const std::filesystem::path& configFile)
+static bool parseargs(int argc, char* argv[], const fs::path& configFile)
 {
     int opt = 0;
     int option_index = 0;
@@ -442,8 +442,8 @@ int main(int argc, char* argv[])
     Tray::Tray tray("oshot", "oshot.ico");
 #else
     std::error_code ec;
-    const auto&     path = std::filesystem::temp_directory_path() / "oshot.png";
-    std::filesystem::create_directories(path.parent_path(), ec);
+    const auto&     path = fs::temp_directory_path() / "oshot.png";
+    fs::create_directories(path.parent_path(), ec);
     std::ofstream out(path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
 
     out.write(reinterpret_cast<const char*>(oshot_png), static_cast<std::streamsize>(oshot_png_len));
