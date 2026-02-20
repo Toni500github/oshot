@@ -6,6 +6,7 @@
 #include <deque>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <ios>
 #include <memory>
 #include <mutex>
@@ -160,12 +161,12 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
     int opt = 0;
     int option_index = 0;
     opterr = 1; // re-enable since before we disabled for "invalid option" error
-    const char *optstring = "-Vhltd:C:f:";
+    const char *optstring = "-Vhlgd:C:f:";
     static const struct option opts[] = {
         {"version", no_argument,       0, 'V'},
         {"help",    no_argument,       0, 'h'},
         {"list",    no_argument,       0, 'l'},
-        {"tray",    no_argument,       0, 't'},
+        {"gui",     no_argument,       0, 'g'},
         {"delay",   required_argument, 0, 'd'},
         {"config",  required_argument, 0, 'C'},
         {"source",  required_argument, 0, 'f'},
@@ -198,8 +199,8 @@ static bool parseargs(int argc, char* argv[], const std::filesystem::path& confi
                 g_config->Runtime.source_file = optarg; break;
             case 'd':
                 g_config->OverrideOption("default.delay", std::atoi(optarg)); break;
-            case 't':
-                g_config->Runtime.only_launch_tray = true; break;
+            case 'g':
+                g_config->Runtime.only_launch_gui = true; break;
             case "debug"_fnv1a16:
                 g_config->Runtime.debug_print = true; break;
 
@@ -357,13 +358,24 @@ int main(int argc, char* argv[])
 
     g_config->LoadConfigFile(configFile);
 
-    if (!g_config->Runtime.only_launch_tray)
+    if (g_config->Runtime.only_launch_gui || !acquire_tray_lock())
         return main_tool(imgui_ini_path);
 
     g_is_clipboard_server = true;
 
-    if (!acquire_tray_lock())
-        return EXIT_FAILURE;
+    auto _ = std::async(std::launch::async, [&] {
+        main_tool(imgui_ini_path);
+        quit.store(true);
+#ifndef _WIN32
+        if (g_lock_sock >= 0)
+        {
+            ::shutdown(g_lock_sock, SHUT_RDWR);
+            ::close(g_lock_sock);
+            g_lock_sock = -1;
+        }
+#endif
+        cv.notify_all();
+    });
 
     std::thread worker(capture_worker, imgui_ini_path);
 

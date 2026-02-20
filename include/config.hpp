@@ -53,9 +53,9 @@ public:
     struct runtime_settings_t
     {
         std::string source_file;
-        int         preferred_psm    = 0;
-        bool        enable_handles   = true;
-        bool        only_launch_tray = false;
+        int         preferred_psm   = 0;
+        bool        enable_handles  = true;
+        bool        only_launch_gui = false;
 #if DEBUG
         bool debug_print = true;
 #else
@@ -166,7 +166,7 @@ ocr-model = "eng"
 
 # Delay the app before acquiring a screenshot (in milliseconds)
 # Doesn't affect if opening external image (i.e. -f flag)
-delay = 200
+#delay = 200
 
 # Default from language codename translate
 lang-from = "auto"
@@ -201,7 +201,7 @@ GENERAL OPTIONS:
                                 Won't affect if using the -f flag
 
     -l, --list                  List all available translatable languages along side their codenames.
-    -t, --tray                  Launch system tray
+    -g, --gui                   Launch without autostarting the system tray too
     --debug                     Print debug statments
     --gen-config [<PATH>]       Generate default config file. If PATH is omitted, saves to default location.
                                 Prompts before overwriting.
