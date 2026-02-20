@@ -1,11 +1,13 @@
 #include "util.hpp"
 
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <vector>
 
 #include "clipboard.hpp"
@@ -149,6 +151,25 @@ int get_screen_dpi()
 #else
 bool acquire_tray_lock()
 {
+    const fs::path& lock_path = fs::temp_directory_path() / "oshot.lock";
+
+    // Check if stale: read PID and verify process is alive
+    if (fs::exists(lock_path))
+    {
+        std::ifstream f(lock_path);
+        pid_t         pid = 0;
+        f >> pid;
+        if (pid > 0 && kill(pid, 0) == 0)
+            return false;  // process alive
+        // stale lock - fall through and overwrite
+        fs::remove(lock_path);
+    }
+
+    std::ofstream f(lock_path, std::ios::trunc);
+    if (!f.is_open())
+        return false;
+    f << getpid();
+
     g_lock_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (g_lock_sock < 0)
         return false;
@@ -157,9 +178,6 @@ bool acquire_tray_lock()
     addr.sin_family      = AF_INET;
     addr.sin_port        = htons(6015);
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);  // 127.0.0.1
-
-    int yes = 1;
-    setsockopt(g_lock_sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 
     if (bind(g_lock_sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
     {

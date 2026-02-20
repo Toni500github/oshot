@@ -363,19 +363,7 @@ int main(int argc, char* argv[])
 
     g_is_clipboard_server = true;
 
-    auto _ = std::async(std::launch::async, [&] {
-        main_tool(imgui_ini_path);
-        quit.store(true);
-#ifndef _WIN32
-        if (g_lock_sock >= 0)
-        {
-            ::shutdown(g_lock_sock, SHUT_RDWR);
-            ::close(g_lock_sock);
-            g_lock_sock = -1;
-        }
-#endif
-        cv.notify_all();
-    });
+    std::thread([&] { main_tool(imgui_ini_path); }).detach();
 
     std::thread worker(capture_worker, imgui_ini_path);
 
@@ -472,6 +460,7 @@ int main(int argc, char* argv[])
         }
 #endif
         cv.notify_all();
+        fs::remove(fs::temp_directory_path() / "oshot.lock");
         tray.exit();
     }));
 

@@ -140,9 +140,8 @@ Result<> ScreenshotTool::StartWindow()
     m_io    = ImGui::GetIO();
     m_state = ToolState::Selecting;
 
-    auto v = std::async(std::launch::async, [&] {
-        return g_sender->Start();  // async because of blocking connect()
-    });
+    if (!g_is_clipboard_server)
+        std::thread([] { g_sender->Start(6015); }).detach();
 
     const Result<void*>& res = CreateTexture(m_texture_id, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
     if (!res.ok())
