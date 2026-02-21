@@ -159,8 +159,10 @@ bool acquire_tray_lock()
         std::ifstream f(lock_path);
         pid_t         pid = 0;
         f >> pid;
+        // Here kill() doesn't actually *kill* anything
+        // just tests if pid exists or not
         if (pid > 0 && kill(pid, 0) == 0)
-            return false;  // process alive
+            return false;
         // stale lock - fall through and overwrite
         fs::remove(lock_path);
     }

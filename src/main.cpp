@@ -6,7 +6,6 @@
 #include <deque>
 #include <filesystem>
 #include <fstream>
-#include <future>
 #include <ios>
 #include <memory>
 #include <mutex>
@@ -161,11 +160,12 @@ static bool parseargs(int argc, char* argv[], const fs::path& configFile)
     int opt = 0;
     int option_index = 0;
     opterr = 1; // re-enable since before we disabled for "invalid option" error
-    const char *optstring = "-Vhlgd:C:f:";
+    const char *optstring = "-Vhltgd:C:f:";
     static const struct option opts[] = {
         {"version", no_argument,       0, 'V'},
         {"help",    no_argument,       0, 'h'},
         {"list",    no_argument,       0, 'l'},
+        {"tray",    no_argument,       0, 't'},
         {"gui",     no_argument,       0, 'g'},
         {"delay",   required_argument, 0, 'd'},
         {"config",  required_argument, 0, 'C'},
@@ -199,6 +199,8 @@ static bool parseargs(int argc, char* argv[], const fs::path& configFile)
                 g_config->Runtime.source_file = optarg; break;
             case 'd':
                 g_config->OverrideOption("default.delay", std::atoi(optarg)); break;
+            case 't':
+                g_config->Runtime.only_launch_tray = true; break;
             case 'g':
                 g_config->Runtime.only_launch_gui = true; break;
             case "debug"_fnv1a16:
@@ -358,13 +360,27 @@ int main(int argc, char* argv[])
 
     g_config->LoadConfigFile(configFile);
 
-    if (g_config->Runtime.only_launch_gui || !acquire_tray_lock())
+    const bool tray_already_exists = !acquire_tray_lock();
+
+    if (g_config->Runtime.only_launch_gui)
         return main_tool(imgui_ini_path);
 
+    if (g_config->Runtime.only_launch_tray)
+    {
+        if (tray_already_exists)
+            return EXIT_FAILURE;
+        // falls through to tray/worker launch below
+    }
+    else
+    {
+        // default: launch GUI (detached if tray is starting, foreground if tray already exists)
+        if (tray_already_exists)
+            return main_tool(imgui_ini_path);
+
+        std::thread([&] { main_tool(imgui_ini_path); }).detach();
+    }
+
     g_is_clipboard_server = true;
-
-    std::thread([&] { main_tool(imgui_ini_path); }).detach();
-
     std::thread worker(capture_worker, imgui_ini_path);
 
 #ifndef _WIN32

@@ -53,9 +53,10 @@ public:
     struct runtime_settings_t
     {
         std::string source_file;
-        int         preferred_psm   = 0;
-        bool        enable_handles  = true;
-        bool        only_launch_gui = false;
+        int         preferred_psm    = 0;
+        bool        enable_handles   = true;
+        bool        only_launch_tray = false;
+        bool        only_launch_gui  = false;
 #if DEBUG
         bool debug_print = true;
 #else
@@ -201,7 +202,8 @@ GENERAL OPTIONS:
                                 Won't affect if using the -f flag
 
     -l, --list                  List all available translatable languages along side their codenames.
-    -g, --gui                   Launch without autostarting the system tray too
+    -g, --gui                   Only launch the GUI
+    -t, --tray                  Only launch system tray
     --debug                     Print debug statments
     --gen-config [<PATH>]       Generate default config file. If PATH is omitted, saves to default location.
                                 Prompts before overwriting.
