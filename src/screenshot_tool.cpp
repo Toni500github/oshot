@@ -10,7 +10,6 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
-#include <future>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -183,7 +182,7 @@ void ScreenshotTool::RenderOverlay()
     UpdateWindowBg();
     ImGui::GetBackgroundDrawList()->AddImage(m_texture_id, m_image_origin, m_image_end);
 
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !m_is_color_picking)
     {
         Cancel();
     }
@@ -394,7 +393,8 @@ void ScreenshotTool::HandleAnnotationInput()
 
 void ScreenshotTool::HandleColorPickerInput()
 {
-    ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
+    // The loupe acts as our cursor
+    ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 
     const ImVec2& mp = ImGui::GetMousePos();
     const int     px = static_cast<int>(mp.x - m_image_origin.x);
@@ -402,27 +402,103 @@ void ScreenshotTool::HandleColorPickerInput()
 
     const bool in_image = px >= 0 && px < m_screenshot.w && py >= 0 && py < m_screenshot.h;
 
-    // Show a color preview tooltip following the cursor
-    ImGui::BeginTooltip();
+    static constexpr float k_loupe_px = 140.0f;  // loupe display size (square, pixels)
+    static constexpr float k_zoom     = 8.0f;    // magnification factor
+    static constexpr float k_padding  = 10.0f;   // inner window padding
+    static constexpr float k_offset   = 15.0f;   // distance from cursor to loupe corner
+    const float            k_win_size = k_loupe_px + k_padding * 2.0f;
+
+    // Position loupe window: prefer bottom-right, flip to stay on screen
+    const ImVec2& display = ImGui::GetIO().DisplaySize;
+    float         win_x   = mp.x + k_offset;
+    float         win_y   = mp.y + k_offset;
+    // For the horizontal flip we know the exact width; for vertical, use loupe
+    // height + a comfortable margin since AlwaysAutoResize determines final height.
+    static constexpr float k_approx_info_h = 50.0f;  // swatch row + spacing
+    if (win_x + k_win_size > display.x)
+        win_x = mp.x - k_offset - k_win_size;
+    if (win_y + k_win_size + k_approx_info_h > display.y)
+        win_y = mp.y - k_offset - k_win_size - k_approx_info_h;
+
+    ImGui::SetNextWindowPos(ImVec2(win_x, win_y));
+    ImGui::SetNextWindowBgAlpha(0.9f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(k_padding, k_padding));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+    ImGui::Begin("##color_loupe",
+                 nullptr,
+                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+
     if (!in_image)
     {
-        ImGui::TextUnformatted("Outside image");
+        ImGui::TextDisabled("Outside of the image");
     }
     else
     {
+        // Sample the pixel under the cursor
         const size_t  off = (static_cast<size_t>(py) * m_screenshot.w + px) * 4;
         const uint8_t r   = m_screenshot.data[off + 0];
         const uint8_t g   = m_screenshot.data[off + 1];
         const uint8_t b   = m_screenshot.data[off + 2];
         const uint8_t a   = m_screenshot.data[off + 3];
+        const ImVec4  hovered_color(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
 
-        ImVec4 hovered_color(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
-        ImGui::ColorButton("##eyedropper_preview",
+        // Compute UV window for the zoomed region
+        const float half_src_px_x = (k_loupe_px / k_zoom) * 0.5f / static_cast<float>(m_screenshot.w);
+        const float half_src_px_y = (k_loupe_px / k_zoom) * 0.5f / static_cast<float>(m_screenshot.h);
+        const float uv_cx         = static_cast<float>(px) / static_cast<float>(m_screenshot.w);
+        const float uv_cy         = static_cast<float>(py) / static_cast<float>(m_screenshot.h);
+
+        const ImVec2 uv_min(uv_cx - half_src_px_x, uv_cy - half_src_px_y);
+        const ImVec2 uv_max(uv_cx + half_src_px_x, uv_cy + half_src_px_y);
+
+        // Draw the magnified image
+        const ImVec2& loupe_origin = ImGui::GetCursorScreenPos();
+        ImGui::Image(m_texture_id, ImVec2(k_loupe_px, k_loupe_px), uv_min, uv_max);
+
+        // Draw crosshair over the loupe
+        ImDrawList*            dl  = ImGui::GetWindowDrawList();
+        const ImVec2           ctr = ImVec2(loupe_origin.x + k_loupe_px * 0.5f, loupe_origin.y + k_loupe_px * 0.5f);
+        static constexpr float arm = 10.0f;
+        static constexpr float gap = 3.0f;  // gap around the centre dot
+
+        // Shadow lines for contrast on any background
+        dl->AddLine(ImVec2(ctr.x - arm, ctr.y), ImVec2(ctr.x - gap, ctr.y), IM_COL32(0, 0, 0, 180), 1.5f);
+        dl->AddLine(ImVec2(ctr.x + gap, ctr.y), ImVec2(ctr.x + arm, ctr.y), IM_COL32(0, 0, 0, 180), 1.5f);
+        dl->AddLine(ImVec2(ctr.x, ctr.y - arm), ImVec2(ctr.x, ctr.y - gap), IM_COL32(0, 0, 0, 180), 1.5f);
+        dl->AddLine(ImVec2(ctr.x, ctr.y + gap), ImVec2(ctr.x, ctr.y + arm), IM_COL32(0, 0, 0, 180), 1.5f);
+        // White lines on top
+        dl->AddLine(ImVec2(ctr.x - arm, ctr.y), ImVec2(ctr.x - gap, ctr.y), IM_COL32(255, 255, 255, 230), 1.0f);
+        dl->AddLine(ImVec2(ctr.x + gap, ctr.y), ImVec2(ctr.x + arm, ctr.y), IM_COL32(255, 255, 255, 230), 1.0f);
+        dl->AddLine(ImVec2(ctr.x, ctr.y - arm), ImVec2(ctr.x, ctr.y - gap), IM_COL32(255, 255, 255, 230), 1.0f);
+        dl->AddLine(ImVec2(ctr.x, ctr.y + gap), ImVec2(ctr.x, ctr.y + arm), IM_COL32(255, 255, 255, 230), 1.0f);
+        // Centre dot, filled with the hovered colour so it's always visible
+        dl->AddCircleFilled(ctr, gap - 0.5f, IM_COL32(r, g, b, 255));
+        dl->AddCircle(ctr, gap - 0.5f, IM_COL32(255, 255, 255, 200), 12, 1.0f);
+
+        // Outline around the entire loupe image
+        dl->AddRect(loupe_origin,
+                    ImVec2(loupe_origin.x + k_loupe_px, loupe_origin.y + k_loupe_px),
+                    IM_COL32(80, 80, 80, 220),
+                    2.0f,
+                    0,
+                    1.5f);
+
+        ImGui::Spacing();
+        ImGui::ColorButton("##loupe_swatch",
                            hovered_color,
                            ImGuiColorEditFlags_NoPicker | ImGuiColorEditFlags_AlphaPreview,
-                           ImVec2(48, 48));
+                           ImVec2(32, 32));
         ImGui::SameLine();
-        ImGui::Text("#%02X%02X%02X%02X\nR:%d G:%d B:%d A:%d ", r, g, b, a, r, g, b, a);
+        ImGui::BeginGroup();
+        ImGui::Text("#%02X%02X%02X", r, g, b);
+        ImGui::TextColored(ImVec4(1, 0, 0, 1), "%-3d ", r);
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0, 1, 0, 1), "%-3d ", g);
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0, 0, 1, 1), "%-3d", b);
+        ImGui::EndGroup();
 
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
         {
@@ -431,11 +507,22 @@ void ScreenshotTool::HandleColorPickerInput()
             m_is_color_picking = false;
         }
     }
-    ImGui::EndTooltip();
 
-    // Cancel picking with right-click or Escape
+    ImGui::End();
+    ImGui::PopStyleVar(2);
+
+    // Keeps a precise reference point visible even outside the loupe region.
+    {
+        ImDrawList* fg = ImGui::GetForegroundDrawList();
+        fg->AddCircle(mp, 5.0f, IM_COL32(0, 0, 0, 180), 12, 2.0f);
+        fg->AddCircleFilled(mp, 2.0f, IM_COL32(255, 255, 255, 255));
+    }
+
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+    {
         m_is_color_picking = false;
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
+    }
 }
 
 void ScreenshotTool::UpdateHandleHoverState()
@@ -686,6 +773,7 @@ void ScreenshotTool::DrawMenuItems()
 
             ImGui::EndMenu();
         }
+
         if (ImGui::BeginMenu("Edit"))
         {
             if (ImGui::BeginMenu("Optimize OCR for..."))
@@ -705,6 +793,7 @@ void ScreenshotTool::DrawMenuItems()
 
             ImGui::EndMenu();
         }
+
         if (ImGui::BeginMenu("Help"))
         {
             if (ImGui::MenuItem("About"))
@@ -1197,13 +1286,13 @@ void ScreenshotTool::DrawAnnotationToolbar()
             if (!(color_picker_flags & ImGuiColorEditFlags_NoAlpha))
                 ImGui::CheckboxFlags("Show alpha bar", &color_picker_flags, ImGuiColorEditFlags_AlphaBar);
 
-            if (ImGui::Button("Pick from screen"))
+            if (ImGui::Button("Pick color"))
             {
                 m_is_color_picking = true;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            HelpMarker("Click anywhere on the screenshot to pick a color\n(Note: Won't detect annotations)");
+            HelpMarker("Click anywhere on the image to pick a color");
 
             ImGui::ColorPicker4("Color", reinterpret_cast<float*>(&m_picker_color), color_picker_flags);
 
