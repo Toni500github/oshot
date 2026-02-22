@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -67,6 +68,69 @@ static void HelpMarker(const char* desc)
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
     }
+}
+
+static void draw_input_text_path(const char*                  label,
+                                 const char*                  input_id,
+                                 const bool                   is_file,
+                                 const char*                  filters[],
+                                 int                          filter_count,
+                                 const std::function<void()>& func,
+                                 std::string&                 path)
+{
+    auto handle_drop = [&]() {
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && !g_dropped_paths.empty())
+        {
+            path = g_dropped_paths.back();
+            g_dropped_paths.clear();
+            func();
+        }
+    };
+
+    float button_size = ImGui::GetFrameHeight();
+    ImGui::PushItemWidth(ImGui::CalcItemWidth() - button_size);
+    if (ImGui::InputText(input_id, &path))
+        func();
+    ImGui::PopItemWidth();
+    handle_drop();
+
+    ImGui::SameLine(0, 0);
+    if (ImGui::Button("...", ImVec2(button_size, button_size)))
+    {
+        const char* dialog_path = is_file
+                                      ? tinyfd_openFileDialog("Open file", nullptr, filter_count, filters, nullptr, 0)
+                                      : tinyfd_selectFolderDialog("Open folder", nullptr);
+
+        if (dialog_path)
+        {
+            path.assign(dialog_path);
+            func();
+        }
+    }
+    handle_drop();
+
+    ImGui::SameLine(0, 3);
+    ImGui::Text("%s", label);
+}
+
+// executes func() if path is edited
+static void draw_input_text_file(const char*                  label,
+                                 const char*                  input_id,
+                                 const char*                  filters[],
+                                 int                          filter_count,
+                                 const std::function<void()>& func,
+                                 std::string&                 path)
+{
+    draw_input_text_path(label, input_id, true, filters, filter_count, func, path);
+}
+
+// executes func() if path is edited
+static void draw_input_text_folder(const char*                  label,
+                                   const char*                  input_id,
+                                   const std::function<void()>& func,
+                                   std::string&                 path)
+{
+    draw_input_text_path(label, input_id, false, nullptr, 0, func, path);
 }
 
 static bool ui_blocks_selection()
@@ -154,12 +218,14 @@ Result<> ScreenshotTool::StartWindow()
         CreateTexture(nullptr, ICON_SQUARE_RGBA, ICON_SQUARE_W, ICON_SQUARE_H).get();
     tool_textures[idx(ToolType::RectangleFilled)] =
         CreateTexture(nullptr, ICON_RECT_FILLED_RGBA, ICON_RECT_FILLED_W, ICON_RECT_FILLED_H).get();
-    tool_textures[idx(ToolType::Line)]   = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
-    tool_textures[idx(ToolType::Circle)] = CreateTexture(nullptr, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
     tool_textures[idx(ToolType::CircleFilled)] =
         CreateTexture(nullptr, ICON_CIRCLE_FILLED_RGBA, ICON_CIRCLE_FILLED_W, ICON_CIRCLE_FILLED_H).get();
+
+    tool_textures[idx(ToolType::Line)]   = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
+    tool_textures[idx(ToolType::Circle)] = CreateTexture(nullptr, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
     tool_textures[idx(ToolType::Arrow)]  = CreateTexture(nullptr, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
     tool_textures[idx(ToolType::Pencil)] = CreateTexture(nullptr, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
+    tool_textures[idx(ToolType::Text)]   = CreateTexture(nullptr, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H).get();
 
     return Ok();
 }
@@ -182,10 +248,8 @@ void ScreenshotTool::RenderOverlay()
     UpdateWindowBg();
     ImGui::GetBackgroundDrawList()->AddImage(m_texture_id, m_image_origin, m_image_end);
 
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !m_is_color_picking)
-    {
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !m_is_color_picking && !m_is_text_placing)
         Cancel();
-    }
 
     if (m_selection.get_width() == 0 || m_selection.get_height() == 0)
     {
@@ -334,6 +398,56 @@ void ScreenshotTool::HandleResizeInput()
 void ScreenshotTool::HandleAnnotationInput()
 {
     const ImVec2& mouse_pos = ImGui::GetMousePos();
+
+    if (m_current_tool == ToolType::Text)
+    {
+        if (!m_is_text_placing && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ui_blocks_selection())
+        {
+            m_is_text_placing              = true;
+            m_current_annotation.type      = ToolType::Text;
+            m_current_annotation.start     = { mouse_pos.x, mouse_pos.y };
+            m_current_annotation.end       = m_current_annotation.start;
+            m_current_annotation.color     = m_current_color;
+            m_current_annotation.thickness = m_tool_thickness[idx(ToolType::Text)];
+            m_current_annotation.text.clear();
+        }
+
+        if (m_is_text_placing)
+        {
+            ImGui::SetNextWindowPos(ImVec2(m_current_annotation.start.x, m_current_annotation.start.y));
+            ImGui::SetNextWindowBgAlpha(0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
+
+            ImGui::Begin("##text_input",
+                         nullptr,
+                         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                             ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+                             ImGuiWindowFlags_NoScrollbar);
+
+            if (ImGui::IsWindowAppearing())
+                ImGui::SetKeyboardFocusHere();
+
+            if (ImGui::InputText("##text_ann", &m_current_annotation.text, ImGuiInputTextFlags_EnterReturnsTrue))
+            {
+                if (!m_current_annotation.text.empty())
+                    m_annotations.push_back(m_current_annotation);
+                m_current_annotation = {};
+                m_is_text_placing    = false;
+            }
+
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+            {
+                m_current_annotation = {};
+                m_is_text_placing    = false;
+            }
+
+            ImGui::End();
+            ImGui::PopStyleColor();
+            ImGui::PopStyleVar();
+        }
+        return;  // never fall through to the generic drag path
+    }
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ui_blocks_selection())
     {
@@ -863,8 +977,6 @@ void ScreenshotTool::DrawOcrTools()
         first_frame = false;
     }
 
-    float button_size = ImGui::GetFrameHeight();
-
     ImGui::PushID("OcrTools");
     ImGui::SeparatorText("OCR");
 
@@ -873,40 +985,8 @@ void ScreenshotTool::DrawOcrTools()
     if (invalid_path)
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
 
-    ImGui::PushItemWidth(ImGui::CalcItemWidth() - button_size);
-    if (ImGui::InputText("##ocr_path", &ocr_path))
-        refresh_models();
-    ImGui::PopItemWidth();
+    draw_input_text_folder("Path", "##ocr_path", refresh_models, ocr_path);
 
-    // If user drops onto the input text, take it
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && !g_dropped_paths.empty())
-    {
-        ocr_path = g_dropped_paths.back();
-        g_dropped_paths.clear();
-        refresh_models();
-    }
-
-    ImGui::SameLine(0, 0);
-    if (ImGui::Button("...", ImVec2(button_size, button_size)))
-    {
-        const char* path = tinyfd_selectFolderDialog("Open model folder", nullptr);
-        if (path)
-        {
-            ocr_path.assign(path);
-            refresh_models();
-        }
-    }
-
-    // Same thing with the button
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && !g_dropped_paths.empty())
-    {
-        ocr_path = g_dropped_paths.back();
-        g_dropped_paths.clear();
-        refresh_models();
-    }
-
-    ImGui::SameLine(0, 3);
-    ImGui::Text("Path");
     if (invalid_path)
     {
         ImGui::SameLine();
@@ -1226,6 +1306,8 @@ void ScreenshotTool::DrawBarDecodeTools()
 
 void ScreenshotTool::DrawAnnotationToolbar()
 {
+    static std::string           font;
+    static int                   font_size        = 8;
     static int                   item_picker      = 0;
     static constexpr const char* color_pickers[2] = { "Bar - Square", "Wheel - Triangle" };
 
@@ -1269,6 +1351,12 @@ void ScreenshotTool::DrawAnnotationToolbar()
             ImGui::SliderFloat("##thickness", &m_tool_thickness[idx(m_current_tool)], 1.0f, 10.0f, "%.2f");
             ImGui::SameLine();
             ImGui::TextUnformatted("Thickness");
+            /*if (m_current_tool == ToolType::Text)
+            {
+                static const char* font_filters[] = { "*.ttf", "*.otf", "*.woff", "*.woff2" };
+                draw_input_text_file("Font name/path", "##font_path_ann_settings", font_filters, 4, [] {}, font);
+                ImGui::InputInt("Font size", &font_size);
+            }*/
 
             ImGui::Combo("Color picker", &item_picker, color_pickers, IM_ARRAYSIZE(color_pickers));
             switch (item_picker)
@@ -1309,6 +1397,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
     DrawSetButton(ToolType::Circle, "##Circle", tool_textures[idx(ToolType::Circle)]);
     DrawSetButton(ToolType::CircleFilled, "##Circle_filled", tool_textures[idx(ToolType::CircleFilled)]);
     DrawSetButton(ToolType::Line, "##Line", tool_textures[idx(ToolType::Line)]);
+    DrawSetButton(ToolType::Text, "##icon_Text", tool_textures[idx(ToolType::Text)]);
     DrawSetButton(ToolType::Pencil, "##Pencil", tool_textures[idx(ToolType::Pencil)]);
 
     ImGui::Separator();
@@ -1327,6 +1416,10 @@ void ScreenshotTool::DrawAnnotations()
 
     auto draw_line = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
         draw_list->AddLine(p1, p2, ann.color, t);
+    };
+
+    auto draw_text = [&](const annotation_t& ann, const ImVec2& p1) {
+        draw_list->AddText(p1, ann.color, ann.text.data());
     };
 
     auto draw_rectangle = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
@@ -1356,7 +1449,7 @@ void ScreenshotTool::DrawAnnotations()
     };
 
     auto draw_pencil = [&](const annotation_t& ann, const float t) {
-        if (ann.points.size() >= 2)
+        if (ann.points.size() > 1)
         {
             std::vector<ImVec2> pts;
             pts.reserve(ann.points.size());
@@ -1405,6 +1498,7 @@ void ScreenshotTool::DrawAnnotations()
             case ToolType::RectangleFilled: draw_rectangle_filled(ann, p1, p2); break;
             case ToolType::Circle:          draw_circle(ann, p1, p2, t); break;
             case ToolType::CircleFilled:    draw_circle_filled(ann, p1, p2); break;
+            case ToolType::Text:            draw_text(ann, p1); break;
             case ToolType::Pencil:          draw_pencil(ann, t); break;
 
             default: break;
@@ -1426,6 +1520,7 @@ void ScreenshotTool::DrawAnnotations()
             case ToolType::RectangleFilled: draw_rectangle_filled(m_current_annotation, p1, p2); break;
             case ToolType::Circle:          draw_circle(m_current_annotation, p1, p2, t); break;
             case ToolType::CircleFilled:    draw_circle_filled(m_current_annotation, p1, p2); break;
+            case ToolType::Text:            draw_text(m_current_annotation, p1); break;
             case ToolType::Pencil:          draw_pencil(m_current_annotation, t); break;
 
             default: break;
@@ -1634,6 +1729,102 @@ capture_result_t ScreenshotTool::GetFinalImage()
                     }
                 }
                 break;
+
+            case ToolType::Text:
+            {
+                if (ann.text.empty())
+                    break;
+
+                ImFont* font = ImGui::GetDefaultFont();
+                if (!font || !font->OwnerAtlas)
+                    break;
+
+                // ann.thickness is repurposed as font size for text annotations;
+                // fall back to a sensible default if it's at the tool default of 3px
+                const float font_size = ann.thickness < 8.0f ? 16.0f : ann.thickness;
+
+                ImFontBaked* baked = font->GetFontBaked(font_size);
+                if (!baked)
+                    break;
+
+                unsigned char* pixels  = nullptr;
+                int            atlas_w = 0, atlas_h = 0;
+                font->OwnerAtlas->GetTexDataAsRGBA32(&pixels, &atlas_w, &atlas_h);
+                if (!pixels || atlas_w == 0 || atlas_h == 0)
+                    break;
+
+                const uint32_t* font_pixels = reinterpret_cast<const uint32_t*>(pixels);
+
+                const uint8_t col_r = (ann.color >> 0) & 0xFF;
+                const uint8_t col_g = (ann.color >> 8) & 0xFF;
+                const uint8_t col_b = (ann.color >> 16) & 0xFF;
+                const uint8_t col_a = (ann.color >> 24) & 0xFF;
+
+                float       cursor_x = static_cast<float>(x1);
+                float       cursor_y = static_cast<float>(y1);
+                const char* p        = ann.text.c_str();
+                const char* end      = p + ann.text.size();
+
+                while (p < end)
+                {
+                    unsigned int codepoint = 0;
+                    p += ImTextCharFromUtf8(&codepoint, p, end);
+                    if (codepoint == 0)
+                        break;
+
+                    const ImFontGlyph* glyph = baked->FindGlyph(static_cast<ImWchar>(codepoint));
+                    if (!glyph)
+                        continue;
+
+                    const int dst_x0 = static_cast<int>(cursor_x + glyph->X0);
+                    const int dst_y0 = static_cast<int>(cursor_y + glyph->Y0);
+                    const int dst_x1 = static_cast<int>(cursor_x + glyph->X1);
+                    const int dst_y1 = static_cast<int>(cursor_y + glyph->Y1);
+
+                    const int src_x0 = static_cast<int>(glyph->U0 * atlas_w);
+                    const int src_y0 = static_cast<int>(glyph->V0 * atlas_h);
+                    const int src_x1 = static_cast<int>(glyph->U1 * atlas_w);
+                    const int src_y1 = static_cast<int>(glyph->V1 * atlas_h);
+
+                    const int dst_gw = dst_x1 - dst_x0;
+                    const int dst_gh = dst_y1 - dst_y0;
+                    const int src_gw = src_x1 - src_x0;
+                    const int src_gh = src_y1 - src_y0;
+
+                    if (dst_gw <= 0 || dst_gh <= 0 || src_gw <= 0 || src_gh <= 0)
+                    {
+                        cursor_x += glyph->AdvanceX;
+                        continue;
+                    }
+
+                    for (int dy = 0; dy < dst_gh; ++dy)
+                    {
+                        const int src_ay = src_y0 + dy * src_gh / dst_gh;
+                        if (src_ay < 0 || src_ay >= atlas_h)
+                            continue;
+
+                        for (int dx = 0; dx < dst_gw; ++dx)
+                        {
+                            const int src_ax = src_x0 + dx * src_gw / dst_gw;
+                            if (src_ax < 0 || src_ax >= atlas_w)
+                                continue;
+
+                            const uint32_t atlas_px    = font_pixels[src_ay * atlas_w + src_ax];
+                            const uint8_t  glyph_alpha = static_cast<uint8_t>((atlas_px >> 24) & 0xFF);
+                            if (glyph_alpha == 0)
+                                continue;
+
+                            const uint8_t  out_a   = static_cast<uint8_t>((uint32_t)col_a * glyph_alpha / 255u);
+                            const uint32_t blended = (uint32_t)col_r | ((uint32_t)col_g << 8) |
+                                                     ((uint32_t)col_b << 16) | ((uint32_t)out_a << 24);
+                            SetPixel(dst_x0 + dx, dst_y0 + dy, blended);
+                        }
+                    }
+
+                    cursor_x += glyph->AdvanceX;
+                }
+                break;
+            }
 
             case ToolType::Rectangle:
                 DrawLine(x1, y1, x2, y1, ann.color, ann.thickness);

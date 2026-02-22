@@ -133,31 +133,33 @@ def create_filled_rectangle_pixels(margin=5):
 
     return pixels
 
-def create_icon_from_image(image_path, thickness=2):
-    """Convert an external image to white outline icon"""
+def create_icon_from_image(image_path, threshold=128):
     try:
         from PIL import Image
     except ImportError:
-        print("PIL/Pillow not installed. Install with: pip install pillow")
+        print("PIL/Pillow not installed.")
         return None
-    
+
     try:
         img = Image.open(image_path).convert("RGBA")
         img = img.resize((24, 24), Image.Resampling.LANCZOS)
-        
+
         pixels = []
         for y in range(24):
             for x in range(24):
                 r, g, b, a = img.getpixel((x, y))
-                
-                # Convert to white with original alpha
-                if a > 0:
-                    pixels.extend([255, 255, 255, a])
-                else:
-                    pixels.extend([0, 0, 0, 0])
-        
+
+                # Snap to pure black or white based on brightness
+                brightness = (r + g + b) // 3
+                white = 255 if brightness >= threshold else 0
+
+                # Snap alpha to fully opaque or transparent
+                a = 255 if a >= threshold else 0
+
+                pixels.extend([white, white, white, a])
+
         return pixels
-        
+
     except Exception as e:
         print(f"Error loading image: {e}")
         return None
@@ -195,8 +197,9 @@ def main():
 """
     # Optional: Add external images
     external_images = [
-        #("ICON_PENCIL", "/tmp/image.png"),
-        #("ICON_ARROW", "/tmp/image2.png")
+        ("ICON_PENCIL", "/tmp/image.png"),
+        ("ICON_ARROW", "/tmp/image2.png"),
+        ("ICON_TEXT", "/tmp/text.png")
     ]
     
     for name, image_path in external_images:

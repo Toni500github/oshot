@@ -23,6 +23,7 @@ enum class ToolType : size_t
     Circle,
     CircleFilled,
     Line,
+    Text,
     Pencil,
     Count
 };
@@ -98,17 +99,11 @@ struct annotation_t
     ToolType             type = ToolType::kNone;
     point_t              start;
     point_t              end;
+    std::string          text;                    // For text tool
     std::vector<point_t> points;                  // For pencil tool
     uint32_t             color     = 0xFF0000FF;  // RGBA
     float                thickness = 3.0f;
 };
-
-template <typename E>
-constexpr size_t idx(E e) noexcept
-{
-    static_assert(std::is_enum_v<E>);
-    return static_cast<size_t>(e);
-}
 
 class ScreenshotTool
 {
@@ -204,6 +199,7 @@ private:
     std::array<float, idx(ToolType::Count)> m_tool_thickness;
     ImVec4                                  m_picker_color{ 1, 0, 0, 1 };
     bool                                    m_is_color_picking = false;
+    bool                                    m_is_text_placing  = false;
 
     void HandleSelectionInput();
     void HandleResizeInput();

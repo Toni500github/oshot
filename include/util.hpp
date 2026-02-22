@@ -101,6 +101,13 @@ struct fmt::formatter<Err<E>>
     }
 };
 
+template <typename E>
+constexpr size_t idx(E e) noexcept
+{
+    static_assert(std::is_enum_v<E>);
+    return static_cast<size_t>(e);
+}
+
 struct capture_result_t;
 
 extern int   g_lock_sock;
