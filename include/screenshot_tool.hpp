@@ -118,6 +118,7 @@ public:
 
     capture_result_t GetFinalImage();
 
+    ImFont* CacheAndGetFont(const std::string& font_name, const float font_size);
     ImFont* GetFontForLanguage(const std::string& lang_code);
 
     void RenderOverlay();
@@ -156,6 +157,18 @@ private:
         ImRect        rect;
     };
 
+    // Contains both user input text
+    // and also some user settings
+    struct inputs_results_t
+    {
+        std::string   ocr_text;
+        std::string   translate_text;
+        std::string   barcode_text;
+        std::string   ann_font;
+        int           ocr_confidence = -1;
+        zbar_result_t zbar_scan_result;
+    };
+
     ImGuiIO&         m_io;
     OcrAPI           m_ocr_api;
     ZbarAPI          m_zbar_api;
@@ -167,22 +180,17 @@ private:
     HandleHovered m_dragging_handle = HandleHovered::kNone;
     InputOwner    m_input_owner     = InputOwner::kNone;
 
-    std::bitset<static_cast<size_t>(ErrorFlag::COUNT)> m_errors;
+    std::bitset<idx(ErrorFlag::COUNT)> m_errors;
 
     selection_rect_t m_selection;
     selection_rect_t m_drag_start_selection;
 
-    bool m_is_selecting = false;
+    inputs_results_t m_inputs;
+    bool             m_is_selecting = false;
 
     ImVec2 m_drag_start_mouse;
     ImVec2 m_image_origin;
     ImVec2 m_image_end;
-
-    std::string   m_ocr_text;
-    std::string   m_to_translate_text;
-    std::string   m_barcode_text;
-    int           m_ocr_confidence = -1;
-    zbar_result_t m_zbar_scan;
 
     std::unordered_map<ErrorFlag, std::string>                     m_err_texts;
     std::unordered_map<std::string, font_cache_t>                  m_font_cache;
@@ -194,10 +202,10 @@ private:
     ToolType                                m_current_tool = ToolType::kNone;
     std::vector<annotation_t>               m_annotations;
     annotation_t                            m_current_annotation;
-    bool                                    m_is_drawing    = false;
     uint32_t                                m_current_color = 0xFF0000FF;
     std::array<float, idx(ToolType::Count)> m_tool_thickness;
     ImVec4                                  m_picker_color{ 1, 0, 0, 1 };
+    bool                                    m_is_drawing       = false;
     bool                                    m_is_color_picking = false;
     bool                                    m_is_text_placing  = false;
 

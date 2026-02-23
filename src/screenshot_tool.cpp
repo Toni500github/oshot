@@ -1051,8 +1051,8 @@ void ScreenshotTool::DrawOcrTools()
             const Result<ocr_result_t>& result = m_ocr_api.ExtractTextCapture(GetFinalImage());
             if (result.ok())
             {
-                m_ocr_text = m_to_translate_text = result.get().data;
-                m_ocr_confidence                 = result.get().confidence;
+                m_inputs.ocr_text = m_inputs.translate_text = result.get().data;
+                m_inputs.ocr_confidence                     = result.get().confidence;
             }
         }
     }
@@ -1069,23 +1069,23 @@ void ScreenshotTool::DrawOcrTools()
         HelpMarker("If the result seems off, you could try selecting an option in Edit > Optimize OCR for...");
     }
 
-    if (m_ocr_confidence != -1)
+    if (m_inputs.ocr_confidence != -1)
     {
-        ImGui::TextColored(get_confidence_color(m_ocr_confidence), "%d%%", m_ocr_confidence);
+        ImGui::TextColored(get_confidence_color(m_inputs.ocr_confidence), "%d%%", m_inputs.ocr_confidence);
         ImGui::SameLine();
         HelpMarker("Confidence score");
     }
 
     ImGui::InputTextMultiline("##source",
-                              &m_ocr_text,
+                              &m_inputs.ocr_text,
                               ImVec2(-1, ImGui::GetTextLineHeight() * 10),
                               g_config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
-    if (!m_ocr_text.empty() && ImGui::Button("Copy Text"))
+    if (!m_inputs.ocr_text.empty() && ImGui::Button("Copy Text"))
     {
-        if (m_ocr_text.back() == '\n')
-            m_ocr_text.pop_back();
-        g_clipboard->CopyText(m_ocr_text);
+        if (m_inputs.ocr_text.back() == '\n')
+            m_inputs.ocr_text.pop_back();
+        g_clipboard->CopyText(m_inputs.ocr_text);
     }
 
     ImGui::PopID();
@@ -1182,10 +1182,10 @@ void ScreenshotTool::DrawTranslationTools()
     // Ignore "Automatic" in To
     createCombo("To", InvalidLangTo, 1, lang_to, index_to, font_to);
 
-    if (!(HasError(InvalidLangFrom) || HasError(InvalidLangTo)) && !m_to_translate_text.empty() &&
+    if (!(HasError(InvalidLangFrom) || HasError(InvalidLangTo)) && !m_inputs.translate_text.empty() &&
         ImGui::Button("Translate"))
     {
-        const Result<std::string>& translation = translator->Translate(lang_from, lang_to, m_to_translate_text);
+        const Result<std::string>& translation = translator->Translate(lang_from, lang_to, m_inputs.translate_text);
         if (!translation.ok())
         {
             SetError(FailedTranslation, translation.error().value);
@@ -1210,12 +1210,12 @@ void ScreenshotTool::DrawTranslationTools()
     if (font_from)
     {
         ImGui::PushFont(font_from);
-        ImGui::InputTextMultiline("##from", &m_to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
+        ImGui::InputTextMultiline("##from", &m_inputs.translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
         ImGui::PopFont();
     }
     else
     {
-        ImGui::InputTextMultiline("##from", &m_to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
+        ImGui::InputTextMultiline("##from", &m_inputs.translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
     }
 
     ImGui::SameLine();
@@ -1261,9 +1261,9 @@ void ScreenshotTool::DrawBarDecodeTools()
         }
         else
         {
-            m_zbar_scan = std::move(scan.get());
-            for (const auto& data : m_zbar_scan.datas)
-                m_barcode_text += data + "\n\n";
+            m_inputs.zbar_scan_result = std::move(scan.get());
+            for (const auto& data : m_inputs.zbar_scan_result.datas)
+                m_inputs.barcode_text += data + "\n\n";
             ClearError(FailedToExtractBarCode);
         }
     }
@@ -1271,9 +1271,9 @@ void ScreenshotTool::DrawBarDecodeTools()
     if (HasError(FailedToExtractBarCode))
     {
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
-        m_barcode_text = "Failed to extract text from bar code: " + m_err_texts[FailedToExtractBarCode];
+        m_inputs.barcode_text = "Failed to extract text from bar code: " + m_err_texts[FailedToExtractBarCode];
         ImGui::InputTextMultiline("##barcode",
-                                  &m_barcode_text,
+                                  &m_inputs.barcode_text,
                                   ImVec2(-1, ImGui::GetTextLineHeight() * 10),
                                   g_config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
@@ -1281,24 +1281,24 @@ void ScreenshotTool::DrawBarDecodeTools()
     }
     else
     {
-        if (!m_zbar_scan.datas.empty() && ImGui::TreeNode("Details"))
+        if (!m_inputs.zbar_scan_result.datas.empty() && ImGui::TreeNode("Details"))
         {
             ImGui::Text("Detected barcodes:");
-            for (const auto& [sym, count] : m_zbar_scan.symbologies)
+            for (const auto& [sym, count] : m_inputs.zbar_scan_result.symbologies)
                 ImGui::BulletText("%s (x%d)", sym.c_str(), count);
             ImGui::TreePop();
         }
         ImGui::InputTextMultiline("##barcode",
-                                  &m_barcode_text,
+                                  &m_inputs.barcode_text,
                                   ImVec2(-1, ImGui::GetTextLineHeight() * 10),
                                   g_config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
     }
 
-    if (!HasError(FailedToExtractBarCode) && !m_barcode_text.empty() && ImGui::Button("Copy Text"))
+    if (!HasError(FailedToExtractBarCode) && !m_inputs.barcode_text.empty() && ImGui::Button("Copy Text"))
     {
-        if (m_barcode_text.back() == '\n')
-            m_barcode_text.pop_back();
-        g_clipboard->CopyText(m_barcode_text);
+        if (m_inputs.barcode_text.back() == '\n')
+            m_inputs.barcode_text.pop_back();
+        g_clipboard->CopyText(m_inputs.barcode_text);
     }
 
     ImGui::PopID();
@@ -1306,8 +1306,6 @@ void ScreenshotTool::DrawBarDecodeTools()
 
 void ScreenshotTool::DrawAnnotationToolbar()
 {
-    static std::string           font;
-    static int                   font_size        = 8;
     static int                   item_picker      = 0;
     static constexpr const char* color_pickers[2] = { "Bar - Square", "Wheel - Triangle" };
 
@@ -1341,22 +1339,30 @@ void ScreenshotTool::DrawAnnotationToolbar()
         // Right-click popup on this item
         if (selected && ImGui::BeginPopupContextItem())
         {
-            m_tool_thickness[idx(m_current_tool)] = std::clamp(m_tool_thickness[idx(m_current_tool)], 1.0f, 10.0f);
+            if (m_current_tool == ToolType::Text)
+                m_tool_thickness[idx(m_current_tool)] = std::clamp(m_tool_thickness[idx(m_current_tool)], 8.0f, 144.0f);
+            else
+                m_tool_thickness[idx(m_current_tool)] = std::clamp(m_tool_thickness[idx(m_current_tool)], 1.0f, 10.0f);
 
             static ImGuiColorEditFlags color_picker_flags = ImGuiColorEditFlags_AlphaBar;
 
             ImGui::TextUnformatted("Annotation Settings");
             ImGui::Separator();
             ImGui::SetNextItemWidth(100);
-            ImGui::SliderFloat("##thickness", &m_tool_thickness[idx(m_current_tool)], 1.0f, 10.0f, "%.2f");
+
+            if (m_current_tool == ToolType::Text)
+                ImGui::InputFloat("##thickness", &m_tool_thickness[idx(m_current_tool)], 8.0f, 2.0f, "%.0f px");
+            else
+                ImGui::SliderFloat("##thickness", &m_tool_thickness[idx(m_current_tool)], 1.0f, 10.0f, "%.2f");
             ImGui::SameLine();
             ImGui::TextUnformatted("Thickness");
-            /*if (m_current_tool == ToolType::Text)
+
+            if (m_current_tool == ToolType::Text)
             {
                 static const char* font_filters[] = { "*.ttf", "*.otf", "*.woff", "*.woff2" };
-                draw_input_text_file("Font name/path", "##font_path_ann_settings", font_filters, 4, [] {}, font);
-                ImGui::InputInt("Font size", &font_size);
-            }*/
+                draw_input_text_file(
+                    "Font name/path", "##font_path_ann_settings", font_filters, 4, [] {}, m_inputs.ann_font);
+            }
 
             ImGui::Combo("Color picker", &item_picker, color_pickers, IM_ARRAYSIZE(color_pickers));
             switch (item_picker)
@@ -1419,7 +1425,9 @@ void ScreenshotTool::DrawAnnotations()
     };
 
     auto draw_text = [&](const annotation_t& ann, const ImVec2& p1) {
-        draw_list->AddText(p1, ann.color, ann.text.data());
+        const float font_size = ann.thickness > 8.0f ? ann.thickness : ImGui::GetFontSize();
+        ImFont* font = CacheAndGetFont(get_font_path(m_inputs.ann_font), font_size);
+        draw_list->AddText(font, font_size, p1, ann.color, ann.text.c_str());
     };
 
     auto draw_rectangle = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
@@ -1567,7 +1575,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     const Result<void*>& r = CreateTexture(m_texture_id, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
     if (!r.ok())
     {
-        error("Failed create openGL texture: " + r.error().value);
+        error("Failed create openGL texture: {}", r.error());
         return false;
     }
 
@@ -1586,9 +1594,9 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     m_image_origin         = {};
     m_image_end            = {};
 
-    m_ocr_text.clear();
-    m_to_translate_text.clear();
-    m_barcode_text.clear();
+    m_inputs.ocr_text.clear();
+    m_inputs.translate_text.clear();
+    m_inputs.barcode_text.clear();
 
     ClearError(FailedToInitOcr);
     ClearError(InvalidPath);
@@ -1735,13 +1743,13 @@ capture_result_t ScreenshotTool::GetFinalImage()
                 if (ann.text.empty())
                     break;
 
-                ImFont* font = ImGui::GetDefaultFont();
-                if (!font || !font->OwnerAtlas)
-                    break;
-
                 // ann.thickness is repurposed as font size for text annotations;
                 // fall back to a sensible default if it's at the tool default of 3px
                 const float font_size = ann.thickness < 8.0f ? 16.0f : ann.thickness;
+
+                ImFont* font = CacheAndGetFont(get_font_path(m_inputs.ann_font), font_size);
+                if (!font || !font->OwnerAtlas)
+                    break;
 
                 ImFontBaked* baked = font->GetFontBaked(font_size);
                 if (!baked)
@@ -1934,36 +1942,41 @@ void ScreenshotTool::UpdateWindowBg()
     // clang-format on
 }
 
-ImFont* ScreenshotTool::GetFontForLanguage(const std::string& lang_code)
+ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const float font_size)
 {
-    // Check cache first
-    auto it = m_font_cache.find(lang_code);
+    ImFont* font = nullptr;
+    if (font_path.empty())
+        return ImGui::GetDefaultFont();
+
+    auto it = m_font_cache.find(font_path);
     if (it != m_font_cache.end())
     {
-        debug("cached {}: {}", lang_code, it->second.font_path);
-        return it->second.font;
+        font = it->second.font;
+    }
+    else
+    {
+        font =
+            m_io.Fonts->AddFontFromFileTTF(font_path.c_str(), font_size, nullptr, m_io.Fonts->GetGlyphRangesDefault());
+
+        m_font_cache[font_path] = { font_path, font, true };
+        if (font)
+            m_io.Fonts->Build();
     }
 
-    const auto& font_path = get_lang_font_path(lang_code);
-    debug("font_path {}: {}", lang_code, font_path.string());
+    return font;
+}
+
+ImFont* ScreenshotTool::GetFontForLanguage(const std::string& lang_code)
+{
+    const fs::path& font_path = get_lang_font_path(lang_code);
     if (font_path.empty())
     {
         // Cache null result
         m_font_cache[lang_code] = { "", nullptr, true };
-        return nullptr;
+        return ImGui::GetDefaultFont();
     }
 
-    ImFont* font =
-        m_io.Fonts->AddFontFromFileTTF(font_path.string().c_str(), 16.0f, nullptr, m_io.Fonts->GetGlyphRangesDefault());
-
-    // Cache the result
-    m_font_cache[lang_code] = { font_path.string(), font, true };
-
-    // Rebuild font atlas - texture is handled automatically by backend
-    if (font)
-        m_io.Fonts->Build();
-
-    return font;
+    return CacheAndGetFont(font_path, ImGui::GetFontSize());
 }
 
 Result<void*> ScreenshotTool::CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h)

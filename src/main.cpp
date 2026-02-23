@@ -238,7 +238,7 @@ static void glfw_drop_callback(GLFWwindow*, int count, const char** paths)
         g_dropped_paths.emplace_back(paths[i]);
 }
 
-int main_tool(const std::string imgui_ini_path);
+int main_tool(const std::string& imgui_ini_path);
 
 void capture_worker(const std::string& imgui_ini_path)
 {
@@ -492,7 +492,7 @@ int main(int argc, char* argv[])
     return EXIT_SUCCESS;
 }
 
-int main_tool(const std::string imgui_ini_path)
+int main_tool(const std::string& imgui_ini_path)
 {
     GLFWwindow* window = nullptr;
 
