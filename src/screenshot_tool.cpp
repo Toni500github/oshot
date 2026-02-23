@@ -290,6 +290,29 @@ void ScreenshotTool::RenderOverlay()
         DrawBarDecodeTools();
         ImGui::End();
     }
+
+    HandleShortcutsInput();
+
+}
+
+void ScreenshotTool::HandleShortcutsInput()
+{
+    if (ImGui::Shortcut(ImGuiKey_E | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
+    {
+        g_config->File.allow_ocr_edit = !g_config->File.allow_ocr_edit;
+        ImGui::ClearActiveID();
+    }
+
+    if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
+        g_config->Runtime.enable_handles = !g_config->Runtime.enable_handles;
+
+    if (ImGui::Shortcut(ImGuiKey_S | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
+        if (m_on_complete)
+            m_on_complete(SavingOp::File, Ok(GetFinalImage()));
+
+    if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl | ImGuiMod_Shift, ImGuiInputFlags_RouteGlobal))
+        if (m_on_complete)
+            m_on_complete(SavingOp::Clipboard, Ok(GetFinalImage()));
 }
 
 void ScreenshotTool::HandleSelectionInput()
@@ -835,24 +858,6 @@ void ScreenshotTool::DrawMenuItems()
 
     if (ImGui::BeginMenuBar())
     {
-        // Handle shortcuts FIRST, before drawing menus
-        if (ImGui::Shortcut(ImGuiKey_E | ImGuiMod_Ctrl))
-        {
-            g_config->File.allow_ocr_edit = !g_config->File.allow_ocr_edit;
-            ImGui::ClearActiveID();  // avoid flipping InputText flags while editing
-        }
-
-        if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Ctrl))
-            g_config->Runtime.enable_handles = !g_config->Runtime.enable_handles;
-
-        if (ImGui::Shortcut(ImGuiKey_S | ImGuiMod_Ctrl))
-            if (m_on_complete)
-                m_on_complete(SavingOp::File, Ok(GetFinalImage()));
-
-        if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl | ImGuiMod_Shift))
-            if (m_on_complete)
-                m_on_complete(SavingOp::Clipboard, Ok(GetFinalImage()));
-
         // Now draw the menus
         if (ImGui::BeginMenu("File"))
         {
@@ -1746,7 +1751,7 @@ capture_result_t ScreenshotTool::GetFinalImage()
 
                 // ann.thickness is repurposed as font size for text annotations;
                 // fall back to a sensible default if it's at the tool default of 3px
-                const float font_size = ann.thickness < 8.0f ? 16.0f : ann.thickness;
+                const float font_size = ann.thickness < 8.0f ? 8.0f : ann.thickness;
 
                 ImFont* font = CacheAndGetFont(get_font_path(m_inputs.ann_font), font_size);
                 if (!font || !font->OwnerAtlas)

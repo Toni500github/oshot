@@ -210,6 +210,7 @@ private:
     bool                                    m_is_color_picking = false;
     bool                                    m_is_text_placing  = false;
 
+    void HandleShortcutsInput();
     void HandleSelectionInput();
     void HandleResizeInput();
     void HandleAnnotationInput();
