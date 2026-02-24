@@ -292,7 +292,6 @@ void ScreenshotTool::RenderOverlay()
     }
 
     HandleShortcutsInput();
-
 }
 
 void ScreenshotTool::HandleShortcutsInput()
@@ -1655,9 +1654,6 @@ capture_result_t ScreenshotTool::GetFinalImage()
         const size_t src_row_start = (static_cast<size_t>(src_y) * src_width + (region.x + start_x)) * 4;
         const size_t dst_row_start = (static_cast<size_t>(y) * dst_width + start_x) * 4;
 
-        if (src_row_start + bytes_to_copy > src.size() || dst_row_start + bytes_to_copy > dst.size())
-            return result;
-
         std::memcpy(dst.data() + dst_row_start, src.data() + src_row_start, bytes_to_copy);
     }
 
@@ -1666,14 +1662,38 @@ capture_result_t ScreenshotTool::GetFinalImage()
     float offset_y = m_selection.get_y();
 
     auto SetPixel = [&](int x, int y, uint32_t color) {
-        if (x >= 0 && x < result.w && y >= 0 && y < result.h)
+        if (x < 0 || x >= result.w || y < 0 || y >= result.h)
+            return;
+
+        uint8_t src_r = (color >> 0) & 0xFF;
+        uint8_t src_g = (color >> 8) & 0xFF;
+        uint8_t src_b = (color >> 16) & 0xFF;
+        uint8_t src_a = (color >> 24) & 0xFF;
+
+        size_t idx = (static_cast<size_t>(y) * result.w + x) * 4;
+
+        if (src_a == 255)
         {
-            size_t idx           = (static_cast<size_t>(y) * result.w + x) * 4;
-            result.data[idx + 0] = (color >> 0) & 0xFF;   // R
-            result.data[idx + 1] = (color >> 8) & 0xFF;   // G
-            result.data[idx + 2] = (color >> 16) & 0xFF;  // B
-            result.data[idx + 3] = (color >> 24) & 0xFF;  // A
+            result.data[idx + 0] = src_r;
+            result.data[idx + 1] = src_g;
+            result.data[idx + 2] = src_b;
+            result.data[idx + 3] = 255;
+            return;
         }
+
+        // Blend
+        uint8_t dst_r = result.data[idx + 0];
+        uint8_t dst_g = result.data[idx + 1];
+        uint8_t dst_b = result.data[idx + 2];
+        uint8_t dst_a = result.data[idx + 3];
+
+        float a  = src_a / 255.0f;
+        float ia = 1.0f - a;
+
+        result.data[idx + 0] = uint8_t(src_r * a + dst_r * ia);
+        result.data[idx + 1] = uint8_t(src_g * a + dst_g * ia);
+        result.data[idx + 2] = uint8_t(src_b * a + dst_b * ia);
+        result.data[idx + 3] = uint8_t(src_a + dst_a * (1.0f - a));
     };
 
     auto DrawLine = [&](int x0, int y0, int x1, int y1, uint32_t color, float thickness) {
@@ -1830,10 +1850,10 @@ capture_result_t ScreenshotTool::GetFinalImage()
                             if (glyph_alpha == 0)
                                 continue;
 
-                            const uint8_t  out_a   = static_cast<uint8_t>((uint32_t)col_a * glyph_alpha / 255u);
-                            const uint32_t blended = (uint32_t)col_r | ((uint32_t)col_g << 8) |
-                                                     ((uint32_t)col_b << 16) | ((uint32_t)out_a << 24);
-                            SetPixel(dst_x0 + dx, dst_y0 + dy, blended);
+                            uint8_t  src_a       = col_a * glyph_alpha / 255u;
+                            uint32_t final_color = (col_r) | (col_g << 8) | (col_b << 16) | (src_a << 24);
+
+                            SetPixel(dst_x0 + dx, dst_y0 + dy, final_color);
                         }
                     }
 
