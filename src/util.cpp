@@ -441,7 +441,8 @@ fs::path get_config_dir()
 
 fs::path get_font_path(const std::string& font)
 {
-    fs::path font_path(font);
+    if (font.empty())
+        return {};
 
 #ifdef _WIN32
     static constexpr std::array<std::string_view, 2> default_search_paths = {
@@ -457,6 +458,7 @@ fs::path get_font_path(const std::string& font)
     };
 #endif
 
+    fs::path font_path(font);
     if (font_path.is_absolute())
         return font_path;
 

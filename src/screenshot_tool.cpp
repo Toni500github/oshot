@@ -1357,17 +1357,19 @@ void ScreenshotTool::DrawAnnotationToolbar()
             ImGui::SetNextItemWidth(100);
 
             if (m_current_tool == ToolType::Text)
-                ImGui::InputFloat("##thickness", &m_tool_thickness[idx(m_current_tool)], 8.0f, 2.0f, "%.0f px");
-            else
-                ImGui::SliderFloat("##thickness", &m_tool_thickness[idx(m_current_tool)], 1.0f, 10.0f, "%.2f");
-            ImGui::SameLine();
-            ImGui::TextUnformatted("Thickness");
-
-            if (m_current_tool == ToolType::Text)
             {
+                ImGui::InputFloat("##fontsize", &m_tool_thickness[idx(m_current_tool)], 8.0f, 2.0f, "%.0f px");
+                ImGui::SameLine();
+                ImGui::TextUnformatted("Font Size");
                 static const char* font_filters[] = { "*.ttf", "*.otf", "*.woff", "*.woff2" };
                 draw_input_text_file(
                     "Font name/path", "##font_path_ann_settings", font_filters, 4, [] {}, m_inputs.ann_font);
+            }
+            else
+            {
+                ImGui::SliderFloat("##thickness", &m_tool_thickness[idx(m_current_tool)], 1.0f, 10.0f, "%.2f");
+                ImGui::SameLine();
+                ImGui::TextUnformatted("Thickness");
             }
 
             ImGui::Combo("Color picker", &item_picker, color_pickers, IM_ARRAYSIZE(color_pickers));
