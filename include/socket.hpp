@@ -4,6 +4,8 @@
 #include <memory>
 #include <string>
 
+#include "util.hpp"
+
 #ifndef _WIN32
 #  include <arpa/inet.h>
 #  include <netdb.h>
@@ -22,16 +24,14 @@ class SocketSender
 public:
     ~SocketSender() { Close(); };
 
-    bool Start(int port = 6015);
-    bool Send(const std::string& text);
-    bool Send(SendMsg msg, const void* src, size_t size);
-    bool IsFailed() { return m_failed; }
+    Result<> Start(int port = 6015);
+    Result<> Send(const std::string& text);
+    Result<> Send(SendMsg msg, const void* src, size_t size);
 
     void Close();
 
 private:
-    int  m_sock{};
-    bool m_failed{};
+    int m_sock = -1;
 };
 
 extern std::unique_ptr<SocketSender> g_sender;

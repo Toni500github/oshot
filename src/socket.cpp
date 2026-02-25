@@ -9,78 +9,70 @@
 
 std::unique_ptr<SocketSender> g_sender;
 
-bool SocketSender::Start(int port)
+Result<> SocketSender::Start(int port)
 {
 #ifndef _WIN32
     m_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (m_sock < 0)
-        return false;
+        return Err("Failed to open socket stream: " + std::string(strerror(errno)));
 
     sockaddr_in serv_addr{};
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port   = htons(port);
     if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0)
-        return false;
+        return Err("Invalid address for socket (127.0.0.1)");
 
-    m_failed = (connect(m_sock, reinterpret_cast<struct sockaddr*>(&serv_addr), sizeof(serv_addr)) < 0);
-
-    if (m_failed)
-        error("connecting to launcher failed: {}", strerror(errno));
-
-    return !m_failed;
-#else
-    return true;
+    if (connect(m_sock, reinterpret_cast<struct sockaddr*>(&serv_addr), sizeof(serv_addr)))
+        return Err("Failed to connect to launcher: " + std::string(strerror(errno)));
 #endif
+    return Ok();
 }
 
-bool SocketSender::Send(const std::string& text)
+Result<> SocketSender::Send(const std::string& text)
 {
-    if (text.empty())
-        return false;
-
     return Send(SendMsg::Text, text.c_str(), text.size());
 }
 
-bool SocketSender::Send(SendMsg msg, const void* src, size_t size)
+Result<> SocketSender::Send(SendMsg msg, const void* src, size_t size)
 {
 #ifndef _WIN32
-    if (!src || size < 2)
-        return false;
+    if (!src || size == 0)
+        return Err("No data to send");
 
     char type;
     switch (msg)
     {
         case SendMsg::Text:  type = 'T'; break;
         case SendMsg::Image: type = 'I'; break;
-        default:             return false;
+        default:             return Err("Unknown message to send");
     }
 
     if (size > UINT32_MAX)
-        return false;
+        return Err("Message size too big");
+
+    if (send(m_sock, &type, 1, 0) != 1)
+        return Err("Failed to send message type: " + std::string(strerror(errno)));
 
     uint32_t net_len = htonl(static_cast<uint32_t>(size));  // network byte order
-    if (send(m_sock, &type, 1, 0) != 1)
-        return false;
-
     if (send(m_sock, reinterpret_cast<const char*>(&net_len), sizeof(net_len), 0) != sizeof(net_len))
-        return false;
+        return Err("Failed to send message size: " + std::string(strerror(errno)));
 
     const char* buf = reinterpret_cast<const char*>(src);
 
     size_t           sent       = 0;
-    constexpr size_t CHUNK_SIZE = 64 * 1024;  // 64KB
+    constexpr size_t chunk_size = 64 * 1024;  // 64KB
     while (sent < size)
     {
-        size_t remaining = size - sent;
-        size_t chunk     = std::min(remaining, CHUNK_SIZE);
-        int    n         = send(m_sock, buf + sent, chunk, 0);
+        size_t  remaining = size - sent;
+        size_t  chunk     = std::min(remaining, chunk_size);
+        ssize_t n         = send(m_sock, buf + sent, chunk, 0);
         if (n <= 0)
-            return false;
+            return Err("Failed to send all message data");
 
         sent += n;
     }
 #endif
-    return true;
+    return Ok();
 }
 
 void SocketSender::Close()

@@ -39,14 +39,14 @@ SessionType get_session_type()
     const char* wayland = std::getenv("WAYLAND_DISPLAY");
     const char* x11     = std::getenv("DISPLAY");
 
-    if (xdg && strncmp(xdg, "wayland", 8) == 0)
+    if (xdg && strcmp(xdg, "wayland") == 0)
         return SessionType::Wayland;
     if (wayland && wayland[0] != '\0')
         return SessionType::Wayland;
 
     if (x11 && x11[0] != '\0')
         return SessionType::X11;
-    if (xdg && strncmp(xdg, "x11", 4) == 0)
+    if (xdg && strcmp(xdg, "x11") == 0)
         return SessionType::X11;
 #endif
 
@@ -135,14 +135,14 @@ Result<capture_result_t> capture_full_screen_wayland()
     return Ok(std::move(result));
 }
 
-struct portal_cap_context
+struct portal_capture_t
 {
     std::string      png_path;
     std::string      error_msg;
     capture_result_t cap;
 } cap_portal;
 
-struct g_state_t
+struct portal_state_t
 {
     GMainLoop* loop;
     guint      subscription_id;
@@ -150,33 +150,29 @@ struct g_state_t
 
 static gboolean on_timeout(gpointer user_data)
 {
-    g_state_t* st        = reinterpret_cast<g_state_t*>(user_data);
+    portal_state_t* st   = reinterpret_cast<portal_state_t*>(user_data);
     cap_portal.error_msg = "Timed out waiting for portal response (is xdg-desktop-portal running?)";
     g_main_loop_quit(st->loop);
     return G_SOURCE_REMOVE;
 }
 
-static std::string uri_to_path(const char* uri, std::string& err_out)
+static Result<std::string> uri_to_path(const char* uri)
 {
+    if (!uri)
+        return Err("URI path to screenshot is null");
+
     GFile* file = g_file_new_for_uri(uri);
     if (!file)
-    {
-        err_out = "g_file_new_for_uri returned null";
-        return {};
-    }
+        return Err("g_file_new_for_uri returned null");
 
     char* path = g_file_get_path(file);
     g_object_unref(file);
-
     if (!path)
-    {
-        err_out = "URI is not a local file path (g_file_get_path returned NULL)";
-        return {};
-    }
+        return Err("URI is not a local file path (g_file_get_path returned nullptr)");
 
     std::string out(path);
     g_free(path);
-    return out;
+    return Ok(std::move(out));
 }
 
 static void on_response(GDBusConnection* conn,
@@ -187,11 +183,11 @@ static void on_response(GDBusConnection* conn,
                         GVariant*        parameters,
                         gpointer         user_data)
 {
-    g_state_t* st = reinterpret_cast<g_state_t*>(user_data);
+    portal_state_t* st = reinterpret_cast<portal_state_t*>(user_data);
 
     guint32      response = 2;
-    GVariant*    results  = NULL;
-    const gchar* uri      = NULL;
+    GVariant*    results  = nullptr;
+    const gchar* uri      = nullptr;
 
     g_variant_get(parameters, "(u@a{sv})", &response, &results);
 
@@ -206,22 +202,33 @@ static void on_response(GDBusConnection* conn,
     if (st->subscription_id)
         g_dbus_connection_signal_unsubscribe(conn, st->subscription_id);
 
-    cap_portal.png_path = uri_to_path(uri, cap_portal.error_msg);
+    const Result<std::string>& res = uri_to_path(uri);
+    if (res.ok())
+    {
+        cap_portal.png_path  = res.get();
+        cap_portal.error_msg = "";
+    }
+    else
+    {
+        cap_portal.png_path  = "";
+        cap_portal.error_msg = res.error_v();
+    }
+
     g_main_loop_quit(st->loop);
 }
 
 Result<capture_result_t> capture_full_screen_portal()
 {
+    cap_portal = {};
     warn("Fallback to portal capture");
 
-    GError*          error = NULL;
-    GDBusConnection* bus   = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
+    GError*          error = nullptr;
+    GDBusConnection* bus   = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
     if (!bus)
     {
         cap_portal.error_msg =
             "Failed to connect to session bus: " + std::string(error->message ? error->message : "Unknown");
-        if (error)
-            g_error_free(error);
+        g_error_free(error);
         return Err(cap_portal.error_msg);
     }
 
@@ -232,23 +239,22 @@ Result<capture_result_t> capture_full_screen_portal()
                                                   "/org/freedesktop/portal/desktop",
                                                   "org.freedesktop.portal.Screenshot",
                                                   "Screenshot",
-                                                  g_variant_new("(sa{sv})", "", NULL),
+                                                  g_variant_new("(sa{sv})", "", nullptr),
                                                   G_VARIANT_TYPE("(o)"),
                                                   G_DBUS_CALL_FLAGS_NONE,
                                                   3000,  // 3s timeout for the method call itself
-                                                  NULL,
+                                                  nullptr,
                                                   &error);
 
     if (!reply)
     {
         cap_portal.error_msg = "Portal call failed: " + std::string(error->message ? error->message : "Unknown");
-        if (error)
-            g_error_free(error);
+        g_error_free(error);
         g_object_unref(bus);
         return Err(cap_portal.error_msg);
     }
 
-    const char* request_path = NULL;
+    const char* request_path = nullptr;
     g_variant_get(reply, "(&o)", &request_path);
 
     if (!request_path || request_path[0] == '\0')
@@ -258,8 +264,8 @@ Result<capture_result_t> capture_full_screen_portal()
         return Err("Portal returned an empty request handle");
     }
 
-    g_state_t st;
-    st.loop = g_main_loop_new(NULL, FALSE);
+    portal_state_t st;
+    st.loop = g_main_loop_new(nullptr, FALSE);
 
     // Subscribe specifically to the request object's Response signal.
     st.subscription_id = g_dbus_connection_signal_subscribe(bus,
@@ -267,11 +273,11 @@ Result<capture_result_t> capture_full_screen_portal()
                                                             "org.freedesktop.portal.Request",
                                                             "Response",
                                                             request_path,
-                                                            NULL,
+                                                            nullptr,
                                                             G_DBUS_SIGNAL_FLAGS_NONE,
                                                             on_response,
                                                             &st,
-                                                            NULL);
+                                                            nullptr);
 
     // Don’t hang forever if nothing responds.
     g_timeout_add_seconds(5, on_timeout, &st);
@@ -285,7 +291,7 @@ Result<capture_result_t> capture_full_screen_portal()
     if (cap_portal.png_path.empty())
     {
         if (cap_portal.error_msg.empty())
-            return Err("Failed to retrive uri path to screenshot PNG");
+            return Err("Failed to retrieve uri path to screenshot PNG");
         return Err(cap_portal.error_msg);
     }
 
@@ -331,11 +337,10 @@ Result<capture_result_t> capture_full_screen_windows_fallback()
 
     result.w = width;
     result.h = height;
-    result.data.resize(width * height * 4);
-    std::fill(result.data.begin(), result.data.end(), 0);
+    result.data.resize(static_cast<size_t>(width) * height * 4);
 
     // Get Device Contexts
-    HDC hScreenDC = GetDC(NULL);
+    HDC hScreenDC = GetDC(nullptr);
     HDC hMemoryDC = CreateCompatibleDC(hScreenDC);
 
     // Create a 32-bit bitmap for RGBA capture
@@ -349,12 +354,12 @@ Result<capture_result_t> capture_full_screen_windows_fallback()
 
     // Create DIB section
     void*   pBits   = nullptr;
-    HBITMAP hBitmap = CreateDIBSection(hScreenDC, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
+    HBITMAP hBitmap = CreateDIBSection(hScreenDC, &bmi, DIB_RGB_COLORS, &pBits, nullptr, 0);
 
     if (!hBitmap)
     {
         DeleteDC(hMemoryDC);
-        ReleaseDC(NULL, hScreenDC);
+        ReleaseDC(nullptr, hScreenDC);
         return Err("Failed to create DIB section");
     }
 
@@ -394,7 +399,7 @@ Result<capture_result_t> capture_full_screen_windows_fallback()
     SelectObject(hMemoryDC, hOldBitmap);
     DeleteObject(hBitmap);
     DeleteDC(hMemoryDC);
-    ReleaseDC(NULL, hScreenDC);
+    ReleaseDC(nullptr, hScreenDC);
 
     return Ok(std::move(result));
 }
@@ -424,6 +429,16 @@ struct com_ptr
     T*  operator->() const { return ptr; }
         operator T*() const { return ptr; }
         operator bool() const { return ptr != nullptr; }
+
+    T** reset_and_get_address()
+    {
+        if (ptr)
+        {
+            ptr->Release();
+            ptr = nullptr;
+        }
+        return &ptr;
+    }
 };
 
 Result<capture_result_t> capture_full_screen_windows()
@@ -440,9 +455,10 @@ Result<capture_result_t> capture_full_screen_windows()
     com_ptr<IDXGIOutput>   output;
 
     bool found_output = false;
-    for (UINT ai = 0; factory->EnumAdapters1(ai, &adapter) != DXGI_ERROR_NOT_FOUND; ++ai)
+    for (UINT ai = 0; factory->EnumAdapters1(ai, &adapter.reset_and_get_address()))
+        != DXGI_ERROR_NOT_FOUND; ++ai)
     {
-        for (UINT oi = 0; adapter->EnumOutputs(oi, &output) != DXGI_ERROR_NOT_FOUND; ++oi)
+        for (UINT oi = 0; adapter->EnumOutputs(oi, output.reset_and_get_address()) != DXGI_ERROR_NOT_FOUND; ++oi)
         {
             DXGI_OUTPUT_DESC od{};
             output->GetDesc(&od);
@@ -452,22 +468,10 @@ Result<capture_result_t> capture_full_screen_windows()
                 found_output = true;
                 break;
             }
-
-            if (output)
-            {
-                output->Release();
-                output.ptr = nullptr;
-            }
         }
 
         if (found_output)
             break;
-
-        if (adapter)
-        {
-            adapter->Release();
-            adapter.ptr = nullptr;
-        }
     }
 
     if (!found_output)
@@ -506,8 +510,6 @@ Result<capture_result_t> capture_full_screen_windows()
     DXGI_OUTDUPL_FRAME_INFO frame_info{};
     com_ptr<IDXGIResource>  desktop_resource;
 
-    bool frame_acquired = false;
-
     hr = duplication->AcquireNextFrame(100, &frame_info, &desktop_resource);
 
     if (hr == DXGI_ERROR_ACCESS_LOST)
@@ -515,8 +517,6 @@ Result<capture_result_t> capture_full_screen_windows()
 
     if (hr_failed(hr, "AcquireNextFrame"))
         return capture_full_screen_windows_fallback();
-
-    frame_acquired = true;
 
     if (frame_info.AccumulatedFrames == 0)
     {
@@ -529,8 +529,7 @@ Result<capture_result_t> capture_full_screen_windows()
     hr = desktop_resource->QueryInterface(IID_PPV_ARGS(&desktop_texture));
     if (hr_failed(hr, "QueryInterface(ID3D11Texture2D)"))
     {
-        if (frame_acquired)
-            duplication->ReleaseFrame();
+        duplication->ReleaseFrame();
         return capture_full_screen_windows_fallback();
     }
 
@@ -541,8 +540,7 @@ Result<capture_result_t> capture_full_screen_windows()
     if (desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM && desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB &&
         desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM && desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
     {
-        if (frame_acquired)
-            duplication->ReleaseFrame();
+        duplication->ReleaseFrame();
         debug("Unsupported DXGI format: {}", static_cast<unsigned>(desc.Format));
         return capture_full_screen_windows_fallback();
     }
@@ -557,8 +555,7 @@ Result<capture_result_t> capture_full_screen_windows()
     hr = device->CreateTexture2D(&desc, nullptr, &staging);
     if (hr_failed(hr, "CreateTexture2D(staging)"))
     {
-        if (frame_acquired)
-            duplication->ReleaseFrame();
+        duplication->ReleaseFrame();
         return capture_full_screen_windows_fallback();
     }
 
@@ -570,8 +567,7 @@ Result<capture_result_t> capture_full_screen_windows()
     hr = context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped);
     if (hr_failed(hr, "Map"))
     {
-        if (frame_acquired)
-            duplication->ReleaseFrame();
+        duplication->ReleaseFrame();
         return capture_full_screen_windows_fallback();
     }
 
@@ -613,8 +609,7 @@ Result<capture_result_t> capture_full_screen_windows()
 
     context->Unmap(staging, 0);
 
-    if (frame_acquired)
-        duplication->ReleaseFrame();
+    duplication->ReleaseFrame();
 
     return Ok(std::move(result));
 }

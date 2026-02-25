@@ -38,8 +38,8 @@
 
 using namespace std::chrono_literals;
 
+static constexpr ImVec2            origin(0, 0);
 static std::unique_ptr<Translator> translator;
-static ImVec2                      origin(0, 0);
 
 static std::array<void*, idx(ToolType::Count)> tool_textures;
 
@@ -87,7 +87,7 @@ static void draw_input_text_path(const char*                  label,
         }
     };
 
-    float button_size = ImGui::GetFrameHeight();
+    const float button_size = ImGui::GetFrameHeight();
     ImGui::PushItemWidth(ImGui::CalcItemWidth() - button_size);
     if (ImGui::InputText(input_id, &path))
         func();
@@ -219,7 +219,7 @@ Result<> ScreenshotTool::Start()
     }
 
     if (!result.ok())
-        return Err("Failed to do data with screenshot: " + result.error_v());
+        return Err("Failed to load image: " + result.error_v());
 
     m_screenshot = std::move(result.get());
     m_tool_thickness.fill(3.0f);
@@ -235,11 +235,15 @@ Result<> ScreenshotTool::StartWindow()
     m_show_text_tools = g_config->File.show_text_tools;
 
     if (!g_is_clipboard_server)
-        std::thread([] { g_sender->Start(6015); }).detach();
+        std::thread([] {
+            const Result<>& res = g_sender->Start(6015);
+            if (!res.ok())
+                error("Error while connecting to systray: {}", res.error());
+        }).detach();
 
     const Result<void*>& res = CreateTexture(m_texture_id, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
     if (!res.ok())
-        return Err("Failed create openGL texture: " + res.error_v());
+        return Err("Failed to create openGL texture: " + res.error_v());
 
     m_texture_id = res.get();
     fit_to_screen(m_screenshot);
@@ -721,10 +725,10 @@ void ScreenshotTool::UpdateHandleHoverState()
     if (m_state != ToolState::Selected && m_state != ToolState::Resizing)
         return;
 
-    float sel_x = m_selection.get_x();
-    float sel_y = m_selection.get_y();
-    float sel_w = m_selection.get_width();
-    float sel_h = m_selection.get_height();
+    const float sel_x = m_selection.get_x();
+    const float sel_y = m_selection.get_y();
+    const float sel_w = m_selection.get_width();
+    const float sel_h = m_selection.get_height();
 
     const float hover_half = HANDLE_HOVER_SIZE / 2.0f;
 
@@ -812,10 +816,10 @@ void ScreenshotTool::UpdateCursor()
     else if (m_state == ToolState::Selected || m_state == ToolState::Resizing)
     {
         // Check if mouse is inside the selection (for moving)
-        float sel_x = m_selection.get_x();
-        float sel_y = m_selection.get_y();
-        float sel_w = m_selection.get_width();
-        float sel_h = m_selection.get_height();
+        const float sel_x = m_selection.get_x();
+        const float sel_y = m_selection.get_y();
+        const float sel_w = m_selection.get_width();
+        const float sel_h = m_selection.get_height();
 
         ImRect       selection_rect(ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h));
         const ImVec2 mouse_pos = ImGui::GetMousePos();
@@ -835,12 +839,12 @@ void ScreenshotTool::DrawDarkOverlay()
 {
     ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
 
-    float sel_x = m_selection.get_x();
-    float sel_y = m_selection.get_y();
-    float sel_w = m_selection.get_width();
-    float sel_h = m_selection.get_height();
+    const float sel_x = m_selection.get_x();
+    const float sel_y = m_selection.get_y();
+    const float sel_w = m_selection.get_width();
+    const float sel_h = m_selection.get_height();
 
-    ImU32 dark_color = IM_COL32(0, 0, 0, 120);
+    constexpr ImU32 dark_color = IM_COL32(0, 0, 0, 120);
 
     // Top rectangle
     draw_list->AddRectFilled(m_image_origin, ImVec2(m_image_end.x, sel_y), dark_color);
@@ -859,10 +863,10 @@ void ScreenshotTool::DrawSelectionBorder()
 {
     ImDrawList* draw_list = ImGui::GetForegroundDrawList();
 
-    float sel_x = m_selection.get_x();
-    float sel_y = m_selection.get_y();
-    float sel_w = m_selection.get_width();
-    float sel_h = m_selection.get_height();
+    const float sel_x = m_selection.get_x();
+    const float sel_y = m_selection.get_y();
+    const float sel_w = m_selection.get_width();
+    const float sel_h = m_selection.get_height();
 
     UpdateHandleHoverState();
 
@@ -1141,7 +1145,9 @@ void ScreenshotTool::DrawOcrTools()
     {
         if (m_inputs.ocr_text.back() == '\n')
             m_inputs.ocr_text.pop_back();
-        g_clipboard->CopyText(m_inputs.ocr_text);
+        const Result<>& res = g_clipboard->CopyText(m_inputs.ocr_text);
+        if (!res.ok())
+            error("Failed to copy text: " + res.error_v());
     }
 
     ImGui::PopID();
@@ -1354,7 +1360,9 @@ void ScreenshotTool::DrawBarDecodeTools()
     {
         if (m_inputs.barcode_text.back() == '\n')
             m_inputs.barcode_text.pop_back();
-        g_clipboard->CopyText(m_inputs.barcode_text);
+        const Result<>& res = g_clipboard->CopyText(m_inputs.barcode_text);
+        if (!res.ok())
+            error("Failed to copy text: " + res.error_v());
     }
 
     ImGui::PopID();
@@ -1365,12 +1373,11 @@ void ScreenshotTool::DrawAnnotationToolbar()
     static int                   item_picker      = 0;
     static constexpr const char* color_pickers[2] = { "Bar - Square", "Wheel - Triangle" };
 
-    float sel_x = m_selection.get_x();
-    float sel_y = m_selection.get_y();
-    float sel_h = m_selection.get_height();
+    const float sel_x = m_selection.get_x();
+    const float sel_y = m_selection.get_y();
+    const float sel_h = m_selection.get_height();
 
-    // Position toolbar below the selection
-    ImVec2 toolbar_pos(sel_x, sel_y + sel_h + 10);
+    const ImVec2 toolbar_pos(sel_x, sel_y + sel_h + 10);
 
     ImGui::SetNextWindowPos(toolbar_pos);
     ImGui::Begin("##annotation_toolbar",
@@ -1379,7 +1386,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
                      ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize);
 
     // Tool selection buttons
-    auto DrawSetButton = [&](ToolType tool, const char* id, void* texture) {
+    auto draw_and_set_button = [&](ToolType tool, const char* id, void* texture) {
         const bool  selected   = (m_current_tool == tool);
         ImTextureID texture_id = (ImTextureID)(intptr_t)texture;
 
@@ -1455,14 +1462,14 @@ void ScreenshotTool::DrawAnnotationToolbar()
         ImGui::SameLine();
     };
 
-    DrawSetButton(ToolType::Arrow, "##Arrow", tool_textures[idx(ToolType::Arrow)]);
-    DrawSetButton(ToolType::Rectangle, "##Rectangle", tool_textures[idx(ToolType::Rectangle)]);
-    DrawSetButton(ToolType::RectangleFilled, "##Rectangle_filled", tool_textures[idx(ToolType::RectangleFilled)]);
-    DrawSetButton(ToolType::Circle, "##Circle", tool_textures[idx(ToolType::Circle)]);
-    DrawSetButton(ToolType::CircleFilled, "##Circle_filled", tool_textures[idx(ToolType::CircleFilled)]);
-    DrawSetButton(ToolType::Line, "##Line", tool_textures[idx(ToolType::Line)]);
-    DrawSetButton(ToolType::Text, "##icon_Text", tool_textures[idx(ToolType::Text)]);
-    DrawSetButton(ToolType::Pencil, "##Pencil", tool_textures[idx(ToolType::Pencil)]);
+    draw_and_set_button(ToolType::Arrow, "##Arrow", tool_textures[idx(ToolType::Arrow)]);
+    draw_and_set_button(ToolType::Rectangle, "##Rectangle", tool_textures[idx(ToolType::Rectangle)]);
+    draw_and_set_button(ToolType::RectangleFilled, "##Rectangle_filled", tool_textures[idx(ToolType::RectangleFilled)]);
+    draw_and_set_button(ToolType::Circle, "##Circle", tool_textures[idx(ToolType::Circle)]);
+    draw_and_set_button(ToolType::CircleFilled, "##Circle_filled", tool_textures[idx(ToolType::CircleFilled)]);
+    draw_and_set_button(ToolType::Line, "##Line", tool_textures[idx(ToolType::Line)]);
+    draw_and_set_button(ToolType::Text, "##icon_Text", tool_textures[idx(ToolType::Text)]);
+    draw_and_set_button(ToolType::Pencil, "##Pencil", tool_textures[idx(ToolType::Pencil)]);
 
     if (!m_show_text_tools &&
         ImGui::ImageButton("##ShowTextTools", tool_textures[idx(ToolType::ToggleTextTools)], ImVec2(24, 24)))
@@ -1493,31 +1500,22 @@ void ScreenshotTool::DrawAnnotations()
         draw_list->AddText(font, font_size, p1, ann.color, ann.text.c_str());
     };
 
-    auto draw_rectangle = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
-        ImVec2 min(std::min(p1.x, p2.x), std::min(p1.y, p2.y));
-        ImVec2 max(std::max(p1.x, p2.x), std::max(p1.y, p2.y));
-        draw_list->AddRect(min, max, ann.color, 0.0f, 0, t);
-    };
+    auto draw_rectangle_or_filled =
+        [&](const bool filled, const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
+            ImVec2 min(std::min(p1.x, p2.x), std::min(p1.y, p2.y));
+            ImVec2 max(std::max(p1.x, p2.x), std::max(p1.y, p2.y));
+            filled ? draw_list->AddRectFilled(min, max, ann.color, 0.0f, 0)
+                   : draw_list->AddRect(min, max, ann.color, 0.0f, 0, t);
+        };
 
-    auto draw_rectangle_filled = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2) {
-        ImVec2 min(std::min(p1.x, p2.x), std::min(p1.y, p2.y));
-        ImVec2 max(std::max(p1.x, p2.x), std::max(p1.y, p2.y));
-        draw_list->AddRectFilled(min, max, ann.color, 0.0f, 0);
-    };
-
-    auto draw_circle = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
-        float dx     = p2.x - p1.x;
-        float dy     = p2.y - p1.y;
-        float radius = std::sqrt(dx * dx + dy * dy);
-        draw_list->AddCircle(p1, radius, ann.color, 0, t);
-    };
-
-    auto draw_circle_filled = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2) {
-        float dx     = p2.x - p1.x;
-        float dy     = p2.y - p1.y;
-        float radius = std::sqrt(dx * dx + dy * dy);
-        draw_list->AddCircleFilled(p1, radius, ann.color, 0);
-    };
+    auto draw_circle_or_filled =
+        [&](const bool filled, const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
+            float dx     = p2.x - p1.x;
+            float dy     = p2.y - p1.y;
+            float radius = std::sqrt(dx * dx + dy * dy);
+            filled ? draw_list->AddCircleFilled(p1, radius, ann.color, 0)
+                   : draw_list->AddCircle(p1, radius, ann.color, 0, t);
+        };
 
     auto draw_pencil = [&](const annotation_t& ann, const float t) {
         if (ann.points.size() > 1)
@@ -1532,7 +1530,7 @@ void ScreenshotTool::DrawAnnotations()
 
     auto draw_arrow = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
         ImVec2 v(p2.x - p1.x, p2.y - p1.y);
-        float  len = sqrtf(v.x * v.x + v.y * v.y);
+        float  len = std::sqrt(v.x * v.x + v.y * v.y);
         if (len < 1.0f)
             return;
 
@@ -1555,8 +1553,7 @@ void ScreenshotTool::DrawAnnotations()
         draw_list->AddTriangleFilled(p2, left, right, ann.color);
     };
 
-    for (const auto& ann : m_annotations)
-    {
+    auto draw_annotation = [&](const annotation_t& ann) {
         const ImVec2 p1(ann.start.x, ann.start.y);
         const ImVec2 p2(ann.end.x, ann.end.y);
         const float  t = ann.thickness * dpi;
@@ -1565,45 +1562,30 @@ void ScreenshotTool::DrawAnnotations()
         {
             case ToolType::Line:            draw_line(ann, p1, p2, t); break;
             case ToolType::Arrow:           draw_arrow(ann, p1, p2, t); break;
-            case ToolType::Rectangle:       draw_rectangle(ann, p1, p2, t); break;
-            case ToolType::RectangleFilled: draw_rectangle_filled(ann, p1, p2); break;
-            case ToolType::Circle:          draw_circle(ann, p1, p2, t); break;
-            case ToolType::CircleFilled:    draw_circle_filled(ann, p1, p2); break;
+            case ToolType::Rectangle:       draw_rectangle_or_filled(false, ann, p1, p2, t); break;
+            case ToolType::RectangleFilled: draw_rectangle_or_filled(true, ann, p1, p2, t); break;
+            case ToolType::Circle:          draw_circle_or_filled(false, ann, p1, p2, t); break;
+            case ToolType::CircleFilled:    draw_circle_or_filled(true, ann, p1, p2, t); break;
             case ToolType::Text:            draw_text(ann, p1); break;
             case ToolType::Pencil:          draw_pencil(ann, t); break;
 
             default: break;
         }
-    }
+    };
 
     // Render current annotation being drawn
     if (m_is_drawing)
-    {
-        ImVec2      p1(m_current_annotation.start.x, m_current_annotation.start.y);
-        ImVec2      p2(m_current_annotation.end.x, m_current_annotation.end.y);
-        const float t = m_current_annotation.thickness * dpi;
+        draw_annotation(m_current_annotation);
 
-        switch (m_current_annotation.type)
-        {
-            case ToolType::Line:            draw_line(m_current_annotation, p1, p2, t); break;
-            case ToolType::Arrow:           draw_arrow(m_current_annotation, p1, p2, t); break;
-            case ToolType::Rectangle:       draw_rectangle(m_current_annotation, p1, p2, t); break;
-            case ToolType::RectangleFilled: draw_rectangle_filled(m_current_annotation, p1, p2); break;
-            case ToolType::Circle:          draw_circle(m_current_annotation, p1, p2, t); break;
-            case ToolType::CircleFilled:    draw_circle_filled(m_current_annotation, p1, p2); break;
-            case ToolType::Text:            draw_text(m_current_annotation, p1); break;
-            case ToolType::Pencil:          draw_pencil(m_current_annotation, t); break;
-
-            default: break;
-        }
-    }
+    for (const annotation_t& ann : m_annotations)
+        draw_annotation(ann);
 }
 
 void ScreenshotTool::Cancel()
 {
     m_state = ToolState::Idle;
 
-    auto delete_texture = [](void* tex) {
+    auto delete_texture = [](void*& tex) {
         if (tex)
         {
             GLuint texture = (GLuint)(intptr_t)tex;
@@ -1613,7 +1595,7 @@ void ScreenshotTool::Cancel()
     };
 
     delete_texture(m_texture_id);
-    for (auto& tex : tool_textures)
+    for (void*& tex : tool_textures)
         delete_texture(tex);
 
     // (just clears our references, not the actual ImGui fonts)
@@ -1638,7 +1620,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     const Result<void*>& r = CreateTexture(m_texture_id, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
     if (!r.ok())
     {
-        error("Failed create openGL texture: {}", r.error());
+        error("Failed to create openGL texture: {}", r.error());
         return false;
     }
 
@@ -1714,10 +1696,10 @@ capture_result_t ScreenshotTool::GetFinalImage()
     }
 
     // Render annotations to the final image
-    float offset_x = m_selection.get_x();
-    float offset_y = m_selection.get_y();
+    const float offset_x = m_selection.get_x();
+    const float offset_y = m_selection.get_y();
 
-    auto SetPixel = [&](int x, int y, uint32_t color) {
+    auto set_pixel = [&](int x, int y, uint32_t color) {
         if (x < 0 || x >= result.w || y < 0 || y >= result.h)
             return;
 
@@ -1752,7 +1734,7 @@ capture_result_t ScreenshotTool::GetFinalImage()
         result.data[idx + 3] = uint8_t(src_a + dst_a * (1.0f - a));
     };
 
-    auto DrawLine = [&](int x0, int y0, int x1, int y1, uint32_t color, float thickness) {
+    auto draw_line = [&](int x0, int y0, int x1, int y1, uint32_t color, float thickness) {
         // Bresenham's line algorithm with thickness
         int dx     = std::abs(x1 - x0);
         int dy     = std::abs(y1 - y0);
@@ -1767,7 +1749,7 @@ capture_result_t ScreenshotTool::GetFinalImage()
             for (int oy = -radius; oy <= radius; ++oy)
                 for (int ox = -radius; ox <= radius; ++ox)
                     if (ox * ox + oy * oy <= radius * radius)
-                        SetPixel(x0 + ox, y0 + oy, color);
+                        set_pixel(x0 + ox, y0 + oy, color);
 
             if (x0 == x1 && y0 == y1)
                 break;
@@ -1801,7 +1783,7 @@ capture_result_t ScreenshotTool::GetFinalImage()
 
             case ToolType::Line:
             case ToolType::Arrow:
-                DrawLine(x1, y1, x2, y2, ann.color, ann.thickness);
+                draw_line(x1, y1, x2, y2, ann.color, ann.thickness);
                 if (ann.type == ToolType::Arrow)
                 {
                     // Draw arrowhead
@@ -1817,8 +1799,8 @@ capture_result_t ScreenshotTool::GetFinalImage()
                         int   ay1        = static_cast<int>(y2 - arrow_size * dy - arrow_size * 0.5f * dx);
                         int   ax2        = static_cast<int>(x2 - arrow_size * dx - arrow_size * 0.5f * dy);
                         int   ay2        = static_cast<int>(y2 - arrow_size * dy + arrow_size * 0.5f * dx);
-                        DrawLine(x2, y2, ax1, ay1, ann.color, ann.thickness);
-                        DrawLine(x2, y2, ax2, ay2, ann.color, ann.thickness);
+                        draw_line(x2, y2, ax1, ay1, ann.color, ann.thickness);
+                        draw_line(x2, y2, ax2, ay2, ann.color, ann.thickness);
                     }
                 }
                 break;
@@ -1828,11 +1810,8 @@ capture_result_t ScreenshotTool::GetFinalImage()
                 if (ann.text.empty())
                     break;
 
-                // ann.thickness is repurposed as font size for text annotations;
-                // fall back to a sensible default if it's at the tool default of 3px
-                const float font_size = ann.thickness < 8.0f ? 8.0f : ann.thickness;
-
-                ImFont* font = CacheAndGetFont(get_font_path(m_inputs.ann_font).string(), font_size);
+                const float font_size = ann.thickness > 8.0f ? ann.thickness : ImGui::GetFontSize();
+                ImFont*     font      = CacheAndGetFont(get_font_path(m_inputs.ann_font).string(), font_size);
                 if (!font || !font->OwnerAtlas)
                     break;
 
@@ -1910,7 +1889,7 @@ capture_result_t ScreenshotTool::GetFinalImage()
                             uint8_t  src_a       = col_a * glyph_alpha / 255u;
                             uint32_t final_color = (col_r) | (col_g << 8) | (col_b << 16) | (src_a << 24);
 
-                            SetPixel(dst_x0 + dx, dst_y0 + dy, final_color);
+                            set_pixel(dst_x0 + dx, dst_y0 + dy, final_color);
                         }
                     }
 
@@ -1920,10 +1899,10 @@ capture_result_t ScreenshotTool::GetFinalImage()
             }
 
             case ToolType::Rectangle:
-                DrawLine(x1, y1, x2, y1, ann.color, ann.thickness);
-                DrawLine(x2, y1, x2, y2, ann.color, ann.thickness);
-                DrawLine(x2, y2, x1, y2, ann.color, ann.thickness);
-                DrawLine(x1, y2, x1, y1, ann.color, ann.thickness);
+                draw_line(x1, y1, x2, y1, ann.color, ann.thickness);
+                draw_line(x2, y1, x2, y2, ann.color, ann.thickness);
+                draw_line(x2, y2, x1, y2, ann.color, ann.thickness);
+                draw_line(x1, y2, x1, y1, ann.color, ann.thickness);
                 break;
 
             case ToolType::RectangleFilled:
@@ -1934,7 +1913,7 @@ capture_result_t ScreenshotTool::GetFinalImage()
                 int ry2 = std::max(y1, y2);
                 for (int fy = ry1; fy <= ry2; ++fy)
                     for (int fx = rx1; fx <= rx2; ++fx)
-                        SetPixel(fx, fy, ann.color);
+                        set_pixel(fx, fy, ann.color);
                 break;
             }
 
@@ -1956,14 +1935,14 @@ capture_result_t ScreenshotTool::GetFinalImage()
                         for (int ox = -thick_r; ox <= thick_r; ++ox)
                             if (ox * ox + oy * oy <= thick_r * thick_r)
                             {
-                                SetPixel(cx + x + ox, cy + y + oy, ann.color);
-                                SetPixel(cx + y + ox, cy + x + oy, ann.color);
-                                SetPixel(cx - y + ox, cy + x + oy, ann.color);
-                                SetPixel(cx - x + ox, cy + y + oy, ann.color);
-                                SetPixel(cx - x + ox, cy - y + oy, ann.color);
-                                SetPixel(cx - y + ox, cy - x + oy, ann.color);
-                                SetPixel(cx + y + ox, cy - x + oy, ann.color);
-                                SetPixel(cx + x + ox, cy - y + oy, ann.color);
+                                set_pixel(cx + x + ox, cy + y + oy, ann.color);
+                                set_pixel(cx + y + ox, cy + x + oy, ann.color);
+                                set_pixel(cx - y + ox, cy + x + oy, ann.color);
+                                set_pixel(cx - x + ox, cy + y + oy, ann.color);
+                                set_pixel(cx - x + ox, cy - y + oy, ann.color);
+                                set_pixel(cx - y + ox, cy - x + oy, ann.color);
+                                set_pixel(cx + y + ox, cy - x + oy, ann.color);
+                                set_pixel(cx + x + ox, cy - y + oy, ann.color);
                             }
 
                     y += 1;
@@ -1985,7 +1964,7 @@ capture_result_t ScreenshotTool::GetFinalImage()
                 for (int fy = cy - radius; fy <= cy + radius; ++fy)
                     for (int fx = cx - radius; fx <= cx + radius; ++fx)
                         if ((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy) <= radius * radius)
-                            SetPixel(fx, fy, ann.color);
+                            set_pixel(fx, fy, ann.color);
                 break;
             }
 
@@ -1996,7 +1975,7 @@ capture_result_t ScreenshotTool::GetFinalImage()
                     int py1 = static_cast<int>(ann.points[i - 1].y - offset_y);
                     int px2 = static_cast<int>(ann.points[i].x - offset_x);
                     int py2 = static_cast<int>(ann.points[i].y - offset_y);
-                    DrawLine(px1, py1, px2, py2, ann.color, ann.thickness);
+                    draw_line(px1, py1, px2, py2, ann.color, ann.thickness);
                 }
                 break;
         }

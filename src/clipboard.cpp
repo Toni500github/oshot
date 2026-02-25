@@ -22,9 +22,10 @@ Result<> Clipboard::CopyText(const std::string& text)
     {
         if (!g_is_clipboard_server)
         {
-            if (g_sender->Send(text))
+            const Result<>& res = g_sender->Send(text);
+            if (res.ok())
                 return Ok();
-            return Err("Failed to send");
+            return Err("Failed to send text to copy: " + res.error_v());
         }
 
         if (clip::set_text(text))
@@ -84,9 +85,10 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
         std::memcpy(payload.data() + 4, &h_be, 4);
         std::memcpy(payload.data() + 8, cap.view().data(), size);
 
-        if (g_sender->Send(SendMsg::Image, payload.data(), payload.size()))
+        const Result<>& res = g_sender->Send(SendMsg::Image, payload.data(), payload.size());
+        if (res.ok())
             return Ok();
-        return Err("Failed to send");
+        return Err("Failed to send image to copy: " + res.error_v());
     }
 
     clip::image_spec spec;
