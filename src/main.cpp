@@ -23,7 +23,7 @@
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_opengl3.h"
 #include "switch_fnv1a.hpp"
-#include "trayapp/tray.hpp"
+#include "tray.hpp"
 #define GL_SILENCE_DEPRECATION
 #if defined(IMGUI_IMPL_OPENGL_ES2)
 #  include <GLES2/gl2.h>
@@ -39,6 +39,8 @@
 #include "socket.hpp"
 #include "switch_fnv1a.hpp"
 #include "util.hpp"
+
+using namespace Tray;
 
 // [Win32] Our example includes a copy of glfw3.lib pre-compiled with VS2010 to maximize ease of testing and
 // compatibility with old VS compilers. To link with VS2010-era libraries, VS2015+ requires linking with
@@ -442,45 +444,64 @@ int main(int argc, char* argv[])
     });
 #endif
 
+    std::vector<TrayMenu*> menu;
+
 #ifdef _WIN32
-    Tray::Tray tray("oshot", "oshot.ico");
+    TrayIcon tray("oshot.png", "oshot.ico", "oshot", menu);
 #else
+    // Basically create the icon.png in a temp directory and use
+    // that for the systray icon. idfk, it works
     std::error_code ec;
-    const auto&     path = fs::temp_directory_path() / "oshot.png";
+    const fs::path& path = fs::temp_directory_path() / "oshot.png";
     fs::create_directories(path.parent_path(), ec);
     std::ofstream out(path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
 
     out.write(reinterpret_cast<const char*>(oshot_png), static_cast<std::streamsize>(oshot_png_len));
     out.close();
-    Tray::Tray tray("oshot", path.string());
+    TrayIcon tray(path.string(), "oshot.ico", "oshot", menu);
 #endif
 
-    tray.addEntry(Tray::Button("Capture", [&] {
-        std::lock_guard lk(mtx);
-        // only queue if not already queued
-        if (!do_capture)
-        {
-            do_capture = true;
-            cv.notify_all();
-        }
-    }));
+    tray.menu.push_back(new TrayMenu{ "Capture",
+                                      true,
+                                      false,
+                                      false,
+                                      [&](TrayMenu*) {
+                                          std::lock_guard lk(mtx);
+                                          // only queue if not already queued
+                                          if (!do_capture)
+                                          {
+                                              do_capture = true;
+                                              cv.notify_all();
+                                          }
+                                      },
+                                      {} });
 
-    tray.addEntry(Tray::Button("Quit", [&] {
-        quit.store(true);
+    tray.menu.push_back(new TrayMenu{ "Quit",
+                                      true,
+                                      false,
+                                      false,
+                                      [&](TrayMenu*) {
+                                          quit.store(true);
 #ifndef _WIN32
-        if (g_lock_sock >= 0)
-        {
-            ::shutdown(g_lock_sock, SHUT_RDWR);
-            ::close(g_lock_sock);
-            g_lock_sock = -1;
-        }
+                                          if (g_lock_sock >= 0)
+                                          {
+                                              ::shutdown(g_lock_sock, SHUT_RDWR);
+                                              ::close(g_lock_sock);
+                                              g_lock_sock = -1;
+                                          }
 #endif
-        cv.notify_all();
-        fs::remove(fs::temp_directory_path() / "oshot.lock");
-        tray.exit();
-    }));
+                                          cv.notify_all();
+                                          fs::remove(fs::temp_directory_path() / "oshot.lock");
+                                          trayMaker.Exit();
+                                      },
+                                      {} });
 
-    tray.run();
+    if (trayMaker.Initialize(&tray))
+        while (trayMaker.Loop(1))
+        {
+        }
+    else
+        die("Systray initialization failed");
 
     // Quitted the tray
     worker.join();

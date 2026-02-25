@@ -2,17 +2,21 @@ PKG_FLAGS	:= `pkg-config --cflags appindicator3-0.1`
 
 CXX		?= g++
 CXXSTD		?= c++20
-CXXFLAGS 	 = $(PKG_FLAGS) -std=$(CXXSTD) $(LTO_FLAGS) -I../../../include/libs/trayapp -fvisibility=hidden -fvisibility-inlines-hidden -fPIC
+CXXFLAGS 	 = $(PKG_FLAGS) -std=$(CXXSTD) $(LTO_FLAGS) -I../../../include/libs/ -fvisibility=hidden -fvisibility-inlines-hidden -fPIC
 
-SRC		:= $(wildcard ./*/*.cpp ./*/*/*.cpp)
+SRC		:= $(wildcard ./*.cpp)
 OBJ		:= $(SRC:.cpp=.o)
-LIBNAME		:= libtrayapp.a
+LIBNAME		:= libtray.a
 
 ifeq ($(DEBUG),1)
 	CXXFLAGS  := -ggdb3 -Wall -Wextra -pedantic -Wno-unused-parameter \
                         -DDEBUG=1 -fno-omit-frame-pointer $(DEBUG_CXXFLAGS) $(CXXFLAGS)
 else
 	CXXFLAGS += -O3 -DNDEBUG
+endif
+
+ifeq ($(shell uname -s),Darwin)
+	SRC := tray_darwin.mm
 endif
 
 all: $(LIBNAME)

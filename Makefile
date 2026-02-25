@@ -68,9 +68,9 @@ SRC	 	 = $(wildcard src/*.cpp)
 OBJ	 	 = $(SRC:.cpp=.o)
 LDFLAGS   	+= -L$(BUILDDIR) $(LTO_FLAGS)
 LDLIBS		+= $(wildcard $(BUILDDIR)/*.a) `pkg-config --static --libs glfw3 tesseract libcurl zbar`
-CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -Iinclude/libs/trayapp -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
+CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
 
-all: imgui fmt tfd tpl clip trayapp getopt-port toml $(TARGET)
+all: imgui fmt tfd tpl clip tray getopt-port toml $(TARGET)
 
 imgui:
 ifeq ($(wildcard $(BUILDDIR)/libimgui.a),)
@@ -94,9 +94,9 @@ ifeq ($(wildcard $(BUILDDIR)/libclip.a),)
 	$(MAKE) -C src/libs/clip BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
 endif
 
-trayapp:
-ifeq ($(wildcard $(BUILDDIR)/libtrayapp.a),)
-	$(MAKE) -C src/libs/trayapp BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
+tray:
+ifeq ($(wildcard $(BUILDDIR)/libtray.a),)
+	$(MAKE) -C src/libs/tray BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
 endif
 
 tfd:
@@ -117,7 +117,7 @@ endif
 genver: ./scripts/generateVersion.sh
 	./scripts/generateVersion.sh
 
-$(TARGET): genver fmt toml tfd tpl clip trayapp getopt-port $(OBJ)
+$(TARGET): genver fmt toml tfd tpl clip tray getopt-port $(OBJ)
 	mkdir -p $(BUILDDIR)
 	$(CXX) -o $(BUILDDIR)/$(TARGET) $(OBJ) $(BUILDDIR)/*.o $(LDFLAGS) $(LDLIBS)
 
@@ -136,4 +136,4 @@ distclean:
 updatever:
 	sed -i "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml) CMakeLists.txt compile_flags.txt
 
-.PHONY: $(TARGET) updatever distclean clean imgui fmt tpl toml getopt-port clip trayapp dist all
+.PHONY: $(TARGET) updatever distclean clean imgui fmt tpl toml getopt-port clip tray dist all

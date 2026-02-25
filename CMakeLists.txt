@@ -68,6 +68,10 @@ pkg_check_modules(TESSERACT REQUIRED tesseract)
 pkg_check_modules(LEPTONICA REQUIRED lept)
 pkg_check_modules(ZBAR REQUIRED zbar)
 
+if(UNIX AND NOT APPLE)
+    pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
+endif()
+
 # -----------------------------
 # Main executable
 # -----------------------------
@@ -109,9 +113,12 @@ target_include_directories(
         include/libs
         ${TESSERACT_INCLUDE_DIRS}
         ${LEPTONICA_INCLUDE_DIRS}
-        ${APPINDICATOR_INCLUDE_DIRS}
         ${ZBAR_INCLUDE_DIRS}
 )
+
+if(UNIX AND NOT APPLE)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${APPINDICATOR_INCLUDE_DIRS})
+endif()
 
 target_compile_options(
     ${PROJECT_NAME}
@@ -140,7 +147,24 @@ if(WIN32)
     if(NOT WINDOWS_CMD)
         set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
-elseif(UNIX AND NOT APPLE)
+elseif(APPLE)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+        # Use libc++ explicitly so we can compile for
+        # CMAKE_OSX_DEPLOYMENT_TARGET=10.7 or 10.8
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+    endif()
+    target_compile_options(${PROJECT_NAME} PUBLIC -fobjc-arc)
+    # Screen capture
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        "-framework CoreGraphics"
+        "-framework CoreFoundation"
+        "-framework ApplicationServices")
+    # Needed for GLFW on macOS
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        "-framework Cocoa"
+        "-framework IOKit"
+        "-framework OpenGL")
+elseif(UNIX)
     find_package(X11 REQUIRED)
     target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
     pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
@@ -187,31 +211,52 @@ target_link_libraries(imgui PUBLIC ${GLFW_TARGET})
 target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
 
 # -----------------------------
-# trayapp library (integrated from its own CMakeLists.txt)
+# Tray library (integrated from its own CMakeLists.txt)
 # -----------------------------
 
-file(
-    GLOB TRAYAPP_SOURCES
-    src/libs/trayapp/*/*.cpp
-    src/libs/trayapp/*/*/*.cpp
-)
-
-add_library(trayapp STATIC ${TRAYAPP_SOURCES})
-
-if(UNIX)
-    target_include_directories(
-        trayapp
-        PUBLIC
-        SYSTEM
-        ${APPINDICATOR_INCLUDE_DIRS}
-    )
-    target_link_libraries(trayapp PUBLIC ${APPINDICATOR_LIBRARIES})
+if(WIN32)
+	list(APPEND TRAY_SOURCES src/libs/tray/tray_windows.cpp)
+else()
+	if(UNIX)
+		if(APPLE)
+			find_library(COCOA Cocoa REQUIRED)
+			list(APPEND TRAY_SOURCES src/libs/tray/tray_darwin.mm)
+		else()
+			FIND_PACKAGE(PkgConfig)
+			PKG_CHECK_MODULES(GTK REQUIRED gtk+-3.0)
+			PKG_CHECK_MODULES(APPINDICATOR REQUIRED appindicator3-0.1)
+			list(APPEND TRAY_SOURCES src/libs/tray/tray_linux.cpp)
+		endif()
+	endif()
 endif()
 
-target_include_directories(trayapp PUBLIC include/libs/trayapp)
-target_compile_features(trayapp PRIVATE cxx_std_20)
+add_library(tray STATIC ${TRAY_SOURCES})
+
+if(WIN32)
+	target_compile_definitions(tray PRIVATE TRAY_WINAPI=1 WIN32_LEAN_AND_MEAN NOMINMAX)
+	#target_compile_options(tray PRIVATE "/MT$<$<CONFIG:Debug>:d>")
+else()
+	if(UNIX)
+		if(APPLE)
+			target_compile_definitions(tray PRIVATE TRAY_APPKIT=1)
+			target_link_libraries(tray PRIVATE ${COCOA})
+		else()
+			target_compile_options(tray PRIVATE ${GTK_CFLAGS})
+			target_link_directories(tray PRIVATE ${GTK_LIBRARY_DIRS})
+			target_link_libraries(tray PRIVATE ${GTK_LIBRARIES})
+
+			target_compile_options(tray PRIVATE ${APPINDICATOR_CFLAGS})
+			target_link_directories(tray PRIVATE ${APPINDICATOR_LIBRARY_DIRS})
+			target_compile_definitions(tray PRIVATE TRAY_APPINDICATOR=1)
+			target_link_libraries(tray PRIVATE ${APPINDICATOR_LIBRARIES})
+		endif()
+	endif()
+endif()
+
+target_include_directories(tray PUBLIC include/libs)
+target_compile_features(tray PRIVATE cxx_std_20)
 set_target_properties(
-    trayapp
+    tray
     PROPERTIES
         CXX_STANDARD 20
         CXX_EXTENSIONS OFF
@@ -219,7 +264,7 @@ set_target_properties(
         CXX_STANDARD_REQUIRED ON
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE trayapp)
+target_link_libraries(${PROJECT_NAME} PRIVATE tray)
 
 # -----------------------------
 # clip library (integrated from its own CMakeLists.txt)
@@ -235,10 +280,10 @@ if(WIN32)
             src/libs/clip/clip_win_bmp.cpp
             src/libs/clip/clip_win_wic.cpp
     )
-elseif(UNIX AND NOT APPLE)
+elseif(APPLE)
+    target_sources(clip PRIVATE src/libs/clip/clip_osx.mm)
+elseif(UNIX)
     target_sources(clip PRIVATE src/libs/clip/clip_x11.cpp)
-else()
-    target_sources(clip PRIVATE src/libs/clip/clip_none.cpp)
 endif()
 
 if(MSVC)

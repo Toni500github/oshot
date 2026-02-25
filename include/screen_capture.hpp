@@ -31,6 +31,7 @@ enum class SessionType
     Wayland,
     X11,
     Windows,
+    MacOS,
     Unknown
 };
 
@@ -39,6 +40,7 @@ using CaptureCallback = std::function<void(capture_result_t)>;
 Result<capture_result_t> capture_full_screen_x11();
 Result<capture_result_t> capture_full_screen_wayland();
 Result<capture_result_t> capture_full_screen_windows();
+Result<capture_result_t> capture_full_screen_macos();
 
 SessionType get_session_type();
 
