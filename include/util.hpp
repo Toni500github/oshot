@@ -43,6 +43,8 @@ struct Ok
     using value_type = T;
     T value;
 };
+template <typename T>
+Ok(T) -> Ok<T>;
 
 template <typename E = std::string>
 struct Err
@@ -50,6 +52,8 @@ struct Err
     using value_type = E;
     E value;
 };
+template <typename E>
+Err(E) -> Err<E>;
 
 template <typename T = Ok<>, typename E = Err<>>
 class Result

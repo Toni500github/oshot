@@ -448,7 +448,7 @@ int main(int argc, char* argv[])
     std::vector<TrayMenu*> menu;
 
 #ifdef _WIN32
-    TrayIcon tray("oshot.png", "oshot.ico", "oshot", menu);
+    TrayIcon tray = {"oshot.png", "oshot.ico", "oshot", menu};
 #else
     // Basically create the icon.png in a temp directory and use
     // that for the systray icon. idfk, it works
@@ -459,7 +459,7 @@ int main(int argc, char* argv[])
 
     out.write(reinterpret_cast<const char*>(oshot_png), static_cast<std::streamsize>(oshot_png_len));
     out.close();
-    TrayIcon tray(path.string(), "oshot.ico", "oshot", menu);
+    TrayIcon tray = {path.string(), "oshot.ico", "oshot", menu};
 #endif
 
     tray.menu.push_back(new TrayMenu{ "Capture",
