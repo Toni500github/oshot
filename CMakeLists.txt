@@ -154,11 +154,6 @@ elseif(APPLE)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
     endif()
     target_compile_options(${PROJECT_NAME} PUBLIC -fobjc-arc)
-    # Screen capture
-    target_link_libraries(${PROJECT_NAME} PRIVATE
-        "-framework CoreGraphics"
-        "-framework CoreFoundation"
-        "-framework ApplicationServices")
     # Needed for GLFW on macOS
     target_link_libraries(${PROJECT_NAME} PRIVATE
         "-framework Cocoa"

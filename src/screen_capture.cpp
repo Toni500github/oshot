@@ -18,8 +18,9 @@
 
 #  include "stb_image.h"
 #elif defined(__APPLE__)
-#  include <CoreFoundation/CoreFoundation.h>
-#  include <CoreGraphics/CoreGraphics.h>
+#  include <unistd.h>
+
+#  include "stb_image.h"
 #elif defined(_WIN32)
 #  define WIN32_LEAN_AND_MEAN
 #  define INITGUID
@@ -332,66 +333,46 @@ Result<capture_result_t> capture_full_screen_portal()
 }
 #endif  // __linux__
 
+// macOS  (screencapture CLI via TinyProcessLib)
+// Works on all macOS versions — no deprecated APIs.
+// The OS automatically prompts for Screen Recording permission on first use.
 #ifdef __APPLE__
 Result<capture_result_t> capture_full_screen_macos()
 {
+    // Build a unique temp path for the PNG
+    char tmppath[] = "/tmp/oshot_XXXXXX.png";
+    int  fd        = mkstemps(tmppath, 4);  // suffix length = 4 (".png")
+    if (fd < 0)
+        return Err("Failed to create temp file for screenshot");
+    close(fd);
+
+    // -x  suppress shutter sound
+    // -t png  force PNG format
+    TinyProcessLib::Process proc({ "screencapture", "-x", "-t", "png", tmppath }, "");
+    const int               exit_code = proc.get_exit_status();
+
+    if (exit_code != 0)
+    {
+        unlink(tmppath);
+        return Err("screencapture failed (exit " + std::to_string(exit_code) +
+                   ") — check Screen Recording permission in System Settings → Privacy & Security");
+    }
+
+    int      w = 0, h = 0, comp = 0;
+    uint8_t* rgba = stbi_load(tmppath, &w, &h, &comp, STBI_rgb_alpha);
+    unlink(tmppath);  // clean up regardless
+
+    if (!rgba)
+    {
+        const char* reason = stbi_failure_reason();
+        return Err("Failed to decode screenshot PNG: " + std::string(reason ? reason : "unknown"));
+    }
+
     capture_result_t result;
-
-    // Capture all on-screen windows of the main display
-    CGDirectDisplayID display = CGMainDisplayID();
-    CGRect            bounds  = CGDisplayBounds(display);
-
-    CGImageRef image =
-        CGWindowListCreateImage(bounds, kCGWindowListOptionOnScreenOnly, kCGNullWindowID, kCGWindowImageDefault);
-
-    if (!image)
-        return Err(
-            "CGWindowListCreateImage returned null. Please check 'Screen Recording permission' in System Settings -> Privacy & "
-            "Security and allow oshot");
-
-    const size_t w            = CGImageGetWidth(image);
-    const size_t h            = CGImageGetHeight(image);
-    const size_t bytes_per_px = 4;
-    const size_t row_bytes    = w * bytes_per_px;
-
-    result.w = static_cast<int>(w);
-    result.h = static_cast<int>(h);
-    result.data.resize(w * h * bytes_per_px);
-
-    // Draw into an RGBA context so we always get a consistent byte layout
-    CGColorSpaceRef cs  = CGColorSpaceCreateDeviceRGB();
-    CGContextRef    ctx = CGBitmapContextCreate(result.data.data(),
-                                             w,
-                                             h,
-                                             8,  // bits per component
-                                             row_bytes,
-                                             cs,
-                                             kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
-
-    CGColorSpaceRelease(cs);
-
-    if (!ctx)
-    {
-        CGImageRelease(image);
-        return Err("Failed to create CGBitmapContext");
-    }
-
-    CGContextDrawImage(ctx, CGRectMake(0, 0, (CGFloat)w, (CGFloat)h), image);
-    CGContextRelease(ctx);
-    CGImageRelease(image);
-
-    // Un-premultiply alpha (CoreGraphics premultiplies by default)
-    for (size_t i = 0; i < result.data.size(); i += 4)
-    {
-        uint8_t a = result.data[i + 3];
-        if (a > 0 && a < 255)
-        {
-            result.data[i + 0] = static_cast<uint8_t>(result.data[i + 0] * 255u / a);
-            result.data[i + 1] = static_cast<uint8_t>(result.data[i + 1] * 255u / a);
-            result.data[i + 2] = static_cast<uint8_t>(result.data[i + 2] * 255u / a);
-        }
-        result.data[i + 3] = 0xFF;  // force fully opaque
-    }
+    result.w = w;
+    result.h = h;
+    result.data.assign(rgba, rgba + static_cast<size_t>(w) * h * 4);
+    stbi_image_free(rgba);
 
     return Ok(std::move(result));
 }
