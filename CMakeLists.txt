@@ -156,6 +156,7 @@ elseif(APPLE)
     target_compile_options(${PROJECT_NAME} PUBLIC -fobjc-arc)
     # Needed for GLFW on macOS
     target_link_libraries(${PROJECT_NAME} PRIVATE
+        "-framework CoreGraphics"
         "-framework Cocoa"
         "-framework IOKit"
         "-framework OpenGL")
