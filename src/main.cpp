@@ -380,7 +380,13 @@ int main(int argc, char* argv[])
         if (tray_already_exists)
             return main_tool(imgui_ini_path);
 
+        // On macOS both GLFW and the tray (AppKit) require the main thread.
+        // Run main_tool on the main thread now; the tray loop runs after it exits.
+#ifdef __APPLE__
+        main_tool(imgui_ini_path);
+#else
         std::thread([&] { main_tool(imgui_ini_path); }).detach();
+#endif
     }
 
     g_is_clipboard_server = true;
