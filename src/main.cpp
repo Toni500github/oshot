@@ -242,6 +242,19 @@ static void glfw_drop_callback(GLFWwindow*, int count, const char** paths)
 }
 
 int main_tool(const std::string& imgui_ini_path);
+#ifdef __APPLE__
+int main_tool_metal(const std::string& imgui_ini_path);
+#endif
+
+// Dispatches to the correct backend for the current platform
+static inline int run_main_tool(const std::string& imgui_ini_path)
+{
+#ifdef __APPLE__
+    return main_tool_metal(imgui_ini_path);
+#else
+    return run_main_tool(imgui_ini_path);
+#endif
+}
 
 void capture_worker(const std::string& imgui_ini_path)
 {
@@ -256,7 +269,7 @@ void capture_worker(const std::string& imgui_ini_path)
         do_capture = false;
         lk.unlock();
 
-        main_tool(imgui_ini_path);
+        run_main_tool(imgui_ini_path);
     }
 }
 
@@ -366,7 +379,7 @@ int main(int argc, char* argv[])
     const bool tray_already_exists = !acquire_tray_lock();
 
     if (g_config->Runtime.only_launch_gui)
-        return main_tool(imgui_ini_path);
+        return run_main_tool(imgui_ini_path);
 
     if (g_config->Runtime.only_launch_tray)
     {
@@ -378,14 +391,14 @@ int main(int argc, char* argv[])
     {
         // default: launch GUI (detached if tray is starting, foreground if tray already exists)
         if (tray_already_exists)
-            return main_tool(imgui_ini_path);
+            return run_main_tool(imgui_ini_path);
 
         // On macOS both GLFW and the tray (AppKit) require the main thread.
         // Run main_tool on the main thread now; the tray loop runs after it exits.
 #ifdef __APPLE__
-        main_tool(imgui_ini_path);
+        run_main_tool(imgui_ini_path);
 #else
-        std::thread([&] { main_tool(imgui_ini_path); }).detach();
+        std::thread([&] { run_main_tool(imgui_ini_path); }).detach();
 #endif
     }
 

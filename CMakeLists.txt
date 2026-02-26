@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.15)
 
 project(oshot VERSION 0.3.0 LANGUAGES C CXX)
 
-# .mm files (tray_darwin.mm, clip_osx.mm) only exist on macOS
 if(APPLE)
     enable_language(OBJC OBJCXX)
 endif()
@@ -84,6 +83,7 @@ endif()
 file(
     GLOB SRC
     src/*.cpp
+    src/*.mm
     src/libs/toml++/toml.cpp
     src/libs/getopt_port/getopt.c
     src/libs/tinyfiledialogs/tinyfiledialogs.c
@@ -162,13 +162,16 @@ if(WIN32)
     endif()
 elseif(APPLE)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-        # Use libc++ explicitly so we can compile for
-        # CMAKE_OSX_DEPLOYMENT_TARGET=10.7 or 10.8
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
     endif()
     target_compile_options(${PROJECT_NAME} PRIVATE -fobjc-arc)
-    # Needed for GLFW on macOS
+
+    # Add Metal render loop source
+    target_sources(${PROJECT_NAME} PRIVATE src/main_tool_metal.mm)
+
     target_link_libraries(${PROJECT_NAME} PRIVATE
+        "-framework Metal"
+        "-framework QuartzCore"
         "-framework CoreGraphics"
         "-framework Cocoa"
         "-framework IOKit"
@@ -206,7 +209,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE fmt)
 # imgui library
 # -----------------------------
 
-file(GLOB IMGUI_SOURCES src/libs/imgui/*.cpp)
+file(GLOB IMGUI_SOURCES src/libs/imgui/*.cpp src/libs/imgui/*.mm)
 
 add_library(imgui STATIC ${IMGUI_SOURCES})
 

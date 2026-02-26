@@ -1,0 +1,223 @@
+// main_tool_metal.mm — macOS Metal backend for oshot
+// Compiled as Objective-C++ (.mm) so it can use Metal/Cocoa APIs freely
+// while the rest of the project stays plain C++.
+#ifdef __APPLE__
+
+#import <Metal/Metal.h>
+#import <QuartzCore/CAMetalLayer.h>
+
+#define GLFW_INCLUDE_NONE
+#define GLFW_EXPOSE_NATIVE_COCOA
+#include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
+
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_glfw.h"
+#include "imgui/imgui_impl_metal.h"
+
+#include "config.hpp"
+#include "screenshot_tool.hpp"
+#include "screen_capture.hpp"
+#include "socket.hpp"
+#include "util.hpp"
+
+// ── Globals defined in main.cpp ────────────────────────────────────────────
+extern std::unique_ptr<Config>       g_config;
+extern int                           g_scr_w, g_scr_h;
+extern std::deque<std::string>       g_dropped_paths;
+extern std::unique_ptr<SocketSender> g_sender;
+extern FILE*                         g_fp_log;
+
+// ── Callbacks (also defined in main.cpp) ────────────────────────────────────
+static void glfw_error_callback_metal(int error, const char* description)
+{
+    fmt::println(stderr, "GLFW Error {}: {}", error, description);
+}
+
+static void glfw_drop_callback_metal(GLFWwindow*, int count, const char** paths)
+{
+    for (int i = 0; i < count; ++i)
+        g_dropped_paths.push_back(paths[i]);
+}
+
+// ── Public entry point ───────────────────────────────────────────────────────
+int main_tool_metal(const std::string& imgui_ini_path)
+{
+    GLFWwindow* window = nullptr;
+
+    // ── Screenshot capture (must happen before window opens) ────────────────
+    ScreenshotTool ss_tool;
+
+    // vsync disable is a no-op in the Metal path — vsync is controlled via
+    // the CAMetalLayer's displaySyncEnabled property instead.
+    ss_tool.SetOnCancel([&]() {
+        fmt::println(stderr, "Cancelled screenshot");
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+    });
+    ss_tool.SetOnComplete([&](SavingOp op, const Result<capture_result_t>& result) {
+        if (!result.ok())
+            error("Screenshot failed: {}", result.error());
+        else
+        {
+            const Result<>& res = save_png(op, result.get());
+            if (!res.ok())
+                error("Failed to save as PNG: {}", res.error());
+        }
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+    });
+
+    {
+        const Result<>& res = ss_tool.Start();
+        if (!res.ok())
+        {
+            error("Failed to start capture: {}", res.error());
+            return EXIT_FAILURE;
+        }
+    }
+
+    // ── GLFW init — NO OpenGL context, Metal owns the rendering ─────────────
+    glfwSetErrorCallback(glfw_error_callback_metal);
+    if (!glfwInit())
+        return EXIT_FAILURE;
+
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);  // ← key: skip GL context
+
+#if !DEBUG
+    glfwWindowHint(GLFW_DECORATED,    GLFW_FALSE);
+    glfwWindowHint(GLFW_FLOATING,     GLFW_TRUE);
+    glfwWindowHint(GLFW_FOCUSED,      GLFW_TRUE);
+    glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
+#endif
+
+    GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
+
+    window = glfwCreateWindow(mode->width, mode->height, "oshot", monitor, nullptr);
+    if (!window)
+    {
+        glfwTerminate();
+        return EXIT_FAILURE;
+    }
+    glfwSetDropCallback(window, glfw_drop_callback_metal);
+
+    g_scr_w = mode->width;
+    g_scr_h = mode->height;
+
+    // ── Metal device + command queue ─────────────────────────────────────────
+    id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+    if (!device)
+    {
+        error("Metal is not supported on this device");
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        return EXIT_FAILURE;
+    }
+    id<MTLCommandQueue> commandQueue = [device newCommandQueue];
+
+    // ── Attach a CAMetalLayer to the GLFW window's content view ─────────────
+    NSWindow*    nswin = glfwGetCocoaWindow(window);
+    CAMetalLayer* layer = [CAMetalLayer layer];
+    layer.device             = device;
+    layer.pixelFormat        = MTLPixelFormatBGRA8Unorm;
+    layer.displaySyncEnabled = YES;   // vsync
+
+    nswin.contentView.layer      = layer;
+    nswin.contentView.wantsLayer = YES;
+
+    // ── ImGui setup ──────────────────────────────────────────────────────────
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::StyleColorsDark();
+
+    ImGuiIO& io    = ImGui::GetIO();
+    io.IniFilename = imgui_ini_path.c_str();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+    if (!g_config->File.font.empty())
+    {
+        const auto& path = get_font_path(g_config->File.font);
+        if (!path.empty())
+            io.FontDefault = io.Fonts->AddFontFromFileTTF(
+                path.string().c_str(), 16.0f, nullptr, io.Fonts->GetGlyphRangesDefault());
+    }
+
+    ImGui_ImplGlfw_InitForOther(window, true);   // "Other" = non-GL backend
+    ImGui_ImplMetal_Init(device);
+
+    // ── Tool window ──────────────────────────────────────────────────────────
+    {
+        const Result<>& res = ss_tool.StartWindow();
+        if (!res.ok())
+        {
+            error("Failed to start tool window: {}", res.error());
+            return EXIT_FAILURE;
+        }
+    }
+
+    // ── Render loop ──────────────────────────────────────────────────────────
+    MTLRenderPassDescriptor* rpd = [MTLRenderPassDescriptor new];
+
+    while (!glfwWindowShouldClose(window) && ss_tool.IsActive())
+    {
+        glfwPollEvents();
+
+        if (glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0)
+        {
+            ImGui_ImplGlfw_Sleep(10);
+            continue;
+        }
+
+        // Keep the CAMetalLayer drawable size in sync with the framebuffer
+        int fb_w, fb_h;
+        glfwGetFramebufferSize(window, &fb_w, &fb_h);
+        layer.drawableSize = CGSizeMake(fb_w, fb_h);
+
+        id<CAMetalDrawable> drawable = [layer nextDrawable];
+        if (!drawable)
+            continue;
+
+        // Configure render pass
+        rpd.colorAttachments[0].texture     = drawable.texture;
+        rpd.colorAttachments[0].loadAction  = MTLLoadActionClear;
+        rpd.colorAttachments[0].clearColor  = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
+        rpd.colorAttachments[0].storeAction = MTLStoreActionStore;
+
+        // ImGui frame
+        ImGui_ImplMetal_NewFrame(rpd);
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        ss_tool.RenderOverlay();
+
+        ImGui::Render();
+
+        // Encode + submit
+        id<MTLCommandBuffer>        cb  = [commandQueue commandBuffer];
+        id<MTLRenderCommandEncoder> enc = [cb renderCommandEncoderWithDescriptor:rpd];
+        [enc pushDebugGroup:@"oshot"];
+
+        ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), cb, enc);
+
+        [enc popDebugGroup];
+        [enc endEncoding];
+        [cb presentDrawable:drawable];
+        [cb commit];
+    }
+
+    // ── Cleanup ───────────────────────────────────────────────────────────────
+    ImGui_ImplMetal_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
+    glfwDestroyWindow(window);
+    glfwTerminate();
+
+    g_sender->Close();
+
+    if (g_fp_log && g_fp_log != stdout)
+        std::fclose(g_fp_log);
+
+    return EXIT_SUCCESS;
+}
+
+#endif // __APPLE__
