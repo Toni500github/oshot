@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(oshot VERSION 0.3.0 LANGUAGES C CXX)
+project(oshot VERSION 0.3.0 LANGUAGES C CXX OBJC OBJCXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -128,6 +128,14 @@ target_compile_options(
         ${ZBAR_CFLAGS_OTHER}
 )
 
+target_link_directories(
+    ${PROJECT_NAME}
+    PRIVATE
+        ${TESSERACT_LIBRARY_DIRS}
+        ${LEPTONICA_LIBRARY_DIRS}
+        ${ZBAR_LIBRARY_DIRS}
+)
+
 target_link_libraries(
     ${PROJECT_NAME}
     PRIVATE
@@ -153,7 +161,7 @@ elseif(APPLE)
         # CMAKE_OSX_DEPLOYMENT_TARGET=10.7 or 10.8
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
     endif()
-    target_compile_options(${PROJECT_NAME} PUBLIC -fobjc-arc)
+    target_compile_options(${PROJECT_NAME} PRIVATE -fobjc-arc)
     # Needed for GLFW on macOS
     target_link_libraries(${PROJECT_NAME} PRIVATE
         "-framework CoreGraphics"
