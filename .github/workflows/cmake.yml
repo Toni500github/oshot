@@ -109,7 +109,7 @@ jobs:
           #make all DEBUG=0 LDFLAGS="-Wl,--as-needed"
           ./scripts/generateVersion.sh
           mkdir -p build
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
           make -C build
           ./build/oshot --version
 
