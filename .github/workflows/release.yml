@@ -38,7 +38,7 @@ jobs:
       contents: read
     strategy:
       matrix:
-        os: [ ubuntu-latest, ubuntu-22.04, windows-latest ]
+        os: [ ubuntu-latest, ubuntu-22.04, macos-latest, windows-latest ]
 
     steps:
       - name: Checkout repository
@@ -48,7 +48,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install dependencies (Linux)
-        if: matrix.os != 'windows-latest'
+        if: matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update && sudo apt-get purge firefox -y
           sudo apt-get install -y \
@@ -71,6 +71,12 @@ jobs:
             libwebp-dev \
             libzbar-dev \
             libappindicator3-dev
+
+      - name: Install dependencies (MacOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew update && brew upgrade || true
+          brew install cmake glfw tesseract leptonica zbar curl
 
       - name: Install dependencies (Windows)
         if: matrix.os == 'windows-latest'
@@ -119,8 +125,8 @@ jobs:
           ninja -C build
           cd build && strip --strip-unneeded ./oshot
 
-      - name: Prepare Linux package
-        if: matrix.os == 'ubuntu-latest'
+      - name: Prepare Linux/MacOS package
+        if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
         run: |
           mkdir -p package/oshot/models
           cp ./build/oshot package/oshot/
