@@ -83,7 +83,6 @@ endif()
 file(
     GLOB SRC
     src/*.cpp
-    src/*.mm
     src/libs/toml++/toml.cpp
     src/libs/getopt_port/getopt.c
     src/libs/tinyfiledialogs/tinyfiledialogs.c

@@ -15,6 +15,7 @@
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_metal.h"
 
+#undef fract1
 #include "config.hpp"
 #include "screenshot_tool.hpp"
 #include "screen_capture.hpp"
