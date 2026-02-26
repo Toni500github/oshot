@@ -30,9 +30,11 @@ static tesseract::PageSegMode choose_psm(int w, int h)
     if (area < 15'000 && aspect < 5.0f)
         return tesseract::PSM_SINGLE_WORD;
 
-    // Single line: wide-and-short, or very small height regardless of width
-    // Use relative height rather than a fixed pixel threshold so it scales with DPI
-    if (aspect > 4.0f && h < w / 4)
+    // Single line: wide-and-short, or very small height regardless of width.
+    // Guard with absolute height: a wide multi-line block also has high aspect,
+    // so aspect alone is not enough. A single text line is never taller than ~80px
+    // at normal DPI; after the 2x upscale in preprocess_pix that becomes ~160px.
+    if (aspect > 4.0f && h < w / 4 && h < 160)
         return tesseract::PSM_SINGLE_LINE;
 
     // Vertical text: tall and narrow (e.g. rotated sidebar labels)
@@ -56,16 +58,36 @@ static PIX* preprocess_pix(PIX* src)
     if (!no_alpha)
         no_alpha = pixClone(src);
 
-    PIX* gray = pixConvertRGBToGray(no_alpha, 0.299f, 0.587f, 0.114f);
+    // Quick dark-bg detection on the RGB image
+    PIX*      gray_probe = pixConvertRGBToGray(no_alpha, 0.299f, 0.587f, 0.114f);
+    l_float32 mean_val   = 128.f;
+    if (gray_probe)
+    {
+        pixGetAverageMasked(gray_probe, nullptr, 0, 0, 1, L_MEAN_ABSVAL, &mean_val);
+        pixDestroy(&gray_probe);
+    }
+
+    PIX* gray    = nullptr;
+    bool dark_bg = (mean_val < 128.f);
+
+    if (dark_bg)
+    {
+        // Max-channel: preserves colored text (red, green, cyan) on dark BG.
+        // Luma weights would map red(200,50,50) -> ~95, almost invisible after invert.
+        // Max-channel maps it -> 200, giving full contrast after invert.
+        gray = pixConvertRGBToGrayMinMax(no_alpha, L_CHOOSE_MAX);
+    }
+    else
+    {
+        gray = pixConvertRGBToGray(no_alpha, 0.299f, 0.587f, 0.114f);
+    }
+
     pixDestroy(&no_alpha);
     if (!gray)
         return pixClone(src);
 
-    // Detect dark background and invert
-    // Sample the average luminance of the grayscale image.
-    // If the mean pixel value is below 128, the background is dark, thus invert.
-    l_float32 mean_val = 0.f;
-    if (pixGetAverageMasked(gray, nullptr, 0, 0, 1, L_MEAN_ABSVAL, &mean_val) == 0 && mean_val < 128.f)
+    // Invert dark backgrounds
+    if (dark_bg)
     {
         PIX* inverted = pixInvert(nullptr, gray);
         if (inverted)
@@ -75,21 +97,21 @@ static PIX* preprocess_pix(PIX* src)
         }
     }
 
-    // Time to Deskew
-    PIX*      bin_for_skew = pixThresholdToBinary(gray, 128);
-    l_float32 angle = 0.f, conf = 0.f;
-    PIX*      result_gray = gray;
-
     // Upscale tiny text before binarization (helps for <12px font sizes)
     if (pixGetHeight(gray) < 200)
     {
         PIX* scaled = pixScale(gray, 2.0f, 2.0f);
         if (scaled)
-        {
+        { 
             pixDestroy(&gray);
-            gray = result_gray = scaled;
+            gray = scaled; 
         }
     }
+
+    // Deskew
+    PIX*      bin_for_skew = pixThresholdToBinary(gray, 128);
+    l_float32 angle = 0.f, conf = 0.f;
+    PIX*      result_gray = gray;
 
     if (bin_for_skew && pixFindSkew(bin_for_skew, &angle, &conf) == 0 && std::abs(angle) > 0.4f && conf > 1.5f)
     {
@@ -101,12 +123,10 @@ static PIX* preprocess_pix(PIX* src)
             result_gray = rotated;
         }
     }
-
     if (bin_for_skew)
         pixDestroy(&bin_for_skew);
 
     // Sauvola binarization
-    // Increase whsize from 15->20 for terminal/code fonts which have thinner strokes
     PIX* bin = nullptr;
     if (pixSauvolaBinarize(result_gray, 20, 0.35f, 1, nullptr, nullptr, nullptr, &bin) != 0 || !bin)
         bin = pixThresholdToBinary(result_gray, 128);
