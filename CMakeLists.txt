@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(oshot VERSION 0.3.0 LANGUAGES C CXX OBJC OBJCXX)
+project(oshot VERSION 0.3.0 LANGUAGES C CXX)
+
+# .mm files (tray_darwin.mm, clip_osx.mm) only exist on macOS
+if(APPLE)
+    enable_language(OBJC OBJCXX)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
