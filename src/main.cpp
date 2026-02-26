@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <system_error>
+#include <thread>
 #include <utility>
 
 #ifndef _WIN32
