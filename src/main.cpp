@@ -15,6 +15,9 @@
 
 #ifndef _WIN32
 #  include <netinet/in.h>
+#  include <netdb.h>
+#  include <sys/socket.h>
+#  include <unistd.h>
 #endif
 
 #include "fmt/base.h"
