@@ -37,7 +37,7 @@ jobs:
       contents: read
     strategy:
       matrix:
-        os: [ ubuntu-latest, ubuntu-22.04, macos-latest, windows-latest ]
+        os: [ ubuntu-latest, ubuntu-22.04, macos-latest, macos-13, windows-latest ]
 
     steps:
       - name: Checkout repository
@@ -47,7 +47,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-22.04'
+        if: contains(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update && sudo apt-get purge firefox -y
           sudo apt-get install -y \
@@ -72,7 +72,7 @@ jobs:
             libappindicator3-dev
 
       - name: Install dependencies (MacOS)
-        if: matrix.os == 'macos-latest'
+        if: contains(matrix.os, 'macos')
         run: |
           brew update && brew upgrade || true
           brew install cmake glfw tesseract leptonica zbar curl dylibbundler
@@ -104,7 +104,7 @@ jobs:
             mingw-w64-x86_64-curl
 
       - name: Build project (Linux)
-        if: matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-22.04'
+        if: contains(matrix.os, 'ubuntu')
         run: |
           ./scripts/generateVersion.sh
           mkdir -p build
@@ -113,7 +113,7 @@ jobs:
           ./build/oshot --version
 
       - name: Build project (MacOS)
-        if: matrix.os == 'macos-latest'
+        if: contains(matrix.os, 'macos')
         run: |
           ./scripts/generateVersion.sh
           BREW=$(brew --prefix)
@@ -158,14 +158,15 @@ jobs:
           zip -r oshot-appimage.zip oshot/
 
       - name: Prepare macOS bundle
-        if: matrix.os == 'macos-latest'
+        if: contains(matrix.os, 'macos')
         run: |
           mkdir -p package/oshot/models
-          ./scripts/create_app_bundle.sh ./build/oshot oshot-macos.dmg
-          mv oshot-macos.dmg package/oshot/
+          ARCH=$(uname -m)
+          ./scripts/create_app_bundle.sh ./build/oshot oshot-macos-${ARCH}.dmg
+          mv oshot-macos-${ARCH}.dmg package/oshot/
           curl -L https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -o package/oshot/models/eng.traineddata
           cd package
-          zip -r oshot-macos.zip oshot/
+          zip -r oshot-macos-${ARCH}.zip oshot/
 
       - name: Prepare Windows package
         if: matrix.os == 'windows-latest'

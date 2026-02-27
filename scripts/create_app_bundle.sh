@@ -63,7 +63,7 @@ main() {
         ICONSET=$(mktemp -d)/oshot.iconset
         mkdir -p "$ICONSET"
         for SIZE in 16 32 64 128 256 512; do
-            sips -z $SIZE $SIZE oshot.png --out "${ICONSET}/icon_${SIZE}x${SIZE}.png"    &>/dev/null
+            sips -z $SIZE $SIZE oshot.png --out "${ICONSET}/icon_${SIZE}x${SIZE}.png" &>/dev/null
             sips -z $((SIZE*2)) $((SIZE*2)) oshot.png --out "${ICONSET}/icon_${SIZE}x${SIZE}@2x.png" &>/dev/null
         done
         iconutil -c icns "$ICONSET" -o "${CONTENTS}/Resources/oshot.icns"
