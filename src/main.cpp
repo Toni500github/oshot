@@ -385,9 +385,10 @@ int main(int argc, char* argv[])
     }
 
     g_is_clipboard_server = true;
-    std::thread worker(capture_worker, imgui_ini_path);
 
 #ifndef _WIN32
+    std::thread worker(capture_worker, imgui_ini_path);
+
     std::thread ipc([&] {
         while (!quit.load())
         {
@@ -499,18 +500,44 @@ int main(int argc, char* argv[])
                                       {} });
 
     if (trayMaker.Initialize(&tray))
+    {
         while (trayMaker.Loop(1))
         {
+#ifdef _WIN32
+            // On Windows, GLFW must run on the thread that called glfwInit (the main
+            // thread). Using a worker thread for captures causes a silent crash via
+            // std::terminate because GLFW is called from the wrong thread.
+            // Instead, we poll do_capture here and run the tool on the main thread.
+            bool should_capture = false;
+            {
+                std::lock_guard lk(mtx);
+                if (do_capture)
+                {
+                    do_capture     = false;
+                    should_capture = true;
+                }
+            }
+            if (should_capture)
+            {
+                run_main_tool(imgui_ini_path);
+            }
+#endif
         }
+    }
     else
+    {
         die("Systray initialization failed");
+    }
 
     // Quitted the tray
-    worker.join();
 #ifndef _WIN32
+    worker.join();
     if (ipc.joinable())
         ipc.join();
 #endif
+
+    if (g_fp_log && g_fp_log != stdout)
+        std::fclose(g_fp_log);
 
     return EXIT_SUCCESS;
 }

@@ -198,9 +198,6 @@ int run_main_tool(const std::string& imgui_ini_path)
 
     g_sender->Close();
 
-    if (g_fp_log && g_fp_log != stdout)
-        std::fclose(g_fp_log);
-
     return EXIT_SUCCESS;
 }
 
