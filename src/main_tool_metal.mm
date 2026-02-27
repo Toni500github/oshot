@@ -22,31 +22,13 @@
 #include "socket.hpp"
 #include "util.hpp"
 
-// ── Globals defined in main.cpp ────────────────────────────────────────────
-extern std::unique_ptr<Config>       g_config;
-extern int                           g_scr_w, g_scr_h;
-extern std::deque<std::string>       g_dropped_paths;
-extern std::unique_ptr<SocketSender> g_sender;
-extern FILE*                         g_fp_log;
+void glfw_error_callback(int error, const char* description);
+void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
 
-// ── Callbacks (also defined in main.cpp) ────────────────────────────────────
-static void glfw_error_callback_metal(int error, const char* description)
-{
-    fmt::println(stderr, "GLFW Error {}: {}", error, description);
-}
-
-static void glfw_drop_callback_metal(GLFWwindow*, int count, const char** paths)
-{
-    for (int i = 0; i < count; ++i)
-        g_dropped_paths.push_back(paths[i]);
-}
-
-// ── Public entry point ───────────────────────────────────────────────────────
-int main_tool_metal(const std::string& imgui_ini_path)
+int run_main_tool(const std::string& imgui_ini_path)
 {
     GLFWwindow* window = nullptr;
 
-    // ── Screenshot capture (must happen before window opens) ────────────────
     ScreenshotTool ss_tool;
 
     // vsync disable is a no-op in the Metal path — vsync is controlled via
@@ -67,6 +49,9 @@ int main_tool_metal(const std::string& imgui_ini_path)
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
 
+    // Setup Screenshot Tool
+    // Calling it before starting the window so that
+    // we can capture at the exact moment we launch
     {
         const Result<>& res = ss_tool.Start();
         if (!res.ok())
@@ -76,12 +61,12 @@ int main_tool_metal(const std::string& imgui_ini_path)
         }
     }
 
-    // ── GLFW init — NO OpenGL context, Metal owns the rendering ─────────────
+    // NO OpenGL context, Metal owns the rendering
     glfwSetErrorCallback(glfw_error_callback_metal);
     if (!glfwInit())
         return EXIT_FAILURE;
 
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);  // ← key: skip GL context
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);  // skip GL context
 
 #if !DEBUG
     glfwWindowHint(GLFW_DECORATED,    GLFW_FALSE);
@@ -104,7 +89,7 @@ int main_tool_metal(const std::string& imgui_ini_path)
     g_scr_w = mode->width;
     g_scr_h = mode->height;
 
-    // ── Metal device + command queue ─────────────────────────────────────────
+    // Metal device + command queue
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     if (!device)
     {
@@ -115,7 +100,7 @@ int main_tool_metal(const std::string& imgui_ini_path)
     }
     id<MTLCommandQueue> commandQueue = [device newCommandQueue];
 
-    // ── Attach a CAMetalLayer to the GLFW window's content view ─────────────
+    // Attach a CAMetalLayer to the GLFW window's content view
     NSWindow*    nswin = glfwGetCocoaWindow(window);
     CAMetalLayer* layer = [CAMetalLayer layer];
     layer.device             = device;
@@ -125,7 +110,7 @@ int main_tool_metal(const std::string& imgui_ini_path)
     nswin.contentView.layer      = layer;
     nswin.contentView.wantsLayer = YES;
 
-    // ── ImGui setup ──────────────────────────────────────────────────────────
+    // ImGui setup
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
@@ -145,7 +130,6 @@ int main_tool_metal(const std::string& imgui_ini_path)
     ImGui_ImplGlfw_InitForOther(window, true);   // "Other" = non-GL backend
     ImGui_ImplMetal_Init(device);
 
-    // ── Tool window ──────────────────────────────────────────────────────────
     {
         const Result<>& res = ss_tool.StartWindow();
         if (!res.ok())
@@ -155,7 +139,7 @@ int main_tool_metal(const std::string& imgui_ini_path)
         }
     }
 
-    // ── Render loop ──────────────────────────────────────────────────────────
+    // Render loop
     MTLRenderPassDescriptor* rpd = [MTLRenderPassDescriptor new];
 
     while (!glfwWindowShouldClose(window) && ss_tool.IsActive())
@@ -183,7 +167,6 @@ int main_tool_metal(const std::string& imgui_ini_path)
         rpd.colorAttachments[0].clearColor  = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
         rpd.colorAttachments[0].storeAction = MTLStoreActionStore;
 
-        // ImGui frame
         ImGui_ImplMetal_NewFrame(rpd);
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -205,7 +188,7 @@ int main_tool_metal(const std::string& imgui_ini_path)
         [cb commit];
     }
 
-    // ── Cleanup ───────────────────────────────────────────────────────────────
+    // Cleanup
     ImGui_ImplMetal_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
