@@ -112,6 +112,15 @@ EOF
     # Use second argument as output name or default
     OUTPUT_NAME="${2:-oshot-macos.dmg}"
 
+    # Remove quarantine flag so Gatekeeper doesn't block the app on first launch.
+    # Without this macOS shows "damaged and can't be opened" for unsigned apps
+    # downloaded via a browser.
+    xattr -cr "$APP_DIR"
+
+    # Ad-hoc code signature — satisfies Gatekeeper on the same architecture.
+    # (A real Developer ID signature would be needed for notarization / other Macs)
+    codesign --force --deep --sign - "$APP_DIR"
+
     # Pack into a .dmg disk image
     hdiutil create \
         -volname "oshot" \
