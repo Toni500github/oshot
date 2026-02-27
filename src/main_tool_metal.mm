@@ -61,8 +61,8 @@ int run_main_tool(const std::string& imgui_ini_path)
         }
     }
 
-    // NO OpenGL context, Metal owns the rendering
-    glfwSetErrorCallback(glfw_error_callback_metal);
+    // No OpenGL context, Metal owns the rendering
+    glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
         return EXIT_FAILURE;
 
@@ -84,7 +84,7 @@ int run_main_tool(const std::string& imgui_ini_path)
         glfwTerminate();
         return EXIT_FAILURE;
     }
-    glfwSetDropCallback(window, glfw_drop_callback_metal);
+    glfwSetDropCallback(window, glfw_drop_callback);
 
     g_scr_w = mode->width;
     g_scr_h = mode->height;
