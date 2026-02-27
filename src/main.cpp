@@ -381,9 +381,9 @@ int main(int argc, char* argv[])
     }
 
     g_is_clipboard_server = true;
+#ifndef _WIN32
     std::thread worker(capture_worker, imgui_ini_path);
 
-#ifndef _WIN32
     std::thread ipc([&] {
         while (!quit.load())
         {
@@ -456,6 +456,14 @@ int main(int argc, char* argv[])
 #endif
 
     tray.addEntry(Tray::Button("Capture", [&] {
+#ifdef _WIN32
+        // On Windows, GLFW window creation must happen on the main thread.
+        // This callback is already invoked on the main thread (inside the
+        // Win32 message loop that tray.run() drives), so calling main_tool()
+        // directly here is safe. The tray simply pauses during capture and
+        // resumes once main_tool() returns.
+        main_tool(imgui_ini_path);
+#else
         std::lock_guard lk(mtx);
         // only queue if not already queued
         if (!do_capture)
@@ -463,6 +471,7 @@ int main(int argc, char* argv[])
             do_capture = true;
             cv.notify_all();
         }
+#endif
     }));
 
     tray.addEntry(Tray::Button("Quit", [&] {
@@ -483,11 +492,14 @@ int main(int argc, char* argv[])
     tray.run();
 
     // Quitted the tray
-    worker.join();
 #ifndef _WIN32
+    worker.join();
     if (ipc.joinable())
         ipc.join();
 #endif
+
+    if (g_fp_log && g_fp_log != stdout)
+        std::fclose(g_fp_log);
 
     return EXIT_SUCCESS;
 }
@@ -657,9 +669,6 @@ int main_tool(const std::string& imgui_ini_path)
     glfwTerminate();
 
     g_sender->Close();
-
-    if (g_fp_log && g_fp_log != stdout)
-        std::fclose(g_fp_log);
 
     return EXIT_SUCCESS;
 }
