@@ -208,7 +208,10 @@ target_link_libraries(${PROJECT_NAME} PRIVATE fmt)
 # imgui library
 # -----------------------------
 
-file(GLOB IMGUI_SOURCES src/libs/imgui/*.cpp src/libs/imgui/*.mm)
+file(GLOB IMGUI_SOURCES src/libs/imgui/*.cpp)
+if(APPLE)
+	list(APPEND IMGUI_SOURCES src/libs/imgui/imgui_impl_metal.mm)
+endif()
 
 add_library(imgui STATIC ${IMGUI_SOURCES})
 
