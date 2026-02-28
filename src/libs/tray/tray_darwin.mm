@@ -76,12 +76,23 @@ bool TrayMaker::Loop(bool blocking)
 
 void TrayMaker::Update()
 {
-    NSString* pngPath = [NSString stringWithCString:trayIcon->iconFilePng.substr(0, trayIcon->iconFilePng.length()-4).c_str() encoding:[NSString defaultCStringEncoding]];
-    NSString* bundlePathIcon = [[NSBundle mainBundle] pathForResource:pngPath ofType:@"png"];
-    NSImage* image = [[NSImage alloc] initWithContentsOfFile:bundlePathIcon];
-    NSSize size = NSMakeSize(16, 16);
-    [image setSize:NSMakeSize(16, 16)];
-    statusItem.button.image = image;
+    // Load icon from the absolute path stored in trayIcon->iconFilePng.
+    // NSBundle-based lookup only works inside a .app bundle; using the path
+    // directly works both from the terminal and from a bundled app.
+    NSString* pngPath = [NSString stringWithUTF8String:trayIcon->iconFilePng.c_str()];
+    NSImage*  image   = [[NSImage alloc] initWithContentsOfFile:pngPath];
+
+    if (image)
+    {
+        [image setSize:NSMakeSize(16, 16)];
+        statusItem.button.image = image;
+    }
+    else
+    {
+        // Fallback: show a text label so the tray item is always visible
+        statusItem.button.title = [NSString stringWithUTF8String:trayIcon->tooltip.c_str()];
+    }
+
     [statusItem setMenu:_tray_menu(trayIcon->menu)];
 }
 
