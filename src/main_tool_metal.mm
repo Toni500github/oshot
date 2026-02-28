@@ -101,11 +101,11 @@ int run_main_tool(const std::string& imgui_ini_path)
     id<MTLCommandQueue> commandQueue = [device newCommandQueue];
 
     // Attach a CAMetalLayer to the GLFW window's content view
-    NSWindow*    nswin = glfwGetCocoaWindow(window);
-    CAMetalLayer* layer = [CAMetalLayer layer];
+    NSWindow*     nswin      = glfwGetCocoaWindow(window);
+    CAMetalLayer* layer      = [CAMetalLayer layer];
     layer.device             = device;
     layer.pixelFormat        = MTLPixelFormatBGRA8Unorm;
-    layer.displaySyncEnabled = YES;   // vsync
+    layer.displaySyncEnabled = YES;  // vsync
 
     nswin.contentView.layer      = layer;
     nswin.contentView.wantsLayer = YES;
@@ -123,11 +123,11 @@ int run_main_tool(const std::string& imgui_ini_path)
     {
         const auto& path = get_font_path(g_config->File.font);
         if (!path.empty())
-            io.FontDefault = io.Fonts->AddFontFromFileTTF(
-                path.string().c_str(), 16.0f, nullptr, io.Fonts->GetGlyphRangesDefault());
+            io.FontDefault =
+                io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, nullptr, io.Fonts->GetGlyphRangesDefault());
     }
 
-    ImGui_ImplGlfw_InitForOther(window, true);   // "Other" = non-GL backend
+    ImGui_ImplGlfw_InitForOther(window, true);  // "Other" = non-GL backend
     ImGui_ImplMetal_Init(device);
 
     {
@@ -138,6 +138,23 @@ int run_main_tool(const std::string& imgui_ini_path)
             return EXIT_FAILURE;
         }
     }
+
+    // Create Metal texture from screenshot buffer
+    capture_result_t& cap = ss_tool.GetRawScreenshot();  // <-- add getter
+
+    MTLTextureDescriptor* desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                                                                    width:cap.w
+                                                                                   height:cap.h
+                                                                                mipmapped:NO];
+
+    id<MTLTexture> metalTexture = [device newTextureWithDescriptor:desc];
+
+    MTLRegion region = { { 0, 0, 0 }, { (NSUInteger)cap.w, (NSUInteger)cap.h, 1 } };
+
+    [metalTexture replaceRegion:region mipmapLevel:0 withBytes:cap.data.data() bytesPerRow:cap.w * 4];
+
+    // Pass to ImGui
+    ss_tool.SetBackendTexture((__bridge void*)metalTexture);
 
     // Render loop
     MTLRenderPassDescriptor* rpd = [MTLRenderPassDescriptor new];
@@ -201,4 +218,4 @@ int run_main_tool(const std::string& imgui_ini_path)
     return EXIT_SUCCESS;
 }
 
-#endif // __APPLE__
+#endif  // __APPLE__

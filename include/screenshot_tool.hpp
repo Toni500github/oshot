@@ -119,11 +119,13 @@ public:
                     .tl_lang_to   = g_config->File.lang_to }
     {}
 
-    Result<>      Start();
-    Result<>      StartWindow();
-    Result<void*> CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h);
-    bool          OpenImage(const std::string& path);
-    bool          IsActive() const { return m_state != ToolState::Idle; }
+    Result<>          Start();
+    Result<>          StartWindow();
+    Result<void*>     CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h);
+    bool              OpenImage(const std::string& path);
+    bool              IsActive() const { return m_state != ToolState::Idle; }
+    capture_result_t& GetRawScreenshot() { return m_screenshot; }
+    void              SetBackendTexture(void* tex) { m_texture_id = tex; }
 
     capture_result_t GetFinalImage();
 

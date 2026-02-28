@@ -235,18 +235,24 @@ Result<> ScreenshotTool::StartWindow()
     m_inputs.ann_font = g_config->File.font;
     m_show_text_tools = g_config->File.show_text_tools;
 
+#ifdef __linux__
     if (!g_is_clipboard_server)
         std::thread([] {
             const Result<>& res = g_sender->Start(6015);
             if (!res.ok())
                 error("Error while connecting to systray: {}", res.error());
         }).detach();
+#endif
 
+#ifdef __APPLE__
+    m_texture_id = nullptr;  // will be set by backend
+#else
     const Result<void*>& res = CreateTexture(m_texture_id, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
     if (!res.ok())
         return Err("Failed to create openGL texture: " + res.error_v());
 
     m_texture_id = res.get();
+#endif
     fit_to_screen(m_screenshot);
 
     // Since the creation of the screenshot texture was fine, suppose the other too
@@ -1587,12 +1593,16 @@ void ScreenshotTool::Cancel()
     m_state = ToolState::Idle;
 
     auto delete_texture = [](void*& tex) {
+#ifdef __APPLE__
+        tex = nullptr;
+#else
         if (tex)
         {
             GLuint texture = (GLuint)(intptr_t)tex;
             glDeleteTextures(1, &texture);
             tex = nullptr;
         }
+#endif
     };
 
     delete_texture(m_texture_id);
@@ -2038,7 +2048,11 @@ ImFont* ScreenshotTool::GetFontForLanguage(const std::string& lang_code)
 
 Result<void*> ScreenshotTool::CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h)
 {
-    // Delete old texture first
+#ifdef __APPLE__
+    // Metal backend handles textures separately
+    return Ok(nullptr);
+#else
+    // Existing OpenGL implementation
     if (tex)
     {
         GLuint old_texture = (GLuint)(intptr_t)tex;
@@ -2047,9 +2061,6 @@ Result<void*> ScreenshotTool::CreateTexture(void* tex, std::span<const uint8_t> 
 
     GLuint texture;
     glGenTextures(1, &texture);
-    int err = glGetError();
-    if (err != GL_NO_ERROR)
-        return Err("glGetError() returned error: " + fmt::to_string(err));
 
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -2061,4 +2072,5 @@ Result<void*> ScreenshotTool::CreateTexture(void* tex, std::span<const uint8_t> 
 
     tex = (void*)(intptr_t)texture;
     return Ok(tex);
+#endif
 }
