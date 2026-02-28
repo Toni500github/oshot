@@ -343,7 +343,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #else
 int main(int argc, char* argv[])
 {
-    g_fp_log = stdout;
+    g_fp_log = std::fopen("oshot.log", "w");
+    if (!g_fp_log)
+        g_fp_log = stdout;
 
 #endif
 
