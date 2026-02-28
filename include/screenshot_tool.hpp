@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "config.hpp"
 #include "imgui/imgui.h"
 #include "imgui/imgui_internal.h"
 #include "screen_capture.hpp"
@@ -110,7 +111,13 @@ struct annotation_t
 class ScreenshotTool
 {
 public:
-    ScreenshotTool() : m_io(dummy) {}
+    ScreenshotTool()
+        : m_io(dummy),
+          m_inputs{ .ocr_path     = g_config->File.ocr_path,
+                    .ocr_model    = g_config->File.ocr_model,
+                    .tl_lang_from = g_config->File.lang_from,
+                    .tl_lang_to   = g_config->File.lang_to }
+    {}
 
     Result<>      Start();
     Result<>      StartWindow();
@@ -163,8 +170,20 @@ private:
     // and also some user settings
     struct inputs_results_t
     {
-        std::string   ocr_text;
-        std::string   translate_text;
+        std::string ocr_path;
+        std::string ocr_model;
+        std::string ocr_text;
+
+        std::string tl_lang_from;
+        std::string tl_lang_to;
+        size_t      tl_index_from  = 0;
+        size_t      tl_index_to    = 0;
+        bool        tl_first_frame = true;
+        std::string tl_translated_text;
+        ImFont*     tl_font_from = nullptr;
+        ImFont*     tl_font_to   = nullptr;
+
+        std::string   to_translate_text;
         std::string   barcode_text;
         std::string   ann_font;
         int           ocr_confidence = -1;

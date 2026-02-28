@@ -1006,11 +1006,11 @@ void ScreenshotTool::DrawMenuItems()
 
 void ScreenshotTool::DrawOcrTools()
 {
-    static std::string ocr_path{ g_config->File.ocr_path };
-    static std::string ocr_model{ g_config->File.ocr_model };
-    static size_t      item_selected_idx = 0;
-    static bool        first_frame       = true;
+    std::string& ocr_path  = m_inputs.ocr_path;
+    std::string& ocr_model = m_inputs.ocr_model;
 
+    static size_t                   item_selected_idx = 0;
+    static bool                     first_frame       = true;
     static std::vector<std::string> models_list;
 
     auto refresh_models = [&]() {
@@ -1112,8 +1112,8 @@ void ScreenshotTool::DrawOcrTools()
             const Result<ocr_result_t>& result = m_ocr_api.ExtractTextCapture(GetFinalImage());
             if (result.ok())
             {
-                m_inputs.ocr_text = m_inputs.translate_text = result.get().data;
-                m_inputs.ocr_confidence                     = result.get().confidence;
+                m_inputs.ocr_text = m_inputs.to_translate_text = result.get().data;
+                m_inputs.ocr_confidence                        = result.get().confidence;
             }
         }
     }
@@ -1156,16 +1156,14 @@ void ScreenshotTool::DrawOcrTools()
 
 void ScreenshotTool::DrawTranslationTools()
 {
-    static std::string lang_from{ g_config->File.lang_from };
-    static std::string lang_to{ g_config->File.lang_to };
-    static size_t      index_from  = 0;
-    static size_t      index_to    = 0;
-    static bool        first_frame = true;
-
-    static std::string translated_text;
-
-    static ImFont* font_from;
-    static ImFont* font_to;
+    std::string& lang_from       = m_inputs.tl_lang_from;
+    std::string& lang_to         = m_inputs.tl_lang_to;
+    size_t&      index_from      = m_inputs.tl_index_from;
+    size_t&      index_to        = m_inputs.tl_index_to;
+    bool&        first_frame     = m_inputs.tl_first_frame;
+    std::string& translated_text = m_inputs.tl_translated_text;
+    ImFont*&     font_from       = m_inputs.tl_font_from;
+    ImFont*&     font_to         = m_inputs.tl_font_to;
 
     if (first_frame)
     {
@@ -1245,10 +1243,10 @@ void ScreenshotTool::DrawTranslationTools()
     // Ignore "Automatic" in To
     createCombo("To", InvalidLangTo, 1, lang_to, index_to, font_to);
 
-    if (!(HasError(InvalidLangFrom) || HasError(InvalidLangTo)) && !m_inputs.translate_text.empty() &&
+    if (!(HasError(InvalidLangFrom) || HasError(InvalidLangTo)) && !m_inputs.to_translate_text.empty() &&
         ImGui::Button("Translate"))
     {
-        const Result<std::string>& translation = translator->Translate(lang_from, lang_to, m_inputs.translate_text);
+        const Result<std::string>& translation = translator->Translate(lang_from, lang_to, m_inputs.to_translate_text);
         if (!translation.ok())
         {
             SetError(FailedTranslation, translation.error_v());
@@ -1273,12 +1271,14 @@ void ScreenshotTool::DrawTranslationTools()
     if (font_from)
     {
         ImGui::PushFont(font_from);
-        ImGui::InputTextMultiline("##from", &m_inputs.translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
+        ImGui::InputTextMultiline(
+            "##from", &m_inputs.to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
         ImGui::PopFont();
     }
     else
     {
-        ImGui::InputTextMultiline("##from", &m_inputs.translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
+        ImGui::InputTextMultiline(
+            "##from", &m_inputs.to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
     }
 
     ImGui::SameLine();
@@ -1641,7 +1641,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     m_image_end            = {};
 
     m_inputs.ocr_text.clear();
-    m_inputs.translate_text.clear();
+    m_inputs.to_translate_text.clear();
     m_inputs.barcode_text.clear();
 
     ClearError(FailedToInitOcr);
