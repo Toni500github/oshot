@@ -34,14 +34,23 @@ int run_main_tool(const std::string& imgui_ini_path)
         if (!result.ok())
         {
             error("Screenshot failed: {}", result.error());
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+            return;
         }
-        else
-        {
-            const Result<>& res = save_png(op, result.get());
-            if (!res.ok())
-                error("Failed to save as PNG: {}", result.error());
-        }
-        glfwSwapInterval(0);  // Disable vsync
+
+        // Hide overlay BEFORE dialog
+        glfwHideWindow(window);
+        glfwPollEvents();  // flush
+
+        const Result<>& res = save_png(op, result.get());
+
+        // Restore window AFTER dialog
+        glfwShowWindow(window);
+        glfwFocusWindow(window);
+
+        if (!res.ok())
+            error("Failed to save as PNG: {}", res.error());
+
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
 

@@ -45,7 +45,7 @@ static id<MTLTexture> CreateMetalTexture(id<MTLDevice> device, const uint8_t* da
 int run_main_tool(const std::string& imgui_ini_path)
 {
     GLFWwindow* window = nullptr;
-
+    id<MTLDevice> device;
     ScreenshotTool ss_tool;
 
     // vsync disable is a no-op in the Metal path — vsync is controlled via
@@ -56,13 +56,24 @@ int run_main_tool(const std::string& imgui_ini_path)
     });
     ss_tool.SetOnComplete([&](SavingOp op, const Result<capture_result_t>& result) {
         if (!result.ok())
-            error("Screenshot failed: {}", result.error());
-        else
         {
-            const Result<>& res = save_png(op, result.get());
-            if (!res.ok())
-                error("Failed to save as PNG: {}", res.error());
+            error("Screenshot failed: {}", result.error());
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+            return;
         }
+
+        // hide overlay BEFORE dialog
+        glfwIconifyWindow(window);
+        glfwPollEvents();  // flush
+
+        const Result<>& res = save_png(op, result.get());
+
+        glfwRestoreWindow(window);
+        glfwFocusWindow(window);
+
+        if (!res.ok())
+            error("Failed to save as PNG: {}", res.error());
+
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
     ss_tool.SetOnImageReload([&](const capture_result_t& cap) {
@@ -113,7 +124,7 @@ int run_main_tool(const std::string& imgui_ini_path)
     g_scr_h = mode->height;
 
     // Metal device + command queue
-    id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+    device = MTLCreateSystemDefaultDevice();
     if (!device)
     {
         error("Metal is not supported on this device");
