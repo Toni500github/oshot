@@ -16,6 +16,7 @@
 #include "imgui/imgui_impl_metal.h"
 
 #undef fract1
+#include "tool_icons.h"
 #include "config.hpp"
 #include "screenshot_tool.hpp"
 #include "screen_capture.hpp"
@@ -24,6 +25,22 @@
 
 void glfw_error_callback(int error, const char* description);
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
+
+static id<MTLTexture> CreateMetalTexture(id<MTLDevice> device, const uint8_t* data, int w, int h)
+{
+    MTLTextureDescriptor* desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                                                                    width:w
+                                                                                   height:h
+                                                                                mipmapped:NO];
+
+    id<MTLTexture> tex = [device newTextureWithDescriptor:desc];
+
+    MTLRegion region = { { 0, 0, 0 }, { (NSUInteger)w, (NSUInteger)h, 1 } };
+
+    [tex replaceRegion:region mipmapLevel:0 withBytes:data bytesPerRow:w * 4];
+
+    return tex;
+}
 
 int run_main_tool(const std::string& imgui_ini_path)
 {
@@ -47,6 +64,12 @@ int run_main_tool(const std::string& imgui_ini_path)
                 error("Failed to save as PNG: {}", res.error());
         }
         glfwSetWindowShouldClose(window, GLFW_TRUE);
+    });
+    ss_tool.SetOnImageReload([&](const capture_result_t& cap) {
+        // Release old texture automatically via ARC
+        id<MTLTexture> newTex = CreateMetalTexture(device, cap.data.data(), cap.w, cap.h);
+
+        ss_tool.SetBackendTexture((__bridge void*)newTex);
     });
 
     // Setup Screenshot Tool
@@ -155,6 +178,35 @@ int run_main_tool(const std::string& imgui_ini_path)
 
     // Pass to ImGui
     ss_tool.SetBackendTexture((__bridge void*)metalTexture);
+    ss_tool.SetToolTexture(ToolType::Rectangle,
+                           (__bridge void*)CreateMetalTexture(device, ICON_SQUARE_RGBA, ICON_SQUARE_W, ICON_SQUARE_H));
+
+    ss_tool.SetToolTexture(
+        ToolType::RectangleFilled,
+        (__bridge void*)CreateMetalTexture(device, ICON_RECT_FILLED_RGBA, ICON_RECT_FILLED_W, ICON_RECT_FILLED_H));
+
+    ss_tool.SetToolTexture(ToolType::CircleFilled,
+                           (__bridge void*)CreateMetalTexture(
+                               device, ICON_CIRCLE_FILLED_RGBA, ICON_CIRCLE_FILLED_W, ICON_CIRCLE_FILLED_H));
+
+    ss_tool.SetToolTexture(
+        ToolType::ToggleTextTools,
+        (__bridge void*)CreateMetalTexture(device, ICON_TEXT_TOOLS_RGBA, ICON_TEXT_TOOLS_W, ICON_TEXT_TOOLS_H));
+
+    ss_tool.SetToolTexture(ToolType::Line,
+                           (__bridge void*)CreateMetalTexture(device, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H));
+
+    ss_tool.SetToolTexture(ToolType::Circle,
+                           (__bridge void*)CreateMetalTexture(device, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H));
+
+    ss_tool.SetToolTexture(ToolType::Arrow,
+                           (__bridge void*)CreateMetalTexture(device, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H));
+
+    ss_tool.SetToolTexture(ToolType::Pencil,
+                           (__bridge void*)CreateMetalTexture(device, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H));
+
+    ss_tool.SetToolTexture(ToolType::Text,
+                           (__bridge void*)CreateMetalTexture(device, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H));
 
     // Render loop
     MTLRenderPassDescriptor* rpd = [MTLRenderPassDescriptor new];

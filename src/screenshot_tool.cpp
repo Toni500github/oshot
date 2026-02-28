@@ -41,8 +41,6 @@ using namespace std::chrono_literals;
 static constexpr ImVec2            origin(0, 0);
 static std::unique_ptr<Translator> translator;
 
-static std::array<void*, idx(ToolType::Count)> tool_textures;
-
 static std::vector<std::string> get_training_data_list(const std::string& path)
 {
     if (!fs::exists(path))
@@ -244,6 +242,8 @@ Result<> ScreenshotTool::StartWindow()
         }).detach();
 #endif
 
+    fit_to_screen(m_screenshot);
+
 #ifdef __APPLE__
     m_texture_id = nullptr;  // will be set by backend
 #else
@@ -252,8 +252,6 @@ Result<> ScreenshotTool::StartWindow()
         return Err("Failed to create openGL texture: " + res.error_v());
 
     m_texture_id = res.get();
-#endif
-    fit_to_screen(m_screenshot);
 
     // Since the creation of the screenshot texture was fine, suppose the other too
     tool_textures[idx(ToolType::Rectangle)] =
@@ -270,6 +268,7 @@ Result<> ScreenshotTool::StartWindow()
     tool_textures[idx(ToolType::Arrow)]  = CreateTexture(nullptr, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
     tool_textures[idx(ToolType::Pencil)] = CreateTexture(nullptr, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
     tool_textures[idx(ToolType::Text)]   = CreateTexture(nullptr, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H).get();
+#endif
 
     return Ok();
 }
@@ -1626,6 +1625,13 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     }
 
     m_screenshot = std::move(cap.get());
+    fit_to_screen(m_screenshot);
+
+#ifdef __APPLE__
+    // Tell backend to recreate Metal texture
+    if (m_on_image_reload)
+        m_on_image_reload(m_screenshot);
+#else
 
     // Recreate texture (CreateTexture() already deletes the old ones)
     const Result<void*>& r = CreateTexture(m_texture_id, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
@@ -1636,7 +1642,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     }
 
     m_texture_id = r.get();
-    fit_to_screen(m_screenshot);
+#endif
 
     // Reset everything
     m_state           = ToolState::Selecting;
