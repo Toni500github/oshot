@@ -377,16 +377,21 @@ int main(int argc, char* argv[])
         if (tray_already_exists)
             return run_main_tool(imgui_ini_path);
 
-        // On macOS GLFW/Metal must run on the main thread — the tray loop
-        // below handles dispatching run_main_tool when Capture is clicked.
-#ifndef __APPLE__
+        // On macOS both GLFW and the tray (AppKit) require the main thread.
+        // Run main_tool on the main thread now; the tray loop runs after it exits.
+#ifdef __APPLE__
+        run_main_tool(imgui_ini_path);
+#else
         std::thread([&] { run_main_tool(imgui_ini_path); }).detach();
 #endif
     }
 
     g_is_clipboard_server = true;
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__)
+    // On macOS the tray loop polls do_capture on the main thread (required by
+    // AppKit), so capture_worker must not run — it would call run_main_tool
+    // from a background thread and crash with NSInternalInconsistencyException.
     std::thread worker(capture_worker, imgui_ini_path);
 
     std::thread ipc([&] {
@@ -503,9 +508,11 @@ int main(int argc, char* argv[])
     {
         while (trayMaker.Loop(1))
         {
-#if defined(_WIN32) || defined(__APPLE__)
-            // On Windows and macOS, GLFW/Metal must run on the main thread,
-            // so we poll do_capture here and launch the tool from the tray loop.
+#ifdef _WIN32
+            // On Windows, GLFW must run on the thread that called glfwInit (the main
+            // thread). Using a worker thread for captures causes a silent crash via
+            // std::terminate because GLFW is called from the wrong thread.
+            // Instead, we poll do_capture here and run the tool on the main thread.
             bool should_capture = false;
             {
                 std::lock_guard lk(mtx);
@@ -528,7 +535,7 @@ int main(int argc, char* argv[])
     }
 
     // Quitted the tray
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__)
     worker.join();
     if (ipc.joinable())
         ipc.join();
