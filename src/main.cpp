@@ -1,3 +1,9 @@
+#if defined(_WIN32) || defined(__APPLE__)
+#  define OSHOT_TOOL_ON_MAIN_THREAD true
+#else
+#  define OSHOT_TOOL_ON_MAIN_THREAD false
+#endif
+
 #include <atomic>
 #include <condition_variable>
 #include <cstdio>
@@ -377,18 +383,18 @@ int main(int argc, char* argv[])
         if (tray_already_exists)
             return run_main_tool(imgui_ini_path);
 
-        // On macOS both GLFW and the tray (AppKit) require the main thread.
-        // Run main_tool on the main thread now; the tray loop runs after it exits.
-#ifdef __APPLE__
+#if OSHOT_TOOL_ON_MAIN_THREAD
+        // Windows + macOS
         run_main_tool(imgui_ini_path);
 #else
+        // Linux
         std::thread([&] { run_main_tool(imgui_ini_path); }).detach();
 #endif
     }
 
     g_is_clipboard_server = true;
 
-#if !defined(_WIN32) && !defined(__APPLE__)
+#if !OSHOT_TOOL_ON_MAIN_THREAD
     // On macOS the tray loop polls do_capture on the main thread (required by
     // AppKit), so capture_worker must not run — it would call run_main_tool
     // from a background thread and crash with NSInternalInconsistencyException.
@@ -455,7 +461,7 @@ int main(int argc, char* argv[])
     std::vector<TrayMenu*> menu;
 
 #ifdef _WIN32
-    TrayIcon tray = {"oshot.png", "oshot.ico", "oshot", menu};
+    TrayIcon tray = { "oshot.png", "oshot.ico", "oshot", menu };
 #else
     // Basically create the icon.png in a temp directory and use
     // that for the systray icon. idfk, it works
@@ -466,7 +472,7 @@ int main(int argc, char* argv[])
 
     out.write(reinterpret_cast<const char*>(oshot_png), static_cast<std::streamsize>(oshot_png_len));
     out.close();
-    TrayIcon tray = {path.string(), "oshot.ico", "oshot", menu};
+    TrayIcon tray = { path.string(), "oshot.ico", "oshot", menu };
 #endif
 
     tray.menu.push_back(new TrayMenu{ "Capture",
@@ -474,6 +480,9 @@ int main(int argc, char* argv[])
                                       false,
                                       false,
                                       [&](TrayMenu*) {
+#if OSHOT_TOOL_ON_MAIN_THREAD
+                                          run_main_tool(imgui_ini_path);
+#else
                                           std::lock_guard lk(mtx);
                                           // only queue if not already queued
                                           if (!do_capture)
@@ -481,6 +490,7 @@ int main(int argc, char* argv[])
                                               do_capture = true;
                                               cv.notify_all();
                                           }
+#endif
                                       },
                                       {} });
 
@@ -508,25 +518,6 @@ int main(int argc, char* argv[])
     {
         while (trayMaker.Loop(1))
         {
-#ifdef _WIN32
-            // On Windows, GLFW must run on the thread that called glfwInit (the main
-            // thread). Using a worker thread for captures causes a silent crash via
-            // std::terminate because GLFW is called from the wrong thread.
-            // Instead, we poll do_capture here and run the tool on the main thread.
-            bool should_capture = false;
-            {
-                std::lock_guard lk(mtx);
-                if (do_capture)
-                {
-                    do_capture     = false;
-                    should_capture = true;
-                }
-            }
-            if (should_capture)
-            {
-                run_main_tool(imgui_ini_path);
-            }
-#endif
         }
     }
     else
