@@ -507,7 +507,7 @@ void ScreenshotTool::HandleAnnotationInput()
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4, padding_y));
             ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
 
-            ImGui::Begin("##text_ann_input",
+            ImGui::Begin("##text_ann_input_win",
                          nullptr,
                          ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                              ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
@@ -516,13 +516,23 @@ void ScreenshotTool::HandleAnnotationInput()
             if (ImGui::IsWindowAppearing())
                 ImGui::SetKeyboardFocusHere();
 
-            ImFont* ann_font = CacheAndGetFont(get_font_path(m_inputs.ann_font).string(), m_current_annotation.thickness);
+            ImFont* ann_font =
+                CacheAndGetFont(get_font_path(m_inputs.ann_font).string(), m_current_annotation.thickness);
             ImGui::PushFont(ann_font);
 
-            if (ImGui::InputText("##text_ann", &m_current_annotation.text, ImGuiInputTextFlags_EnterReturnsTrue))
+            if (ImGui::InputText(
+                    "##text_ann_input_text", &m_current_annotation.text, ImGuiInputTextFlags_EnterReturnsTrue))
             {
                 if (!m_current_annotation.text.empty())
+                {
+                    // Shift start to where the text actually appears visually,
+                    // accounting for the FramePadding we pushed above
+                    const ImVec2& fp = ImGui::GetStyle().FramePadding;
+                    m_current_annotation.start.x += fp.x;
+                    m_current_annotation.start.y += fp.y;
+
                     m_annotations.push_back(m_current_annotation);
+                }
                 m_current_annotation = {};
                 m_is_text_placing    = false;
             }
@@ -1883,8 +1893,8 @@ ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const floa
         return ImGui::GetDefaultFont();
 
     const float safe_size = std::max(font_size, 16.0f);
-    std::pair key(font_path, safe_size);
-    auto      it = m_font_cache.find(key);
+    std::pair   key(font_path, safe_size);
+    auto        it = m_font_cache.find(key);
     if (it != m_font_cache.end())
         return it->second.font;
 
