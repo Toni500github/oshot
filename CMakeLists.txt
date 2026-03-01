@@ -121,7 +121,10 @@ target_include_directories(
 )
 
 if(UNIX AND NOT APPLE)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${APPINDICATOR_INCLUDE_DIRS})
+    target_include_directories(
+        ${PROJECT_NAME}
+        PRIVATE ${APPINDICATOR_INCLUDE_DIRS}
+    )
 endif()
 
 target_compile_options(
@@ -152,9 +155,7 @@ target_link_libraries(
 )
 
 if(WIN32)
-    target_link_libraries(
-        ${PROJECT_NAME}
-        PRIVATE ws2_32 shcore d3d11 dxgi)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32 shcore d3d11 dxgi)
 
     if(NOT WINDOWS_CMD)
         set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
@@ -168,23 +169,26 @@ elseif(APPLE)
     # Add Metal render loop source
     target_sources(${PROJECT_NAME} PRIVATE src/main_tool_metal.mm)
 
-    target_link_libraries(${PROJECT_NAME} PRIVATE
-        "-framework Metal"
-        "-framework QuartzCore"
-        "-framework CoreGraphics"
-        "-framework Cocoa"
-        "-framework IOKit"
-        "-framework OpenGL")
+    target_link_libraries(
+        ${PROJECT_NAME}
+        PRIVATE
+            "-framework Metal"
+            "-framework QuartzCore"
+            "-framework CoreGraphics"
+            "-framework Cocoa"
+            "-framework IOKit"
+            "-framework OpenGL"
+    )
 elseif(UNIX)
     find_package(X11 REQUIRED)
     target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
     pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
     pkg_check_modules(GIO REQUIRED gio-2.0)
     target_include_directories(
-         ${PROJECT_NAME}
-         PRIVATE
-         SYSTEM
-         ${GIO_INCLUDE_DIRS}
+        ${PROJECT_NAME}
+        PRIVATE
+        SYSTEM
+        ${GIO_INCLUDE_DIRS}
     )
     target_link_libraries(${PROJECT_NAME} PRIVATE ${GIO_LIBRARIES})
     target_compile_options(${PROJECT_NAME} PRIVATE ${GIO_CFLAGS_OTHER})
@@ -210,7 +214,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE fmt)
 
 file(GLOB IMGUI_SOURCES src/libs/imgui/*.cpp)
 if(APPLE)
-	list(APPEND IMGUI_SOURCES src/libs/imgui/imgui_impl_metal.mm)
+    list(APPEND IMGUI_SOURCES src/libs/imgui/imgui_impl_metal.mm)
 endif()
 
 add_library(imgui STATIC ${IMGUI_SOURCES})
@@ -229,42 +233,45 @@ target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
 # -----------------------------
 
 if(WIN32)
-	list(APPEND TRAY_SOURCES src/libs/tray/tray_windows.cpp)
+    list(APPEND TRAY_SOURCES src/libs/tray/tray_windows.cpp)
 else()
-	if(UNIX)
-		if(APPLE)
-			find_library(COCOA Cocoa REQUIRED)
-			list(APPEND TRAY_SOURCES src/libs/tray/tray_darwin.mm)
-		else()
-			FIND_PACKAGE(PkgConfig)
-			PKG_CHECK_MODULES(GTK REQUIRED gtk+-3.0)
-			PKG_CHECK_MODULES(APPINDICATOR REQUIRED appindicator3-0.1)
-			list(APPEND TRAY_SOURCES src/libs/tray/tray_linux.cpp)
-		endif()
-	endif()
+    if(UNIX)
+        if(APPLE)
+            find_library(COCOA Cocoa REQUIRED)
+            list(APPEND TRAY_SOURCES src/libs/tray/tray_darwin.mm)
+        else()
+            find_package(PkgConfig)
+            pkg_check_modules(GTK REQUIRED gtk+-3.0)
+            pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
+            list(APPEND TRAY_SOURCES src/libs/tray/tray_linux.cpp)
+        endif()
+    endif()
 endif()
 
 add_library(tray STATIC ${TRAY_SOURCES})
 
 if(WIN32)
-	target_compile_definitions(tray PRIVATE TRAY_WINAPI=1 WIN32_LEAN_AND_MEAN NOMINMAX)
-	#target_compile_options(tray PRIVATE "/MT$<$<CONFIG:Debug>:d>")
+    target_compile_definitions(
+        tray
+        PRIVATE TRAY_WINAPI=1 WIN32_LEAN_AND_MEAN NOMINMAX
+    )
+    #target_compile_options(tray PRIVATE "/MT$<$<CONFIG:Debug>:d>")
 else()
-	if(UNIX)
-		if(APPLE)
-			target_compile_definitions(tray PRIVATE TRAY_APPKIT=1)
-			target_link_libraries(tray PRIVATE ${COCOA})
-		else()
-			target_compile_options(tray PRIVATE ${GTK_CFLAGS})
-			target_link_directories(tray PRIVATE ${GTK_LIBRARY_DIRS})
-			target_link_libraries(tray PRIVATE ${GTK_LIBRARIES})
+    if(UNIX)
+        if(APPLE)
+            target_compile_definitions(tray PRIVATE TRAY_APPKIT=1)
+            target_link_libraries(tray PRIVATE ${COCOA})
+        else()
+            target_compile_options(tray PRIVATE ${GTK_CFLAGS})
+            target_link_directories(tray PRIVATE ${GTK_LIBRARY_DIRS})
+            target_link_libraries(tray PRIVATE ${GTK_LIBRARIES})
 
-			target_compile_options(tray PRIVATE ${APPINDICATOR_CFLAGS})
-			target_link_directories(tray PRIVATE ${APPINDICATOR_LIBRARY_DIRS})
-			target_compile_definitions(tray PRIVATE TRAY_APPINDICATOR=1)
-			target_link_libraries(tray PRIVATE ${APPINDICATOR_LIBRARIES})
-		endif()
-	endif()
+            target_compile_options(tray PRIVATE ${APPINDICATOR_CFLAGS})
+            target_link_directories(tray PRIVATE ${APPINDICATOR_LIBRARY_DIRS})
+            target_compile_definitions(tray PRIVATE TRAY_APPINDICATOR=1)
+            target_link_libraries(tray PRIVATE ${APPINDICATOR_LIBRARIES})
+        endif()
+    endif()
 endif()
 
 target_include_directories(tray PUBLIC include/libs)
@@ -302,10 +309,10 @@ endif()
 
 if(MSVC)
     target_compile_definitions(clip PRIVATE /D_CRT_SECURE_NO_WARNINGS)
-# MinGW requires the windowscodecs just because CLSIDs are defined
-# in the windowscodecs.a file instead of the wincodec.h file (?!)
-elseif (MINGW)
-  target_link_libraries(clip PUBLIC shlwapi windowscodecs)
+    # MinGW requires the windowscodecs just because CLSIDs are defined
+    # in the windowscodecs.a file instead of the wincodec.h file (?!)
+elseif(MINGW)
+    target_link_libraries(clip PUBLIC shlwapi windowscodecs)
 endif()
 
 if(UNIX AND NOT APPLE)
