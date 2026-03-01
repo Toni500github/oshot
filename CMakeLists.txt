@@ -53,7 +53,7 @@ add_option(WINDOWS_CMD "Enable terminal support on Windows" OFF OFF)
 # -----------------------------
 
 find_package(PkgConfig REQUIRED)
-
+find_package(Threads REQUIRED)
 find_package(glfw3 REQUIRED)
 
 if(TARGET glfw::glfw)
@@ -96,16 +96,11 @@ execute_process(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG=1>)
 target_compile_options(
     ${PROJECT_NAME}
     PRIVATE
-        $<$<CONFIG:Debug>:-DDEBUG=1
-        -ggdb3
-        -fno-omit-frame-pointer
-        -Wall
-        -Wextra
-        -pedantic
-        -Wno-unused-parameter>
+        $<$<CONFIG:Debug>:-ggdb3;-fno-omit-frame-pointer;-Wall;-Wextra;-pedantic;-Wno-unused-parameter>
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE VERSION="${PROJECT_VERSION}")
@@ -161,14 +156,12 @@ if(WIN32)
         set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
 elseif(APPLE)
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
-    endif()
-    target_compile_options(${PROJECT_NAME} PRIVATE -fobjc-arc)
+    target_compile_options(${PROJECT_NAME} PRIVATE -fobjc-arc $<$<CXX_COMPILER_ID:AppleClang>:-stdlib=libc++>)
 
     # Add Metal render loop source
     target_sources(${PROJECT_NAME} PRIVATE src/main_tool_metal.mm)
 
+    target_link_options(${PROJECT_NAME} PRIVATE $<$<CXX_COMPILER_ID:AppleClang>:-stdlib=libc++>)
     target_link_libraries(
         ${PROJECT_NAME}
         PRIVATE
@@ -182,7 +175,6 @@ elseif(APPLE)
 elseif(UNIX)
     find_package(X11 REQUIRED)
     target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
-    pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
     pkg_check_modules(GIO REQUIRED gio-2.0)
     target_include_directories(
         ${PROJECT_NAME}
@@ -200,7 +192,6 @@ endif()
 
 add_library(fmt STATIC src/libs/fmt/os.cc src/libs/fmt/format.cc)
 
-set_target_properties(fmt PROPERTIES POSITION_INDEPENDENT_CODE ON)
 enable_lto(fmt)
 
 target_include_directories(fmt PUBLIC include/libs)
@@ -219,7 +210,6 @@ endif()
 
 add_library(imgui STATIC ${IMGUI_SOURCES})
 
-set_target_properties(imgui PROPERTIES POSITION_INDEPENDENT_CODE ON)
 enable_lto(imgui)
 
 target_include_directories(imgui PUBLIC include/libs/imgui)
@@ -240,9 +230,7 @@ else()
             find_library(COCOA Cocoa REQUIRED)
             list(APPEND TRAY_SOURCES src/libs/tray/tray_darwin.mm)
         else()
-            find_package(PkgConfig)
             pkg_check_modules(GTK REQUIRED gtk+-3.0)
-            pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
             list(APPEND TRAY_SOURCES src/libs/tray/tray_linux.cpp)
         endif()
     endif()
@@ -281,7 +269,6 @@ set_target_properties(
     PROPERTIES
         CXX_STANDARD 20
         CXX_EXTENSIONS OFF
-        POSITION_INDEPENDENT_CODE ON
         CXX_STANDARD_REQUIRED ON
 )
 
@@ -308,7 +295,7 @@ elseif(UNIX)
 endif()
 
 if(MSVC)
-    target_compile_definitions(clip PRIVATE /D_CRT_SECURE_NO_WARNINGS)
+    target_compile_definitions(clip PRIVATE _CRT_SECURE_NO_WARNINGS)
     # MinGW requires the windowscodecs just because CLSIDs are defined
     # in the windowscodecs.a file instead of the wincodec.h file (?!)
 elseif(MINGW)
@@ -316,7 +303,6 @@ elseif(MINGW)
 endif()
 
 if(UNIX AND NOT APPLE)
-    find_package(Threads REQUIRED)
     pkg_check_modules(XCB REQUIRED IMPORTED_TARGET xcb)
     pkg_check_modules(LIBPNG REQUIRED IMPORTED_TARGET libpng)
     target_link_libraries(
@@ -327,16 +313,12 @@ endif()
 
 target_include_directories(clip PUBLIC include/libs/clip)
 target_compile_features(clip PRIVATE cxx_std_20)
-target_compile_definitions(
-    clip
-    PUBLIC -DCLIP_ENABLE_IMAGE=1 -DCLIP_X11_WITH_PNG=1 -DHAVE_PNG_H=1
-)
+target_compile_definitions(clip PUBLIC CLIP_ENABLE_IMAGE=1 CLIP_X11_WITH_PNG=1 HAVE_PNG_H=1)
 set_target_properties(
     clip
     PROPERTIES
         CXX_STANDARD 20
         CXX_EXTENSIONS OFF
-        POSITION_INDEPENDENT_CODE ON
         CXX_STANDARD_REQUIRED ON
 )
 
@@ -359,7 +341,7 @@ add_library(
 if(MSVC)
     target_compile_definitions(
         tiny-process-library
-        PRIVATE /D_CRT_SECURE_NO_WARNINGS
+        PRIVATE _CRT_SECURE_NO_WARNINGS
     )
 else()
     target_compile_options(tiny-process-library PRIVATE -Wall -Wextra)
@@ -386,12 +368,6 @@ else()
     )
 endif()
 
-set_target_properties(
-    tiny-process-library
-    PROPERTIES POSITION_INDEPENDENT_CODE ON
-)
-
-find_package(Threads REQUIRED)
 target_link_libraries(tiny-process-library Threads::Threads)
 target_include_directories(
     tiny-process-library
