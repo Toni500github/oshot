@@ -26,6 +26,20 @@
 void glfw_error_callback(int error, const char* description);
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
 
+GLFWwindow* window = nullptr;
+
+void minimize_window()
+{
+    glfwIconifyWindow(window);
+    glfwPollEvents();  // flush
+}
+
+void maximize_window()
+{
+    glfwRestoreWindow(window);
+    glfwFocusWindow(window);
+}
+
 static id<MTLTexture> CreateMetalTexture(id<MTLDevice> device, const uint8_t* data, int w, int h)
 {
     MTLTextureDescriptor* desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
@@ -44,7 +58,6 @@ static id<MTLTexture> CreateMetalTexture(id<MTLDevice> device, const uint8_t* da
 
 int run_main_tool(const std::string& imgui_ini_path)
 {
-    GLFWwindow* window = nullptr;
     id<MTLDevice> device;
     ScreenshotTool ss_tool;
 
@@ -62,15 +75,7 @@ int run_main_tool(const std::string& imgui_ini_path)
             return;
         }
 
-        // hide overlay BEFORE dialog
-        glfwIconifyWindow(window);
-        glfwPollEvents();  // flush
-
         const Result<>& res = save_png(op, result.get());
-
-        glfwRestoreWindow(window);
-        glfwFocusWindow(window);
-
         if (!res.ok())
             error("Failed to save as PNG: {}", res.error());
 

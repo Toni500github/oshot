@@ -319,6 +319,8 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
     if (op == SavingOp::Clipboard)
         return g_clipboard->CopyImage(img);
 
+    minimize_window();
+
     auto        now       = std::chrono::system_clock::now();
     const char* filter[]  = { "*.png" };
     const char* save_path = tinyfd_saveFileDialog("Save File",
@@ -327,6 +329,8 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
                                                   filter,           // file filters
                                                   "Images (*.png)"  // filter description
     );
+
+    maximize_window();
 
     if (!save_path)
         return Ok();  // Not really an error, maybe the user cancelled

@@ -95,9 +95,13 @@ static void draw_input_text_path(const char*                  label,
     ImGui::SameLine(0, 0);
     if (ImGui::Button("...", ImVec2(button_size, button_size)))
     {
+        minimize_window();
+
         const char* dialog_path = is_file
                                       ? tinyfd_openFileDialog("Open file", nullptr, filter_count, filters, nullptr, 0)
                                       : tinyfd_selectFolderDialog("Open folder", nullptr);
+
+        maximize_window();
 
         if (dialog_path)
         {
@@ -923,6 +927,8 @@ void ScreenshotTool::DrawMenuItems()
         {
             if (ImGui::MenuItem("Open Image..."))
             {
+                minimize_window();
+
                 const char* filter[]  = { "*.png", "*.jpeg", "*.jpg", "*.bmp" };
                 const char* open_path = tinyfd_openFileDialog("Open Image",
                                                               "",                // default path
@@ -931,6 +937,8 @@ void ScreenshotTool::DrawMenuItems()
                                                               "Images (*.png)",  // filter description
                                                               false              // allow multiple selections
                 );
+
+                maximize_window();
 
                 if (open_path)
                     OpenImage(open_path);

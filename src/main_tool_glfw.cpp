@@ -17,10 +17,22 @@
 void glfw_error_callback(int i_error, const char* description);
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
 
+GLFWwindow* window = nullptr;
+
+void minimize_window()
+{
+    glfwIconifyWindow(window);
+    glfwPollEvents();  // flush
+}
+
+void maximize_window()
+{
+    glfwRestoreWindow(window);
+    glfwFocusWindow(window);
+}
+
 int run_main_tool(const std::string& imgui_ini_path)
 {
-    GLFWwindow* window = nullptr;
-
     // Setup Screenshot Tool
     // Calling it before starting the window so that
     // we can capture at the exact moment we launch
@@ -38,16 +50,7 @@ int run_main_tool(const std::string& imgui_ini_path)
             return;
         }
 
-        // Hide overlay BEFORE dialog
-        glfwHideWindow(window);
-        glfwPollEvents();  // flush
-
         const Result<>& res = save_png(op, result.get());
-
-        // Restore window AFTER dialog
-        glfwShowWindow(window);
-        glfwFocusWindow(window);
-
         if (!res.ok())
             error("Failed to save as PNG: {}", res.error());
 
