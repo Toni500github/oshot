@@ -506,7 +506,7 @@ void ScreenshotTool::HandleAnnotationInput()
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4, padding_y));
             ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
 
-            ImGui::Begin("##text_input",
+            ImGui::Begin("##text_ann_input",
                          nullptr,
                          ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                              ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
@@ -515,7 +515,7 @@ void ScreenshotTool::HandleAnnotationInput()
             if (ImGui::IsWindowAppearing())
                 ImGui::SetKeyboardFocusHere();
 
-            ImFont* ann_font = CacheAndGetFont(m_inputs.ann_font, m_current_annotation.thickness);
+            ImFont* ann_font = CacheAndGetFont(get_font_path(m_inputs.ann_font).string(), m_current_annotation.thickness);
             ImGui::PushFont(ann_font);
 
             if (ImGui::InputText("##text_ann", &m_current_annotation.text, ImGuiInputTextFlags_EnterReturnsTrue))
