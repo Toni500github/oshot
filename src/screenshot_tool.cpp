@@ -258,20 +258,20 @@ Result<> ScreenshotTool::StartWindow()
     m_texture_id = res.get();
 
     // Since the creation of the screenshot texture was fine, suppose the other too
-    tool_textures[idx(ToolType::Rectangle)] =
+    m_tool_textures[idx(ToolType::Rectangle)] =
         CreateTexture(nullptr, ICON_SQUARE_RGBA, ICON_SQUARE_W, ICON_SQUARE_H).get();
-    tool_textures[idx(ToolType::RectangleFilled)] =
+    m_tool_textures[idx(ToolType::RectangleFilled)] =
         CreateTexture(nullptr, ICON_RECT_FILLED_RGBA, ICON_RECT_FILLED_W, ICON_RECT_FILLED_H).get();
-    tool_textures[idx(ToolType::CircleFilled)] =
+    m_tool_textures[idx(ToolType::CircleFilled)] =
         CreateTexture(nullptr, ICON_CIRCLE_FILLED_RGBA, ICON_CIRCLE_FILLED_W, ICON_CIRCLE_FILLED_H).get();
-    tool_textures[idx(ToolType::ToggleTextTools)] =
+    m_tool_textures[idx(ToolType::ToggleTextTools)] =
         CreateTexture(nullptr, ICON_TEXT_TOOLS_RGBA, ICON_TEXT_TOOLS_W, ICON_TEXT_TOOLS_H).get();
 
-    tool_textures[idx(ToolType::Line)]   = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
-    tool_textures[idx(ToolType::Circle)] = CreateTexture(nullptr, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
-    tool_textures[idx(ToolType::Arrow)]  = CreateTexture(nullptr, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
-    tool_textures[idx(ToolType::Pencil)] = CreateTexture(nullptr, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
-    tool_textures[idx(ToolType::Text)]   = CreateTexture(nullptr, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H).get();
+    m_tool_textures[idx(ToolType::Line)]   = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
+    m_tool_textures[idx(ToolType::Circle)] = CreateTexture(nullptr, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
+    m_tool_textures[idx(ToolType::Arrow)]  = CreateTexture(nullptr, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
+    m_tool_textures[idx(ToolType::Pencil)] = CreateTexture(nullptr, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
+    m_tool_textures[idx(ToolType::Text)]   = CreateTexture(nullptr, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H).get();
 #endif
 
     return Ok();
@@ -1476,17 +1476,17 @@ void ScreenshotTool::DrawAnnotationToolbar()
         ImGui::SameLine();
     };
 
-    draw_and_set_button(ToolType::Arrow, "##Arrow", tool_textures[idx(ToolType::Arrow)]);
-    draw_and_set_button(ToolType::Rectangle, "##Rectangle", tool_textures[idx(ToolType::Rectangle)]);
-    draw_and_set_button(ToolType::RectangleFilled, "##Rectangle_filled", tool_textures[idx(ToolType::RectangleFilled)]);
-    draw_and_set_button(ToolType::Circle, "##Circle", tool_textures[idx(ToolType::Circle)]);
-    draw_and_set_button(ToolType::CircleFilled, "##Circle_filled", tool_textures[idx(ToolType::CircleFilled)]);
-    draw_and_set_button(ToolType::Line, "##Line", tool_textures[idx(ToolType::Line)]);
-    draw_and_set_button(ToolType::Text, "##icon_Text", tool_textures[idx(ToolType::Text)]);
-    draw_and_set_button(ToolType::Pencil, "##Pencil", tool_textures[idx(ToolType::Pencil)]);
+    draw_and_set_button(ToolType::Arrow, "##Arrow", m_tool_textures[idx(ToolType::Arrow)]);
+    draw_and_set_button(ToolType::Rectangle, "##Rectangle", m_tool_textures[idx(ToolType::Rectangle)]);
+    draw_and_set_button(ToolType::RectangleFilled, "##Rectangle_filled", m_tool_textures[idx(ToolType::RectangleFilled)]);
+    draw_and_set_button(ToolType::Circle, "##Circle", m_tool_textures[idx(ToolType::Circle)]);
+    draw_and_set_button(ToolType::CircleFilled, "##Circle_filled", m_tool_textures[idx(ToolType::CircleFilled)]);
+    draw_and_set_button(ToolType::Line, "##Line", m_tool_textures[idx(ToolType::Line)]);
+    draw_and_set_button(ToolType::Text, "##icon_Text", m_tool_textures[idx(ToolType::Text)]);
+    draw_and_set_button(ToolType::Pencil, "##Pencil", m_tool_textures[idx(ToolType::Pencil)]);
 
     if (!m_show_text_tools &&
-        ImGui::ImageButton("##ShowTextTools", tool_textures[idx(ToolType::ToggleTextTools)], ImVec2(24, 24)))
+        ImGui::ImageButton("##ShowTextTools", m_tool_textures[idx(ToolType::ToggleTextTools)], ImVec2(24, 24)))
         m_show_text_tools = true;
 
     ImGui::SameLine();
@@ -1613,7 +1613,7 @@ void ScreenshotTool::Cancel()
     };
 
     delete_texture(m_texture_id);
-    for (void*& tex : tool_textures)
+    for (void*& tex : m_tool_textures)
         delete_texture(tex);
 
     // (just clears our references, not the actual ImGui fonts)

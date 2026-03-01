@@ -108,8 +108,6 @@ struct annotation_t
     float                thickness = 3.0f;
 };
 
-static std::array<void*, idx(ToolType::Count)> tool_textures;
-
 class ScreenshotTool
 {
 public:
@@ -128,7 +126,7 @@ public:
     bool              IsActive() const { return m_state != ToolState::Idle; }
     capture_result_t& GetRawScreenshot() { return m_screenshot; }
     void              SetBackendTexture(void* tex) { m_texture_id = tex; }
-    void              SetToolTexture(ToolType type, void* tex) { tool_textures[idx(type)] = tex; }
+    void              SetToolTexture(ToolType type, void* tex) { m_tool_textures[idx(type)] = tex; }
 
     void SetOnImageReload(std::function<void(const capture_result_t&)> fn) { m_on_image_reload = std::move(fn); }
 
@@ -229,6 +227,7 @@ private:
 
     ImGuiIO dummy;
 
+    std::array<void*, idx(ToolType::Count)> m_tool_textures{};
     ToolType                                m_current_tool = ToolType::kNone;
     std::vector<annotation_t>               m_annotations;
     annotation_t                            m_current_annotation;
