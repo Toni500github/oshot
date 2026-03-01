@@ -222,6 +222,7 @@ Result<> ScreenshotTool::Start()
 
     m_screenshot = std::move(result.get());
     m_tool_thickness.fill(3.0f);
+    m_tool_thickness[idx(ToolType::Text)] = 16.0f;
     return Ok();
 }
 
@@ -1278,7 +1279,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
             if (m_current_tool == ToolType::Text)
             {
-                ImGui::InputFloat("##fontsize", &m_tool_thickness[idx(m_current_tool)], 8.0f, 2.0f, "%.0f px");
+                ImGui::InputFloat("##fontsize", &m_tool_thickness[idx(m_current_tool)], 2.0f, 2.0f, "%.0f px");
                 ImGui::SameLine();
                 ImGui::TextUnformatted("Font Size");
                 static const char* font_filters[] = { "*.ttf", "*.otf", "*.woff", "*.woff2" };
@@ -1881,7 +1882,8 @@ ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const floa
     if (font_path.empty())
         return ImGui::GetDefaultFont();
 
-    std::pair key(font_path, font_size);
+    const float safe_size = std::max(font_size, 16.0f);
+    std::pair key(font_path, safe_size);
     auto      it = m_font_cache.find(key);
     if (it != m_font_cache.end())
         return it->second.font;
