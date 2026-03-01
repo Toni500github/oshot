@@ -288,8 +288,8 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
 // Zbar
 ZbarAPI::ZbarAPI()
 {
-    SetConfig(zbar::ZBAR_NONE, true);  // all
-    SetConfig(zbar::ZBAR_I25, false);
+    SetConfig(zbar::ZBAR_NONE, true);  // enable all
+    SetConfig(zbar::ZBAR_I25, false);  // except this
 }
 
 Result<zbar_result_t> ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)

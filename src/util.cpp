@@ -52,6 +52,10 @@
 #  pragma comment(lib, "Shcore.lib")
 #  pragma comment(lib, "ws2_32.lib")
 #else
+#  ifdef __APPLE__
+#    include <CoreFoundation/CoreFoundation.h>
+#    include <CoreGraphics/CoreGraphics.h>
+#  endif
 #  include <arpa/inet.h>
 #  include <netdb.h>
 #  include <pwd.h>
@@ -193,18 +197,29 @@ bool acquire_tray_lock()
 
 int get_screen_dpi()
 {
+#  if defined(__APPLE__)
+    // CGDisplayScreenSize returns physical size in millimetres
+    CGDirectDisplayID display  = CGMainDisplayID();
+    CGSize            size_mm  = CGDisplayScreenSize(display);
+    size_t            width_px = CGDisplayPixelsWide(display);
+
+    if (size_mm.width <= 0)
+        return 96;  // fallback
+
+    double dpi = static_cast<double>(width_px) / (size_mm.width / 25.4);
+    return static_cast<int>(dpi + 0.5);
+#  else
     Display* dpy = XOpenDisplay(nullptr);
     if (!dpy)
-        return 96;  // fallback
+        return 96;
 
     double width_mm = DisplayWidthMM(dpy, DefaultScreen(dpy));
     double width_px = DisplayWidth(dpy, DefaultScreen(dpy));
-
     XCloseDisplay(dpy);
 
-    // dpi = pixels per inch
     double dpi = width_px / (width_mm / 25.4);
     return static_cast<int>(dpi + 0.5);
+#  endif
 }
 #endif
 
@@ -304,6 +319,8 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
     if (op == SavingOp::Clipboard)
         return g_clipboard->CopyImage(img);
 
+    minimize_window();
+
     auto        now       = std::chrono::system_clock::now();
     const char* filter[]  = { "*.png" };
     const char* save_path = tinyfd_saveFileDialog("Save File",
@@ -312,6 +329,8 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
                                                   filter,           // file filters
                                                   "Images (*.png)"  // filter description
     );
+
+    maximize_window();
 
     if (!save_path)
         return Ok();  // Not really an error, maybe the user cancelled

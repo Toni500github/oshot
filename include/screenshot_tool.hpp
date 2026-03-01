@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "config.hpp"
 #include "imgui/imgui.h"
 #include "imgui/imgui_internal.h"
 #include "screen_capture.hpp"
@@ -110,13 +111,24 @@ struct annotation_t
 class ScreenshotTool
 {
 public:
-    ScreenshotTool() : m_io(dummy) {}
+    ScreenshotTool()
+        : m_io(dummy),
+          m_inputs{ .ocr_path     = g_config->File.ocr_path,
+                    .ocr_model    = g_config->File.ocr_model,
+                    .tl_lang_from = g_config->File.lang_from,
+                    .tl_lang_to   = g_config->File.lang_to }
+    {}
 
-    Result<>      Start();
-    Result<>      StartWindow();
-    Result<void*> CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h);
-    bool          OpenImage(const std::string& path);
-    bool          IsActive() const { return m_state != ToolState::Idle; }
+    Result<>          Start();
+    Result<>          StartWindow();
+    Result<void*>     CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h);
+    bool              OpenImage(const std::string& path);
+    bool              IsActive() const { return m_state != ToolState::Idle; }
+    capture_result_t& GetRawScreenshot() { return m_screenshot; }
+    void              SetBackendTexture(void* tex) { m_texture_id = tex; }
+    void              SetToolTexture(ToolType type, void* tex) { m_tool_textures[idx(type)] = tex; }
+
+    void SetOnImageReload(std::function<void(const capture_result_t&)> fn) { m_on_image_reload = std::move(fn); }
 
     capture_result_t GetFinalImage();
 
@@ -163,8 +175,20 @@ private:
     // and also some user settings
     struct inputs_results_t
     {
-        std::string   ocr_text;
-        std::string   translate_text;
+        std::string ocr_path;
+        std::string ocr_model;
+        std::string ocr_text;
+
+        std::string tl_lang_from;
+        std::string tl_lang_to;
+        size_t      tl_index_from  = 0;
+        size_t      tl_index_to    = 0;
+        bool        tl_first_frame = true;
+        std::string tl_translated_text;
+        ImFont*     tl_font_from = nullptr;
+        ImFont*     tl_font_to   = nullptr;
+
+        std::string   to_translate_text;
         std::string   barcode_text;
         std::string   ann_font;
         int           ocr_confidence = -1;
@@ -198,10 +222,12 @@ private:
     std::unordered_map<ErrorFlag, std::string>                     m_err_texts;
     std::map<std::pair<std::string, float>, font_cache_t>          m_font_cache;
     std::function<void()>                                          m_on_cancel;
+    std::function<void(const capture_result_t&)>                   m_on_image_reload;
     std::function<void(SavingOp, const Result<capture_result_t>&)> m_on_complete;
 
     ImGuiIO dummy;
 
+    std::array<void*, idx(ToolType::Count)> m_tool_textures{};
     ToolType                                m_current_tool = ToolType::kNone;
     std::vector<annotation_t>               m_annotations;
     annotation_t                            m_current_annotation;

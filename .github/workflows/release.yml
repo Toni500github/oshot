@@ -38,7 +38,7 @@ jobs:
       contents: read
     strategy:
       matrix:
-        os: [ ubuntu-latest, ubuntu-22.04, windows-latest ]
+        os: [ ubuntu-latest, ubuntu-22.04, macos-latest, macos-15-intel, windows-latest ]
 
     steps:
       - name: Checkout repository
@@ -48,7 +48,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install dependencies (Linux)
-        if: matrix.os != 'windows-latest'
+        if: contains(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update && sudo apt-get purge firefox -y
           sudo apt-get install -y \
@@ -71,6 +71,12 @@ jobs:
             libwebp-dev \
             libzbar-dev \
             libappindicator3-dev
+
+      - name: Install dependencies (MacOS)
+        if: contains(matrix.os, 'macos')
+        run: |
+          brew update && brew upgrade || true
+          brew install cmake glfw tesseract leptonica zbar curl dylibbundler
 
       - name: Install dependencies (Windows)
         if: matrix.os == 'windows-latest'
@@ -99,14 +105,26 @@ jobs:
             mingw-w64-x86_64-curl
 
       - name: Build project (Linux)
-        if: matrix.os != 'windows-latest'
+        if: contains(matrix.os, 'ubuntu')
         run: |
-          #make all DEBUG=0 LDFLAGS="-Wl,--as-needed"
           ./scripts/generateVersion.sh
           mkdir -p build
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cd build && make
           strip --strip-unneeded ./oshot
+
+      - name: Build project (MacOS)
+        if: contains(matrix.os, 'macos')
+        run: |
+          ./scripts/generateVersion.sh
+          BREW=$(brew --prefix)
+          mkdir -p build
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$BREW" \
+            -DPKG_CONFIG_PATH="$BREW/lib/pkgconfig:$BREW/share/pkgconfig"
+          cd build && make
+          strip -x ./oshot
 
       - name: Build project (Windows)
         if: matrix.os == 'windows-latest'
@@ -141,6 +159,17 @@ jobs:
           wget https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -O package/oshot/models/eng.traineddata
           cd package
           zip -r oshot-appimage.zip oshot/
+
+      - name: Prepare macOS bundle
+        if: contains(matrix.os, 'macos')
+        run: |
+          mkdir -p package/oshot/models
+          ARCH=$(uname -m)
+          ./scripts/create_app_bundle.sh ./build/oshot oshot-macos-${ARCH}.dmg
+          mv oshot-macos-${ARCH}.dmg package/oshot/
+          curl -L https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -o package/oshot/models/eng.traineddata
+          cd package
+          zip -r oshot-macos-${ARCH}.zip oshot/
 
       - name: Prepare Windows package
         if: matrix.os == 'windows-latest'
@@ -227,4 +256,24 @@ jobs:
           upload_url: ${{ needs.release.outputs.release-url }}
           asset_path: downloaded-artifacts/windows-latest-packages/oshot-windows.zip
           asset_name: oshot-windows-${{ needs.get-version.outputs.version }}.zip
+          asset_content_type: application/zip
+
+      - name: Upload macOS arm64 package
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.release-url }}
+          asset_path: downloaded-artifacts/macos-latest-packages/oshot-macos-arm64.zip
+          asset_name: oshot-macos-arm64-${{ needs.get-version.outputs.version }}.zip
+          asset_content_type: application/zip
+
+      - name: Upload macOS x86_64 package
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.release-url }}
+          asset_path: downloaded-artifacts/macos-13-packages/oshot-macos-x86_64.zip
+          asset_name: oshot-macos-x86_64-${{ needs.get-version.outputs.version }}.zip
           asset_content_type: application/zip

@@ -41,8 +41,6 @@ using namespace std::chrono_literals;
 static constexpr ImVec2            origin(0, 0);
 static std::unique_ptr<Translator> translator;
 
-static std::array<void*, idx(ToolType::Count)> tool_textures;
-
 static std::vector<std::string> get_training_data_list(const std::string& path)
 {
     if (!fs::exists(path))
@@ -97,9 +95,13 @@ static void draw_input_text_path(const char*                  label,
     ImGui::SameLine(0, 0);
     if (ImGui::Button("...", ImVec2(button_size, button_size)))
     {
+        minimize_window();
+
         const char* dialog_path = is_file
                                       ? tinyfd_openFileDialog("Open file", nullptr, filter_count, filters, nullptr, 0)
                                       : tinyfd_selectFolderDialog("Open folder", nullptr);
+
+        maximize_window();
 
         if (dialog_path)
         {
@@ -214,6 +216,7 @@ Result<> ScreenshotTool::Start()
             case SessionType::X11:     result = capture_full_screen_x11(); break;
             case SessionType::Wayland: result = capture_full_screen_wayland(); break;
             case SessionType::Windows: result = capture_full_screen_windows(); break;
+            case SessionType::MacOS:   result = capture_full_screen_macos(); break;
             default:                   return Err("Unknown platform");
         }
     }
@@ -234,35 +237,42 @@ Result<> ScreenshotTool::StartWindow()
     m_inputs.ann_font = g_config->File.font;
     m_show_text_tools = g_config->File.show_text_tools;
 
+#ifdef __linux__
     if (!g_is_clipboard_server)
         std::thread([] {
             const Result<>& res = g_sender->Start(6015);
             if (!res.ok())
                 error("Error while connecting to systray: {}", res.error());
         }).detach();
+#endif
 
+    fit_to_screen(m_screenshot);
+
+#ifdef __APPLE__
+    m_texture_id = nullptr;  // will be set by backend
+#else
     const Result<void*>& res = CreateTexture(m_texture_id, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
     if (!res.ok())
         return Err("Failed to create openGL texture: " + res.error_v());
 
     m_texture_id = res.get();
-    fit_to_screen(m_screenshot);
 
     // Since the creation of the screenshot texture was fine, suppose the other too
-    tool_textures[idx(ToolType::Rectangle)] =
+    m_tool_textures[idx(ToolType::Rectangle)] =
         CreateTexture(nullptr, ICON_SQUARE_RGBA, ICON_SQUARE_W, ICON_SQUARE_H).get();
-    tool_textures[idx(ToolType::RectangleFilled)] =
+    m_tool_textures[idx(ToolType::RectangleFilled)] =
         CreateTexture(nullptr, ICON_RECT_FILLED_RGBA, ICON_RECT_FILLED_W, ICON_RECT_FILLED_H).get();
-    tool_textures[idx(ToolType::CircleFilled)] =
+    m_tool_textures[idx(ToolType::CircleFilled)] =
         CreateTexture(nullptr, ICON_CIRCLE_FILLED_RGBA, ICON_CIRCLE_FILLED_W, ICON_CIRCLE_FILLED_H).get();
-    tool_textures[idx(ToolType::ToggleTextTools)] =
+    m_tool_textures[idx(ToolType::ToggleTextTools)] =
         CreateTexture(nullptr, ICON_TEXT_TOOLS_RGBA, ICON_TEXT_TOOLS_W, ICON_TEXT_TOOLS_H).get();
 
-    tool_textures[idx(ToolType::Line)]   = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
-    tool_textures[idx(ToolType::Circle)] = CreateTexture(nullptr, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
-    tool_textures[idx(ToolType::Arrow)]  = CreateTexture(nullptr, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
-    tool_textures[idx(ToolType::Pencil)] = CreateTexture(nullptr, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
-    tool_textures[idx(ToolType::Text)]   = CreateTexture(nullptr, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H).get();
+    m_tool_textures[idx(ToolType::Line)]   = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
+    m_tool_textures[idx(ToolType::Circle)] = CreateTexture(nullptr, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
+    m_tool_textures[idx(ToolType::Arrow)]  = CreateTexture(nullptr, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
+    m_tool_textures[idx(ToolType::Pencil)] = CreateTexture(nullptr, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
+    m_tool_textures[idx(ToolType::Text)]   = CreateTexture(nullptr, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H).get();
+#endif
 
     return Ok();
 }
@@ -917,6 +927,8 @@ void ScreenshotTool::DrawMenuItems()
         {
             if (ImGui::MenuItem("Open Image..."))
             {
+                minimize_window();
+
                 const char* filter[]  = { "*.png", "*.jpeg", "*.jpg", "*.bmp" };
                 const char* open_path = tinyfd_openFileDialog("Open Image",
                                                               "",                // default path
@@ -925,6 +937,8 @@ void ScreenshotTool::DrawMenuItems()
                                                               "Images (*.png)",  // filter description
                                                               false              // allow multiple selections
                 );
+
+                maximize_window();
 
                 if (open_path)
                     OpenImage(open_path);
@@ -1005,11 +1019,11 @@ void ScreenshotTool::DrawMenuItems()
 
 void ScreenshotTool::DrawOcrTools()
 {
-    static std::string ocr_path{ g_config->File.ocr_path };
-    static std::string ocr_model{ g_config->File.ocr_model };
-    static size_t      item_selected_idx = 0;
-    static bool        first_frame       = true;
+    std::string& ocr_path  = m_inputs.ocr_path;
+    std::string& ocr_model = m_inputs.ocr_model;
 
+    static size_t                   item_selected_idx = 0;
+    static bool                     first_frame       = true;
     static std::vector<std::string> models_list;
 
     auto refresh_models = [&]() {
@@ -1111,8 +1125,8 @@ void ScreenshotTool::DrawOcrTools()
             const Result<ocr_result_t>& result = m_ocr_api.ExtractTextCapture(GetFinalImage());
             if (result.ok())
             {
-                m_inputs.ocr_text = m_inputs.translate_text = result.get().data;
-                m_inputs.ocr_confidence                     = result.get().confidence;
+                m_inputs.ocr_text = m_inputs.to_translate_text = result.get().data;
+                m_inputs.ocr_confidence                        = result.get().confidence;
             }
         }
     }
@@ -1155,16 +1169,14 @@ void ScreenshotTool::DrawOcrTools()
 
 void ScreenshotTool::DrawTranslationTools()
 {
-    static std::string lang_from{ g_config->File.lang_from };
-    static std::string lang_to{ g_config->File.lang_to };
-    static size_t      index_from  = 0;
-    static size_t      index_to    = 0;
-    static bool        first_frame = true;
-
-    static std::string translated_text;
-
-    static ImFont* font_from;
-    static ImFont* font_to;
+    std::string& lang_from       = m_inputs.tl_lang_from;
+    std::string& lang_to         = m_inputs.tl_lang_to;
+    size_t&      index_from      = m_inputs.tl_index_from;
+    size_t&      index_to        = m_inputs.tl_index_to;
+    bool&        first_frame     = m_inputs.tl_first_frame;
+    std::string& translated_text = m_inputs.tl_translated_text;
+    ImFont*&     font_from       = m_inputs.tl_font_from;
+    ImFont*&     font_to         = m_inputs.tl_font_to;
 
     if (first_frame)
     {
@@ -1244,10 +1256,10 @@ void ScreenshotTool::DrawTranslationTools()
     // Ignore "Automatic" in To
     createCombo("To", InvalidLangTo, 1, lang_to, index_to, font_to);
 
-    if (!(HasError(InvalidLangFrom) || HasError(InvalidLangTo)) && !m_inputs.translate_text.empty() &&
+    if (!(HasError(InvalidLangFrom) || HasError(InvalidLangTo)) && !m_inputs.to_translate_text.empty() &&
         ImGui::Button("Translate"))
     {
-        const Result<std::string>& translation = translator->Translate(lang_from, lang_to, m_inputs.translate_text);
+        const Result<std::string>& translation = translator->Translate(lang_from, lang_to, m_inputs.to_translate_text);
         if (!translation.ok())
         {
             SetError(FailedTranslation, translation.error_v());
@@ -1272,12 +1284,14 @@ void ScreenshotTool::DrawTranslationTools()
     if (font_from)
     {
         ImGui::PushFont(font_from);
-        ImGui::InputTextMultiline("##from", &m_inputs.translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
+        ImGui::InputTextMultiline(
+            "##from", &m_inputs.to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
         ImGui::PopFont();
     }
     else
     {
-        ImGui::InputTextMultiline("##from", &m_inputs.translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
+        ImGui::InputTextMultiline(
+            "##from", &m_inputs.to_translate_text, ImVec2(width, ImGui::GetTextLineHeight() * 10));
     }
 
     ImGui::SameLine();
@@ -1462,17 +1476,17 @@ void ScreenshotTool::DrawAnnotationToolbar()
         ImGui::SameLine();
     };
 
-    draw_and_set_button(ToolType::Arrow, "##Arrow", tool_textures[idx(ToolType::Arrow)]);
-    draw_and_set_button(ToolType::Rectangle, "##Rectangle", tool_textures[idx(ToolType::Rectangle)]);
-    draw_and_set_button(ToolType::RectangleFilled, "##Rectangle_filled", tool_textures[idx(ToolType::RectangleFilled)]);
-    draw_and_set_button(ToolType::Circle, "##Circle", tool_textures[idx(ToolType::Circle)]);
-    draw_and_set_button(ToolType::CircleFilled, "##Circle_filled", tool_textures[idx(ToolType::CircleFilled)]);
-    draw_and_set_button(ToolType::Line, "##Line", tool_textures[idx(ToolType::Line)]);
-    draw_and_set_button(ToolType::Text, "##icon_Text", tool_textures[idx(ToolType::Text)]);
-    draw_and_set_button(ToolType::Pencil, "##Pencil", tool_textures[idx(ToolType::Pencil)]);
+    draw_and_set_button(ToolType::Arrow, "##Arrow", m_tool_textures[idx(ToolType::Arrow)]);
+    draw_and_set_button(ToolType::Rectangle, "##Rectangle", m_tool_textures[idx(ToolType::Rectangle)]);
+    draw_and_set_button(ToolType::RectangleFilled, "##Rectangle_filled", m_tool_textures[idx(ToolType::RectangleFilled)]);
+    draw_and_set_button(ToolType::Circle, "##Circle", m_tool_textures[idx(ToolType::Circle)]);
+    draw_and_set_button(ToolType::CircleFilled, "##Circle_filled", m_tool_textures[idx(ToolType::CircleFilled)]);
+    draw_and_set_button(ToolType::Line, "##Line", m_tool_textures[idx(ToolType::Line)]);
+    draw_and_set_button(ToolType::Text, "##icon_Text", m_tool_textures[idx(ToolType::Text)]);
+    draw_and_set_button(ToolType::Pencil, "##Pencil", m_tool_textures[idx(ToolType::Pencil)]);
 
     if (!m_show_text_tools &&
-        ImGui::ImageButton("##ShowTextTools", tool_textures[idx(ToolType::ToggleTextTools)], ImVec2(24, 24)))
+        ImGui::ImageButton("##ShowTextTools", m_tool_textures[idx(ToolType::ToggleTextTools)], ImVec2(24, 24)))
         m_show_text_tools = true;
 
     ImGui::SameLine();
@@ -1586,16 +1600,20 @@ void ScreenshotTool::Cancel()
     m_state = ToolState::Idle;
 
     auto delete_texture = [](void*& tex) {
+#ifdef __APPLE__
+        tex = nullptr;
+#else
         if (tex)
         {
             GLuint texture = (GLuint)(intptr_t)tex;
             glDeleteTextures(1, &texture);
             tex = nullptr;
         }
+#endif
     };
 
     delete_texture(m_texture_id);
-    for (void*& tex : tool_textures)
+    for (void*& tex : m_tool_textures)
         delete_texture(tex);
 
     // (just clears our references, not the actual ImGui fonts)
@@ -1615,6 +1633,13 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     }
 
     m_screenshot = std::move(cap.get());
+    fit_to_screen(m_screenshot);
+
+#ifdef __APPLE__
+    // Tell backend to recreate Metal texture
+    if (m_on_image_reload)
+        m_on_image_reload(m_screenshot);
+#else
 
     // Recreate texture (CreateTexture() already deletes the old ones)
     const Result<void*>& r = CreateTexture(m_texture_id, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
@@ -1625,7 +1650,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     }
 
     m_texture_id = r.get();
-    fit_to_screen(m_screenshot);
+#endif
 
     // Reset everything
     m_state           = ToolState::Selecting;
@@ -1640,7 +1665,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     m_image_end            = {};
 
     m_inputs.ocr_text.clear();
-    m_inputs.translate_text.clear();
+    m_inputs.to_translate_text.clear();
     m_inputs.barcode_text.clear();
 
     ClearError(FailedToInitOcr);
@@ -2037,7 +2062,11 @@ ImFont* ScreenshotTool::GetFontForLanguage(const std::string& lang_code)
 
 Result<void*> ScreenshotTool::CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h)
 {
-    // Delete old texture first
+#ifdef __APPLE__
+    // Metal backend handles textures separately
+    return Ok(nullptr);
+#else
+    // Existing OpenGL implementation
     if (tex)
     {
         GLuint old_texture = (GLuint)(intptr_t)tex;
@@ -2046,9 +2075,6 @@ Result<void*> ScreenshotTool::CreateTexture(void* tex, std::span<const uint8_t> 
 
     GLuint texture;
     glGenTextures(1, &texture);
-    int err = glGetError();
-    if (err != GL_NO_ERROR)
-        return Err("glGetError() returned error: " + fmt::to_string(err));
 
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -2060,4 +2086,5 @@ Result<void*> ScreenshotTool::CreateTexture(void* tex, std::span<const uint8_t> 
 
     tex = (void*)(intptr_t)texture;
     return Ok(tex);
+#endif
 }

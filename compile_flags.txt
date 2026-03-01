@@ -1,6 +1,5 @@
 -Iinclude
 -Iinclude/libs
--Iinclude/libs/trayapp
 -Wall
 -Wextra
 -Wpedantic

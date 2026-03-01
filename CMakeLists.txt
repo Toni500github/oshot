@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.15)
 
 project(oshot VERSION 0.3.0 LANGUAGES C CXX)
 
+if(APPLE)
+    enable_language(OBJC OBJCXX)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -49,7 +53,7 @@ add_option(WINDOWS_CMD "Enable terminal support on Windows" OFF OFF)
 # -----------------------------
 
 find_package(PkgConfig REQUIRED)
-
+find_package(Threads REQUIRED)
 find_package(glfw3 REQUIRED)
 
 if(TARGET glfw::glfw)
@@ -67,6 +71,10 @@ find_package(CURL REQUIRED)
 pkg_check_modules(TESSERACT REQUIRED tesseract)
 pkg_check_modules(LEPTONICA REQUIRED lept)
 pkg_check_modules(ZBAR REQUIRED zbar)
+
+if(UNIX AND NOT APPLE)
+    pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
+endif()
 
 # -----------------------------
 # Main executable
@@ -88,16 +96,11 @@ execute_process(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG=1>)
 target_compile_options(
     ${PROJECT_NAME}
     PRIVATE
-        $<$<CONFIG:Debug>:-DDEBUG=1
-        -ggdb3
-        -fno-omit-frame-pointer
-        -Wall
-        -Wextra
-        -pedantic
-        -Wno-unused-parameter>
+        $<$<CONFIG:Debug>:-ggdb3;-fno-omit-frame-pointer;-Wall;-Wextra;-pedantic;-Wno-unused-parameter>
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE VERSION="${PROJECT_VERSION}")
@@ -109,9 +112,15 @@ target_include_directories(
         include/libs
         ${TESSERACT_INCLUDE_DIRS}
         ${LEPTONICA_INCLUDE_DIRS}
-        ${APPINDICATOR_INCLUDE_DIRS}
         ${ZBAR_INCLUDE_DIRS}
 )
+
+if(UNIX AND NOT APPLE)
+    target_include_directories(
+        ${PROJECT_NAME}
+        PRIVATE ${APPINDICATOR_INCLUDE_DIRS}
+    )
+endif()
 
 target_compile_options(
     ${PROJECT_NAME}
@@ -119,6 +128,14 @@ target_compile_options(
         ${TESSERACT_CFLAGS_OTHER}
         ${LEPTONICA_CFLAGS_OTHER}
         ${ZBAR_CFLAGS_OTHER}
+)
+
+target_link_directories(
+    ${PROJECT_NAME}
+    PRIVATE
+        ${TESSERACT_LIBRARY_DIRS}
+        ${LEPTONICA_LIBRARY_DIRS}
+        ${ZBAR_LIBRARY_DIRS}
 )
 
 target_link_libraries(
@@ -133,23 +150,37 @@ target_link_libraries(
 )
 
 if(WIN32)
-    target_link_libraries(
-        ${PROJECT_NAME}
-        PRIVATE ws2_32 shcore d3d11 dxgi)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32 shcore d3d11 dxgi)
 
     if(NOT WINDOWS_CMD)
         set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
-elseif(UNIX AND NOT APPLE)
+elseif(APPLE)
+    target_compile_options(${PROJECT_NAME} PRIVATE -fobjc-arc $<$<CXX_COMPILER_ID:AppleClang>:-stdlib=libc++>)
+
+    # Add Metal render loop source
+    target_sources(${PROJECT_NAME} PRIVATE src/main_tool_metal.mm)
+
+    target_link_options(${PROJECT_NAME} PRIVATE $<$<CXX_COMPILER_ID:AppleClang>:-stdlib=libc++>)
+    target_link_libraries(
+        ${PROJECT_NAME}
+        PRIVATE
+            "-framework Metal"
+            "-framework QuartzCore"
+            "-framework CoreGraphics"
+            "-framework Cocoa"
+            "-framework IOKit"
+            "-framework OpenGL"
+    )
+elseif(UNIX)
     find_package(X11 REQUIRED)
     target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
-    pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
     pkg_check_modules(GIO REQUIRED gio-2.0)
     target_include_directories(
-         ${PROJECT_NAME}
-         PRIVATE
-         SYSTEM
-         ${GIO_INCLUDE_DIRS}
+        ${PROJECT_NAME}
+        PRIVATE
+        SYSTEM
+        ${GIO_INCLUDE_DIRS}
     )
     target_link_libraries(${PROJECT_NAME} PRIVATE ${GIO_LIBRARIES})
     target_compile_options(${PROJECT_NAME} PRIVATE ${GIO_CFLAGS_OTHER})
@@ -161,7 +192,6 @@ endif()
 
 add_library(fmt STATIC src/libs/fmt/os.cc src/libs/fmt/format.cc)
 
-set_target_properties(fmt PROPERTIES POSITION_INDEPENDENT_CODE ON)
 enable_lto(fmt)
 
 target_include_directories(fmt PUBLIC include/libs)
@@ -174,10 +204,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE fmt)
 # -----------------------------
 
 file(GLOB IMGUI_SOURCES src/libs/imgui/*.cpp)
+if(APPLE)
+    list(APPEND IMGUI_SOURCES src/libs/imgui/imgui_impl_metal.mm)
+endif()
 
 add_library(imgui STATIC ${IMGUI_SOURCES})
 
-set_target_properties(imgui PROPERTIES POSITION_INDEPENDENT_CODE ON)
 enable_lto(imgui)
 
 target_include_directories(imgui PUBLIC include/libs/imgui)
@@ -187,39 +219,60 @@ target_link_libraries(imgui PUBLIC ${GLFW_TARGET})
 target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
 
 # -----------------------------
-# trayapp library (integrated from its own CMakeLists.txt)
+# Tray library (integrated from its own CMakeLists.txt)
 # -----------------------------
 
-file(
-    GLOB TRAYAPP_SOURCES
-    src/libs/trayapp/*/*.cpp
-    src/libs/trayapp/*/*/*.cpp
-)
-
-add_library(trayapp STATIC ${TRAYAPP_SOURCES})
-
-if(UNIX)
-    target_include_directories(
-        trayapp
-        PUBLIC
-        SYSTEM
-        ${APPINDICATOR_INCLUDE_DIRS}
-    )
-    target_link_libraries(trayapp PUBLIC ${APPINDICATOR_LIBRARIES})
+if(WIN32)
+    list(APPEND TRAY_SOURCES src/libs/tray/tray_windows.cpp)
+else()
+    if(UNIX)
+        if(APPLE)
+            find_library(COCOA Cocoa REQUIRED)
+            list(APPEND TRAY_SOURCES src/libs/tray/tray_darwin.mm)
+        else()
+            pkg_check_modules(GTK REQUIRED gtk+-3.0)
+            list(APPEND TRAY_SOURCES src/libs/tray/tray_linux.cpp)
+        endif()
+    endif()
 endif()
 
-target_include_directories(trayapp PUBLIC include/libs/trayapp)
-target_compile_features(trayapp PRIVATE cxx_std_20)
+add_library(tray STATIC ${TRAY_SOURCES})
+
+if(WIN32)
+    target_compile_definitions(
+        tray
+        PRIVATE TRAY_WINAPI=1 WIN32_LEAN_AND_MEAN NOMINMAX
+    )
+    #target_compile_options(tray PRIVATE "/MT$<$<CONFIG:Debug>:d>")
+else()
+    if(UNIX)
+        if(APPLE)
+            target_compile_definitions(tray PRIVATE TRAY_APPKIT=1)
+            target_link_libraries(tray PRIVATE ${COCOA})
+        else()
+            target_compile_options(tray PRIVATE ${GTK_CFLAGS})
+            target_link_directories(tray PRIVATE ${GTK_LIBRARY_DIRS})
+            target_link_libraries(tray PRIVATE ${GTK_LIBRARIES})
+
+            target_compile_options(tray PRIVATE ${APPINDICATOR_CFLAGS})
+            target_link_directories(tray PRIVATE ${APPINDICATOR_LIBRARY_DIRS})
+            target_compile_definitions(tray PRIVATE TRAY_APPINDICATOR=1)
+            target_link_libraries(tray PRIVATE ${APPINDICATOR_LIBRARIES})
+        endif()
+    endif()
+endif()
+
+target_include_directories(tray PUBLIC include/libs)
+target_compile_features(tray PRIVATE cxx_std_20)
 set_target_properties(
-    trayapp
+    tray
     PROPERTIES
         CXX_STANDARD 20
         CXX_EXTENSIONS OFF
-        POSITION_INDEPENDENT_CODE ON
         CXX_STANDARD_REQUIRED ON
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE trayapp)
+target_link_libraries(${PROJECT_NAME} PRIVATE tray)
 
 # -----------------------------
 # clip library (integrated from its own CMakeLists.txt)
@@ -235,22 +288,21 @@ if(WIN32)
             src/libs/clip/clip_win_bmp.cpp
             src/libs/clip/clip_win_wic.cpp
     )
-elseif(UNIX AND NOT APPLE)
+elseif(APPLE)
+    target_sources(clip PRIVATE src/libs/clip/clip_osx.mm)
+elseif(UNIX)
     target_sources(clip PRIVATE src/libs/clip/clip_x11.cpp)
-else()
-    target_sources(clip PRIVATE src/libs/clip/clip_none.cpp)
 endif()
 
 if(MSVC)
-    target_compile_definitions(clip PRIVATE /D_CRT_SECURE_NO_WARNINGS)
-# MinGW requires the windowscodecs just because CLSIDs are defined
-# in the windowscodecs.a file instead of the wincodec.h file (?!)
-elseif (MINGW)
-  target_link_libraries(clip PUBLIC shlwapi windowscodecs)
+    target_compile_definitions(clip PRIVATE _CRT_SECURE_NO_WARNINGS)
+    # MinGW requires the windowscodecs just because CLSIDs are defined
+    # in the windowscodecs.a file instead of the wincodec.h file (?!)
+elseif(MINGW)
+    target_link_libraries(clip PUBLIC shlwapi windowscodecs)
 endif()
 
 if(UNIX AND NOT APPLE)
-    find_package(Threads REQUIRED)
     pkg_check_modules(XCB REQUIRED IMPORTED_TARGET xcb)
     pkg_check_modules(LIBPNG REQUIRED IMPORTED_TARGET libpng)
     target_link_libraries(
@@ -261,16 +313,12 @@ endif()
 
 target_include_directories(clip PUBLIC include/libs/clip)
 target_compile_features(clip PRIVATE cxx_std_20)
-target_compile_definitions(
-    clip
-    PUBLIC -DCLIP_ENABLE_IMAGE=1 -DCLIP_X11_WITH_PNG=1 -DHAVE_PNG_H=1
-)
+target_compile_definitions(clip PUBLIC CLIP_ENABLE_IMAGE=1 CLIP_X11_WITH_PNG=1 HAVE_PNG_H=1)
 set_target_properties(
     clip
     PROPERTIES
         CXX_STANDARD 20
         CXX_EXTENSIONS OFF
-        POSITION_INDEPENDENT_CODE ON
         CXX_STANDARD_REQUIRED ON
 )
 
@@ -293,7 +341,7 @@ add_library(
 if(MSVC)
     target_compile_definitions(
         tiny-process-library
-        PRIVATE /D_CRT_SECURE_NO_WARNINGS
+        PRIVATE _CRT_SECURE_NO_WARNINGS
     )
 else()
     target_compile_options(tiny-process-library PRIVATE -Wall -Wextra)
@@ -320,12 +368,6 @@ else()
     )
 endif()
 
-set_target_properties(
-    tiny-process-library
-    PROPERTIES POSITION_INDEPENDENT_CODE ON
-)
-
-find_package(Threads REQUIRED)
 target_link_libraries(tiny-process-library Threads::Threads)
 target_include_directories(
     tiny-process-library

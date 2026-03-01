@@ -17,6 +17,10 @@
 #  include <unistd.h>
 
 #  include "stb_image.h"
+#elif defined(__APPLE__)
+#  include <unistd.h>
+
+#  include "stb_image.h"
 #elif defined(_WIN32)
 #  define WIN32_LEAN_AND_MEAN
 #  define INITGUID
@@ -34,6 +38,8 @@ SessionType get_session_type()
 {
 #ifdef _WIN32
     return SessionType::Windows;
+#elif defined(__APPLE__)
+    return SessionType::MacOS;
 #else
     const char* xdg     = std::getenv("XDG_SESSION_TYPE");
     const char* wayland = std::getenv("WAYLAND_DISPLAY");
@@ -326,6 +332,56 @@ Result<capture_result_t> capture_full_screen_portal()
     return Err();
 }
 #endif  // __linux__
+
+// macOS  (screencapture CLI via TinyProcessLib)
+// Works on all macOS versions — no deprecated APIs.
+// The OS automatically prompts for Screen Recording permission on first use.
+#ifdef __APPLE__
+Result<capture_result_t> capture_full_screen_macos()
+{
+    // Build a unique temp path for the PNG
+    char tmppath[] = "/tmp/oshot_XXXXXX.png";
+    int  fd        = mkstemps(tmppath, 4);  // suffix length = 4 (".png")
+    if (fd < 0)
+        return Err("Failed to create temp file for screenshot");
+    close(fd);
+
+    // -x  suppress shutter sound
+    // -t png  force PNG format
+    TinyProcessLib::Process proc({ "screencapture", "-x", "-t", "png", tmppath }, "");
+    const int               exit_code = proc.get_exit_status();
+
+    if (exit_code != 0)
+    {
+        unlink(tmppath);
+        return Err("screencapture failed (exit " + std::to_string(exit_code) +
+                   ") — check Screen Recording permission in System Settings → Privacy & Security");
+    }
+
+    int      w = 0, h = 0, comp = 0;
+    uint8_t* rgba = stbi_load(tmppath, &w, &h, &comp, STBI_rgb_alpha);
+    unlink(tmppath);  // clean up regardless
+
+    if (!rgba)
+    {
+        const char* reason = stbi_failure_reason();
+        return Err("Failed to decode screenshot PNG: " + std::string(reason ? reason : "unknown"));
+    }
+
+    capture_result_t result;
+    result.w = w;
+    result.h = h;
+    result.data.assign(rgba, rgba + static_cast<size_t>(w) * h * 4);
+    stbi_image_free(rgba);
+
+    return Ok(std::move(result));
+}
+#else
+Result<capture_result_t> capture_full_screen_macos()
+{
+    return Err();
+}
+#endif  // __APPLE__
 
 #ifdef _WIN32
 Result<capture_result_t> capture_full_screen_windows_fallback()

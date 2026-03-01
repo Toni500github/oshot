@@ -11,7 +11,7 @@ std::unique_ptr<SocketSender> g_sender;
 
 Result<> SocketSender::Start(int port)
 {
-#ifndef _WIN32
+#ifdef __linux__
     m_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (m_sock < 0)
         return Err("Failed to open socket stream: " + std::string(strerror(errno)));
@@ -35,7 +35,7 @@ Result<> SocketSender::Send(const std::string& text)
 
 Result<> SocketSender::Send(SendMsg msg, const void* src, size_t size)
 {
-#ifndef _WIN32
+#ifdef __linux__
     if (!src || size == 0)
         return Err("No data to send");
 
@@ -77,7 +77,7 @@ Result<> SocketSender::Send(SendMsg msg, const void* src, size_t size)
 
 void SocketSender::Close()
 {
-#ifndef _WIN32
+#ifdef __linux__
     if (m_sock >= 0)
     {
         close(m_sock);

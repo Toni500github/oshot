@@ -1,3 +1,9 @@
+#if defined(_WIN32) || defined(__APPLE__)
+#  define OSHOT_TOOL_ON_MAIN_THREAD true
+#else
+#  define OSHOT_TOOL_ON_MAIN_THREAD false
+#endif
+
 #include <atomic>
 #include <condition_variable>
 #include <cstdio>
@@ -10,35 +16,30 @@
 #include <memory>
 #include <mutex>
 #include <system_error>
+#include <thread>
 #include <utility>
 
 #ifndef _WIN32
+#  include <netdb.h>
 #  include <netinet/in.h>
+#  include <sys/socket.h>
+#  include <unistd.h>
 #endif
-
-#include "fmt/base.h"
-#include "fmt/compile.h"
-#include "getopt_port/getopt.h"
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_glfw.h"
-#include "imgui/imgui_impl_opengl3.h"
-#include "switch_fnv1a.hpp"
-#include "trayapp/tray.hpp"
-#define GL_SILENCE_DEPRECATION
-#if defined(IMGUI_IMPL_OPENGL_ES2)
-#  include <GLES2/gl2.h>
-#endif
-#include <GLFW/glfw3.h>  // Will drag system OpenGL headers
 
 #include "clipboard.hpp"
 #include "config.hpp"
+#include "fmt/base.h"
+#include "fmt/compile.h"
+#include "getopt_port/getopt.h"
 #include "langs.hpp"
 #include "oshot_png.hpp"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
-#include "socket.hpp"
 #include "switch_fnv1a.hpp"
+#include "tray.hpp"
 #include "util.hpp"
+
+using namespace Tray;
 
 // [Win32] Our example includes a copy of glfw3.lib pre-compiled with VS2010 to maximize ease of testing and
 // compatibility with old VS compilers. To link with VS2010-era libraries, VS2015+ requires linking with
@@ -226,19 +227,20 @@ static std::mutex              mtx;
 static std::condition_variable cv;
 static std::atomic<bool>       quit{ false };
 static bool                    do_capture = false;
+struct GLFWwindow;
 
-static void glfw_error_callback(int i_error, const char* description)
+int run_main_tool(const std::string& imgui_ini_path);
+
+void glfw_error_callback(int i_error, const char* description)
 {
     error("GLFW Error {}: {}", i_error, description);
 }
 
-static void glfw_drop_callback(GLFWwindow*, int count, const char** paths)
+void glfw_drop_callback(GLFWwindow*, int count, const char** paths)
 {
     for (int i = 0; i < count; ++i)
         g_dropped_paths.emplace_back(paths[i]);
 }
-
-int main_tool(const std::string& imgui_ini_path);
 
 void capture_worker(const std::string& imgui_ini_path)
 {
@@ -253,7 +255,7 @@ void capture_worker(const std::string& imgui_ini_path)
         do_capture = false;
         lk.unlock();
 
-        main_tool(imgui_ini_path);
+        run_main_tool(imgui_ini_path);
     }
 }
 
@@ -363,7 +365,7 @@ int main(int argc, char* argv[])
     const bool tray_already_exists = !acquire_tray_lock();
 
     if (g_config->Runtime.only_launch_gui)
-        return main_tool(imgui_ini_path);
+        return run_main_tool(imgui_ini_path);
 
     if (g_config->Runtime.only_launch_tray)
     {
@@ -375,13 +377,21 @@ int main(int argc, char* argv[])
     {
         // default: launch GUI (detached if tray is starting, foreground if tray already exists)
         if (tray_already_exists)
-            return main_tool(imgui_ini_path);
+            return run_main_tool(imgui_ini_path);
 
-        std::thread([&] { main_tool(imgui_ini_path); }).detach();
+#if OSHOT_TOOL_ON_MAIN_THREAD
+        run_main_tool(imgui_ini_path);
+#else
+        std::thread([&] { run_main_tool(imgui_ini_path); }).detach();
+#endif
     }
 
     g_is_clipboard_server = true;
-#ifndef _WIN32
+
+#if !OSHOT_TOOL_ON_MAIN_THREAD
+    // On macOS the tray loop polls do_capture on the main thread (required by
+    // AppKit), so capture_worker must not run, because it would call run_main_tool
+    // from a background thread and crash with NSInternalInconsistencyException.
     std::thread worker(capture_worker, imgui_ini_path);
 
     std::thread ipc([&] {
@@ -442,57 +452,75 @@ int main(int argc, char* argv[])
     });
 #endif
 
+    std::vector<TrayMenu*> menu;
+
 #ifdef _WIN32
-    Tray::Tray tray("oshot", "oshot.ico");
+    TrayIcon tray = { "oshot.png", "oshot.ico", "oshot", menu };
 #else
+    // Basically create the icon.png in a temp directory and use
+    // that for the systray icon. idfc, it works
     std::error_code ec;
-    const auto&     path = fs::temp_directory_path() / "oshot.png";
+    const fs::path& path = fs::temp_directory_path() / "oshot.png";
     fs::create_directories(path.parent_path(), ec);
     std::ofstream out(path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
 
     out.write(reinterpret_cast<const char*>(oshot_png), static_cast<std::streamsize>(oshot_png_len));
     out.close();
-    Tray::Tray tray("oshot", path.string());
+    TrayIcon tray = { path.string(), "oshot.ico", "oshot", menu };
 #endif
 
-    tray.addEntry(Tray::Button("Capture", [&] {
-#ifdef _WIN32
-        // On Windows, GLFW window creation must happen on the main thread.
-        // This callback is already invoked on the main thread (inside the
-        // Win32 message loop that tray.run() drives), so calling main_tool()
-        // directly here is safe. The tray simply pauses during capture and
-        // resumes once main_tool() returns.
-        main_tool(imgui_ini_path);
+    tray.menu.push_back(new TrayMenu{ "Capture",
+                                      true,
+                                      false,
+                                      false,
+                                      [&](TrayMenu*) {
+#if OSHOT_TOOL_ON_MAIN_THREAD
+                                          run_main_tool(imgui_ini_path);
 #else
-        std::lock_guard lk(mtx);
-        // only queue if not already queued
-        if (!do_capture)
-        {
-            do_capture = true;
-            cv.notify_all();
-        }
+                                          std::lock_guard lk(mtx);
+                                          // only queue if not already queued
+                                          if (!do_capture)
+                                          {
+                                              do_capture = true;
+                                              cv.notify_all();
+                                          }
 #endif
-    }));
+                                      },
+                                      {} });
 
-    tray.addEntry(Tray::Button("Quit", [&] {
-        quit.store(true);
+    tray.menu.push_back(new TrayMenu{ "Quit",
+                                      true,
+                                      false,
+                                      false,
+                                      [&](TrayMenu*) {
+                                          quit.store(true);
 #ifndef _WIN32
-        if (g_lock_sock >= 0)
-        {
-            ::shutdown(g_lock_sock, SHUT_RDWR);
-            ::close(g_lock_sock);
-            g_lock_sock = -1;
-        }
+                                          if (g_lock_sock >= 0)
+                                          {
+                                              ::shutdown(g_lock_sock, SHUT_RDWR);
+                                              ::close(g_lock_sock);
+                                              g_lock_sock = -1;
+                                          }
 #endif
-        cv.notify_all();
-        fs::remove(fs::temp_directory_path() / "oshot.lock");
-        tray.exit();
-    }));
+                                          cv.notify_all();
+                                          fs::remove(fs::temp_directory_path() / "oshot.lock");
+                                          trayMaker.Exit();
+                                      },
+                                      {} });
 
-    tray.run();
+    if (trayMaker.Initialize(&tray))
+    {
+        while (trayMaker.Loop(1))
+        {
+        }
+    }
+    else
+    {
+        die("Systray initialization failed");
+    }
 
     // Quitted the tray
-#ifndef _WIN32
+#if !OSHOT_TOOL_ON_MAIN_THREAD
     worker.join();
     if (ipc.joinable())
         ipc.join();
@@ -500,175 +528,6 @@ int main(int argc, char* argv[])
 
     if (g_fp_log && g_fp_log != stdout)
         std::fclose(g_fp_log);
-
-    return EXIT_SUCCESS;
-}
-
-int main_tool(const std::string& imgui_ini_path)
-{
-    GLFWwindow* window = nullptr;
-
-    // Setup Screenshot Tool
-    // Calling it before starting the window so that
-    // we can capture at the exact moment we launch
-    ScreenshotTool ss_tool;
-    ss_tool.SetOnCancel([&]() {
-        fmt::println(stderr, "Cancelled screenshot");
-        glfwSwapInterval(0);  // Disable vsync
-        glfwSetWindowShouldClose(window, GLFW_TRUE);
-    });
-    ss_tool.SetOnComplete([&](SavingOp op, const Result<capture_result_t>& result) {
-        if (!result.ok())
-        {
-            error("Screenshot failed: {}", result.error());
-        }
-        else
-        {
-            const Result<>& res = save_png(op, result.get());
-            if (!res.ok())
-                error("Failed to save as PNG: {}", result.error());
-        }
-        glfwSwapInterval(0);  // Disable vsync
-        glfwSetWindowShouldClose(window, GLFW_TRUE);
-    });
-
-    {
-        const Result<>& res = ss_tool.Start();
-        if (!res.ok())
-        {
-            error("Failed to start capture: {}", res.error());
-            return EXIT_FAILURE;
-        }
-    }
-
-    glfwSetErrorCallback(glfw_error_callback);
-    if (!glfwInit())
-        return EXIT_FAILURE;
-
-    // Decide GL+GLSL versions
-#if defined(IMGUI_IMPL_OPENGL_ES2)
-    // GL ES 2.0 + GLSL 100 (WebGL 1.0)
-    const char* glsl_version = "#version 100";
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
-#elif defined(IMGUI_IMPL_OPENGL_ES3)
-    // GL ES 3.0 + GLSL 300 es (WebGL 2.0)
-    const char* glsl_version = "#version 300 es";
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
-#elif defined(__APPLE__)
-    // GL 3.2 + GLSL 150
-    const char* glsl_version = "#version 150";
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // Required on Mac
-#else
-    // GL 3.0 + GLSL 130
-    const char* glsl_version = "#version 330 core";
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
-#endif
-
-#if !DEBUG
-    // Don't make the window actually fullscreen if debug build
-    // this because on windows it hanged in gdb and everytime had to restart the VM
-    glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);  // Borderless
-    glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);    // Always on top
-    glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE);
-    glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
-#endif
-
-    GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
-    const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
-
-    window = glfwCreateWindow(mode->width, mode->height, "oshot", monitor, nullptr);
-    if (!window)
-        return EXIT_FAILURE;
-    glfwMakeContextCurrent(window);
-    glfwSetDropCallback(window, glfw_drop_callback);
-    glfwSwapInterval(1);  // Enable vsync
-
-    g_scr_w = mode->width;
-    g_scr_h = mode->height;
-
-    // Setup Dear ImGui context
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::StyleColorsDark();
-    ImGuiIO& io    = ImGui::GetIO();
-    io.IniFilename = imgui_ini_path.c_str();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-
-    if (!g_config->File.font.empty())
-    {
-        const auto& path = get_font_path(g_config->File.font);
-        if (!path.empty())
-            io.FontDefault =
-                io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, nullptr, io.Fonts->GetGlyphRangesDefault());
-    }
-
-    // Setup Platform/Renderer backends
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glsl_version);
-
-    {
-        const Result<>& res = ss_tool.StartWindow();
-        if (!res.ok())
-        {
-            error("Failed to start tool window: {}", res.error());
-            return EXIT_FAILURE;
-        }
-    }
-
-    while (!glfwWindowShouldClose(window) && ss_tool.IsActive())
-    {
-        // Poll and handle events (inputs, window resize, etc.)
-        // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your
-        // inputs.
-        // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or
-        // clear/overwrite your copy of the mouse data.
-        // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or
-        // clear/overwrite your copy of the keyboard data. Generally you may always pass all inputs to dear imgui, and
-        // hide them from your application based on those two flags.
-        glfwPollEvents();
-        if (glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0)
-        {
-            ImGui_ImplGlfw_Sleep(10);
-            continue;
-        }
-
-        // Start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        ss_tool.RenderOverlay();
-
-        // Rendering
-        ImGui::Render();
-        int display_w, display_h;
-        glfwGetFramebufferSize(window, &display_w, &display_h);
-        glViewport(0, 0, display_w, display_h);
-        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);  // Transparent/dark background
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        glfwSwapBuffers(window);
-    }
-
-    // Cleanup
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-
-    glfwDestroyWindow(window);
-    glfwTerminate();
-
-    g_sender->Close();
 
     return EXIT_SUCCESS;
 }
