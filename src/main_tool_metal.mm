@@ -3,25 +3,25 @@
 // while the rest of the project stays plain C++.
 #ifdef __APPLE__
 
-#import <Metal/Metal.h>
-#import <QuartzCore/CAMetalLayer.h>
+#  import <Metal/Metal.h>
+#  import <QuartzCore/CAMetalLayer.h>
 
-#define GLFW_INCLUDE_NONE
-#define GLFW_EXPOSE_NATIVE_COCOA
-#include <GLFW/glfw3.h>
-#include <GLFW/glfw3native.h>
+#  define GLFW_INCLUDE_NONE
+#  define GLFW_EXPOSE_NATIVE_COCOA
+#  include <GLFW/glfw3.h>
+#  include <GLFW/glfw3native.h>
 
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_glfw.h"
-#include "imgui/imgui_impl_metal.h"
+#  include "imgui/imgui.h"
+#  include "imgui/imgui_impl_glfw.h"
+#  include "imgui/imgui_impl_metal.h"
 
-#undef fract1
-#include "tool_icons.h"
-#include "config.hpp"
-#include "screenshot_tool.hpp"
-#include "screen_capture.hpp"
-#include "socket.hpp"
-#include "util.hpp"
+#  undef fract1
+#  include "config.hpp"
+#  include "screen_capture.hpp"
+#  include "screenshot_tool.hpp"
+#  include "socket.hpp"
+#  include "tool_icons.h"
+#  include "util.hpp"
 
 void glfw_error_callback(int error, const char* description);
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
@@ -58,7 +58,7 @@ static id<MTLTexture> CreateMetalTexture(id<MTLDevice> device, const uint8_t* da
 
 int run_main_tool(const std::string& imgui_ini_path)
 {
-    id<MTLDevice> device;
+    id<MTLDevice>  device;
     ScreenshotTool ss_tool;
 
     // vsync disable is a no-op in the Metal path — vsync is controlled via
@@ -107,12 +107,12 @@ int run_main_tool(const std::string& imgui_ini_path)
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);  // skip GL context
 
-#if !DEBUG
-    glfwWindowHint(GLFW_DECORATED,    GLFW_FALSE);
-    glfwWindowHint(GLFW_FLOATING,     GLFW_TRUE);
-    glfwWindowHint(GLFW_FOCUSED,      GLFW_TRUE);
+#  if !DEBUG
+    glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
+    glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);
+    glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE);
     glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
-#endif
+#  endif
 
     GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
@@ -179,7 +179,7 @@ int run_main_tool(const std::string& imgui_ini_path)
     }
 
     // Create Metal texture from screenshot buffer
-    capture_result_t& cap = ss_tool.GetRawScreenshot();  // <-- add getter
+    capture_result_t& cap = ss_tool.GetRawScreenshot();
 
     MTLTextureDescriptor* desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
                                                                                     width:cap.w
@@ -194,33 +194,26 @@ int run_main_tool(const std::string& imgui_ini_path)
 
     // Pass to ImGui
     ss_tool.SetBackendTexture((__bridge void*)metalTexture);
+
     ss_tool.SetToolTexture(ToolType::Rectangle,
                            (__bridge void*)CreateMetalTexture(device, ICON_SQUARE_RGBA, ICON_SQUARE_W, ICON_SQUARE_H));
-
     ss_tool.SetToolTexture(
         ToolType::RectangleFilled,
         (__bridge void*)CreateMetalTexture(device, ICON_RECT_FILLED_RGBA, ICON_RECT_FILLED_W, ICON_RECT_FILLED_H));
-
     ss_tool.SetToolTexture(ToolType::CircleFilled,
                            (__bridge void*)CreateMetalTexture(
                                device, ICON_CIRCLE_FILLED_RGBA, ICON_CIRCLE_FILLED_W, ICON_CIRCLE_FILLED_H));
-
     ss_tool.SetToolTexture(
         ToolType::ToggleTextTools,
         (__bridge void*)CreateMetalTexture(device, ICON_TEXT_TOOLS_RGBA, ICON_TEXT_TOOLS_W, ICON_TEXT_TOOLS_H));
-
     ss_tool.SetToolTexture(ToolType::Line,
                            (__bridge void*)CreateMetalTexture(device, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H));
-
     ss_tool.SetToolTexture(ToolType::Circle,
                            (__bridge void*)CreateMetalTexture(device, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H));
-
     ss_tool.SetToolTexture(ToolType::Arrow,
                            (__bridge void*)CreateMetalTexture(device, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H));
-
     ss_tool.SetToolTexture(ToolType::Pencil,
                            (__bridge void*)CreateMetalTexture(device, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H));
-
     ss_tool.SetToolTexture(ToolType::Text,
                            (__bridge void*)CreateMetalTexture(device, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H));
 

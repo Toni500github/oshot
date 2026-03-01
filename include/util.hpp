@@ -162,8 +162,8 @@ fs::path get_config_dir();
 Result<capture_result_t> load_image_rgba(const std::string& path);
 Result<>                 save_png(SavingOp op, const capture_result_t& img);
 
-void minimize_window(); // Defined on main_tool_*
-void maximize_window(); // Defined on main_tool_*
+void minimize_window();  // Defined on main_tool_*
+void maximize_window();  // Defined on main_tool_*
 void fit_to_screen(capture_result_t& img);
 void rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int height);
 

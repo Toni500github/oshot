@@ -1,18 +1,17 @@
 #ifndef __APPLE__
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_glfw.h"
-#include "imgui/imgui_impl_opengl3.h"
-
-#include "config.hpp"
-#include "screen_capture.hpp"
-#include "screenshot_tool.hpp"
-#include "socket.hpp"
-#include "util.hpp"
-#define GL_SILENCE_DEPRECATION
-#if defined(IMGUI_IMPL_OPENGL_ES2)
-#  include <GLES2/gl2.h>
-#endif
-#include <GLFW/glfw3.h>  // Will drag system OpenGL headers
+#  include "config.hpp"
+#  include "imgui/imgui.h"
+#  include "imgui/imgui_impl_glfw.h"
+#  include "imgui/imgui_impl_opengl3.h"
+#  include "screen_capture.hpp"
+#  include "screenshot_tool.hpp"
+#  include "socket.hpp"
+#  include "util.hpp"
+#  define GL_SILENCE_DEPRECATION
+#  if defined(IMGUI_IMPL_OPENGL_ES2)
+#    include <GLES2/gl2.h>
+#  endif
+#  include <GLFW/glfw3.h>  // Will drag system OpenGL headers
 
 void glfw_error_callback(int i_error, const char* description);
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
@@ -71,41 +70,41 @@ int run_main_tool(const std::string& imgui_ini_path)
         return EXIT_FAILURE;
 
     // Decide GL+GLSL versions
-#if defined(IMGUI_IMPL_OPENGL_ES2)
+#  if defined(IMGUI_IMPL_OPENGL_ES2)
     // GL ES 2.0 + GLSL 100 (WebGL 1.0)
     const char* glsl_version = "#version 100";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
-#elif defined(IMGUI_IMPL_OPENGL_ES3)
+#  elif defined(IMGUI_IMPL_OPENGL_ES3)
     // GL ES 3.0 + GLSL 300 es (WebGL 2.0)
     const char* glsl_version = "#version 300 es";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
-#elif defined(__APPLE__)
+#  elif defined(__APPLE__)
     // GL 3.2 + GLSL 150
     const char* glsl_version = "#version 150";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // Required on Mac
-#else
+#  else
     // GL 3.0 + GLSL 130
     const char* glsl_version = "#version 330 core";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
-#endif
+#  endif
 
-#if !DEBUG
+#  if !DEBUG
     // Don't make the window actually fullscreen if debug build
     // this because on windows it hanged in gdb and everytime had to restart the VM
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);  // Borderless
     glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);    // Always on top
     glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE);
     glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
-#endif
+#  endif
 
     GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode    = glfwGetVideoMode(monitor);

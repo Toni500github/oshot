@@ -20,25 +20,23 @@
 #include <utility>
 
 #ifndef _WIN32
-#  include <netinet/in.h>
 #  include <netdb.h>
+#  include <netinet/in.h>
 #  include <sys/socket.h>
 #  include <unistd.h>
 #endif
 
+#include "clipboard.hpp"
+#include "config.hpp"
 #include "fmt/base.h"
 #include "fmt/compile.h"
 #include "getopt_port/getopt.h"
-#include "switch_fnv1a.hpp"
-#include "tray.hpp"
-
-#include "clipboard.hpp"
-#include "config.hpp"
 #include "langs.hpp"
 #include "oshot_png.hpp"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "switch_fnv1a.hpp"
+#include "tray.hpp"
 #include "util.hpp"
 
 using namespace Tray;
