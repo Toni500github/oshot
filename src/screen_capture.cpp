@@ -333,8 +333,6 @@ Result<capture_result_t> capture_full_screen_portal()
 }
 #endif  // __linux__
 
-// macOS  (screencapture CLI via TinyProcessLib)
-// Works on all macOS versions — no deprecated APIs.
 // The OS automatically prompts for Screen Recording permission on first use.
 #ifdef __APPLE__
 Result<capture_result_t> capture_full_screen_macos()
@@ -349,13 +347,13 @@ Result<capture_result_t> capture_full_screen_macos()
     // -x  suppress shutter sound
     // -t png  force PNG format
     TinyProcessLib::Process proc({ "screencapture", "-x", "-t", "png", tmppath }, "");
-    const int               exit_code = proc.get_exit_status();
 
+    const int exit_code = proc.get_exit_status();
     if (exit_code != 0)
     {
         unlink(tmppath);
         return Err("screencapture failed (exit " + std::to_string(exit_code) +
-                   ") — check Screen Recording permission in System Settings → Privacy & Security");
+                   "). Please check Screen Recording permission in System Settings -> Privacy & Security");
     }
 
     int      w = 0, h = 0, comp = 0;
