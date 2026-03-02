@@ -261,12 +261,14 @@ Result<> ScreenshotTool::StartWindow()
         CreateTexture(nullptr, ICON_CIRCLE_FILLED_RGBA, ICON_CIRCLE_FILLED_W, ICON_CIRCLE_FILLED_H).get();
     m_tool_textures[idx(ToolType::ToggleTextTools)] =
         CreateTexture(nullptr, ICON_TEXT_TOOLS_RGBA, ICON_TEXT_TOOLS_W, ICON_TEXT_TOOLS_H).get();
+    m_tool_textures[idx(ToolType::Circle)] =
+        CreateTexture(nullptr, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
+    m_tool_textures[idx(ToolType::Pencil)] =
+        CreateTexture(nullptr, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
 
-    m_tool_textures[idx(ToolType::Line)]   = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
-    m_tool_textures[idx(ToolType::Circle)] = CreateTexture(nullptr, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
-    m_tool_textures[idx(ToolType::Arrow)]  = CreateTexture(nullptr, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
-    m_tool_textures[idx(ToolType::Pencil)] = CreateTexture(nullptr, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
-    m_tool_textures[idx(ToolType::Text)]   = CreateTexture(nullptr, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H).get();
+    m_tool_textures[idx(ToolType::Arrow)] = CreateTexture(nullptr, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
+    m_tool_textures[idx(ToolType::Text)]  = CreateTexture(nullptr, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H).get();
+    m_tool_textures[idx(ToolType::Line)]  = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
 #endif
 
     return Ok();
@@ -612,29 +614,30 @@ void ScreenshotTool::HandleColorPickerInput()
     // The loupe acts as our cursor
     ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 
-    const ImVec2& mp = ImGui::GetMousePos();
-    const int     px = static_cast<int>(mp.x - m_image_origin.x);
-    const int     py = static_cast<int>(mp.y - m_image_origin.y);
+    const ImVec2& mouse_pos = ImGui::GetMousePos();
+    const int     px        = static_cast<int>(mouse_pos.x - m_image_origin.x);
+    const int     py        = static_cast<int>(mouse_pos.y - m_image_origin.y);
 
     const bool in_image = px >= 0 && px < m_screenshot.w && py >= 0 && py < m_screenshot.h;
 
-    static constexpr float k_loupe_px = 140.0f;  // loupe display size (square, pixels)
-    static constexpr float k_zoom     = 8.0f;    // magnification factor
-    static constexpr float k_padding  = 10.0f;   // inner window padding
-    static constexpr float k_offset   = 15.0f;   // distance from cursor to loupe corner
-    const float            k_win_size = k_loupe_px + k_padding * 2.0f;
+    constexpr float k_loupe_px = 140.0f;  // loupe display size (square, pixels)
+    constexpr float k_zoom     = 8.0f;    // magnification factor
+    constexpr float k_padding  = 10.0f;   // inner window padding
+    constexpr float k_offset   = 15.0f;   // distance from cursor to loupe corner
+    constexpr float k_win_size = k_loupe_px + k_padding * 2.0f;
 
     // Position loupe window: prefer bottom-right, flip to stay on screen
     const ImVec2& display = ImGui::GetIO().DisplaySize;
-    float         win_x   = mp.x + k_offset;
-    float         win_y   = mp.y + k_offset;
+    float         win_x   = mouse_pos.x + k_offset;
+    float         win_y   = mouse_pos.y + k_offset;
+
     // For the horizontal flip we know the exact width; for vertical, use loupe
     // height + a comfortable margin since AlwaysAutoResize determines final height.
-    static constexpr float k_approx_info_h = 50.0f;  // swatch row + spacing
+    constexpr float k_approx_info_h = 50.0f;  // swatch row + spacing
     if (win_x + k_win_size > display.x)
-        win_x = mp.x - k_offset - k_win_size;
+        win_x = mouse_pos.x - k_offset - k_win_size;
     if (win_y + k_win_size + k_approx_info_h > display.y)
-        win_y = mp.y - k_offset - k_win_size - k_approx_info_h;
+        win_y = mouse_pos.y - k_offset - k_win_size - k_approx_info_h;
 
     ImGui::SetNextWindowPos(ImVec2(win_x, win_y));
     ImGui::SetNextWindowBgAlpha(0.9f);
@@ -663,8 +666,8 @@ void ScreenshotTool::HandleColorPickerInput()
         // Compute UV window for the zoomed region
         const float half_src_px_x = (k_loupe_px / k_zoom) * 0.5f / static_cast<float>(m_screenshot.w);
         const float half_src_px_y = (k_loupe_px / k_zoom) * 0.5f / static_cast<float>(m_screenshot.h);
-        const float uv_cx         = static_cast<float>(px) / static_cast<float>(m_screenshot.w);
-        const float uv_cy         = static_cast<float>(py) / static_cast<float>(m_screenshot.h);
+        const float uv_cx         = (static_cast<float>(px) + 0.5f) / static_cast<float>(m_screenshot.w);
+        const float uv_cy         = (static_cast<float>(py) + 0.5f) / static_cast<float>(m_screenshot.h);
 
         const ImVec2 uv_min(uv_cx - half_src_px_x, uv_cy - half_src_px_y);
         const ImVec2 uv_max(uv_cx + half_src_px_x, uv_cy + half_src_px_y);
@@ -674,10 +677,10 @@ void ScreenshotTool::HandleColorPickerInput()
         ImGui::Image(m_texture_id, ImVec2(k_loupe_px, k_loupe_px), uv_min, uv_max);
 
         // Draw crosshair over the loupe
-        ImDrawList*            dl  = ImGui::GetWindowDrawList();
-        const ImVec2           ctr = ImVec2(loupe_origin.x + k_loupe_px * 0.5f, loupe_origin.y + k_loupe_px * 0.5f);
-        static constexpr float arm = 10.0f;
-        static constexpr float gap = 3.0f;  // gap around the centre dot
+        ImDrawList*     dl  = ImGui::GetWindowDrawList();
+        const ImVec2    ctr = ImVec2(loupe_origin.x + k_loupe_px * 0.5f, loupe_origin.y + k_loupe_px * 0.5f);
+        constexpr float arm = 10.0f;
+        constexpr float gap = 3.0f;  // gap around the centre dot
 
         // Shadow lines for contrast on any background
         dl->AddLine(ImVec2(ctr.x - arm, ctr.y), ImVec2(ctr.x - gap, ctr.y), IM_COL32(0, 0, 0, 180), 1.5f);
@@ -725,13 +728,14 @@ void ScreenshotTool::HandleColorPickerInput()
     }
 
     ImGui::End();
-    ImGui::PopStyleVar(2);
+    ImGui::PopStyleVar();
+    ImGui::PopStyleVar();
 
     // Keeps a precise reference point visible even outside the loupe region.
     {
         ImDrawList* fg = ImGui::GetForegroundDrawList();
-        fg->AddCircle(mp, 5.0f, IM_COL32(0, 0, 0, 180), 12, 2.0f);
-        fg->AddCircleFilled(mp, 2.0f, IM_COL32(255, 255, 255, 255));
+        fg->AddCircle(mouse_pos, 5.0f, IM_COL32(0, 0, 0, 180), 12, 2.0f);
+        fg->AddCircleFilled(mouse_pos, 2.0f, IM_COL32(255, 255, 255, 255));
     }
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || ImGui::IsKeyPressed(ImGuiKey_Escape))
@@ -1336,7 +1340,8 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
     draw_and_set_button(ToolType::Arrow, "##Arrow", m_tool_textures[idx(ToolType::Arrow)]);
     draw_and_set_button(ToolType::Rectangle, "##Rectangle", m_tool_textures[idx(ToolType::Rectangle)]);
-    draw_and_set_button(ToolType::RectangleFilled, "##Rectangle_filled", m_tool_textures[idx(ToolType::RectangleFilled)]);
+    draw_and_set_button(
+        ToolType::RectangleFilled, "##Rectangle_filled", m_tool_textures[idx(ToolType::RectangleFilled)]);
     draw_and_set_button(ToolType::Circle, "##Circle", m_tool_textures[idx(ToolType::Circle)]);
     draw_and_set_button(ToolType::CircleFilled, "##Circle_filled", m_tool_textures[idx(ToolType::CircleFilled)]);
     draw_and_set_button(ToolType::Line, "##Line", m_tool_textures[idx(ToolType::Line)]);
