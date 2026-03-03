@@ -236,7 +236,7 @@ Result<> ScreenshotTool::StartWindow()
 
     if (!g_is_systray)
         std::thread([] {
-            const Result<>& res = g_sender->Start(6015);
+            const Result<>& res = g_sender->Start();
             if (!res.ok())
                 error("Error while connecting to systray: {}", res.error());
         }).detach();
