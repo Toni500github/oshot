@@ -52,8 +52,7 @@ Result<int> start_wlcopy(const std::string& mime_type = "text/plain;charset=utf-
         close(copy_pipe[1]);
         dup2(copy_pipe[0], STDIN_FILENO);
         close(copy_pipe[0]);
-        execvp("wl-copy",
-               (char* [5]){ (char*)"wl-copy", (char*)"--foreground", (char*)"--type", (char*)mime_type.c_str(), NULL });
+        execlp("wl-copy", "wl-copy", "--foreground", "--type", mime_type.c_str(), NULL);
 
         exit(-1);
     }
