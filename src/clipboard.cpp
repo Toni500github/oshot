@@ -74,10 +74,12 @@ Result<int> start_wlcopy(const std::string& mime_type = "text/plain;charset=utf-
 
 Result<> Clipboard::CopyText(const std::string& text)
 {
+#ifndef _WIN32
     // Fuck you, fuck your software monopoly
     // and fuck your stupid standards that nobody wants to follow
     if (m_session != SessionType::Wayland)
     {
+#endif
         if (!g_is_systray)
         {
             const Result<>& res = g_sender->Send(text);
@@ -89,8 +91,8 @@ Result<> Clipboard::CopyText(const std::string& text)
         if (clip::set_text(text))
             return Ok();
         return Err("Failed to copy text into clipboard");
+#ifndef _WIN32
     }
-
     Result<int> res = start_wlcopy();
     if (!res.ok())
         return res.error();
@@ -106,6 +108,7 @@ Result<> Clipboard::CopyText(const std::string& text)
     close(fd);
 
     return Ok();
+#endif
 }
 
 Result<> Clipboard::CopyImage(const capture_result_t& cap)
