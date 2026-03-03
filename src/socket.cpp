@@ -15,17 +15,16 @@ std::unique_ptr<SocketSender> g_sender;
 Result<> SocketSender::Start()
 {
 #ifdef __linux__
-    const fs::path& runtime_dir = ::getenv("XDG_RUNTIME_DIR") ? ::getenv("XDG_RUNTIME_DIR") : fs::temp_directory_path();
-    m_sock                      = ::socket(AF_UNIX, SOCK_STREAM, 0);
+    m_sock = socket(AF_UNIX, SOCK_STREAM, 0);
     if (m_sock < 0)
         return Err("Failed to open socket stream: " + std::string(strerror(errno)));
 
     sockaddr_un serv_addr{};
     serv_addr.sun_family = AF_UNIX;
 
-    ::strncpy(serv_addr.sun_path, (runtime_dir / "oshot.sock").c_str(), 107);
+    strncpy(serv_addr.sun_path, (get_runtime_dir() / "oshot.sock").c_str(), 107);
 
-    if (::connect(m_sock, reinterpret_cast<struct sockaddr*>(&serv_addr), sizeof(serv_addr)))
+    if (connect(m_sock, reinterpret_cast<struct sockaddr*>(&serv_addr), sizeof(serv_addr)))
         return Err("Failed to connect to launcher: " + std::string(strerror(errno)));
 #endif
     return Ok();

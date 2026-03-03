@@ -225,9 +225,7 @@ void exit_handler(int _)
     cv.notify_all();
 #ifndef _WIN32
     if (g_sock > 0)
-    {
-        ::shutdown(g_sock, SHUT_RDWR);
-    }
+        shutdown(g_sock, SHUT_RDWR);
 #endif
     trayMaker.Exit();
 }
@@ -354,8 +352,8 @@ int main(int argc, char* argv[])
 
 #endif
 
-    ::signal(SIGINT, exit_handler);
-    ::signal(SIGTERM, exit_handler);
+    signal(SIGINT, exit_handler);
+    signal(SIGTERM, exit_handler);
 
     const std::string& configDir      = get_config_dir().string();
     const std::string& configFile     = parse_config_path(argc, argv, configDir).string();
@@ -423,7 +421,7 @@ int main(int argc, char* argv[])
             if (ok && len > 0)
                 ok = recv_all(client, payload.data(), payload.size());
 
-            ::close(client);
+            close(client);
 
             if (!ok)
                 continue;
@@ -455,8 +453,8 @@ int main(int argc, char* argv[])
                 g_clipboard->CopyImage(cap);
             }
         }
-        ::close(g_sock);
-        ::unlink(g_sock_path);
+        close(g_sock);
+        unlink(g_sock_path);
     });
 #endif
 

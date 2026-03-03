@@ -153,11 +153,17 @@ int get_screen_dpi()
     return 96;  // fallback
 }
 #else
+static fs::path runtime_dir;
+const fs::path& get_runtime_dir()
+{
+    if (!runtime_dir.empty())
+        return runtime_dir;
+
+    return runtime_dir = getenv("XDG_RUNTIME_DIR") ? getenv("XDG_RUNTIME_DIR") : fs::temp_directory_path();
+}
 bool acquire_tray_lock()
 {
-    const fs::path& runtime_dir = ::getenv("XDG_RUNTIME_DIR") ? ::getenv("XDG_RUNTIME_DIR") : fs::temp_directory_path();
-
-    g_sock = ::socket(AF_UNIX, SOCK_STREAM, 0);
+    g_sock = socket(AF_UNIX, SOCK_STREAM, 0);
     if (g_sock < 0)
         return false;
 
@@ -165,17 +171,20 @@ bool acquire_tray_lock()
     addr.sun_family = AF_UNIX;
 
     // Write 108 bytes at most to `addr.sun_path`, with the path to `oshot.sock`.
-    ::strncpy(addr.sun_path, (runtime_dir / "oshot.sock").c_str(), 107);
-    ::strncpy(g_sock_path, addr.sun_path, 107);
+    strncpy(addr.sun_path, (get_runtime_dir() / "oshot.sock").c_str(), 99);
+    // ensure null-termination
+    addr.sun_path[99] = '\0';
 
-    if (::bind(g_sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
+    strncpy(g_sock_path, addr.sun_path, 100);
+
+    if (bind(g_sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
     {
-        ::close(g_sock);
+        close(g_sock);
         g_sock = -1;
         return false;
     }
 
-    ::listen(g_sock, 1);
+    listen(g_sock, 1);
     return true;
 }
 
