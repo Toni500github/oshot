@@ -155,7 +155,7 @@ std::string replace_str(std::string& str, const std::string_view from, const std
 std::string select_image();
 
 #ifndef _WIN32
-const fs::path& get_runtime_dir();
+fs::path get_runtime_dir();
 #endif
 bool acquire_tray_lock();
 

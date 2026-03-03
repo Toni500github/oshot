@@ -153,13 +153,9 @@ int get_screen_dpi()
     return 96;  // fallback
 }
 #else
-static fs::path runtime_dir;
-const fs::path& get_runtime_dir()
+fs::path get_runtime_dir()
 {
-    if (!runtime_dir.empty())
-        return runtime_dir;
-
-    return runtime_dir = getenv("XDG_RUNTIME_DIR") ? getenv("XDG_RUNTIME_DIR") : fs::temp_directory_path();
+    return getenv("XDG_RUNTIME_DIR") ? getenv("XDG_RUNTIME_DIR") : fs::temp_directory_path();
 }
 bool acquire_tray_lock()
 {
