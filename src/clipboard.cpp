@@ -1,7 +1,9 @@
 #include "clipboard.hpp"
 
-#include <sys/wait.h>
-#include <unistd.h>
+#ifndef _WIN32
+#  include <sys/wait.h>
+#  include <unistd.h>
+#endif
 
 #include <csignal>
 #include <cstdint>
@@ -31,8 +33,10 @@ Result<int> Start_wlcopy(const std::string& mime_type = "text/plain;charset=utf-
     {
         kill(wlcopy_pid, SIGINT);
 
-        // we need to do this, because the process will be defunct otherwise.
+#ifndef _WIN32
+        // we need to do this on Linux, because the process will be defunct otherwise.
         waitpid(wlcopy_pid, NULL, 0);
+#endif
 
         wlcopy_pid = -1;
     }
