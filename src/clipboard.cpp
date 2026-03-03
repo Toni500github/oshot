@@ -1,11 +1,5 @@
 #include "clipboard.hpp"
 
-#ifndef _WIN32
-#  include <sys/wait.h>
-#  include <unistd.h>
-#endif
-
-#include <csignal>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -24,19 +18,23 @@
 // used to track the wl-copy process
 static int wlcopy_pid = -1;
 
+#ifdef __linux__
+#  include <sys/wait.h>
+#  include <unistd.h>
+#endif
+
 // Starts wlcopy in the background, forgetting it.
 // Sets wlcopy_pid, and returns an stdin pipe on success.
-Result<int> Start_wlcopy(const std::string& mime_type = "text/plain;charset=utf-8")
+Result<int> start_wlcopy(const std::string& mime_type = "text/plain;charset=utf-8")
 {
+#ifdef __linux__
     // stop if already launched
     if (wlcopy_pid > 0)
     {
         kill(wlcopy_pid, SIGINT);
 
-#ifndef _WIN32
         // we need to do this on Linux, because the process will be defunct otherwise.
         waitpid(wlcopy_pid, NULL, 0);
-#endif
 
         wlcopy_pid = -1;
     }
@@ -54,7 +52,8 @@ Result<int> Start_wlcopy(const std::string& mime_type = "text/plain;charset=utf-
         close(copy_pipe[1]);
         dup2(copy_pipe[0], STDIN_FILENO);
         close(copy_pipe[0]);
-        execlp("wl-copy", "wl-copy", "--foreground", "--type", mime_type.c_str(), NULL);
+        execvp("wl-copy",
+               (char* [5]){ (char*)"wl-copy", (char*)"--foreground", (char*)"--type", (char*)mime_type.c_str(), NULL });
 
         exit(-1);
     }
@@ -68,6 +67,9 @@ Result<int> Start_wlcopy(const std::string& mime_type = "text/plain;charset=utf-
     }
 
     return Ok(copy_pipe[1]);
+#else
+    return Err("wl-copy scheme is not supported on non-linux systems!");
+#endif
 }
 
 Result<> Clipboard::CopyText(const std::string& text)
@@ -89,11 +91,9 @@ Result<> Clipboard::CopyText(const std::string& text)
         return Err("Failed to copy text into clipboard");
     }
 
-    Result<int> res = Start_wlcopy();
+    Result<int> res = start_wlcopy();
     if (!res.ok())
-    {
         return res.error();
-    }
 
     int fd = res.get();
 
@@ -120,7 +120,7 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
 
         svpng(&png, cap.w, cap.h, cap.view().data(), 1);
 
-        Result<int> res = Start_wlcopy("image/png");
+        Result<int> res = start_wlcopy("image/png");
 
         if (!res.ok())
         {
