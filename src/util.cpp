@@ -1,7 +1,5 @@
 #include "util.hpp"
 
-#include <sys/un.h>
-
 #include <chrono>
 #include <csignal>
 #include <cstdint>
@@ -62,6 +60,7 @@
 #  include <sys/select.h>
 #  include <sys/socket.h>
 #  include <unistd.h>
+#  include <sys/un.h>
 #endif
 // clang-format on
 

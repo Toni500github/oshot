@@ -1,7 +1,9 @@
 #include "socket.hpp"
 
-#include <sys/socket.h>
-#include <sys/un.h>
+#ifndef _WIN32
+#  include <sys/socket.h>
+#  include <sys/un.h>
+#endif
 
 #include <algorithm>
 #include <cstdint>
