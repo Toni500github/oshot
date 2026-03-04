@@ -1,6 +1,8 @@
 #include "clipboard.hpp"
 
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 
 #include "clip/clip.h"
 #include "socket.hpp"
@@ -14,12 +16,70 @@
 #include "svpng.h"
 #pragma GCC diagnostic pop
 
+// used to track the wl-copy process
+static int wlcopy_pid = -1;
+
+#ifdef __linux__
+#  include <sys/wait.h>
+#  include <unistd.h>
+#endif
+
+// Starts wlcopy in the background, forgetting it.
+// Sets wlcopy_pid, and returns an stdin pipe on success.
+Result<int> start_wlcopy(const std::string& mime_type = "text/plain;charset=utf-8")
+{
+#ifdef __linux__
+    // stop if already launched
+    if (wlcopy_pid > 0)
+    {
+        kill(wlcopy_pid, SIGINT);
+
+        // we need to do this on Linux, because the process will be defunct otherwise.
+        waitpid(wlcopy_pid, NULL, 0);
+
+        wlcopy_pid = -1;
+    }
+
+    int copy_pipe[2];
+    if (pipe(copy_pipe) == -1)
+    {
+        return Err("Failed to open stdin pipe: " + std::string(strerror(errno)));
+    }
+
+    wlcopy_pid = fork();
+
+    if (wlcopy_pid == 0)
+    {
+        close(copy_pipe[1]);
+        dup2(copy_pipe[0], STDIN_FILENO);
+        close(copy_pipe[0]);
+        execlp("wl-copy", "wl-copy", "--foreground", "--type", mime_type.c_str(), NULL);
+
+        exit(-1);
+    }
+
+    close(copy_pipe[0]);
+
+    if (wlcopy_pid < 0)
+    {
+        close(copy_pipe[1]);
+        return Err("Failed to fork: " + std::string(strerror(errno)));
+    }
+
+    return Ok(copy_pipe[1]);
+#else
+    return Err("wl-copy scheme is not supported on non-linux systems!");
+#endif
+}
+
 Result<> Clipboard::CopyText(const std::string& text)
 {
+#ifdef __linux__
     // Fuck you, fuck your software monopoly
     // and fuck your stupid standards that nobody wants to follow
     if (m_session != SessionType::Wayland)
     {
+#endif
         if (!g_is_systray)
         {
             const Result<>& res = g_sender->Send(text);
@@ -31,17 +91,24 @@ Result<> Clipboard::CopyText(const std::string& text)
         if (clip::set_text(text))
             return Ok();
         return Err("Failed to copy text into clipboard");
+#ifdef __linux__
+    }
+    Result<int> res = start_wlcopy();
+    if (!res.ok())
+        return res.error();
+
+    int fd = res.get();
+
+    if (write(fd, text.c_str(), text.size()) == -1)
+    {
+        close(fd);
+        return Err("Failed to copy text: " + std::string(strerror(errno)));
     }
 
-    std::string err;
+    close(fd);
 
-    // Use foreground mode so the process doesn't fork away from our pipes.
-    TinyProcessLib::Process proc(
-        { "wl-copy", "--foreground", text }, "", nullptr, [&](const char* b, size_t n) { err.append(b, n); });
-
-    if (proc.get_exit_status() == 0)
-        return Ok();
-    return Err("Failed to copy text into clipboard: " + err);
+    return Ok();
+#endif
 }
 
 Result<> Clipboard::CopyImage(const capture_result_t& cap)
@@ -50,6 +117,8 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
         return Err("Image size is 0");
 
     std::string err;
+
+#ifdef __linux__
     if (m_session == SessionType::Wayland)
     {
         std::vector<uint8_t> png;
@@ -57,20 +126,26 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
 
         svpng(&png, cap.w, cap.h, cap.view().data(), 1);
 
-        // Use foreground mode so the process doesn't fork away from our pipes.
-        TinyProcessLib::Process proc(
-            { "wl-copy", "--foreground", "--type", "image/png" }, "", nullptr, [&](const char* b, size_t n) {
-                err.append(b, n);
-            });
+        Result<int> res = start_wlcopy("image/png");
 
-        if (!proc.write(reinterpret_cast<const char*>(png.data()), png.size()))
-            return Err("Failed to write image to stdin");
+        if (!res.ok())
+        {
+            return res.error();
+        }
 
-        proc.close_stdin();
-        if (proc.get_exit_status() == 0)
-            return Ok();
-        return Err("Failed to copy image into clipboard");
+        int fd = res.get();
+
+        if (write(fd, reinterpret_cast<const char*>(png.data()), png.size()) == -1)
+        {
+            close(fd);
+            return Err("Failed to write image to stdin: " + std::string(strerror(errno)));
+        }
+
+        close(fd);
+
+        return Ok();
     }
+#endif
 
     if (!g_is_systray)
     {
