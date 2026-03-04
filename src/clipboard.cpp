@@ -74,7 +74,7 @@ Result<int> start_wlcopy(const std::string& mime_type = "text/plain;charset=utf-
 
 Result<> Clipboard::CopyText(const std::string& text)
 {
-#ifndef _WIN32
+#ifdef __linux__
     // Fuck you, fuck your software monopoly
     // and fuck your stupid standards that nobody wants to follow
     if (m_session != SessionType::Wayland)
@@ -91,7 +91,7 @@ Result<> Clipboard::CopyText(const std::string& text)
         if (clip::set_text(text))
             return Ok();
         return Err("Failed to copy text into clipboard");
-#ifndef _WIN32
+#ifdef __linux__
     }
     Result<int> res = start_wlcopy();
     if (!res.ok())
@@ -117,6 +117,8 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
         return Err("Image size is 0");
 
     std::string err;
+
+#ifdef __linux__
     if (m_session == SessionType::Wayland)
     {
         std::vector<uint8_t> png;
@@ -143,6 +145,7 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
 
         return Ok();
     }
+#endif
 
     if (!g_is_systray)
     {
