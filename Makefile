@@ -19,9 +19,9 @@ endif
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
-        LDLIBS += -lGL -lX11
+        LDLIBS += -lGL
 	CXXFLAGS += `pkg-config --static --cflags gio-2.0 appindicator3-0.1 libpng` -DCLIP_ENABLE_IMAGE=1 -DCLIP_X11_WITH_PNG=1 -DHAVE_PNG_H=1
-	LDLIBS   += `pkg-config --static --libs gio-2.0 appindicator3-0.1 libpng`
+	LDLIBS   += `pkg-config --static --libs gio-2.0 appindicator3-0.1 libpng x11 xrandr`
 
 else ifeq ($(UNAME_S),Darwin) #APPLE
         LDFLAGS += -L/usr/local/lib -L/opt/local/lib -L/opt/homebrew/lib

@@ -72,7 +72,10 @@ pkg_check_modules(LEPTONICA REQUIRED lept)
 pkg_check_modules(ZBAR REQUIRED zbar)
 
 if(UNIX AND NOT APPLE)
+    find_package(X11 REQUIRED)
     pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
+    pkg_check_modules(GIO REQUIRED gio-2.0)
+    pkg_check_modules(XRANDR REQUIRED xrandr)
 endif()
 
 # -----------------------------
@@ -171,17 +174,16 @@ elseif(APPLE)
             "-framework OpenGL"
     )
 elseif(UNIX)
-    find_package(X11 REQUIRED)
     target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
-    pkg_check_modules(GIO REQUIRED gio-2.0)
     target_include_directories(
         ${PROJECT_NAME}
         PRIVATE
         SYSTEM
         ${GIO_INCLUDE_DIRS}
+        ${XRANDR_INCLUDE_DIRS}
     )
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${GIO_LIBRARIES})
-    target_compile_options(${PROJECT_NAME} PRIVATE ${GIO_CFLAGS_OTHER})
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${GIO_LIBRARIES} ${XRANDR_LIBRARIES})
+    target_compile_options(${PROJECT_NAME} PRIVATE ${GIO_CFLAGS_OTHER} ${XRANDR_CFLAGS_OTHER})
 endif()
 
 # -----------------------------
