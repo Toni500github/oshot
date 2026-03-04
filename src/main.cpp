@@ -1,3 +1,4 @@
+#include <csignal>
 #if defined(_WIN32) || defined(__APPLE__)
 #  define OSHOT_TOOL_ON_MAIN_THREAD true
 #else
@@ -218,6 +219,17 @@ static std::atomic<bool>       quit{ false };
 static bool                    do_capture = false;
 struct GLFWwindow;
 
+void exit_handler(int _)
+{
+    quit.store(true);
+    cv.notify_all();
+#ifndef _WIN32
+    if (g_sock > 0)
+        shutdown(g_sock, SHUT_RDWR);
+#endif
+    trayMaker.Exit();
+}
+
 int run_main_tool(const std::string& imgui_ini_path);
 
 void glfw_error_callback(int i_error, const char* description)
@@ -340,6 +352,9 @@ int main(int argc, char* argv[])
 
 #endif
 
+    signal(SIGINT, exit_handler);
+    signal(SIGTERM, exit_handler);
+
     const std::string& configDir      = get_config_dir().string();
     const std::string& configFile     = parse_config_path(argc, argv, configDir).string();
     const std::string& imgui_ini_path = configDir + "/imgui.ini";
@@ -386,7 +401,7 @@ int main(int argc, char* argv[])
     std::thread ipc([&] {
         while (!quit.load())
         {
-            const int client = ::accept(g_lock_sock, nullptr, nullptr);
+            const int client = ::accept(g_sock, nullptr, nullptr);
             if (client < 0)
             {
                 if (quit.load())
@@ -406,7 +421,7 @@ int main(int argc, char* argv[])
             if (ok && len > 0)
                 ok = recv_all(client, payload.data(), payload.size());
 
-            ::close(client);
+            close(client);
 
             if (!ok)
                 continue;
@@ -438,6 +453,8 @@ int main(int argc, char* argv[])
                 g_clipboard->CopyImage(cap);
             }
         }
+        close(g_sock);
+        unlink(g_sock_path);
     });
 #endif
 
@@ -477,25 +494,7 @@ int main(int argc, char* argv[])
                                       },
                                       {} });
 
-    tray.menu.push_back(new TrayMenu{ "Quit",
-                                      true,
-                                      false,
-                                      false,
-                                      [&](TrayMenu*) {
-                                          quit.store(true);
-#ifndef _WIN32
-                                          if (g_lock_sock >= 0)
-                                          {
-                                              ::shutdown(g_lock_sock, SHUT_RDWR);
-                                              ::close(g_lock_sock);
-                                              g_lock_sock = -1;
-                                          }
-#endif
-                                          cv.notify_all();
-                                          fs::remove(fs::temp_directory_path() / "oshot.lock");
-                                          trayMaker.Exit();
-                                      },
-                                      {} });
+    tray.menu.push_back(new TrayMenu{ "Quit", true, false, false, [&](TrayMenu*) { exit_handler(0); }, {} });
 
     if (trayMaker.Initialize(&tray))
     {

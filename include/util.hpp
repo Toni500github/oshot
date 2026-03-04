@@ -142,7 +142,8 @@ constexpr size_t idx(E e) noexcept
 struct capture_result_t;
 
 extern bool  g_is_systray;  // old g_is_clipboard_server;
-extern int   g_lock_sock;
+extern int   g_sock;
+extern char  g_sock_path[100];
 extern int   g_scr_w, g_scr_h;
 extern FILE* g_fp_log;
 
@@ -153,6 +154,9 @@ std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height);
 std::string replace_str(std::string& str, const std::string_view from, const std::string_view to);
 std::string select_image();
 
+#ifndef _WIN32
+fs::path get_runtime_dir();
+#endif
 bool acquire_tray_lock();
 
 fs::path get_font_path(const std::string& font);
