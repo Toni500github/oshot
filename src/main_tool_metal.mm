@@ -115,13 +115,16 @@ int run_main_tool(const std::string& imgui_ini_path)
     GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
 
-    window = glfwCreateWindow(mode->width, mode->height, "oshot", monitor, nullptr);
+    window = glfwCreateWindow(mode->width, mode->height, "oshot", nullptr, nullptr);
     if (!window)
     {
         glfwTerminate();
         return EXIT_FAILURE;
     }
     glfwSetDropCallback(window, glfw_drop_callback);
+    int mon_x = 0, mon_y = 0;
+    glfwGetMonitorPos(monitor, &mon_x, &mon_y);
+    glfwSetWindowPos(window, mon_x, mon_y);
 
     g_scr_w = mode->width;
     g_scr_h = mode->height;
@@ -172,6 +175,7 @@ int run_main_tool(const std::string& imgui_ini_path)
         if (!res.ok())
         {
             error("Failed to start tool window: {}", res.error());
+            glfwTerminate();
             return EXIT_FAILURE;
         }
     }
