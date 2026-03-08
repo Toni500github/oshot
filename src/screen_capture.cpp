@@ -533,6 +533,10 @@ Result<capture_result_t> capture_full_screen_wayland()
 {
     return Err();
 }
+Result<capture_result_t> capture_full_screen_spectacle()
+{
+    return Err();
+}
 Result<capture_result_t> capture_full_screen_portal()
 {
     return Err();
