@@ -127,9 +127,7 @@ int run_main_tool(const std::string& imgui_ini_path)
         glfwTerminate();
         return EXIT_FAILURE;
     }
-    glfwMakeContextCurrent(window);
     glfwSetDropCallback(window, glfw_drop_callback);
-    glfwSwapInterval(1);  // Enable vsync
 
     g_scr_w = mode->width;
     g_scr_h = mode->height;
