@@ -1011,7 +1011,7 @@ void ScreenshotTool::DrawMenuItems()
 
     if (show_about)
     {
-        ImGui::SetNextWindowSize(ImVec2(350, 230), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(350, 250), ImGuiCond_FirstUseEver);
         ImGui::Begin("About", &show_about, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings);
         float            window_width = ImGui::GetWindowSize().x;
         std::string_view text_display;
@@ -1039,7 +1039,7 @@ void ScreenshotTool::DrawMenuItems()
         text_display = "More Details:";
         if (ImGui::TreeNode(text_display.data()))
         {
-            ImGui::BeginChild("##scrollable_region", ImVec2(0, 85), false, ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::BeginChild("##scrollable_region", ImVec2(0, 100), false, ImGuiWindowFlags_HorizontalScrollbar);
 
             static std::string infos = fmt::format(
                 "oshot v{} built from branch '{}' at {} commit '{}' ({}).\n"
