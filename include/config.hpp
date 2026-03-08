@@ -41,8 +41,9 @@ public:
         std::string ocr_model;
         std::string font;
         int         delay           = -1;
-        bool        allow_ocr_edit  = false;
+        bool        allow_out_edit  = false;
         bool        show_text_tools = true;
+        bool        render_anns     = true;
 
         std::unordered_map<std::string, std::string> lang_fonts_paths;
     } File;
@@ -169,11 +170,14 @@ ocr-model = "eng"
 #delay = 200
 
 # Allow the extracted output to be editable
-allow-edit = false
+allow-text-edit = false
 
-# Display the text tools (OCR, Bar/QR code scan)
-#  by default
+# Display the text tools (OCR, Bar/QR code scan) by default
 show-text-tools = true
+
+# Consider and render annotations when scanning (true)
+# or only when saving the selection (false)
+annotations-in-text-tools = true
 
 # Default font (absolute path or just name) for the whole application.
 # Leave/Make it empty, or commment it, to use ImGUI default font.

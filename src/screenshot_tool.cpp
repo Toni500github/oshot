@@ -339,7 +339,7 @@ void ScreenshotTool::HandleShortcutsInput()
 {
     if (ImGui::Shortcut(ImGuiKey_E | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
     {
-        g_config->File.allow_ocr_edit = !g_config->File.allow_ocr_edit;
+        g_config->File.allow_out_edit = !g_config->File.allow_out_edit;
         ImGui::ClearActiveID();
     }
 
@@ -993,7 +993,8 @@ void ScreenshotTool::DrawMenuItems()
             }
             ImGui::Separator();
             ImGui::MenuItem("View Handles", "CTRL+G", &g_config->Runtime.enable_handles);
-            if (ImGui::MenuItem("Allow OCR edit", "CTRL+E", &g_config->File.allow_ocr_edit))
+            ImGui::MenuItem("Anns. in image scans", "", &g_config->File.render_anns);
+            if (ImGui::MenuItem("Allow text edit", "CTRL+E", &g_config->File.allow_out_edit))
                 ImGui::ClearActiveID();
 
             ImGui::EndMenu();
@@ -1180,7 +1181,7 @@ void ScreenshotTool::DrawOcrTools()
         else
         {
             ClearError(FailedToInitOcr);
-            const Result<ocr_result_t>& result = m_ocr_api.ExtractTextCapture(GetFinalImage());
+            const Result<ocr_result_t>& result = m_ocr_api.ExtractTextCapture(GetFinalImage(true));
             if (result.ok())
             {
                 m_inputs.ocr_text       = result.get().data;
@@ -1211,7 +1212,7 @@ void ScreenshotTool::DrawOcrTools()
     ImGui::InputTextMultiline("##source",
                               &m_inputs.ocr_text,
                               ImVec2(-1, ImGui::GetTextLineHeight() * 10),
-                              g_config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+                              g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
     if (!m_inputs.ocr_text.empty() && ImGui::Button("Copy Text"))
     {
@@ -1232,7 +1233,7 @@ void ScreenshotTool::DrawBarDecodeTools()
 
     if (ImGui::Button("Extract Text"))
     {
-        const Result<zbar_result_t>& scan = m_zbar_api.ExtractTextsCapture(GetFinalImage());
+        const Result<zbar_result_t>& scan = m_zbar_api.ExtractTextsCapture(GetFinalImage(true));
         if (!scan.ok())
         {
             SetError(FailedToExtractBarCode, scan.error_v());
@@ -1253,7 +1254,7 @@ void ScreenshotTool::DrawBarDecodeTools()
         ImGui::InputTextMultiline("##barcode",
                                   &m_inputs.barcode_text,
                                   ImVec2(-1, ImGui::GetTextLineHeight() * 10),
-                                  g_config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+                                  g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
         ImGui::PopStyleColor();
     }
@@ -1269,7 +1270,7 @@ void ScreenshotTool::DrawBarDecodeTools()
         ImGui::InputTextMultiline("##barcode",
                                   &m_inputs.barcode_text,
                                   ImVec2(-1, ImGui::GetTextLineHeight() * 10),
-                                  g_config->File.allow_ocr_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+                                  g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
     }
 
     if (!HasError(FailedToExtractBarCode) && !m_inputs.barcode_text.empty() && ImGui::Button("Copy Text"))
@@ -1581,7 +1582,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     return true;
 }
 
-capture_result_t ScreenshotTool::GetFinalImage()
+capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
 {
     UpdateWindowBg();
 
@@ -1621,6 +1622,9 @@ capture_result_t ScreenshotTool::GetFinalImage()
 
         std::memcpy(dst.data() + dst_row_start, src.data() + src_row_start, bytes_to_copy);
     }
+
+    if (is_text_tools && !g_config->File.render_anns)
+        return result;
 
     // Render annotations to the final image
     const float offset_x = m_selection.get_x();

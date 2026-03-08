@@ -46,9 +46,11 @@ void Config::LoadConfigFile(const std::string& filename)
     File.ocr_model       = GetValue<std::string>("default.ocr-model", "eng");
     File.font            = GetValue<std::string>("default.font", "");
     File.delay           = GetValue<int>("default.delay", -1);
-    File.allow_ocr_edit  = GetValue<bool>("default.allow-edit-ocr", false);  // deprecated
-    File.allow_ocr_edit  = GetValue<bool>("default.allow-edit", File.allow_ocr_edit);
     File.show_text_tools = GetValue<bool>("default.show-text-tools", true);
+    File.render_anns     = GetValue<bool>("default.annotations-in-text-tools", true);
+
+    File.allow_out_edit = GetValue<bool>("default.allow-edit-ocr", false);  // deprecated
+    File.allow_out_edit = GetValue<bool>("default.allow-text-edit", File.allow_out_edit);
 
     const toml::table* all_langs_tbl = m_tbl["lang"].as_table();
     if (!all_langs_tbl)
