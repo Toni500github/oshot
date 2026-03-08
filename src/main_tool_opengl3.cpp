@@ -72,8 +72,7 @@ static GLFWmonitor* get_monitor_at_cursor()
             continue;
 
         // Found focused monitor
-        if (cursor_x >= mx && cursor_x < mx + mode->width &&
-            cursor_y >= my && cursor_y < my + mode->height)
+        if (cursor_x >= mx && cursor_x < mx + mode->width && cursor_y >= my && cursor_y < my + mode->height)
             return monitors[i];
     }
 

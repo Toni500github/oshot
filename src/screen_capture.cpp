@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "fmt/format.h"
 #include "tiny-process-library/process.hpp"
 #include "util.hpp"
 
@@ -21,6 +22,7 @@
 
 #  include "stb_image.h"
 #elif defined(__APPLE__)
+#  include <CoreGraphics/CoreGraphics.h>
 #  include <unistd.h>
 
 #  include "stb_image.h"
@@ -32,7 +34,6 @@
 #  include <stdio.h>
 #  include <windows.h>
 
-#  include "fmt/format.h"
 #  pragma comment(lib, "d3d11")
 #  pragma comment(lib, "dxgi")
 #endif
@@ -540,6 +541,41 @@ Result<capture_result_t> capture_full_screen_portal()
 
 // The OS automatically prompts for Screen Recording permission on first use.
 #ifdef __APPLE__
+
+// Returns the 1-based screencapture display index (-D flag) for the monitor that
+// currently contains the cursor, or 1 (main display) if the query fails.
+static int cursor_display_index()
+{
+    // Get current cursor position via CoreGraphics (no special permissions needed).
+    CGEventRef event  = CGEventCreate(nullptr);
+    CGPoint    cursor = CGEventGetLocation(event);
+    CFRelease(event);
+
+    // Find which display(s) contain that point.
+    CGDirectDisplayID hit    = kCGNullDirectDisplay;
+    uint32_t          nfound = 0;
+    CGGetDisplaysWithPoint(cursor, 1, &hit, &nfound);
+
+    if (nfound == 0 || hit == kCGNullDirectDisplay)
+        return 1;  // fallback: main display
+
+    // screencapture -D uses a 1-based index into the active display list.
+    CGDirectDisplayID active[32];
+    uint32_t          active_count = 0;
+    CGGetActiveDisplayList(32, active, &active_count);
+
+    for (uint32_t i = 0; i < active_count; ++i)
+    {
+        if (active[i] == hit)
+        {
+            debug("macOS capture: display index {} (CGDirectDisplayID {})", i + 1, static_cast<unsigned>(hit));
+            return static_cast<int>(i + 1);
+        }
+    }
+
+    return 1;  // fallback: main display
+}
+
 Result<capture_result_t> capture_full_screen_macos()
 {
     capture_result_t result;
@@ -548,9 +584,12 @@ Result<capture_result_t> capture_full_screen_macos()
     if (!tmppath)
         return Err("Failed to create temp png");
 
-    // -x  suppress shutter sound
-    // -t png  force PNG format
-    TinyProcessLib::Process proc({ "screencapture", "-x", "-t", "png", tmppath }, "");
+    // -x        suppress shutter sound
+    // -t png    force PNG format
+    // -D <n>    capture only display n (1-based index in active display list,
+    //           matching the monitor that currently contains the cursor)
+    const std::string       display_idx = fmt::to_string(cursor_display_index());
+    TinyProcessLib::Process proc({ "screencapture", "-x", "-t", "png", "-D", display_idx.c_str(), tmppath }, "");
 
     const int exit_code = proc.get_exit_status();
     if (exit_code != 0)
@@ -589,15 +628,35 @@ Result<capture_result_t> capture_full_screen_windows_fallback()
 {
     capture_result_t result;
 
-    int width  = GetSystemMetrics(SM_CXSCREEN);
-    int height = GetSystemMetrics(SM_CYSCREEN);
+    // Find the monitor that currently contains the cursor.
+    POINT    cursor_pt{};
+    HMONITOR hmon = nullptr;
+    if (GetCursorPos(&cursor_pt))
+        hmon = MonitorFromPoint(cursor_pt, MONITOR_DEFAULTTOPRIMARY);
+    else
+        hmon = MonitorFromPoint({ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
+
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    if (!GetMonitorInfo(hmon, &mi))
+    {
+        // Fallback to primary monitor metrics
+        mi.rcMonitor = { 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+    }
+
+    const int origin_x = mi.rcMonitor.left;
+    const int origin_y = mi.rcMonitor.top;
+    const int width    = mi.rcMonitor.right - mi.rcMonitor.left;
+    const int height   = mi.rcMonitor.bottom - mi.rcMonitor.top;
+
+    debug("GDI fallback capture: monitor {}x{}+{}+{}", width, height, origin_x, origin_y);
 
     result.w = width;
     result.h = height;
     result.data.resize(static_cast<size_t>(width) * height * 4);
 
     // Get Device Contexts
-    HDC hScreenDC = GetDC(nullptr);
+    HDC hScreenDC = GetDC(nullptr);  // virtual-desktop DC
     HDC hMemoryDC = CreateCompatibleDC(hScreenDC);
 
     // Create a 32-bit bitmap for RGBA capture
@@ -623,20 +682,20 @@ Result<capture_result_t> capture_full_screen_windows_fallback()
     // Select the bitmap into the memory DC
     HBITMAP hOldBitmap = (HBITMAP)SelectObject(hMemoryDC, hBitmap);
 
-    // Copy the screen to the bitmap
+    // Copy the target monitor's region from the virtual-desktop DC.
+    // origin_x/origin_y are the monitor's coordinates in virtual-desktop space.
     BitBlt(hMemoryDC,
            0,
            0,
            width,
            height,
            hScreenDC,
-           0,
-           0,
+           origin_x,
+           origin_y,
            SRCCOPY | CAPTUREBLT  // CAPTUREBLT captures layered windows
     );
 
-    // Now we have the RGB data in pBits, but we need to convert to RGBA
-    // The DIB section gives us BGRA format in memory
+    // Convert BGRA DIB -> RGBA
     const uint32_t* s = reinterpret_cast<const uint32_t*>(pBits);
     uint32_t*       d = reinterpret_cast<uint32_t*>(result.data.data());
 
@@ -644,12 +703,10 @@ Result<capture_result_t> capture_full_screen_windows_fallback()
     for (int i = 0; i < n; ++i)
     {
         uint32_t bgra = s[i];
-        // bgra: [BB][GG][RR][AA] in memory ordering for 32-bit little-endian DIB (commonly)
-        uint32_t rb = (bgra & 0x00FF00FFu);
-        uint32_t g  = (bgra & 0x0000FF00u);
-        uint32_t r  = (rb & 0x000000FFu) << 16;
-        uint32_t b  = (rb & 0x00FF0000u) >> 16;
-        d[i]        = 0xFF000000u | r | g | b;
+        uint32_t r    = (bgra & 0x000000FFu) << 16;
+        uint32_t g    = (bgra & 0x0000FF00u);
+        uint32_t b    = (bgra & 0x00FF0000u) >> 16;
+        d[i]          = 0xFF000000u | r | g | b;
     }
 
     // Cleanup
@@ -707,11 +764,23 @@ Result<capture_result_t> capture_full_screen_windows()
     if (hr_failed(hr, "CreateDXGIFactory1"))
         return capture_full_screen_windows_fallback();
 
-    // Find first desktop-attached output
-    com_ptr<IDXGIAdapter1> adapter;
-    com_ptr<IDXGIOutput>   output;
+    // Identify which monitor the cursor is currently on.
+    POINT    cursor_pt{};
+    HMONITOR cursor_monitor = nullptr;
+    if (GetCursorPos(&cursor_pt))
+        cursor_monitor = MonitorFromPoint(cursor_pt, MONITOR_DEFAULTTOPRIMARY);
+    else
+        cursor_monitor = MonitorFromPoint({ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
 
-    bool found_output = false;
+    // Enumerate adapters/outputs and prefer the one whose HMONITOR matches
+    // the cursor's monitor. Fall back to the first desktop-attached output
+    // if no exact match is found (e.g., GetCursorPos failed).
+    com_ptr<IDXGIAdapter1> adapter, fallback_adapter;
+    com_ptr<IDXGIOutput>   output, fallback_output;
+
+    bool found_exact    = false;
+    bool found_fallback = false;
+
     for (UINT ai = 0; factory->EnumAdapters1(ai, adapter.reset_and_get_address()) != DXGI_ERROR_NOT_FOUND; ++ai)
     {
         for (UINT oi = 0; adapter->EnumOutputs(oi, output.reset_and_get_address()) != DXGI_ERROR_NOT_FOUND; ++oi)
@@ -719,21 +788,51 @@ Result<capture_result_t> capture_full_screen_windows()
             DXGI_OUTPUT_DESC od{};
             output->GetDesc(&od);
 
-            if (od.AttachedToDesktop)
+            if (!od.AttachedToDesktop)
+                continue;
+
+            if (od.Monitor == cursor_monitor)
             {
-                found_output = true;
+                // Exact match: this is the monitor under the cursor.
+                // Promote to the selected adapter/output and stop searching.
+                found_exact = true;
+                debug("DXGI capture: matched cursor monitor (adapter {}, output {})", ai, oi);
                 break;
+            }
+
+            if (!found_fallback)
+            {
+                // Remember the first desktop-attached output as a fallback.
+                // We can't call reset_and_get_address on the com_ptrs we still
+                // need, so we re-query them if we end up using the fallback.
+                found_fallback = true;
+                // Store adapter/output indices for a potential second pass.
+                // Simpler: just keep a raw pointer snapshot. We re-AddRef to
+                // be safe because the com_ptr loop will Release on next iteration.
+                fallback_adapter.ptr = adapter.ptr;
+                fallback_adapter.ptr->AddRef();
+                fallback_output.ptr = output.ptr;
+                fallback_output.ptr->AddRef();
             }
         }
 
-        if (found_output)
+        if (found_exact)
             break;
     }
 
-    if (!found_output)
+    if (!found_exact)
     {
-        debug("No desktop-attached DXGI output found");
-        return capture_full_screen_windows_fallback();
+        if (!found_fallback)
+        {
+            debug("No desktop-attached DXGI output found");
+            return capture_full_screen_windows_fallback();
+        }
+        debug("DXGI capture: no output matched cursor monitor, using first desktop-attached output");
+        // Swap in the fallback (adapter/output already hold the right COM objects).
+        adapter.ptr          = fallback_adapter.ptr;
+        fallback_adapter.ptr = nullptr;
+        output.ptr           = fallback_output.ptr;
+        fallback_output.ptr  = nullptr;
     }
 
     com_ptr<IDXGIOutput1> output1;

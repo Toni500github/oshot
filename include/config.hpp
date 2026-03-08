@@ -56,7 +56,7 @@ public:
         bool        enable_handles   = true;
         bool        only_launch_tray = false;
         bool        only_launch_gui  = false;
-#if DEBUG
+#if DEBUG || WINDOWS_CMD
         bool debug_print = true;
 #else
         bool debug_print = false;

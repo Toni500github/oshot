@@ -2,9 +2,7 @@ name: CMake CI (Test oshot)
 
 on:
   push:
-    branches: [ "main", "macos-new" ]
   pull_request:
-    branches: [ "main" ]
 
 jobs:
   get-version:
