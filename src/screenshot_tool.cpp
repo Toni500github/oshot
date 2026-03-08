@@ -215,6 +215,7 @@ Result<> ScreenshotTool::Start()
         {
             case SessionType::X11:     result = capture_full_screen_x11(); break;
             case SessionType::Wayland: result = capture_full_screen_wayland(); break;
+            case SessionType::KDE:     result = capture_full_screen_spectacle(); break;
             case SessionType::Windows: result = capture_full_screen_windows(); break;
             case SessionType::MacOS:   result = capture_full_screen_macos(); break;
             default:                   return Err("Unknown platform");

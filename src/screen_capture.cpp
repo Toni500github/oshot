@@ -56,9 +56,17 @@ SessionType get_session_type()
 #elif defined(__APPLE__)
     return SessionType::MacOS;
 #else
-    const char* xdg     = std::getenv("XDG_SESSION_TYPE");
+    const char* xdg     = std::getenv("XDG_CURRENT_DESKTOP");
     const char* wayland = std::getenv("WAYLAND_DISPLAY");
     const char* x11     = std::getenv("DISPLAY");
+    const char* kde     = std::getenv("KDE_FULL_SESSION");
+
+    if (xdg && strstr(xdg, "KDE") != nullptr)
+        return SessionType::KDE;
+    if (kde && kde[0] != '\0')
+        return SessionType::KDE;
+
+    xdg = std::getenv("XDG_SESSION_TYPE");
 
     if (xdg && strcmp(xdg, "wayland") == 0)
         return SessionType::Wayland;
@@ -111,8 +119,10 @@ static bool get_cursor_monitor_xrandr(Display* display, int& out_x, int& out_y, 
         out_h = monitors[0].height;
         found = true;
 
+        debug("Found {} monitor{}", nmon, nmon > 1 ? "s" : "");
         for (int i = 0; i < nmon; ++i)
         {
+            debug("Iterating monitor #{}", i);
             const int mx = monitors[i].x, my = monitors[i].y;
             const int mw = monitors[i].width, mh = monitors[i].height;
             if (root_x >= mx && root_x < mx + mw && root_y >= my && root_y < my + mh)
@@ -121,7 +131,7 @@ static bool get_cursor_monitor_xrandr(Display* display, int& out_x, int& out_y, 
                 out_y = my;
                 out_w = mw;
                 out_h = mh;
-                debug("X11 capture: monitor {}x{}+{}+{} (cursor at {},{}) ", mw, mh, mx, my, root_x, root_y);
+                debug("XRandR capturing: monitor {}x{}+{}+{} (cursor at {},{}) ", mw, mh, mx, my, root_x, root_y);
                 break;
             }
         }
@@ -131,17 +141,6 @@ static bool get_cursor_monitor_xrandr(Display* display, int& out_x, int& out_y, 
     if (!display)
         XCloseDisplay(dpy);
     return found;
-}
-
-static bool is_kde_session()
-{
-    const char* xdg = std::getenv("XDG_CURRENT_DESKTOP");
-    if (xdg && strstr(xdg, "KDE") != nullptr)
-        return true;
-    const char* kde = std::getenv("KDE_FULL_SESSION");
-    if (kde && kde[0] != '\0')
-        return true;
-    return false;
 }
 
 Result<capture_result_t> capture_full_screen_x11()
@@ -205,7 +204,7 @@ Result<capture_result_t> capture_full_screen_spectacle()
 
     const char* tmppath = create_temp_png();
     if (!tmppath)
-        return Err("capture_full_screen_spectacle: failed to create temp png");
+        return Err("Failed to create temp png");
 
     // -b  run in background (no GUI window)
     // -n  suppress the "screenshot saved" desktop notification
@@ -217,8 +216,8 @@ Result<capture_result_t> capture_full_screen_spectacle()
     if (exit_code != 0)
     {
         unlink(tmppath);
-        warn("spectacle exited with code {}", exit_code);
-        return Err("spectacle failed");
+        warn("spectacle exited with code {}. Trying wayland capture...", exit_code);
+        return capture_full_screen_wayland();
     }
 
     int      w = 0, h = 0, comp = 0;
@@ -228,7 +227,7 @@ Result<capture_result_t> capture_full_screen_spectacle()
     if (!rgba)
     {
         const char* reason = stbi_failure_reason();
-        return Err("capture_full_screen_spectacle: failed to decode PNG: " + std::string(reason ? reason : "unknown"));
+        return Err("Failed to decode PNG: " + std::string(reason ? reason : "unknown"));
     }
 
     result.w = w;
@@ -241,19 +240,6 @@ Result<capture_result_t> capture_full_screen_spectacle()
 
 Result<capture_result_t> capture_full_screen_wayland()
 {
-    // On KDE Plasma, KWin does not implement the wlr-screencopy protocol so
-    // `grim` will always fail.  The generic XDG portal works, but when called
-    // non-interactively it captures the primary/first-configured output rather
-    // than the monitor the cursor is currently on.  `spectacle -m` is the only
-    // cursor-aware option available on KDE, so try it first.
-    if (is_kde_session())
-    {
-        const Result<capture_result_t> kde_res = capture_full_screen_spectacle();
-        if (kde_res.ok())
-            return kde_res;
-        warn("spectacle capture failed, falling back to portal");
-    }
-
     const Result<capture_result_t> res = capture_full_screen_portal();
     if (res.ok())
         return res;
@@ -490,9 +476,8 @@ Result<capture_result_t> capture_full_screen_portal()
     cap_portal.cap.data.assign(rgba, rgba + (static_cast<size_t>(w) * h * 4));
     stbi_image_free(rgba);
 
-    // The portal backend (e.g. KDE) writes a permanent file to ~/Pictures
-    // (named "Screenshot_*.png" by KDE, not "oshot_*").  Delete it now that
-    // we have the pixels in memory.
+    // The portal backend (on KDE mostly) writes a permanent file to ~/Pictures named "Screenshot_*.png".
+    // Delete it now that we have the pixels in memory.
     unlink(cap_portal.png_path.c_str());
 
     // The portal always captures the full virtual desktop on multi-monitor
@@ -561,7 +546,7 @@ Result<capture_result_t> capture_full_screen_macos()
 
     const char* tmppath = create_temp_png();
     if (!tmppath)
-        return Err("capture_full_screen_spectacle: failed to create temp png");
+        return Err("Failed to create temp png");
 
     // -x  suppress shutter sound
     // -t png  force PNG format
