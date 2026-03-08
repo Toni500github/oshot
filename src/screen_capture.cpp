@@ -859,7 +859,7 @@ Result<capture_result_t> capture_full_screen_windows()
 #  if DEBUG
     // Debug layer not installed (Graphics Tools optional feature).
     // Retry without it so debug builds work on plain machines.
-    if (hr == DXGI_ERROR_SDK_COMPONENT_REQUIRED)
+    if (hr == DXGI_ERROR_SDK_COMPONENT_MISSING)
     {
         debug("D3D debug layer unavailable, retrying without it");
         flags &= ~D3D11_CREATE_DEVICE_DEBUG;
