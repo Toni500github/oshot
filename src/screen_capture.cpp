@@ -856,6 +856,26 @@ Result<capture_result_t> capture_full_screen_windows()
     hr = D3D11CreateDevice(
         adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context);
 
+#  if DEBUG
+    // Debug layer not installed (Graphics Tools optional feature).
+    // Retry without it so debug builds work on plain machines.
+    if (hr == DXGI_ERROR_SDK_COMPONENT_REQUIRED)
+    {
+        debug("D3D debug layer unavailable, retrying without it");
+        flags &= ~D3D11_CREATE_DEVICE_DEBUG;
+        hr = D3D11CreateDevice(adapter,
+                               D3D_DRIVER_TYPE_UNKNOWN,
+                               nullptr,
+                               flags,
+                               nullptr,
+                               0,
+                               D3D11_SDK_VERSION,
+                               &device,
+                               nullptr,
+                               &context);
+    }
+#  endif
+
     if (hr_failed(hr, "D3D11CreateDevice"))
         return capture_full_screen_windows_fallback();
 
