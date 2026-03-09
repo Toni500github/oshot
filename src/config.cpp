@@ -14,13 +14,13 @@ Config::Config(const std::string& configFile, const std::string& configDir)
 {
     if (!fs::exists(configDir))
     {
-        warn(_("oshot config folder was not found, Creating folders at {}!"), configDir);
+        warn("oshot config folder was not found, Creating folders at {}!", configDir);
         fs::create_directories(configDir);
     }
 
     if (!fs::exists(configFile))
     {
-        warn(_("config file {} not found, generating new one"), configFile);
+        warn("config file {} not found, generating new one", configFile);
         GenerateConfig(configFile);
     }
 }
@@ -33,9 +33,9 @@ void Config::LoadConfigFile(const std::string& filename)
     }
     catch (const toml::parse_error& err)
     {
-        die(_("Parsing config file '{}' failed:\n"
+        die("Parsing config file '{}' failed:\n"
               "{}\n"
-              "\t(error occurred at line {} column {})"),
+              "\t(error occurred at line {} column {})",
             filename,
             err.description(),
             err.source().begin.line,
@@ -72,8 +72,8 @@ void Config::OverrideOption(const std::string& opt)
 {
     const size_t pos = opt.find('=');
     if (pos == std::string::npos)
-        die(_("alias color '{}' does NOT have an equal sign '=' for separating color name and value\n"
-              "For more check with --help"),
+        die("alias color '{}' does NOT have an equal sign '=' for separating color name and value\n"
+              "For more check with --help",
             opt);
 
     std::string        name{ opt.substr(0, pos) };
@@ -93,7 +93,7 @@ void Config::OverrideOption(const std::string& opt)
     else if (std::ranges::all_of(value, ::isdigit))
         m_overrides[name] = { .value_type = ValueType::kInt, .int_value = std::stoi(value) };
     else
-        die(_("looks like override value '{}' from '{}' is neither a bool, int or string value"), value, name);
+        die("looks like override value '{}' from '{}' is neither a bool, int or string value", value, name);
 }
 
 void Config::GenerateConfig(const std::string& filename)

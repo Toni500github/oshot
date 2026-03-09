@@ -1,7 +1,6 @@
 #ifndef _UTIL_HPP_
 #define _UTIL_HPP_
 
-#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
@@ -11,8 +10,8 @@
 #include <variant>
 #include <vector>
 
+#include "spdlog/spdlog.h"
 #include "fmt/base.h"
-#include "fmt/chrono.h"
 #include "fmt/color.h"
 
 namespace fs = std::filesystem;
@@ -184,17 +183,7 @@ int get_screen_dpi();
 #define BOLD_COLOR(x) (fmt::emphasis::bold | fmt::fg(x))
 
 template <typename... Args>
-inline void error(const std::string_view fmt, Args&&... args) noexcept
-{
-    fmt::print(g_fp_log,
-               BOLD_COLOR(fmt::rgb(fmt::color::red)),
-               "[ {:%T} ] ERROR: {}\n",
-               std::chrono::system_clock::now(),
-               fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
-}
-
-template <typename... Args>
-[[noreturn]] inline void die(const std::string_view fmt, Args&&... args) noexcept
+[[noreturn]] inline void die(fmt::format_string<Args...> fmt, Args&&... args) noexcept
 {
 #ifdef _WIN32
     MessageBox(nullptr,
@@ -202,25 +191,13 @@ template <typename... Args>
                "Fatal Error",
                MB_ICONERROR | MB_OK);
 #endif
-    fmt::print(g_fp_log,
-               BOLD_COLOR(fmt::rgb(fmt::color::red)),
-               "[ {:%T} ] FATAL: {}\n",
-               std::chrono::system_clock::now(),
-               fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
+    spdlog::critical(fmt, std::forward<Args>(args)...);
 
     std::exit(1);
 }
 
-// helper for getting g_config->File.debug_print
-void debug_msg(const std::string_view msg) noexcept;
 template <typename... Args>
-inline void debug(std::string_view fmtstr, Args&&... args) noexcept
-{
-    debug_msg(fmt::format(fmt::runtime(fmtstr), std::forward<Args>(args)...));
-}
-
-template <typename... Args>
-inline void warn(const std::string_view fmt, Args&&... args) noexcept
+inline void warn(fmt::format_string<Args...> fmt, Args&&... args) noexcept
 {
 #ifdef _WIN32
     MessageBox(nullptr,
@@ -228,15 +205,11 @@ inline void warn(const std::string_view fmt, Args&&... args) noexcept
                "Warning",
                MB_ICONWARNING | MB_OK);
 #endif
-    fmt::print(g_fp_log,
-               BOLD_COLOR((fmt::rgb(fmt::color::yellow))),
-               "[ {:%T} ] WARNING: {}\n",
-               std::chrono::system_clock::now(),
-               fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
+    spdlog::warn(fmt, args...);
 }
 
 template <typename... Args>
-inline void info(const std::string_view fmt, Args&&... args) noexcept
+inline void info(fmt::format_string<Args...> fmt, Args&&... args) noexcept
 {
 #ifdef _WIN32
     MessageBox(nullptr,
@@ -244,11 +217,7 @@ inline void info(const std::string_view fmt, Args&&... args) noexcept
                "Info",
                MB_ICONINFORMATION | MB_OK);
 #endif
-    fmt::print(g_fp_log,
-               BOLD_COLOR((fmt::rgb(fmt::color::cyan))),
-               "[ {:%T} ] INFO: {}\n",
-               std::chrono::system_clock::now(),
-               fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
+    spdlog::info(fmt, std::forward<Args>(args)...);
 }
 
 /** Ask the user a yes or no question.

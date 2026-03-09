@@ -41,6 +41,7 @@
 #endif
 
 using namespace std::chrono_literals;
+using namespace spdlog;
 
 static constexpr ImVec2 origin(0, 0);
 static void*            logo_texture = nullptr;

@@ -1,3 +1,9 @@
+#if DEBUG
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_DEBUG
+#else
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_INFO
+#endif
+
 #include <atomic>
 #include <condition_variable>
 #include <csignal>
@@ -136,7 +142,7 @@ static fs::path parse_config_path(int argc, char* argv[], const fs::path& config
 
             case 'C':
                 if (!fs::exists(optarg))
-                    die(_("config file '{}' doesn't exist"), optarg);
+                    die("config file '{}' doesn't exist", optarg);
                 return optarg;
         }
     }
@@ -233,7 +239,7 @@ int run_main_tool(const std::string& imgui_ini_path);
 
 void glfw_error_callback(int i_error, const char* description)
 {
-    error("GLFW Error {}: {}", i_error, description);
+    spdlog::error("GLFW Error {}: {}", i_error, description);
 }
 
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths)
@@ -376,6 +382,8 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
 
     g_config->LoadConfigFile(configFile);
+
+    spdlog::set_level(g_config->Runtime.debug_print ? spdlog::level::debug : spdlog::level::info);
 
     const bool tray_lock_acquired = acquire_tray_lock();
 

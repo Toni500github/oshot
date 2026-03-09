@@ -11,6 +11,7 @@
 #include "clipboard.hpp"
 #include "config.hpp"
 #include "dotenv.h"
+#include "fmt/chrono.h"
 #include "fmt/format.h"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
@@ -389,18 +390,6 @@ fs::path get_home_dir()
 
 #endif
     die("Cannot determine home directory");
-}
-
-void debug_msg(const std::string_view msg) noexcept
-{
-    if (g_config && g_config->Runtime.debug_print)
-    {
-        fmt::print(g_fp_log,
-                   BOLD_COLOR((fmt::rgb(fmt::color::hot_pink))),
-                   "[ {:%T} ] [DEBUG]: {}\n",
-                   std::chrono::system_clock::now(),
-                   msg);
-    }
 }
 
 std::string expand_var(std::string ret, bool dont)

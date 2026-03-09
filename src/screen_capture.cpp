@@ -38,6 +38,8 @@
 #  pragma comment(lib, "dxgi")
 #endif
 
+using namespace spdlog;
+
 #ifndef _WIN32
 static const char* create_temp_png()
 {
@@ -217,7 +219,7 @@ Result<capture_result_t> capture_full_screen_spectacle()
     if (exit_code != 0)
     {
         unlink(tmppath);
-        warn("spectacle exited with code {}. Trying wayland capture...", exit_code);
+        ::warn("spectacle exited with code {}. Trying wayland capture...", exit_code);
         return capture_full_screen_wayland();
     }
 

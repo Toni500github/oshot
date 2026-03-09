@@ -20,6 +20,8 @@
 #    include <X11/Xlib.h>
 #  endif
 
+using namespace spdlog;
+
 GLFWwindow* window = nullptr;
 
 void glfw_error_callback(int i_error, const char* description);
