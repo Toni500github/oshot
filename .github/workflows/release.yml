@@ -145,7 +145,7 @@ jobs:
           echo "#!/bin/bash" > package/oshot/install.sh
           echo "cp oshot /usr/local/bin/oshot" >> package/oshot/install.sh
           chmod +x package/oshot/install.sh package/oshot/oshot
-          wget https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -O package/oshot/models/english.traineddata
+          wget https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -O package/oshot/models/eng.traineddata
           cd package
           zip -r oshot-linux.zip oshot/
 
@@ -156,7 +156,7 @@ jobs:
           ./scripts/create_appimage.sh ./build/oshot oshot-x86_64.AppImage
           chmod +x oshot-x86_64.AppImage
           mv oshot-x86_64.AppImage package/oshot/
-          wget https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -O package/oshot/models/english.traineddata
+          wget https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -O package/oshot/models/eng.traineddata
           cd package
           zip -r oshot-appimage.zip oshot/
 
@@ -167,7 +167,7 @@ jobs:
           ARCH=$(uname -m)
           ./scripts/create_app_bundle.sh ./build/oshot oshot-macos-${ARCH}.dmg
           mv oshot-macos-${ARCH}.dmg package/oshot/
-          curl -L https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -o package/oshot/models/english.traineddata
+          curl -L https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -o package/oshot/models/eng.traineddata
           cd package
           zip -r oshot-macos-${ARCH}.zip oshot/
 
@@ -179,7 +179,7 @@ jobs:
           cp ./build/oshot.exe ./oshot.ico package/oshot/
           # Copy required DLLs
           ldd ./build/oshot.exe | grep -i mingw | awk '{print $3}' | xargs -I {} cp {} package/oshot/ || true
-          curl -L https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -o package/oshot/models/english.traineddata
+          curl -L https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -o package/oshot/models/eng.traineddata
           cd package
           zip -r oshot-windows.zip oshot/
 
