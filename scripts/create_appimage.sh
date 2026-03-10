@@ -61,6 +61,7 @@ main() {
     cat > AppDir/AppRun << 'EOF'
 #!/bin/sh
 HERE="$(dirname "$(readlink -f "$0")")"
+export APPIMAGE_ORIG_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
 exec "$HERE/usr/bin/oshot" "$@"
 EOF

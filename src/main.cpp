@@ -364,6 +364,12 @@ int main(int argc, char* argv[])
 #endif
 
 #ifdef __linux__
+    const char* orig = std::getenv("APPIMAGE_ORIG_LD_LIBRARY_PATH");
+    if (orig)
+        setenv("LD_LIBRARY_PATH", orig, 1);
+    else
+        unsetenv("LD_LIBRARY_PATH");
+
     XInitThreads();
 #endif
 
