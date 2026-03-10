@@ -69,6 +69,8 @@ std::unique_ptr<Clipboard> g_clipboard;
 bool                       g_is_systray = false;
 int                        g_scr_w{}, g_scr_h{};
 
+std::error_code ec;
+
 // Print the version and some other infos, then exit successfully
 static void version()
 {
@@ -357,7 +359,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #else
 int main(int argc, char* argv[])
 {
-    std::error_code ec;
     const fs::path& log_path = fs::temp_directory_path(ec) / "oshot.log";
     fs::create_directories(log_path.parent_path(), ec);
     auto file = std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_path.string(), true);
