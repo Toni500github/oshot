@@ -344,6 +344,9 @@ void ScreenshotTool::HandleShortcutsInput()
         ImGui::ClearActiveID();
     }
 
+    if (ImGui::Shortcut(ImGuiKey_Z | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal) && !m_annotations.empty())
+        m_annotations.pop_back();
+
     if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
         g_config->Runtime.enable_handles = !g_config->Runtime.enable_handles;
 
