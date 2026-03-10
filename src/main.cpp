@@ -1,9 +1,3 @@
-#if DEBUG
-#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_DEBUG
-#else
-#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_INFO
-#endif
-
 #include <atomic>
 #include <condition_variable>
 #include <csignal>
@@ -36,6 +30,8 @@
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "socket.hpp"
+#include "spdlog/sinks/basic_file_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
 #include "switch_fnv1a.hpp"
 #include "tray.hpp"
 #include "util.hpp"
@@ -72,7 +68,6 @@ std::unique_ptr<Config>    g_config;
 std::unique_ptr<Clipboard> g_clipboard;
 bool                       g_is_systray = false;
 int                        g_scr_w{}, g_scr_h{};
-FILE*                      g_fp_log;
 
 // Print the version and some other infos, then exit successfully
 static void version()
@@ -263,7 +258,7 @@ void capture_worker(const std::string& imgui_ini_path)
 
         if (do_copy_image)
         {
-            do_copy_image = false;
+            do_copy_image        = false;
             capture_result_t img = std::move(pending_image);
             lk.unlock();
             g_clipboard->CopyImage(img);
@@ -358,14 +353,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
         setvbuf(stderr, nullptr, _IOLBF, 0);
     }
 
-    g_fp_log = std::fopen("oshot.log", "w");
-    if (!g_fp_log)
-        g_fp_log = stdout;
+    auto file = std::make_shared<spdlog::sinks::basic_file_sink_mt>("oshot.log", true);
 #else
 int main(int argc, char* argv[])
 {
-    g_fp_log = stdout;
-
+    std::error_code ec;
+    const fs::path& log_path = fs::temp_directory_path() / "oshot.log";
+    fs::create_directories(log_path.parent_path(), ec);
+    auto file = std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_path.string(), true);
 #endif
 
 #ifdef __linux__
@@ -377,7 +372,7 @@ int main(int argc, char* argv[])
     signal(SIGABRT, exit_handler);
 
 #ifndef _WIN32
-    // SIGSEGV handler: restore display then re-raise so the OS
+    // Restore display then re-raise so the OS
     // still generates a core dump.
     signal(SIGSEGV, [](int sig) {
         extern_glfw_terminate();  // restore display mode
@@ -385,6 +380,10 @@ int main(int argc, char* argv[])
         raise(sig);               // re-raise for core dump
     });
 #endif
+
+    auto           console = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    spdlog::logger logger("oshot_logger", { console, file });
+    spdlog::set_default_logger(std::make_shared<spdlog::logger>(logger));
 
     const std::string& configDir      = get_config_dir().string();
     const std::string& configFile     = parse_config_path(argc, argv, configDir).string();
@@ -399,6 +398,8 @@ int main(int argc, char* argv[])
     g_config->LoadConfigFile(configFile);
 
     spdlog::set_level(g_config->Runtime.debug_print ? spdlog::level::debug : spdlog::level::info);
+    // [2026-03-10 17:24:07.593] [DEBUG] XRandR capturing: monitor 1920x1080+0+0 (cursor at 1130,682)
+    logger.set_pattern("[%Y-%m-%d %T.%e] [%l] %^%v%$");
 
     const bool tray_lock_acquired = acquire_tray_lock();
 
@@ -502,14 +503,13 @@ int main(int argc, char* argv[])
 #else
     // Basically create the icon.png in a temp directory and use
     // that for the systray icon. idfc, it works
-    std::error_code ec;
-    const fs::path& path = fs::temp_directory_path() / "oshot.png";
-    fs::create_directories(path.parent_path(), ec);
-    std::ofstream out(path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
+    const fs::path& png_path = fs::temp_directory_path() / "oshot.png";
+    fs::create_directories(png_path.parent_path(), ec);
+    std::ofstream out(png_path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
 
     out.write(reinterpret_cast<const char*>(oshot_png), static_cast<std::streamsize>(oshot_png_len));
     out.close();
-    TrayIcon tray = { path.string(), "oshot.ico", "oshot", menu };
+    TrayIcon tray = { png_path.string(), "oshot.ico", "oshot", menu };
 #endif
 
     tray.menu.push_back(new TrayMenu{ "Capture",
@@ -550,9 +550,6 @@ int main(int argc, char* argv[])
     if (ipc.joinable())
         ipc.join();
 #endif
-
-    if (g_fp_log && g_fp_log != stdout)
-        std::fclose(g_fp_log);
 
     return EXIT_SUCCESS;
 }

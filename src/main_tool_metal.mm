@@ -32,6 +32,8 @@ void extern_glfw_terminate()
 
 GLFWwindow* window = nullptr;
 
+using namespace spdlog;
+
 void minimize_window()
 {
     glfwIconifyWindow(window);

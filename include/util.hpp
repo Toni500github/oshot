@@ -25,14 +25,7 @@ enum class SavingOp;
 #  include <knownfolders.h>
 #  include <shlobj.h>
 #  include <windows.h>
-#endif
-
-#if ENABLE_NLS
-#  include <libintl.h>
-#  include <locale.h>
-#  define _(str) gettext(str)
-#else
-#  define _(s) (char*)s
+#  include <shellapi.h>
 #endif
 
 #if defined(_WIN32) || defined(__APPLE__)
@@ -150,7 +143,6 @@ extern bool  g_is_systray;  // old g_is_clipboard_server;
 extern int   g_sock;
 extern char  g_sock_path[100];
 extern int   g_scr_w, g_scr_h;
-extern FILE* g_fp_log;
 
 #ifdef __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height);
@@ -245,7 +237,7 @@ inline bool ask_user_yn(bool def, const std::string_view fmt, Args&&... args)
         fmt::print(BOLD_COLOR(fmt::rgb(fmt::color::yellow)), "Please answear y or n,{}", inputs_str);
 
     if (std::cin.eof())
-        die(_("Exiting due to CTRL-D or EOF"));
+        die("Exiting due to CTRL-D or EOF");
 
     if (result.empty())
         return def;
