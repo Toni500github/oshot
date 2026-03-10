@@ -391,7 +391,15 @@ int main(int argc, char* argv[])
     spdlog::logger logger("oshot_logger", { console, file });
     spdlog::set_default_logger(std::make_shared<spdlog::logger>(logger));
 
-    const std::string& configDir      = get_config_dir().string();
+    // [2026-03-10 17:24:07.593] [DEBUG] XRandR capturing: monitor 1920x1080+0+0 (cursor at 1130,682)
+    logger.set_pattern("[%Y-%m-%d %T.%e] [%l] %^%v%$");
+
+    // Check if demo build.
+    // removing it once the hackaton has ended
+    std::string configDir = get_config_dir().string();
+    if (fs::exists("models", ec))
+        configDir = ".";
+
     const std::string& configFile     = parse_config_path(argc, argv, configDir).string();
     const std::string& imgui_ini_path = configDir + "/imgui.ini";
 
@@ -404,8 +412,6 @@ int main(int argc, char* argv[])
     g_config->LoadConfigFile(configFile);
 
     spdlog::set_level(g_config->Runtime.debug_print ? spdlog::level::debug : spdlog::level::info);
-    // [2026-03-10 17:24:07.593] [DEBUG] XRandR capturing: monitor 1920x1080+0+0 (cursor at 1130,682)
-    logger.set_pattern("[%Y-%m-%d %T.%e] [%l] %^%v%$");
 
     const bool tray_lock_acquired = acquire_tray_lock();
 
@@ -510,7 +516,7 @@ int main(int argc, char* argv[])
     // Basically create the icon.png in a temp directory and use
     // that for the systray icon. idfc, it works
     const fs::path& png_path = fs::temp_directory_path(ec) / "oshot.png";
-    std::ofstream out(png_path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
+    std::ofstream   out(png_path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
 
     out.write(reinterpret_cast<const char*>(oshot_png), static_cast<std::streamsize>(oshot_png_len));
     out.close();
