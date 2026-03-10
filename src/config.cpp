@@ -34,8 +34,8 @@ void Config::LoadConfigFile(const std::string& filename)
     catch (const toml::parse_error& err)
     {
         die("Parsing config file '{}' failed:\n"
-              "{}\n"
-              "\t(error occurred at line {} column {})",
+            "{}\n"
+            "\t(error occurred at line {} column {})",
             filename,
             err.description(),
             err.source().begin.line,
@@ -73,7 +73,7 @@ void Config::OverrideOption(const std::string& opt)
     const size_t pos = opt.find('=');
     if (pos == std::string::npos)
         die("alias color '{}' does NOT have an equal sign '=' for separating color name and value\n"
-              "For more check with --help",
+            "For more check with --help",
             opt);
 
     std::string        name{ opt.substr(0, pos) };

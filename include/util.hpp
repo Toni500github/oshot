@@ -10,9 +10,9 @@
 #include <variant>
 #include <vector>
 
-#include "spdlog/spdlog.h"
 #include "fmt/base.h"
 #include "fmt/color.h"
+#include "spdlog/spdlog.h"
 
 namespace fs = std::filesystem;
 enum class SavingOp;
@@ -23,9 +23,9 @@ enum class SavingOp;
 #elif defined(_WIN32)
 #  include <combaseapi.h>
 #  include <knownfolders.h>
+#  include <shellapi.h>
 #  include <shlobj.h>
 #  include <windows.h>
-#  include <shellapi.h>
 #endif
 
 #if defined(_WIN32) || defined(__APPLE__)
@@ -139,10 +139,10 @@ constexpr size_t idx(E e) noexcept
 // Forward declaration
 struct capture_result_t;
 
-extern bool  g_is_systray;  // old g_is_clipboard_server;
-extern int   g_sock;
-extern char  g_sock_path[100];
-extern int   g_scr_w, g_scr_h;
+extern bool g_is_systray;  // old g_is_clipboard_server;
+extern int  g_sock;
+extern char g_sock_path[100];
+extern int  g_scr_w, g_scr_h;
 
 #ifdef __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height);
@@ -164,9 +164,9 @@ fs::path get_config_dir();
 Result<capture_result_t> load_image_rgba(const std::string& path);
 Result<>                 save_png(SavingOp op, const capture_result_t& img);
 
-void minimize_window();  // Defined on main_tool_*
-void maximize_window();  // Defined on main_tool_*
-void extern_glfw_terminate(); // Defined on main_tool_*
+void minimize_window();        // Defined on main_tool_*
+void maximize_window();        // Defined on main_tool_*
+void extern_glfw_terminate();  // Defined on main_tool_*
 void fit_to_screen(capture_result_t& img);
 void rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int height);
 
@@ -256,6 +256,5 @@ inline struct GlfwGuard
 {
     ~GlfwGuard() { extern_glfw_terminate(); }
 } glfw_guard;
-
 
 #endif  // !_UTIL_HPP_
