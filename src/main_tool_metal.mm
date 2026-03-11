@@ -254,7 +254,7 @@ int run_main_tool(const std::string& imgui_ini_path)
         // Configure render pass
         rpd.colorAttachments[0].texture     = drawable.texture;
         rpd.colorAttachments[0].loadAction  = MTLLoadActionClear;
-        rpd.colorAttachments[0].clearColor  = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
+        rpd.colorAttachments[0].clearColor  = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
         rpd.colorAttachments[0].storeAction = MTLStoreActionStore;
 
         ImGui_ImplMetal_NewFrame(rpd);

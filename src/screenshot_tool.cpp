@@ -885,6 +885,9 @@ void ScreenshotTool::UpdateCursor()
 
 void ScreenshotTool::DrawDarkOverlay()
 {
+    if (m_selection.get_width() == 0 && m_selection.get_height() == 0)
+        return;
+
     ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
 
     const float sel_x = m_selection.get_x();

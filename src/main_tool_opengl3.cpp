@@ -259,7 +259,7 @@ int run_main_tool(const std::string& imgui_ini_path)
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
         glViewport(0, 0, display_w, display_h);
-        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);  // Transparent/dark background
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);  // dark background
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 

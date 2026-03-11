@@ -236,7 +236,7 @@ void fit_to_screen(capture_result_t& img)
     std::vector<uint8_t> resized(new_w * new_h * 4);
 
     bool ok =
-        stbir_resize_uint8_linear(img.view().data(), img_w, img_h, 0, resized.data(), new_w, new_h, 0, STBIR_RGBA);
+        stbir_resize_uint8_linear(img.data.data(), img_w, img_h, 0, resized.data(), new_w, new_h, 0, STBIR_RGBA);
 
     if (!ok)
         return;
@@ -282,7 +282,7 @@ Result<capture_result_t> load_image_rgba(const std::string& path)
         _setmode(_fileno(stdin), _O_BINARY);
 #endif
 
-        std::vector<uint8_t> input = read_stdin_binary();
+        const std::vector<uint8_t>& input = read_stdin_binary();
         if (input.empty())
             return Err("stdin reported data but was empty");
 
