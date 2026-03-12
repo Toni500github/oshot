@@ -29,6 +29,10 @@ void extern_glfw_terminate()
 {
     glfwTerminate();
 }
+void extern_glfw_swap_interval(int v)
+{
+    glfwSwapInterval(v);
+}
 
 GLFWwindow* window = nullptr;
 

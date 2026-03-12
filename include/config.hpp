@@ -44,6 +44,7 @@ public:
         bool        allow_out_edit   = false;
         bool        real_full_screen = false;
         bool        show_text_tools  = true;
+        bool        enable_vsync     = true;
         bool        render_anns      = true;
 
         std::unordered_map<std::string, std::string> lang_fonts_paths;
@@ -56,6 +57,7 @@ public:
         std::string source_file;
         int         preferred_psm    = 0;
         bool        enable_handles   = true;
+        bool        enable_vsync     = true;
         bool        only_launch_tray = false;
         bool        only_launch_gui  = false;
 #if DEBUG || (defined(_WIN32) && WINDOWS_CMD)
@@ -175,6 +177,11 @@ ocr-model = "eng"
 # fullscreen mode which bypasses the compositor and fixes it.
 # Downside: the window may briefly take over the display on some setups.
 real-full-screen = false
+
+# Controls vertical sync (VSync). When enabled, the capture window renders in sync
+# with your monitor's refresh rate, thus being smoother visually but uses slightly more CPU/GPU.
+# Disable if the overlay feels sluggish or unresponsive.
+vsync = true
 
 # Allow the extracted output to be editable
 allow-text-edit = false

@@ -32,6 +32,11 @@ void extern_glfw_terminate()
     glfwTerminate();
 }
 
+void extern_glfw_swap_interval(int v)
+{
+    glfwSwapInterval(v);
+}
+
 // Returns the GLFW monitor that currently contains the cursor.
 // Falls back to the primary monitor if the cursor position cannot be
 // determined (e.g. on a pure Wayland session without XWayland).

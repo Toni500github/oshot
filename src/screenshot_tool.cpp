@@ -1016,6 +1016,8 @@ void ScreenshotTool::DrawMenuItems()
             ImGui::Separator();
             ImGui::MenuItem("View Handles", "CTRL+G", &g_config->Runtime.enable_handles);
             ImGui::MenuItem("Anns. in image scans", "", &g_config->File.render_anns);
+            if (ImGui::MenuItem("Enable vsync", "", &g_config->File.enable_vsync))
+                extern_glfw_swap_interval(static_cast<int>(g_config->File.enable_vsync));
             if (ImGui::MenuItem("Allow text edit", "CTRL+E", &g_config->File.allow_out_edit))
                 ImGui::ClearActiveID();
 

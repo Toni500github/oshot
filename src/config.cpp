@@ -47,6 +47,7 @@ void Config::LoadConfigFile(const std::string& filename)
     File.font             = GetValue<std::string>("default.font", "");
     File.delay            = GetValue<int>("default.delay", -1);
     File.show_text_tools  = GetValue<bool>("default.show-text-tools", true);
+    File.enable_vsync     = GetValue<bool>("default.vsync", true);
     File.real_full_screen = GetValue<bool>("default.real-full-screen", false);
     File.render_anns      = GetValue<bool>("default.annotations-in-text-tools", true);
 

@@ -167,6 +167,7 @@ Result<>                 save_png(SavingOp op, const capture_result_t& img);
 void minimize_window();        // Defined on main_tool_*
 void maximize_window();        // Defined on main_tool_*
 void extern_glfw_terminate();  // Defined on main_tool_*
+void extern_glfw_swap_interval(int v);  // Defined on main_tool_*
 void fit_to_screen(capture_result_t& img);
 void rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int height);
 
