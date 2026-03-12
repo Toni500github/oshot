@@ -42,12 +42,13 @@ void Config::LoadConfigFile(const std::string& filename)
             err.source().begin.column);
     }
 
-    File.ocr_path        = GetValue<std::string>("default.ocr-path", "/usr/share/tessdata");
-    File.ocr_model       = GetValue<std::string>("default.ocr-model", "eng");
-    File.font            = GetValue<std::string>("default.font", "");
-    File.delay           = GetValue<int>("default.delay", -1);
-    File.show_text_tools = GetValue<bool>("default.show-text-tools", true);
-    File.render_anns     = GetValue<bool>("default.annotations-in-text-tools", true);
+    File.ocr_path         = GetValue<std::string>("default.ocr-path", "/usr/share/tessdata");
+    File.ocr_model        = GetValue<std::string>("default.ocr-model", "eng");
+    File.font             = GetValue<std::string>("default.font", "");
+    File.delay            = GetValue<int>("default.delay", -1);
+    File.show_text_tools  = GetValue<bool>("default.show-text-tools", true);
+    File.real_full_screen = GetValue<bool>("default.real-full-screen", false);
+    File.render_anns      = GetValue<bool>("default.annotations-in-text-tools", true);
 
     File.allow_out_edit = GetValue<bool>("default.allow-edit-ocr", false);  // deprecated
     File.allow_out_edit = GetValue<bool>("default.allow-text-edit", File.allow_out_edit);

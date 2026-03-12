@@ -40,10 +40,11 @@ public:
         std::string ocr_path;
         std::string ocr_model;
         std::string font;
-        int         delay           = -1;
-        bool        allow_out_edit  = false;
-        bool        show_text_tools = true;
-        bool        render_anns     = true;
+        int         delay            = -1;
+        bool        allow_out_edit   = false;
+        bool        real_full_screen = false;
+        bool        show_text_tools  = true;
+        bool        render_anns      = true;
 
         std::unordered_map<std::string, std::string> lang_fonts_paths;
     } File;
@@ -168,6 +169,12 @@ ocr-model = "eng"
 # Delay the app before acquiring a screenshot (in milliseconds)
 # Doesn't affect if opening external image (i.e. -f flag)
 #delay = 200
+
+# On some desktop environments (e.g. MATE, XFCE), the compositor may cause
+# the capture window to look grainy or pixelated. Enabling this uses exclusive
+# fullscreen mode which bypasses the compositor and fixes it.
+# Downside: the window may briefly take over the display on some setups.
+real-full-screen = false
 
 # Allow the extracted output to be editable
 allow-text-edit = false

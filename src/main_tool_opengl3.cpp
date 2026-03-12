@@ -185,7 +185,8 @@ int run_main_tool(const std::string& imgui_ini_path)
     // (they are silently ignored for exclusive fullscreen windows), and
     // keeps mouse/keyboard events scoped to this monitor so they don't
     // bleed in from the other display on multi-monitor setups.
-    window = glfwCreateWindow(mode->width, mode->height, "oshot", nullptr, nullptr);
+    window = glfwCreateWindow(
+        mode->width, mode->height, "oshot", g_config->File.real_full_screen ? monitor : nullptr, nullptr);
     if (!window)
     {
         if (!g_is_systray)
