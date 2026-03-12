@@ -443,6 +443,21 @@ fs::path get_config_dir()
     return get_home_config_dir() / "oshot";
 }
 
+static bool is_direct_path(const fs::path& p)
+{
+    if (p.has_root_path())
+        return true;
+
+    auto it = p.begin();
+    if (it != p.end() && (*it == "." || *it == ".."))
+    {
+        ++it;
+        return it != p.end();
+    }
+
+    return false;
+}
+
 fs::path get_font_path(const std::string& font)
 {
     if (font.empty())
@@ -463,7 +478,7 @@ fs::path get_font_path(const std::string& font)
 #endif
 
     fs::path font_path(font);
-    if (font_path.is_absolute())
+    if (is_direct_path(font_path))
         return font_path;
 
     // Direct join (fast)
