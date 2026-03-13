@@ -30,6 +30,7 @@ static std::string psm_to_str(tesseract::PageSegMode psm)
         case PSM_SINGLE_BLOCK_VERT_TEXT: return "Vertical block";
         case PSM_SPARSE_TEXT:            return "Sparsed text - big region";
         case PSM_SINGLE_BLOCK:           return "Mid-size block";
+        case PSM_AUTO_OSD:               return "Auto detection";
         default:                         return "Unknown";
     }
 }

@@ -43,6 +43,7 @@
 using namespace std::chrono_literals;
 using namespace spdlog;
 
+static constexpr ImVec4 k_error_color(1.0f, 0.0f, 0.0f, 1.0f);
 static constexpr ImVec2 origin(0, 0);
 static void*            logo_texture = nullptr;
 
@@ -1111,35 +1112,41 @@ void ScreenshotTool::DrawOcrTools()
 
     auto refresh_models = [&]() {
         RefreshOcrModels();
-        const auto& it    = std::find(m_ocr_models_list.begin(), m_ocr_models_list.end(), m_inputs.ocr_model);
+        const auto& it    = std::find(m_ocr_models_list.begin(), m_ocr_models_list.end(), ocr_model);
         item_selected_idx = (it != m_ocr_models_list.end()) ? std::distance(m_ocr_models_list.begin(), it) : 0;
+    };
+
+    auto push_error_style = [](bool cond) {
+        if (cond)
+            ImGui::PushStyleColor(ImGuiCol_Text, k_error_color);
+    };
+    auto pop_error_label = [](bool cond, const char* label) {
+        if (cond)
+        {
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+            ImGui::TextColored(k_error_color, "%s", label);
+        }
     };
 
     ImGui::PushID("OcrTools");
     ImGui::SeparatorText("OCR");
 
-    // Snapshot of the error for not crashing the program
-    bool invalid_path = HasError(InvalidPath);
-    if (invalid_path)
-        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
+    const bool invalid_path  = HasError(InvalidPath);
+    const bool invalid_model = HasError(InvalidModel);
+    const bool has_errors    = invalid_path || invalid_model;
 
+    // --- Path input ---
+    push_error_style(invalid_path);
     draw_input_text_folder("Path", "##ocr_path", refresh_models, ocr_path);
-
-    if (invalid_path)
-    {
-        ImGui::SameLine();
-        ImGui::Text("Invalid!");
-        ImGui::PopStyleColor();
-    }
+    pop_error_label(invalid_path, "Invalid path!");
     ImGui::SameLine();
-    HelpMarker("Full-Path to the OCR models (.traineddata). Supports drag-and-drop too");
+    HelpMarker("Full path to the OCR models (.traineddata). Supports drag-and-drop");
 
+    // --- Model combo (only shown when path is valid) ---
     if (!invalid_path)
     {
-        bool invalid_model = HasError(InvalidModel);
-        if (invalid_model)
-            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
-
+        push_error_style(invalid_model);
         if (ImGui::BeginCombo("Model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge))
         {
             static ImGuiTextFilter filter;
@@ -1154,9 +1161,9 @@ void ScreenshotTool::DrawOcrTools()
 
             for (size_t i = 0; i < m_ocr_models_list.size(); ++i)
             {
-                bool is_selected = (item_selected_idx == i);
                 if (filter.PassFilter(m_ocr_models_list[i].c_str()))
                 {
+                    const bool is_selected = (item_selected_idx == i);
                     if (ImGui::Selectable(m_ocr_models_list[i].c_str(), is_selected))
                     {
                         item_selected_idx = i;
@@ -1167,50 +1174,45 @@ void ScreenshotTool::DrawOcrTools()
             }
             ImGui::EndCombo();
         }
-
-        if (invalid_model)
-        {
-            ImGui::PopStyleColor();
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(1, 0, 0, 1), "Invalid!");
-        }
+        pop_error_label(invalid_model, "Invalid model!");
     }
 
-    if (!HasError(InvalidModel) && !HasError(InvalidPath) && ImGui::Button("Extract Text"))
+    // --- Extract button + result details ---
+    if (!has_errors)
     {
-        const Result<>& res = m_ocr_api.Configure(ocr_path.c_str(), ocr_model.c_str());
-        if (!res.ok())
+        if (ImGui::Button("Extract Text"))
         {
-            SetError(FailedToScanOcr, res.error_v());
+            const Result<>& res = m_ocr_api.Configure(ocr_path.c_str(), ocr_model.c_str());
+            if (!res.ok())
+                SetError(FailedToScanOcr, res.error_v());
+            else
+            {
+                ClearError(FailedToScanOcr);
+                Result<ocr_result_t> result = m_ocr_api.ExtractTextCapture(GetFinalImage(true));
+                if (result.ok())
+                    m_inputs.ocr_results = std::move(result.get());
+            }
+        }
+
+        if (HasError(FailedToScanOcr))
+        {
+            ImGui::SameLine();
+            ImGui::TextColored(k_error_color, "Failed to scan: %s", GetError(FailedToScanOcr).c_str());
         }
         else
         {
-            ClearError(FailedToScanOcr);
-            Result<ocr_result_t> result = m_ocr_api.ExtractTextCapture(GetFinalImage(true));
-            if (result.ok())
-                m_inputs.ocr_results = std::move(result.get());
-        }
-    }
-
-    HelpMarker("If the result seems off, you could try selecting an option in Edit > Optimize OCR for...");
-
-    if (HasError(FailedToScanOcr))
-    {
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Failed to scan image: %s", GetError(FailedToScanOcr).c_str());
-    }
-
-    if (!HasError(InvalidModel) && !HasError(InvalidPath))
-    {
-        ImGui::SameLine();
-        if (m_inputs.ocr_results.confidence && ImGui::TreeNode("Details"))
-        {
-            ImGui::Text("Confidence score:");
             ImGui::SameLine();
-            ImGui::TextColored(
-                get_confidence_color(m_inputs.ocr_results.confidence), "%d%%", m_inputs.ocr_results.confidence);
+            HelpMarker("If results seem off, try Edit > Optimize OCR for...");
+        }
 
-            ImGui::Text("Using PSM for: %s", m_inputs.ocr_results.psm_str.c_str());
+        const auto& results = m_inputs.ocr_results;
+        if (results.confidence > 0 && ImGui::TreeNode("Details"))
+        {
+            ImGui::Text("Confidence:");
+            ImGui::SameLine();
+            ImGui::TextColored(get_confidence_color(results.confidence), "%d%%", results.confidence);
+            ImGui::SameLine();
+            ImGui::Text("  PSM: %s", results.psm_str.c_str());
             ImGui::TreePop();
         }
     }
@@ -1220,20 +1222,8 @@ void ScreenshotTool::DrawOcrTools()
                               ImVec2(-1, ImGui::GetTextLineHeight() * 10),
                               g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
-    if (m_inputs.ocr_results.data.empty())
-    {
-        ImGui::PopID();
-        return;
-    }
-
-    if (ImGui::Button("Copy Text"))
-    {
-        if (m_inputs.ocr_results.data.back() == '\n')
-            m_inputs.ocr_results.data.pop_back();
-        const Result<>& res = g_clipboard->CopyText(m_inputs.ocr_results.data);
-        if (!res.ok())
-            error("Failed to copy text: {}", res.error_v());
-    }
+    if (!m_inputs.ocr_results.data.empty())
+        CreateCopyTextButton(m_inputs.ocr_results.data);
 
     ImGui::PopID();
 }
@@ -1252,30 +1242,25 @@ void ScreenshotTool::DrawBarDecodeTools()
         }
         else
         {
+            ClearError(FailedToScanBarCode);
             m_inputs.zbar_scan_result = std::move(scan.get());
+            m_inputs.barcode_text.clear();
             for (const auto& data : m_inputs.zbar_scan_result.datas)
                 m_inputs.barcode_text += data + "\n\n";
-            ClearError(FailedToScanBarCode);
         }
     }
 
     if (HasError(FailedToScanBarCode))
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
         ImGui::SameLine();
-        ImGui::TextColored(
-            ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Failed to decode scan: %s", GetError(FailedToScanBarCode).c_str());
-        ImGui::PopStyleColor();
+        ImGui::TextColored(k_error_color, "Failed to decode: %s", GetError(FailedToScanBarCode).c_str());
     }
-    else
+    else if (!m_inputs.zbar_scan_result.datas.empty() && ImGui::TreeNode("Details"))
     {
-        if (!m_inputs.zbar_scan_result.datas.empty() && ImGui::TreeNode("Details"))
-        {
-            ImGui::Text("Detected barcodes:");
-            for (const auto& [sym, count] : m_inputs.zbar_scan_result.symbologies)
-                ImGui::BulletText("%s (x%d)", sym.c_str(), count);
-            ImGui::TreePop();
-        }
+        ImGui::Text("Detected barcodes:");
+        for (const auto& [sym, count] : m_inputs.zbar_scan_result.symbologies)
+            ImGui::BulletText("%s (x%d)", sym.c_str(), count);
+        ImGui::TreePop();
     }
 
     ImGui::InputTextMultiline("##barcode",
@@ -1283,14 +1268,8 @@ void ScreenshotTool::DrawBarDecodeTools()
                               ImVec2(-1, ImGui::GetTextLineHeight() * 10),
                               g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
-    if (!m_inputs.barcode_text.empty() && ImGui::Button("Copy Text"))
-    {
-        if (m_inputs.barcode_text.back() == '\n')
-            m_inputs.barcode_text.pop_back();
-        const Result<>& res = g_clipboard->CopyText(m_inputs.barcode_text);
-        if (!res.ok())
-            error("Failed to copy text: {}", res.error_v());
-    }
+    if (!m_inputs.barcode_text.empty())
+        CreateCopyTextButton(m_inputs.barcode_text);
 
     ImGui::PopID();
 }
@@ -1959,6 +1938,37 @@ ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const floa
         m_io.Fonts->Build();
 
     return font;
+}
+
+void ScreenshotTool::CreateCopyTextButton(const std::string& text_copy)
+{
+    static bool   just_copied = false;
+    static double copy_time   = 0.0;
+
+    const double now = ImGui::GetTime();
+    if (just_copied && now - copy_time > 1.5)
+        just_copied = false;
+
+    if (ImGui::Button(just_copied ? "Copied!" : "Copy Text"))
+    {
+        const Result<>& res = g_clipboard->CopyText(text_copy);
+        if (!res.ok())
+        {
+            SetError(FailedToCopyText, res.error_v());
+        }
+        else
+        {
+            ClearError(FailedToCopyText);
+            just_copied = true;
+            copy_time   = now;
+        }
+    }
+
+    if (HasError(FailedToCopyText))
+    {
+        ImGui::SameLine();
+        ImGui::TextColored(k_error_color, "Failed to copy text: %s", GetError(FailedToCopyText).c_str());
+    }
 }
 
 void ScreenshotTool::RefreshOcrModels()

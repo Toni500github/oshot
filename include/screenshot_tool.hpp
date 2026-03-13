@@ -74,6 +74,7 @@ enum ErrorFlag : size_t
     InvalidPath,
     InvalidModel,
     FailedToScanBarCode,
+    FailedToCopyText,
     COUNT
 };
 
@@ -220,6 +221,7 @@ private:
     bool                                    m_is_color_picking = false;
     bool                                    m_is_text_placing  = false;
 
+    void CreateCopyTextButton(const std::string& text);
     void RefreshOcrModels();
 
     void HandleShortcutsInput();
