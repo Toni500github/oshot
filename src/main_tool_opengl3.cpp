@@ -211,17 +211,22 @@ int run_main_tool(const std::string& imgui_ini_path)
     io.IniFilename = imgui_ini_path.c_str();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-    if (!g_config->File.font.empty())
-    {
-        const fs::path& path = get_font_path(g_config->File.font);
-        if (fs::exists(path))
-            io.FontDefault =
-                io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, nullptr, io.Fonts->GetGlyphRangesDefault());
-    }
-
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
+
+    ImFontConfig font_cfg;
+
+    for (const std::string& font : g_config->File.fonts)
+    {
+        const fs::path& path = get_font_path(font);
+        io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, &font_cfg);
+
+        // this value is false by default, and we can't set it to true without adding atleast one font first.
+        // so, after we add the first font, this will be true (and will stay true).
+        // MergeMode fills the gap in previous fonts with glyphs from this font, for example, adding Arabic glyphs to a non-Arabic font.
+        font_cfg.MergeMode = true;
+    }
 
     {
         const Result<>& res = ss_tool.StartWindow();

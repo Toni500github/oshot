@@ -37,15 +37,15 @@ public:
     // They can be overwritten from CLI arguments
     struct config_file_t
     {
-        std::string ocr_path;
-        std::string ocr_model;
-        std::string font;
-        int         delay            = -1;
-        bool        allow_out_edit   = false;
-        bool        real_full_screen = false;
-        bool        show_text_tools  = true;
-        bool        enable_vsync     = true;
-        bool        render_anns      = true;
+        std::string              ocr_path;
+        std::string              ocr_model;
+        std::vector<std::string> fonts;
+        int                      delay            = -1;
+        bool                     allow_out_edit   = false;
+        bool                     real_full_screen = false;
+        bool                     show_text_tools  = true;
+        bool                     enable_vsync     = true;
+        bool                     render_anns      = true;
     } File;
 
     // Only from CLI arguments
@@ -190,9 +190,11 @@ show-text-tools = true
 # or only when saving the selection (false)
 annotations-in-text-tools = true
 
-# Default font (absolute path or just name) for the whole application.
-# Leave/Make it empty, or commment it, to use ImGUI default font.
-font = "Arial.ttf"
+# Fonts to use for the application. Can be an absolute path, or just a name.
+# You can combine multiple fonts for multiple language support.
+# for example, using `Roboto-Regular.ttf` and `RobotoCJK-Regular.ttc` for Chinese, Japanese, and Korean support alongside English support.
+# If empty, or non-existent (commented out), oshot will use the default font for ImGUI.
+fonts = ["Arial.ttf"]
 )#";
 
 inline constexpr std::string_view oshot_help = (R"(Usage: oshot [OPTIONS]...

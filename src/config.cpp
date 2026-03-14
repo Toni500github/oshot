@@ -42,9 +42,41 @@ void Config::LoadConfigFile(const std::string& filename)
             err.source().begin.column);
     }
 
+    // Fonts
+    auto fonts = m_tbl.at_path("default.fonts");
+    if (fonts.is_array())
+    {
+        toml::array* font_arr = fonts.as_array();
+        if (font_arr)
+        {
+            File.fonts.reserve(font_arr->size());
+
+            size_t idx = 0;
+            for (auto&& font : *font_arr)
+            {
+                std::optional<std::string> font_opt = font.value<std::string>();
+
+                if (!font_opt.has_value())
+                {
+                    warn("Font at index {} is not a string!", idx);
+                    idx++;
+                    continue;
+                }
+
+                File.fonts.push_back(font_opt.value());
+                idx++;
+            }
+        }
+    }
+
+    auto font = m_tbl.at_path("default.font").value<std::string>();
+    if (font.has_value())
+    {
+        File.fonts.push_back(font.value());
+    }
+
     File.ocr_path         = GetValue<std::string>("default.ocr-path", "/usr/share/tessdata");
     File.ocr_model        = GetValue<std::string>("default.ocr-model", "eng");
-    File.font             = GetValue<std::string>("default.font", "");
     File.delay            = GetValue<int>("default.delay", -1);
     File.show_text_tools  = GetValue<bool>("default.show-text-tools", true);
     File.enable_vsync     = GetValue<bool>("default.vsync", true);

@@ -238,7 +238,7 @@ Result<> ScreenshotTool::StartWindow()
     m_io    = ImGui::GetIO();
     m_state = ToolState::Selecting;
 
-    m_inputs.ann_font = g_config->File.font;
+    m_inputs.ann_font = g_config->File.fonts.size() > 0 ? g_config->File.fonts[0] : "";
     m_show_text_tools = g_config->File.show_text_tools;
 
     fit_to_screen(m_screenshot);
