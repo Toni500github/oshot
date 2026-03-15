@@ -213,7 +213,7 @@ int run_main_tool(const std::string& imgui_ini_path);
 
 void glfw_error_callback(int i_error, const char* description)
 {
-    spdlog::error("GLFW Error {}: {}", i_error, description);
+    error("GLFW Error {}: {}", i_error, description);
 }
 
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths)
