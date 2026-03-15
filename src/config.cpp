@@ -42,39 +42,6 @@ void Config::LoadConfigFile(const std::string& filename)
             err.source().begin.column);
     }
 
-    // Fonts
-    auto fonts = m_tbl.at_path("default.fonts");
-    if (fonts.is_array())
-    {
-        toml::array* font_arr = fonts.as_array();
-        if (font_arr)
-        {
-            File.fonts.reserve(font_arr->size());
-
-            size_t idx = 0;
-            for (auto&& font : *font_arr)
-            {
-                std::optional<std::string> font_opt = font.value<std::string>();
-
-                if (!font_opt.has_value())
-                {
-                    warn("Font at index {} is not a string!", idx);
-                    idx++;
-                    continue;
-                }
-
-                File.fonts.push_back(font_opt.value());
-                idx++;
-            }
-        }
-    }
-
-    auto font = m_tbl.at_path("default.font").value<std::string>();
-    if (font.has_value())
-    {
-        File.fonts.push_back(font.value());
-    }
-
     File.ocr_path         = GetValue<std::string>("default.ocr-path", "/usr/share/tessdata");
     File.ocr_model        = GetValue<std::string>("default.ocr-model", "eng");
     File.delay            = GetValue<int>("default.delay", -1);
@@ -82,6 +49,8 @@ void Config::LoadConfigFile(const std::string& filename)
     File.enable_vsync     = GetValue<bool>("default.vsync", true);
     File.real_full_screen = GetValue<bool>("default.real-full-screen", false);
     File.render_anns      = GetValue<bool>("default.annotations-in-text-tools", true);
+
+    File.fonts = GetValueArrayStr("default.fonts", { GetValue<std::string>("default.font", "") });
 
     File.allow_out_edit = GetValue<bool>("default.allow-edit-ocr", false);  // deprecated
     File.allow_out_edit = GetValue<bool>("default.allow-text-edit", File.allow_out_edit);

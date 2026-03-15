@@ -220,7 +220,16 @@ int run_main_tool(const std::string& imgui_ini_path)
     for (const std::string& font : g_config->File.fonts)
     {
         const fs::path& path = get_font_path(font);
-        io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, &font_cfg);
+        if (!path.empty() && fs::exists(path))
+        {
+            io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, &font_cfg);
+        }
+        else
+        {
+            if (!font.empty())
+                ::warn("Font '{}' is not found", font);
+            continue;
+        }
 
         // this value is false by default, and we can't set it to true without adding atleast one font first.
         // so, after we add the first font, this will be true (and will stay true).

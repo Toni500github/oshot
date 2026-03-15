@@ -152,6 +152,28 @@ private:
         else
             return ret.value_or(fallback);
     }
+
+    std::vector<std::string> GetValueArrayStr(const std::string_view          value,
+                                              const std::vector<std::string>& fallback) const
+    {
+        std::vector<std::string> ret;
+
+        // https://stackoverflow.com/a/78266628
+        if (const toml::array* array_it = m_tbl.at_path(value).as_array())
+        {
+            ret.reserve(array_it->size());
+            array_it->for_each([&](auto&& el) {
+                if (const toml::value<std::string>* str_elem = el.as_string())
+                    ret.push_back((*str_elem)->data());
+            });
+
+            return ret;
+        }
+        else
+        {
+            return fallback;
+        }
+    }
 };
 
 extern std::unique_ptr<Config> g_config;
@@ -169,7 +191,7 @@ ocr-model = "eng"
 # Doesn't affect if opening external image (i.e. -f flag)
 #delay = 200
 
-# On some desktop environments (e.g. MATE, XFCE), the compositor may cause
+# On some desktop environments (e.g. MATE), the compositor may cause
 # the capture window to look grainy or pixelated. Enabling this uses exclusive
 # fullscreen mode which bypasses the compositor and fixes it.
 # Downside: the window may briefly take over the display on some setups.
@@ -180,20 +202,20 @@ real-full-screen = false
 # Disable if the overlay feels sluggish or unresponsive.
 vsync = true
 
-# Allow the extracted output to be editable
+# Allow the extracted output to be editable.
 allow-text-edit = false
 
-# Display the text tools (OCR, Bar/QR code scan) by default
+# Display the text tools (OCR, Bar/QR code scan) by default.
 show-text-tools = true
 
-# Consider and render annotations when scanning (true)
-# or only when saving the selection (false)
+# Consider annotations when scanning (true)
+# or only when saving the selection (false).
 annotations-in-text-tools = true
 
 # Fonts to use for the application. Can be an absolute path, or just a name.
 # You can combine multiple fonts for multiple language support.
-# for example, using `Roboto-Regular.ttf` and `RobotoCJK-Regular.ttc` for Chinese, Japanese, and Korean support alongside English support.
-# If empty, or non-existent (commented out), oshot will use the default font for ImGUI.
+# for example, using "Roboto-Regular.ttf" and "RobotoCJK-Regular.ttc" for Chinese, Japanese, and Korean support alongside English support.
+# If empty, or non-existent (or commented out), oshot will use the default font for ImGUI.
 fonts = ["Arial.ttf"]
 )#";
 
