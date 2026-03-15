@@ -1057,7 +1057,7 @@ void ScreenshotTool::DrawMenuItems()
         ImGui::Text("%s", text_display.data());
         ImGui::Spacing();
 
-        text_display = centered_text("Screenshot tool to extract text on the fly");
+        text_display = centered_text("Screenshot tool for extracting text on the fly");
         ImGui::Text("%s", text_display.data());
         ImGui::Spacing();
 
@@ -1067,22 +1067,10 @@ void ScreenshotTool::DrawMenuItems()
         {
             ImGui::BeginChild("##scrollable_region", ImVec2(0, 100), false, ImGuiWindowFlags_HorizontalScrollbar);
 
-            static std::string infos = fmt::format(
-                "oshot v{} built from branch '{}' at {} commit '{}' ({}).\n"
-                "Date: {}\n"
-                "Tag: {}\n",
-                VERSION,
-                GIT_BRANCH,
-                GIT_DIRTY,
-                GIT_COMMIT_HASH,
-                GIT_COMMIT_MESSAGE,
-                GIT_COMMIT_DATE,
-                GIT_TAG);
-
-            ImGui::Text("%s", infos.c_str());
+            ImGui::Text("%s", version_infos.c_str());
 
             if (ImGui::Button("Copy text"))
-                g_clipboard->CopyText(infos);
+                g_clipboard->CopyText(version_infos);
             ImGui::EndChild();
             ImGui::TreePop();
         }
@@ -1134,7 +1122,6 @@ void ScreenshotTool::DrawOcrTools()
 
     const bool invalid_path  = HasError(InvalidPath);
     const bool invalid_model = HasError(InvalidModel);
-    const bool has_errors    = invalid_path || invalid_model;
 
     // --- Path input ---
     push_error_style(invalid_path);
@@ -1178,7 +1165,7 @@ void ScreenshotTool::DrawOcrTools()
     }
 
     // --- Extract button + result details ---
-    if (!has_errors)
+    if (!invalid_path && !invalid_model)
     {
         if (ImGui::Button("Extract Text"))
         {
@@ -1205,21 +1192,21 @@ void ScreenshotTool::DrawOcrTools()
             HelpMarker("If results seem off, try Edit > Optimize OCR for...");
         }
 
-        const auto& results = m_inputs.ocr_results;
-        if (results.confidence > 0 && ImGui::TreeNode("Details"))
+        if (m_inputs.ocr_results.confidence > 0 && ImGui::TreeNode("Details"))
         {
-            ImGui::Text("Confidence:");
+            ImGui::BulletText("Confidence:");
             ImGui::SameLine();
-            ImGui::TextColored(get_confidence_color(results.confidence), "%d%%", results.confidence);
-            ImGui::SameLine();
-            ImGui::Text("  PSM: %s", results.psm_str.c_str());
+            ImGui::TextColored(
+                get_confidence_color(m_inputs.ocr_results.confidence), "%d%%", m_inputs.ocr_results.confidence);
+
+            ImGui::BulletText("PSM: %s", m_inputs.ocr_results.psm_str.c_str());
             ImGui::TreePop();
         }
     }
 
     ImGui::InputTextMultiline("##source",
                               &m_inputs.ocr_results.data,
-                              ImVec2(-1, ImGui::GetTextLineHeight() * 10),
+                              ImVec2(-1, ImGui::GetTextLineHeight() * 8),
                               g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
     if (!m_inputs.ocr_results.data.empty())
@@ -1265,7 +1252,7 @@ void ScreenshotTool::DrawBarDecodeTools()
 
     ImGui::InputTextMultiline("##barcode",
                               &m_inputs.barcode_text,
-                              ImVec2(-1, ImGui::GetTextLineHeight() * 10),
+                              ImVec2(-1, ImGui::GetTextLineHeight() * 8),
                               g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
 
     if (!m_inputs.barcode_text.empty())

@@ -13,6 +13,7 @@
 #include "fmt/base.h"
 #include "fmt/color.h"
 #include "spdlog/spdlog.h"
+#include "version.h"
 
 namespace fs = std::filesystem;
 enum class SavingOp;
@@ -143,6 +144,18 @@ extern bool g_is_systray;  // old g_is_clipboard_server;
 extern int  g_sock;
 extern char g_sock_path[100];
 extern int  g_scr_w, g_scr_h;
+
+static inline const std::string version_infos = fmt::format(
+    "oshot v{} built from branch '{}' at {} commit '{}' ({}).\n"
+    "Date: {}\n"
+    "Tag: {}\n",
+    VERSION,
+    GIT_BRANCH,
+    GIT_DIRTY,
+    GIT_COMMIT_HASH,
+    GIT_COMMIT_MESSAGE,
+    GIT_COMMIT_DATE,
+    GIT_TAG);
 
 #ifdef __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height);

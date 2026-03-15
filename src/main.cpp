@@ -38,6 +38,9 @@
 
 using namespace Tray;
 
+// Avoid dragging glfw headers
+struct GLFWwindow;
+
 // [Win32] Our example includes a copy of glfw3.lib pre-compiled with VS2010 to maximize ease of testing and
 // compatibility with old VS compilers. To link with VS2010-era libraries, VS2015+ requires linking with
 // legacy_stdio_definitions.lib, which we do using this pragma. Your own project should not be affected, as you are
@@ -74,19 +77,8 @@ std::error_code ec;
 // Print the version and some other infos, then exit successfully
 static void version()
 {
-    fmt::print(
-        "oshot v{} built from branch '{}' at {} commit '{}' ({}).\n"
-        "Date: {}\n"
-        "Tag: {}\n",
-        VERSION,
-        GIT_BRANCH,
-        GIT_DIRTY,
-        GIT_COMMIT_HASH,
-        GIT_COMMIT_MESSAGE,
-        GIT_COMMIT_DATE,
-        GIT_TAG);
-
-    // if only everyone would not return error when querying the program version :(
+    fmt::print(FMT_COMPILE("{}"), version_infos);
+    fmt::print("\n");
     std::exit(EXIT_SUCCESS);
 }
 
@@ -97,22 +89,6 @@ static void help(bool invalid_opt = false)
     fmt::print("\n");
     std::exit(invalid_opt);
 }
-
-#ifndef _WIN32
-static bool recv_all(int fd, void* dst, size_t n)
-{
-    uint8_t* p = static_cast<uint8_t*>(dst);
-    while (n)
-    {
-        const ssize_t r = ::recv(fd, p, n, 0);
-        if (r <= 0)
-            return false;
-        p += static_cast<size_t>(r);
-        n -= static_cast<size_t>(r);
-    }
-    return true;
-}
-#endif
 
 // clang-format off
 // parseargs() but only for parsing the user config path trough args
@@ -217,11 +193,6 @@ static std::atomic<bool>       quit{ false };
 static bool                    do_capture = false;
 static capture_result_t        pending_image;
 static bool                    do_copy_image = false;
-
-struct GLFWwindow;
-
-// Avoid dragging glfw headers
-void extern_glfwTerminate();
 
 void exit_handler(int _)
 {
@@ -365,12 +336,20 @@ int main(int argc, char* argv[])
 #endif
 
 #ifdef __linux__
+    // AppRun prepends bundled libs to LD_LIBRARY_PATH so the AppImage is self-contained.
+    // Child processes (zenity, grim, etc.) inherit it and resolve against the bundled
+    // (older) libs instead of the host's, causing symbol version mismatches.
+    // AppRun saves the original value here, restore it so that spawned system binaries
+    // use the host libs.
     const char* orig = std::getenv("APPIMAGE_ORIG_LD_LIBRARY_PATH");
     if (orig)
         setenv("LD_LIBRARY_PATH", orig, 1);
     else
-        unsetenv("LD_LIBRARY_PATH");
+        unsetenv("LD_LIBRARY_PATH");  // not running from AppImage, clear any stale value
 
+    // Xlib is not thread-safe by default. We call it from both the render thread
+    // and the IPC/clipboard thread; this enables Xlib's internal locking.
+    // Must be called before glfwInit(), which opens a Display* immediately.
     XInitThreads();
 #endif
 
@@ -454,6 +433,19 @@ int main(int argc, char* argv[])
                     break;
                 continue;
             }
+
+            auto recv_all = [](int fd, void* dst, size_t n) {
+                uint8_t* p = static_cast<uint8_t*>(dst);
+                while (n)
+                {
+                    const ssize_t r = ::recv(fd, p, n, 0);
+                    if (r <= 0)
+                        return false;
+                    p += static_cast<size_t>(r);
+                    n -= static_cast<size_t>(r);
+                }
+                return true;
+            };
 
             char     type = 0;
             uint32_t len  = 0;
