@@ -1161,28 +1161,31 @@ void ScreenshotTool::DrawOcrTools()
     {
         if (ImGui::Button("Extract Text"))
         {
-            const Result<>& res = m_ocr_api.Configure(ocr_path.c_str(), ocr_model.c_str());
-            if (!res.ok())
-                SetError(FailedToScanOcr, res.error_v());
+            const Result<>& configure_res = m_ocr_api.Configure(ocr_path.c_str(), ocr_model.c_str());
+            if (!configure_res.ok())
+            {
+                SetError(FailedToScanOcr, configure_res.error_v());
+            }
             else
             {
-                ClearError(FailedToScanOcr);
                 Result<ocr_result_t> result = m_ocr_api.ExtractTextCapture(GetFinalImage(true));
                 if (result.ok())
+                {
+                    ClearError(FailedToScanOcr);
                     m_inputs.ocr_results = std::move(result.get());
+                }
+                else
+                {
+                    SetError(FailedToScanOcr, result.error_v());
+                }
             }
         }
 
+        ImGui::SameLine();
+        HelpMarker("If results seem off, try Edit > Optimize OCR for...");
+
         if (HasError(FailedToScanOcr))
-        {
-            ImGui::SameLine();
             ImGui::TextColored(k_error_color, "Failed to scan: %s", GetError(FailedToScanOcr).c_str());
-        }
-        else
-        {
-            ImGui::SameLine();
-            HelpMarker("If results seem off, try Edit > Optimize OCR for...");
-        }
 
         if (m_inputs.ocr_results.confidence > 0 && ImGui::TreeNode("Details"))
         {
