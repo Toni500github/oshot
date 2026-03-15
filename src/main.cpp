@@ -128,7 +128,7 @@ static bool parseargs(int argc, char* argv[], const fs::path& configFile)
     int opt = 0;
     int option_index = 0;
     opterr = 1; // re-enable since before we disabled for "invalid option" error
-    const char *optstring = "-Vhtgd:C:f:";
+    const char *optstring = "-Vhtgd:C:f:O:";
     static const struct option opts[] = {
         {"version", no_argument,       0, 'V'},
         {"help",    no_argument,       0, 'h'},
@@ -137,6 +137,7 @@ static bool parseargs(int argc, char* argv[], const fs::path& configFile)
         {"delay",   required_argument, 0, 'd'},
         {"config",  required_argument, 0, 'C'},
         {"source",  required_argument, 0, 'f'},
+        {"override",required_argument, 0, 'O'},
 
         {"debug",      no_argument,       0, "debug"_fnv1a16},
         {"gen-config", optional_argument, 0, "gen-config"_fnv1a16},
@@ -162,6 +163,8 @@ static bool parseargs(int argc, char* argv[], const fs::path& configFile)
                 help(); break;
             case 'f':
                 g_config->Runtime.source_file = optarg; break;
+            case 'O':
+                g_config->OverrideOption(optarg); break;
             case 'd':
                 g_config->OverrideOption("default.delay", std::atoi(optarg)); break;
             case 't':

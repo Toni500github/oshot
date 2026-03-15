@@ -180,7 +180,11 @@ int run_main_tool(const std::string& imgui_ini_path)
     for (const std::string& font : g_config->File.fonts)
     {
         const fs::path& path = get_font_path(font);
-        if (!path.empty() && fs::exists(path))
+        if (path.empty())
+        {
+            io.Fonts->AddFontDefault(&font_cfg);
+        }
+        else if (fs::exists(path))
         {
             io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, &font_cfg);
         }
@@ -197,6 +201,7 @@ int run_main_tool(const std::string& imgui_ini_path)
         font_cfg.MergeMode = true;
     }
 
+    // Start the overlay window
     {
         const Result<>& res = ss_tool.StartWindow();
         if (!res.ok())

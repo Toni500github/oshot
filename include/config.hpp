@@ -225,14 +225,15 @@ Lightweight Screenshot tool to extract text on the fly.
 GENERAL OPTIONS:
     -h, --help                  Print this help menu.
     -V, --version               Print version and other infos about the build.
-    -f, --source <PATH>         Path to the image to use as background (use '-' for reading from stdin)
+    -f, --source <PATH>         Path to the image to use as background (use '-' for reading from stdin).
     -C, --config <PATH>         Path to the config file to use (default: ~/.config/oshot/config.toml).
+    -O, --override <OPTION>     Override a config option (e.g "delay=200", "default.ocr-model='jpn'").
     -d, --delay <MILLIS>        Delay the app before acquiring the screenshot by milliseconds.
                                 Won't affect if using the -f flag
 
-    -g, --gui                   Only launch the GUI
-    -t, --tray                  Only launch system tray
-    --debug                     Print debug statments
+    -g, --gui                   Only launch the GUI.
+    -t, --tray                  Only launch system tray.
+    --debug                     Print debug statments.
     --gen-config [<PATH>]       Generate default config file. If PATH is omitted, saves to default location.
                                 Prompts before overwriting.
 )");

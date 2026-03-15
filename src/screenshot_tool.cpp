@@ -1126,7 +1126,7 @@ void ScreenshotTool::DrawOcrTools()
     // --- Path input ---
     push_error_style(invalid_path);
     draw_input_text_folder("Path", "##ocr_path", refresh_models, ocr_path);
-    pop_error_label(invalid_path, "Invalid path!");
+    pop_error_label(invalid_path, "Invalid!");
     ImGui::SameLine();
     HelpMarker("Full path to the OCR models (.traineddata). Supports drag-and-drop");
 
@@ -1161,7 +1161,7 @@ void ScreenshotTool::DrawOcrTools()
             }
             ImGui::EndCombo();
         }
-        pop_error_label(invalid_model, "Invalid model!");
+        pop_error_label(invalid_model, "Invalid!");
     }
 
     // --- Extract button + result details ---
