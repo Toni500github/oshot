@@ -20,7 +20,6 @@
 
 #include "clipboard.hpp"
 #include "config.hpp"
-#include "fmt/format.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3_loader.h"
 #include "imgui/imgui_internal.h"
@@ -30,18 +29,11 @@
 #include "tool_icons.h"
 #include "util.hpp"
 
-#if (!__has_include("version.h"))
-#  error "version.h not found, please generate it with ./scripts/generateVersion.sh"
-#else
-#  include "version.h"
-#endif
-
 #ifndef GL_NO_ERROR
 #  define GL_NO_ERROR 0
 #endif
 
 using namespace std::chrono_literals;
-using namespace spdlog;
 
 static constexpr ImVec4 k_error_color(1.0f, 0.0f, 0.0f, 1.0f);
 static constexpr ImVec2 origin(0, 0);

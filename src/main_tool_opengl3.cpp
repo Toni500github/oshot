@@ -20,8 +20,6 @@
 #    include <X11/Xlib.h>
 #  endif
 
-using namespace spdlog;
-
 GLFWwindow* window = nullptr;
 
 void glfw_error_callback(int i_error, const char* description);
@@ -231,7 +229,7 @@ int run_main_tool(const std::string& imgui_ini_path)
         else
         {
             if (!font.empty())
-                ::warn("Font '{}' is not found", font);
+                warn("Font '{}' is not found", font);
             continue;
         }
 

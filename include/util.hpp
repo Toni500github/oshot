@@ -203,6 +203,18 @@ template <typename... Args>
 }
 
 template <typename... Args>
+inline void error(fmt::format_string<Args...> fmt, Args&&... args) noexcept
+{
+#ifdef _WIN32
+    MessageBox(nullptr,
+               fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(),
+               "Error",
+               MB_ICONERROR | MB_OK);
+#endif
+    spdlog::error(fmt, args...);
+}
+
+template <typename... Args>
 inline void warn(fmt::format_string<Args...> fmt, Args&&... args) noexcept
 {
 #ifdef _WIN32

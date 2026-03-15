@@ -36,8 +36,6 @@ void extern_glfwSwapInterval(int v)
 
 GLFWwindow* window = nullptr;
 
-using namespace spdlog;
-
 void minimize_window()
 {
     glfwIconifyWindow(window);
@@ -191,7 +189,7 @@ int run_main_tool(const std::string& imgui_ini_path)
         else
         {
             if (!font.empty())
-                ::warn("Font '{}' is not found", font);
+                warn("Font '{}' is not found", font);
             continue;
         }
 

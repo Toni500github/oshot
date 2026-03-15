@@ -14,8 +14,6 @@
 #include "screen_capture.hpp"
 #include "util.hpp"
 
-using namespace spdlog;
-
 // --------------------
 // OCR
 // --------------------
@@ -45,7 +43,7 @@ static tesseract::PageSegMode choose_psm(int w, int h)
     const size_t area   = static_cast<size_t>(w) * h;
     const float  aspect = (h > 0) ? static_cast<float>(w) / static_cast<float>(h) : 1.0f;
 
-    debug("Choosing PSM, area: {}*{}={}, aspect: {}", w, h, area, aspect);
+    spdlog::debug("Choosing PSM, area: {}*{}={}, aspect: {}", w, h, area, aspect);
 
     // Single character: tiny and roughly square
     if (area < 2'500 && aspect > 0.3f && aspect < 3.0f)
