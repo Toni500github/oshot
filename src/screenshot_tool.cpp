@@ -1462,12 +1462,12 @@ void ScreenshotTool::DrawAnnotations()
         }
     };
 
-    // Render current annotation being drawn
-    if (m_is_drawing)
-        draw_annotation(m_current_annotation);
-
     for (const annotation_t& ann : m_annotations)
         draw_annotation(ann);
+
+    // Render current annotation being drawn on top of committed ones
+    if (m_is_drawing)
+        draw_annotation(m_current_annotation);
 }
 
 void ScreenshotTool::Cancel()
