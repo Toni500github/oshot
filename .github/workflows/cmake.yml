@@ -29,24 +29,44 @@ jobs:
           echo "Version: $version"
 
   build:
-    name: Build on ${{ matrix.os }}
+    name: Build (${{ matrix.artifact-name }})
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, ubuntu-22.04, macos-latest, macos-15-intel, windows-latest ]
+        include:
+          - os: ubuntu-latest
+            artifact-name: linux
+            package-file: package/oshot-linux.zip
+
+          - os: ubuntu-22.04
+            artifact-name: linux-appimage
+            package-file: package/oshot-appimage.zip
+
+          - os: macos-latest
+            artifact-name: macos-arm64
+            package-file: package/oshot-macos-arm64.zip
+
+          - os: macos-15-intel
+            artifact-name: macos-x86_64
+            package-file: package/oshot-macos-x86_64.zip
+
+          - os: windows-latest
+            artifact-name: windows
+            package-file: package/oshot-windows.zip
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive'
+          submodules: recursive
           fetch-depth: 0
 
+      # Dependencies
       - name: Install dependencies (Linux)
-        if: contains(matrix.os, 'ubuntu')
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update && sudo apt-get purge firefox -y
           sudo apt-get install -y \
@@ -70,14 +90,14 @@ jobs:
             libzbar-dev \
             libappindicator3-dev
 
-      - name: Install dependencies (MacOS)
-        if: contains(matrix.os, 'macos')
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
         run: |
           brew update && brew upgrade || true
           brew install cmake glfw tesseract leptonica zbar curl dylibbundler
 
       - name: Install dependencies (Windows)
-        if: matrix.os == 'windows-latest'
+        if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
           update: true
@@ -102,8 +122,9 @@ jobs:
             mingw-w64-x86_64-libtiff
             mingw-w64-x86_64-curl
 
+      # Build
       - name: Build project (Linux)
-        if: contains(matrix.os, 'ubuntu')
+        if: runner.os == 'Linux'
         run: |
           ./scripts/generateVersion.sh
           mkdir -p build
@@ -111,8 +132,8 @@ jobs:
           make -C build
           ./build/oshot --version
 
-      - name: Build project (MacOS)
-        if: contains(matrix.os, 'macos')
+      - name: Build project (macOS)
+        if: runner.os == 'macOS'
         run: |
           ./scripts/generateVersion.sh
           BREW=$(brew --prefix)
@@ -124,30 +145,28 @@ jobs:
           make -C build
 
       - name: Build project (Windows)
-        if: matrix.os == 'windows-latest'
+        if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          #mingw32-make all DEBUG=0 WINDOWS_CMD=0
           ./scripts/generateVersion.sh
           mkdir -p build
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWINDOWS_CMD=ON
           ninja -C build
 
-      - name: Prepare Linux package
-        if: matrix.os == 'ubuntu-latest'
+      # Package
+      - name: Package Linux binary
+        if: matrix.artifact-name == 'linux'
         run: |
           mkdir -p package/oshot/models
           cp ./build/oshot package/oshot/
-          echo "#!/bin/bash" > package/oshot/install.sh
-          echo "cp oshot /usr/local/bin/oshot" >> package/oshot/install.sh
+          printf '#!/bin/bash\ncp oshot /usr/local/bin/oshot\n' > package/oshot/install.sh
           chmod +x package/oshot/install.sh package/oshot/oshot
           wget https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -O package/oshot/models/eng.traineddata
           wget https://github.com/matomo-org/travis-scripts/raw/refs/heads/master/fonts/Arial.ttf -O package/oshot/Arial.ttf
-          cd package
-          zip -r oshot-linux.zip oshot/
+          cd package && zip -r oshot-linux.zip oshot/
 
-      - name: Prepare AppImage package
-        if: matrix.os == 'ubuntu-22.04'
+      - name: Package Linux AppImage
+        if: matrix.artifact-name == 'linux-appimage'
         run: |
           mkdir -p package/oshot/models
           ./scripts/create_appimage.sh ./build/oshot oshot-x86_64.AppImage
@@ -155,11 +174,10 @@ jobs:
           mv oshot-x86_64.AppImage package/oshot/
           wget https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -O package/oshot/models/eng.traineddata
           wget https://github.com/matomo-org/travis-scripts/raw/refs/heads/master/fonts/Arial.ttf -O package/oshot/Arial.ttf
-          cd package
-          zip -r oshot-appimage.zip oshot/
+          cd package && zip -r oshot-appimage.zip oshot/
 
-      - name: Prepare macOS bundle
-        if: contains(matrix.os, 'macos')
+      - name: Package macOS bundle
+        if: runner.os == 'macOS'
         run: |
           mkdir -p package/oshot/models
           ARCH=$(uname -m)
@@ -167,24 +185,22 @@ jobs:
           mv oshot-macos-${ARCH}.dmg package/oshot/
           curl -L https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -o package/oshot/models/eng.traineddata
           curl -L https://github.com/matomo-org/travis-scripts/raw/refs/heads/master/fonts/Arial.ttf -o package/oshot/Arial.ttf
-          cd package
-          zip -r oshot-macos-${ARCH}.zip oshot/
+          cd package && zip -r oshot-macos-${ARCH}.zip oshot/
 
-      - name: Prepare Windows package
-        if: matrix.os == 'windows-latest'
+      - name: Package Windows binary
+        if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           mkdir -p package/oshot/models
           cp ./build/oshot.exe ./oshot.ico package/oshot/
-          # Copy required DLLs
           ldd ./build/oshot.exe | grep -i mingw | awk '{print $3}' | xargs -I {} cp {} package/oshot/ || true
           curl -L https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -o package/oshot/models/eng.traineddata
-          cd package
-          zip -r oshot-windows.zip oshot/
+          cd package && zip -r oshot-windows.zip oshot/
 
-      - name: Upload build artifacts
+      # Upload artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.os }}-packages
-          path: package/*.zip
+          name: ${{ matrix.artifact-name }}-package
+          path: ${{ matrix.package-file }}
           if-no-files-found: error
