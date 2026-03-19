@@ -109,7 +109,7 @@ struct annotation_t
 class ScreenshotTool
 {
 public:
-    ScreenshotTool() : m_io(dummy), m_inputs{ g_config->File.ocr_path, g_config->File.ocr_model, {}, "", {}, "" } {}
+    ScreenshotTool() : m_io(dummy), m_inputs{ g_config->File.ocr_path, g_config->File.ocr_model, {}, "", {}, "", "" } {}
 
     Result<>          Start();
     Result<>          StartWindow();
@@ -175,6 +175,7 @@ private:
         zbar_result_t zbar_scan_result;
 
         std::string ann_font;
+        std::string resolved_ann_font_path;
     };
 
     ImGuiIO&         m_io;

@@ -488,9 +488,8 @@ int main(int argc, char* argv[])
                     continue;
 
                 // Strip the 8-byte header
-                std::vector<uint8_t> pixel_data(std::make_move_iterator(payload.begin() + 8),
-                                                std::make_move_iterator(payload.end()));
-                capture_result_t     cap{ std::move(pixel_data), w, h };
+                payload.erase(payload.begin(), payload.begin() + 8);
+                capture_result_t cap{ std::move(payload), w, h };
                 {
                     std::lock_guard lk(mtx);
                     pending_image = std::move(cap);

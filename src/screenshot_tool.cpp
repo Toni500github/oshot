@@ -230,8 +230,9 @@ Result<> ScreenshotTool::StartWindow()
     m_io    = ImGui::GetIO();
     m_state = ToolState::Selecting;
 
-    m_inputs.ann_font = g_config->File.fonts.size() > 0 ? g_config->File.fonts[0] : "";
-    m_show_text_tools = g_config->File.show_text_tools;
+    m_inputs.ann_font               = g_config->File.fonts.size() > 0 ? g_config->File.fonts[0] : "";
+    m_show_text_tools               = g_config->File.show_text_tools;
+    m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string();
 
     fit_to_screen(m_screenshot);
     RefreshOcrModels();
@@ -526,8 +527,7 @@ void ScreenshotTool::HandleAnnotationInput()
             if (ImGui::IsWindowAppearing())
                 ImGui::SetKeyboardFocusHere();
 
-            ImFont* ann_font =
-                CacheAndGetFont(get_font_path(m_inputs.ann_font).string(), m_current_annotation.thickness);
+            ImFont* ann_font = CacheAndGetFont(m_inputs.resolved_ann_font_path, m_current_annotation.thickness);
             ImGui::PushFont(ann_font);
 
             ImGui::PushStyleColor(ImGuiCol_Text, m_current_annotation.color);
@@ -1308,7 +1308,12 @@ void ScreenshotTool::DrawAnnotationToolbar()
                 ImGui::TextUnformatted("Font Size");
                 static const char* font_filters[] = { "*.ttf", "*.otf", "*.woff", "*.woff2" };
                 draw_input_text_file(
-                    "Font name/path", "##font_path_ann_settings", font_filters, 4, [] {}, m_inputs.ann_font);
+                    "Font name/path",
+                    "##font_path_ann_settings",
+                    font_filters,
+                    4,
+                    [&] { m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string(); },
+                    m_inputs.ann_font);
             }
             else
             {
@@ -1376,6 +1381,9 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
 void ScreenshotTool::DrawAnnotations()
 {
+    static_assert(sizeof(point_t) == sizeof(ImVec2) && alignof(point_t) == alignof(ImVec2),
+                  "point_t and ImVec2 layout mismatch");
+
     ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
     const float dpi       = m_io.DisplayFramebufferScale.x;
 
@@ -1385,7 +1393,7 @@ void ScreenshotTool::DrawAnnotations()
 
     auto draw_text = [&](const annotation_t& ann, const ImVec2& p1) {
         const float font_size = ann.thickness > 8.0f ? ann.thickness : ImGui::GetFontSize();
-        ImFont*     font      = CacheAndGetFont(get_font_path(m_inputs.ann_font).string(), font_size);
+        ImFont*     font      = CacheAndGetFont(m_inputs.resolved_ann_font_path, font_size);
         draw_list->AddText(font, font_size, p1, ann.color, ann.text.c_str());
     };
 
@@ -1409,11 +1417,11 @@ void ScreenshotTool::DrawAnnotations()
     auto draw_pencil = [&](const annotation_t& ann, const float t) {
         if (ann.points.size() > 1)
         {
-            std::vector<ImVec2> pts;
-            pts.reserve(ann.points.size());
-            for (const auto& p : ann.points)
-                pts.emplace_back(p.x, p.y);
-            draw_list->AddPolyline(pts.data(), static_cast<int>(pts.size()), ann.color, ImDrawFlags_None, t);
+            draw_list->AddPolyline(reinterpret_cast<const ImVec2*>(ann.points.data()),
+                                   static_cast<int>(ann.points.size()),
+                                   ann.color,
+                                   ImDrawFlags_None,
+                                   t);
         }
     };
 
@@ -1706,7 +1714,7 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
                     break;
 
                 const float font_size = ann.thickness > 8.0f ? ann.thickness : ImGui::GetFontSize();
-                ImFont*     font      = CacheAndGetFont(get_font_path(m_inputs.ann_font).string(), font_size);
+                ImFont*     font      = CacheAndGetFont(m_inputs.resolved_ann_font_path, font_size);
                 if (!font || !font->OwnerAtlas)
                     break;
 

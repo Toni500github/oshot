@@ -100,6 +100,9 @@ execute_process(
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG=1>)
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    FMT_HEADER_ONLY=0
+)
 target_compile_options(
     ${PROJECT_NAME}
     PRIVATE

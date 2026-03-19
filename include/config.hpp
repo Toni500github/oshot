@@ -132,19 +132,19 @@ private:
     {
         const auto& overridePos = m_overrides.find(value.data());
 
-        // user wants a bool (overridable), we found an override matching the name, and the override is a bool.
-        if constexpr (std::is_same<T, bool>())
-            if (overridePos != m_overrides.end() && m_overrides.at(value.data()).value_type == ValueType::kBool)
-                return m_overrides.at(value.data()).bool_value;
-
-        // user wants a str (overridable), we found an override matching the name, and the override is a str.
-        if constexpr (std::is_same<T, std::string>())
-            if (overridePos != m_overrides.end() && m_overrides.at(value.data()).value_type == ValueType::kString)
-                return m_overrides.at(value.data()).string_value;
-
-        if constexpr (std::is_same<T, int>())
-            if (overridePos != m_overrides.end() && m_overrides.at(value.data()).value_type == ValueType::kInt)
-                return m_overrides.at(value.data()).int_value;
+        if (overridePos != m_overrides.end())
+        {
+            const auto& ov = overridePos->second;
+            if constexpr (std::is_same<T, bool>())
+                if (ov.value_type == ValueType::kBool)
+                    return ov.bool_value;
+            if constexpr (std::is_same<T, std::string>())
+                if (ov.value_type == ValueType::kString)
+                    return ov.string_value;
+            if constexpr (std::is_same<T, int>())
+                if (ov.value_type == ValueType::kInt)
+                    return ov.int_value;
+        }
 
         const std::optional<T>& ret = this->m_tbl.at_path(value).value<T>();
         if constexpr (toml::is_string<T>)

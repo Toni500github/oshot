@@ -160,6 +160,7 @@ static inline const std::string version_infos = fmt::format(
 #ifdef __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height);
 #endif
+std::vector<uint8_t> encode_to_png(const capture_result_t& cap);
 
 std::string replace_str(std::string& str, const std::string_view from, const std::string_view to);
 std::string select_image();

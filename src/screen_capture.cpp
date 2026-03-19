@@ -284,25 +284,22 @@ Result<capture_result_t> capture_full_screen_wayland()
     return Ok(std::move(result));
 }
 
-struct portal_capture_t
-{
-    std::string      png_path;
-    std::string      error_msg;
-    capture_result_t cap;
-} cap_portal;
-
 struct portal_state_t
 {
     GMainLoop* loop;
     guint      subscription_id;
     guint      timeout_id;  // tracked so we can cancel it before the stack frame is gone
+
+    std::string      png_path;
+    std::string      error_msg;
+    capture_result_t cap;
 };
 
 static gboolean on_timeout(gpointer user_data)
 {
-    portal_state_t* st   = reinterpret_cast<portal_state_t*>(user_data);
-    cap_portal.error_msg = "Timed out waiting for portal response (is xdg-desktop-portal running?)";
-    st->timeout_id       = 0;  // GLib will remove the source; mark it gone so cleanup skips it
+    portal_state_t* st = reinterpret_cast<portal_state_t*>(user_data);
+    st->error_msg      = "Timed out waiting for portal response (is xdg-desktop-portal running?)";
+    st->timeout_id     = 0;  // GLib will remove the source; mark it gone so cleanup skips it
     g_main_loop_quit(st->loop);
     return G_SOURCE_REMOVE;
 }
@@ -343,9 +340,9 @@ static void on_response(GDBusConnection* conn,
     g_variant_get(parameters, "(u@a{sv})", &response, &results);
 
     if (response != 0)
-        cap_portal.error_msg = fmt::format("Cancelled or failed (response={})", (unsigned)response);
+        st->error_msg = fmt::format("Cancelled or failed (response={})", (unsigned)response);
     else if (!(g_variant_lookup(results, "uri", "&s", &uri) && uri))
-        cap_portal.error_msg = "Success, but portal returned no uri";
+        st->error_msg = "Success, but portal returned no uri";
 
     if (results)
         g_variant_unref(results);
@@ -359,13 +356,13 @@ static void on_response(GDBusConnection* conn,
     const Result<std::string>& res = uri_to_path(uri);
     if (res.ok())
     {
-        cap_portal.png_path  = res.get();
-        cap_portal.error_msg = "";
+        st->png_path  = res.get();
+        st->error_msg = "";
     }
     else
     {
-        cap_portal.png_path  = "";
-        cap_portal.error_msg = res.error_v();
+        st->png_path  = "";
+        st->error_msg = res.error_v();
     }
 
     g_main_loop_quit(st->loop);
@@ -373,17 +370,16 @@ static void on_response(GDBusConnection* conn,
 
 Result<capture_result_t> capture_full_screen_portal()
 {
-    cap_portal = {};
+    portal_state_t st{};
     warn("Fallback to portal capture");
 
     GError*          error = nullptr;
     GDBusConnection* bus   = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
     if (!bus)
     {
-        cap_portal.error_msg =
-            "Failed to connect to session bus: " + std::string(error->message ? error->message : "Unknown");
+        st.error_msg = "Failed to connect to session bus: " + std::string(error->message ? error->message : "Unknown");
         g_error_free(error);
-        return Err(cap_portal.error_msg);
+        return Err(st.error_msg);
     }
 
     // Call Screenshot portal synchronously so we can fail loudly if the service isn't there.
@@ -402,10 +398,10 @@ Result<capture_result_t> capture_full_screen_portal()
 
     if (!reply)
     {
-        cap_portal.error_msg = "Portal call failed: " + std::string(error->message ? error->message : "Unknown");
+        st.error_msg = "Portal call failed: " + std::string(error->message ? error->message : "Unknown");
         g_error_free(error);
         g_object_unref(bus);
-        return Err(cap_portal.error_msg);
+        return Err(st.error_msg);
     }
 
     const char* request_path = nullptr;
@@ -418,7 +414,6 @@ Result<capture_result_t> capture_full_screen_portal()
         return Err("Portal returned an empty request handle");
     }
 
-    portal_state_t st;
     st.loop            = g_main_loop_new(nullptr, FALSE);
     st.subscription_id = 0;
     st.timeout_id      = 0;
@@ -457,73 +452,66 @@ Result<capture_result_t> capture_full_screen_portal()
     g_main_loop_unref(st.loop);
     g_object_unref(bus);
 
-    if (cap_portal.png_path.empty())
+    if (st.png_path.empty())
     {
-        if (cap_portal.error_msg.empty())
+        if (st.error_msg.empty())
             return Err("Failed to retrieve uri path to screenshot PNG");
-        return Err(cap_portal.error_msg);
+        return Err(st.error_msg);
     }
 
     int      w = 0, h = 0, comp = 0;
-    uint8_t* rgba = stbi_load(cap_portal.png_path.c_str(), &w, &h, &comp, STBI_rgb_alpha);
+    uint8_t* rgba = stbi_load(st.png_path.c_str(), &w, &h, &comp, STBI_rgb_alpha);
 
     if (!rgba)
     {
         const char* reason = stbi_failure_reason();
-        unlink(cap_portal.png_path.c_str());
+        unlink(st.png_path.c_str());
         return Err("Failed to read PNG data: " + std::string(reason ? reason : "Unknown"));
     }
 
-    cap_portal.cap.w = w;
-    cap_portal.cap.h = h;
-    cap_portal.cap.data.assign(rgba, rgba + (static_cast<size_t>(w) * h * 4));
+    st.cap.w = w;
+    st.cap.h = h;
+    st.cap.data.assign(rgba, rgba + (static_cast<size_t>(w) * h * 4));
     stbi_image_free(rgba);
 
     // The portal backend (on KDE mostly) writes a permanent file to ~/Pictures named "Screenshot_*.png".
     // Delete it now that we have the pixels in memory.
-    unlink(cap_portal.png_path.c_str());
+    unlink(st.png_path.c_str());
 
     // The portal always captures the full virtual desktop on multi-monitor
     // setups. Crop down to the monitor that contains the cursor.
     // XRandR works on native X11 and on KDE/GNOME Wayland via XWayland.
     {
         int mx = 0, my = 0, mw = 0, mh = 0;
-        if (get_cursor_monitor_xrandr(nullptr, mx, my, mw, mh) && (cap_portal.cap.w > mw || cap_portal.cap.h > mh))
+        if (get_cursor_monitor_xrandr(nullptr, mx, my, mw, mh) && (st.cap.w > mw || st.cap.h > mh))
         {
-            debug("Portal: cropping {}x{} capture to monitor {}x{}+{}+{}",
-                  cap_portal.cap.w,
-                  cap_portal.cap.h,
-                  mw,
-                  mh,
-                  mx,
-                  my);
+            debug("Portal: cropping {}x{} capture to monitor {}x{}+{}+{}", st.cap.w, st.cap.h, mw, mh, mx, my);
 
             const int x0    = std::max(0, mx);
             const int y0    = std::max(0, my);
-            const int x1    = std::min(cap_portal.cap.w, mx + mw);
-            const int y1    = std::min(cap_portal.cap.h, my + mh);
+            const int x1    = std::min(st.cap.w, mx + mw);
+            const int y1    = std::min(st.cap.h, my + mh);
             const int new_w = x1 - x0;
             const int new_h = y1 - y0;
 
             if (new_w > 0 && new_h > 0)
             {
-                const int            src_stride = cap_portal.cap.w;
+                const int            src_stride = st.cap.w;
                 std::vector<uint8_t> cropped(static_cast<size_t>(new_w) * new_h * 4);
                 for (int row = 0; row < new_h; ++row)
                 {
-                    const uint8_t* src =
-                        cap_portal.cap.data.data() + (static_cast<size_t>(y0 + row) * src_stride + x0) * 4;
-                    uint8_t* dst = cropped.data() + static_cast<size_t>(row) * new_w * 4;
+                    const uint8_t* src = st.cap.data.data() + (static_cast<size_t>(y0 + row) * src_stride + x0) * 4;
+                    uint8_t*       dst = cropped.data() + static_cast<size_t>(row) * new_w * 4;
                     std::memcpy(dst, src, static_cast<size_t>(new_w) * 4);
                 }
-                cap_portal.cap.data = std::move(cropped);
-                cap_portal.cap.w    = new_w;
-                cap_portal.cap.h    = new_h;
+                st.cap.data = std::move(cropped);
+                st.cap.w    = new_w;
+                st.cap.h    = new_h;
             }
         }
     }
 
-    return Ok(std::move(cap_portal.cap));
+    return Ok(std::move(st.cap));
 }
 
 #else

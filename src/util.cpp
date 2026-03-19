@@ -220,6 +220,14 @@ int get_screen_dpi()
 }
 #endif
 
+std::vector<uint8_t> encode_to_png(const capture_result_t& cap)
+{
+    std::vector<uint8_t> png;
+    png.reserve(static_cast<size_t>(cap.w) * cap.h * 4);
+    svpng(&png, cap.w, cap.h, cap.view().data(), 1);
+    return png;
+}
+
 void fit_to_screen(capture_result_t& img)
 {
     const int img_w = img.w;
@@ -306,11 +314,7 @@ Result<capture_result_t> load_image_rgba(const std::string& path)
 
 Result<> save_png(SavingOp op, const capture_result_t& img)
 {
-    std::vector<uint8_t> data;
-    data.reserve(static_cast<size_t>(img.w) * img.h * 4);
-
-    svpng(&data, img.w, img.h, img.view().data(), 1);
-    const size_t size = data.size();
+    const std::vector<uint8_t>& data = encode_to_png(img);
 
     if (op == SavingOp::Clipboard)
         return g_clipboard->CopyImage(img);
@@ -335,7 +339,7 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
     if (!fp)
         return Err("Failed to open file to write");
 
-    fwrite(data.data(), 1, size, fp);
+    fwrite(data.data(), 1, data.size(), fp);
     fclose(fp);
     return Ok();
 }

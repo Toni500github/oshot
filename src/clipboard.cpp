@@ -7,14 +7,6 @@
 #include "clip/clip.h"
 #include "socket.hpp"
 
-#define SVPNG_LINKAGE inline
-#define SVPNG_OUTPUT  std::vector<uint8_t>* output
-#define SVPNG_PUT(u)  output->push_back(static_cast<uint8_t>(u))
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wfree-nonheap-object"
-#include "svpng.h"
-#pragma GCC diagnostic pop
-
 // used to track the wl-copy process
 static int wlcopy_pid = -1;
 
@@ -113,10 +105,7 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
 
     if (m_session == SessionType::Wayland)
     {
-        std::vector<uint8_t> png;
-        png.reserve(static_cast<size_t>(cap.w) * cap.h * 4);
-
-        svpng(&png, cap.w, cap.h, cap.view().data(), 1);
+        const std::vector<uint8_t>& png = encode_to_png(cap);
 
         const Result<int>& res = start_wlcopy("image/png");
         if (!res.ok())
