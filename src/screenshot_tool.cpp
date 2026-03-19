@@ -1265,8 +1265,18 @@ void ScreenshotTool::DrawAnnotationToolbar()
     const float sel_y = m_selection.get_y();
     const float sel_h = m_selection.get_height();
 
-    const ImVec2 toolbar_pos(sel_x, sel_y + sel_h + 10);
+    // Prefer placing the toolbar below the selection; flip it above when it
+    // would otherwise run off the bottom of the screen.
+    // The height estimate mirrors the approach used in HandleColorPickerInput(): one row of 24 px
+    // image-buttons plus window padding is comfortably covered by 40 px.
+    constexpr float k_toolbar_offset   = 10.0f;
+    constexpr float k_approx_toolbar_h = 40.0f;
+    const float     display_h          = ImGui::GetIO().DisplaySize.y;
+    const float     toolbar_y          = (sel_y + sel_h + k_toolbar_offset + k_approx_toolbar_h > display_h)
+                                             ? sel_y - k_approx_toolbar_h - k_toolbar_offset
+                                             : sel_y + sel_h + k_toolbar_offset;
 
+    const ImVec2 toolbar_pos(sel_x, toolbar_y);
     ImGui::SetNextWindowPos(toolbar_pos);
     ImGui::Begin("##annotation_toolbar",
                  nullptr,
