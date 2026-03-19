@@ -2,7 +2,7 @@
 
 A simple and lightweight tool for extracting text from a screenshot/image (on the fly)
 
-## Optimizations
+## Optimization
 
 - **Screen capture uses the fastest available hardware path per platform**: DXGI Desktop Duplication on Windows acquires frames directly from the GPU's front buffer via a staging texture mapped for CPU read, avoiding any GDI software rasterization; XGetImage on X11 takes a direct 32bpp packed-pixel fast path (a single `memcpy`-equivalent row scan), falling back to the `XGetPixel` generic path only when the pixel format does not match the expected mask layout. The screen is then kept as a single RGBA buffer in memory for the entire session; all cropping, annotation rendering, and encoding operate on that buffer without re-capturing.
 
