@@ -65,8 +65,6 @@ Result<int> start_wlcopy(const std::string_view mime_type = "text/plain;charset=
 
 Result<> Clipboard::CopyText(const std::string& text)
 {
-    // Fuck you, fuck your software monopoly
-    // and fuck your stupid standards that nobody wants to follow
     if (m_session == SessionType::Wayland)
     {
         const Result<int>& res = start_wlcopy();
@@ -85,6 +83,7 @@ Result<> Clipboard::CopyText(const std::string& text)
         return Ok();
     }
 
+    // Linux only, external client with systray already running 
     if (!g_is_systray && !OSHOT_TOOL_ON_MAIN_THREAD && g_sender->IsConnected())
     {
         const Result<>& res = g_sender->Send(text);
@@ -105,14 +104,13 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
 
     if (m_session == SessionType::Wayland)
     {
-        const std::vector<uint8_t>& png = encode_to_png(cap);
-
         const Result<int>& res = start_wlcopy("image/png");
         if (!res.ok())
             return res.error();
 
-        int fd = res.get();
+        const std::vector<uint8_t>& png = encode_to_png(cap);
 
+        const int fd = res.get();
         if (write(fd, reinterpret_cast<const char*>(png.data()), png.size()) == -1)
         {
             close(fd);
@@ -124,6 +122,7 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
         return Ok();
     }
 
+    // Linux only, external client with systray already running 
     if (!g_is_systray && !OSHOT_TOOL_ON_MAIN_THREAD && g_sender->IsConnected())
     {
         const size_t         size = static_cast<size_t>(cap.w) * cap.h * 4;

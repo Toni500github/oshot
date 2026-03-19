@@ -89,8 +89,7 @@ SessionType get_session_type()
 Result<capture_result_t> capture_full_screen_portal();
 
 // Query the geometry of the monitor under the cursor via Xlib + XRandR.
-// Works on native X11 and on any Wayland compositor that runs XWayland
-// (KDE, GNOME, etc.) because $DISPLAY is set in those sessions.
+// Works on native X11 and on any Wayland compositor that runs XWayland.
 // Returns false if X is unavailable (pure Wayland without XWayland).
 static bool get_cursor_monitor_xrandr(Display* display, int& out_x, int& out_y, int& out_w, int& out_h)
 {

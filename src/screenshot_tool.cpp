@@ -1040,7 +1040,7 @@ void ScreenshotTool::DrawMenuItems()
             return text;
         };
 
-        // Center image
+        // Centered image
         ImGui::SetCursorPosX((window_width - 24.0f) / 2);
         ImGui::Image(logo_texture, ImVec2(32, 32));
 
@@ -1053,7 +1053,7 @@ void ScreenshotTool::DrawMenuItems()
         ImGui::Text("%s", text_display.data());
         ImGui::Spacing();
 
-        // Rest remains left-aligned as normal
+        // More version details
         text_display = "More Details:";
         if (ImGui::TreeNode(text_display.data()))
         {

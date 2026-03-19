@@ -314,8 +314,6 @@ Result<capture_result_t> load_image_rgba(const std::string& path)
 
 Result<> save_png(SavingOp op, const capture_result_t& img)
 {
-    const std::vector<uint8_t>& data = encode_to_png(img);
-
     if (op == SavingOp::Clipboard)
         return g_clipboard->CopyImage(img);
 
@@ -339,6 +337,7 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
     if (!fp)
         return Err("Failed to open file to write");
 
+    const std::vector<uint8_t>& data = encode_to_png(img);
     fwrite(data.data(), 1, data.size(), fp);
     fclose(fp);
     return Ok();
