@@ -100,9 +100,6 @@ execute_process(
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG=1>)
-target_compile_definitions(${PROJECT_NAME} PRIVATE
-    FMT_HEADER_ONLY=0
-)
 target_compile_options(
     ${PROJECT_NAME}
     PRIVATE
@@ -200,6 +197,7 @@ enable_lto(fmt)
 
 target_include_directories(fmt PUBLIC include/libs)
 target_compile_features(fmt PUBLIC cxx_std_20)
+target_compile_definitions(fmt PUBLIC FMT_HEADER_ONLY=0)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE fmt)
 
