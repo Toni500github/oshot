@@ -35,9 +35,10 @@
 
 using namespace std::chrono_literals;
 
-static constexpr ImVec4 k_error_color(1.0f, 0.0f, 0.0f, 1.0f);
+static constexpr ImVec4 error_color(1.0f, 0.0f, 0.0f, 1.0f);
 static constexpr ImVec2 origin(0, 0);
-static void*            logo_texture = nullptr;
+static void*            logo_texture            = nullptr;
+static bool             show_preferences_window = false;
 
 static std::vector<std::string> get_training_data_list(const std::string& path)
 {
@@ -192,6 +193,27 @@ static ImVec4 get_confidence_color(const int confidence)
     return ImVec4(0, 1, 0, 1);  // green
 }
 
+static bool create_timed_button(const std::string_view label1,
+                                const std::string_view label2,
+                                const float            delay_secs = 1.5f)
+{
+    static bool  just_pressed = false;
+    static float copy_time    = 0.0;
+
+    const double now = ImGui::GetTime();
+    if (just_pressed && now - copy_time > delay_secs)
+        just_pressed = false;
+
+    if (ImGui::Button(!just_pressed ? label1.data() : label2.data()))
+    {
+        just_pressed = true;
+        copy_time    = now;
+        return true;
+    }
+
+    return false;
+}
+
 Result<> ScreenshotTool::Start()
 {
     Result<capture_result_t> result{ Err() };
@@ -323,6 +345,7 @@ void ScreenshotTool::RenderOverlay()
     {
         ImGui::Begin("Text tools", &m_show_text_tools, ImGuiWindowFlags_MenuBar);
         DrawMenuItems();
+        DrawPreferencesWindow();
         DrawOcrTools();
         DrawBarDecodeTools();
         ImGui::End();
@@ -1006,6 +1029,7 @@ void ScreenshotTool::DrawMenuItems()
                 ImGui::RadioButton("Big Region", &g_config->Runtime.preferred_psm, tesseract::PSM_AUTO);
                 ImGui::EndMenu();
             }
+
             ImGui::Separator();
             ImGui::MenuItem("View Handles", "CTRL+G", &g_config->Runtime.enable_handles);
             ImGui::MenuItem("Anns. in image scans", "", &g_config->File.render_anns);
@@ -1013,6 +1037,10 @@ void ScreenshotTool::DrawMenuItems()
                 extern_glfwSwapInterval(static_cast<int>(g_config->File.enable_vsync));
             if (ImGui::MenuItem("Allow text edit", "CTRL+E", &g_config->File.allow_out_edit))
                 ImGui::ClearActiveID();
+
+            ImGui::Separator();
+            if (ImGui::MenuItem("Preferences..."))
+                show_preferences_window = true;
 
             ImGui::EndMenu();
         }
@@ -1098,14 +1126,14 @@ void ScreenshotTool::DrawOcrTools()
 
     auto push_error_style = [](bool cond) {
         if (cond)
-            ImGui::PushStyleColor(ImGuiCol_Text, k_error_color);
+            ImGui::PushStyleColor(ImGuiCol_Text, error_color);
     };
     auto pop_error_label = [](bool cond, const char* label) {
         if (cond)
         {
             ImGui::PopStyleColor();
             ImGui::SameLine();
-            ImGui::TextColored(k_error_color, "%s", label);
+            ImGui::TextColored(error_color, "%s", label);
         }
     };
 
@@ -1182,10 +1210,17 @@ void ScreenshotTool::DrawOcrTools()
         }
 
         ImGui::SameLine();
-        HelpMarker("If results seem off, try Edit > Optimize OCR for...");
 
         if (HasError(FailedToScanOcr))
-            ImGui::TextColored(k_error_color, "Failed to scan: %s", GetError(FailedToScanOcr).c_str());
+        {
+            ImGui::SameLine();
+            ImGui::TextColored(error_color, "Failed to scan: %s", GetError(FailedToScanOcr).c_str());
+        }
+        else
+        {
+            ImGui::SameLine();
+            HelpMarker("If results seem off, try Edit > Optimize OCR for...");
+        }
 
         if (m_inputs.ocr_results.confidence > 0 && ImGui::TreeNode("Details"))
         {
@@ -1235,7 +1270,7 @@ void ScreenshotTool::DrawBarDecodeTools()
     if (HasError(FailedToScanBarCode))
     {
         ImGui::SameLine();
-        ImGui::TextColored(k_error_color, "Failed to decode: %s", GetError(FailedToScanBarCode).c_str());
+        ImGui::TextColored(error_color, "Failed to decode: %s", GetError(FailedToScanBarCode).c_str());
     }
     else if (!m_inputs.zbar_scan_result.datas.empty() && ImGui::TreeNode("Details"))
     {
@@ -1333,6 +1368,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
             }
 
             ImGui::Combo("Color picker", &item_picker, color_pickers, IM_ARRAYSIZE(color_pickers));
+
             switch (item_picker)
             {
                 case 0:
@@ -1387,6 +1423,223 @@ void ScreenshotTool::DrawAnnotationToolbar()
         m_annotations.pop_back();
 
     ImGui::End();
+}
+
+static void draw_preference_edit_config(const std::function<void()>& refresh_models_func)
+{
+    static std::string new_font;
+
+    ImGui::SeparatorText("Edit default config");
+    ImGui::Spacing();
+
+    // --- OCR path ---
+    ImGui::Text("Default OCR path");
+    ImGui::SameLine();
+    HelpMarker("Full path to the OCR models (.traineddata). Supports drag-and-drop.");
+    draw_input_text_folder("", "##ocr_path", refresh_models_func, g_config->File.ocr_path);
+    ImGui::Spacing();
+
+    // --- OCR model ---
+    ImGui::Text("Default OCR model");
+    ImGui::InputText("##config_ocr_model", &g_config->File.ocr_model);
+    ImGui::Spacing();
+
+    // --- Capture delay ---
+    ImGui::Text("Capture delay");
+    ImGui::SameLine();
+    HelpMarker(
+        "Delay before acquiring a screenshot (milliseconds).\n"
+        "Has no effect when opening an external image (e.g. -f flag).");
+    ImGui::InputInt("##config_delay", &g_config->File.delay, 5, 10);
+    ImGui::Spacing();
+
+    // --- Checkboxes ---
+    ImGui::Checkbox("Exclusive fullscreen##config_real_full_screen", &g_config->File.real_full_screen);
+    ImGui::SameLine();
+    HelpMarker(
+        "On some desktop environments (e.g. MATE) the compositor may make "
+        "the capture window look grainy. Enabling this uses exclusive fullscreen "
+        "to bypass the compositor.\n"
+        "Downside: the window may briefly take over the display on some setups.");
+
+    ImGui::Checkbox("Vertical sync (VSync)##config_vsync", &g_config->File.enable_vsync);
+    ImGui::SameLine();
+    HelpMarker(
+        "Renders in sync with your monitor's refresh rate for a smoother overlay, "
+        "at the cost of slightly more CPU/GPU usage.\n"
+        "Disable if the overlay feels sluggish.");
+
+    ImGui::Checkbox("Allow output edits##config_allow_out_edit", &g_config->File.allow_out_edit);
+
+    ImGui::Checkbox("Show text tools at startup##config_show_text_tools", &g_config->File.show_text_tools);
+
+    ImGui::Checkbox("Consider annotations when scanning##config_render_anns", &g_config->File.render_anns);
+    ImGui::SameLine();
+    HelpMarker("When enabled, annotations are included in the region passed to the text extractor.");
+
+    // --- Fonts section ---
+    ImGui::Dummy(ImVec2(0, 8));
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    ImGui::TextWrapped(
+        "Fonts for the application. Accepts an absolute path or a font name.\n"
+        "Combine multiple entries for multi-language support, e.g. "
+        "Roboto-Regular.ttf and NotoSerifCJK-Regular.ttc for CJK alongside Latin.");
+    ImGui::Spacing();
+
+    // Scrollable font list with remove buttons
+    const float list_height = ImGui::GetTextLineHeightWithSpacing() * 4.5f;
+    ImGui::BeginChild("##font_list", ImVec2(0, list_height), true);
+    for (size_t i = 0; i < g_config->File.fonts.size(); ++i)
+    {
+        ImGui::PushID(i);
+        if (ImGui::SmallButton("x"))
+        {
+            g_config->File.fonts.erase(g_config->File.fonts.begin() + i);
+            ImGui::PopID();
+            break;  // iterator invalidated; re-render next frame
+        }
+        ImGui::SameLine();
+        ImGui::TextUnformatted(g_config->File.fonts[i].c_str());
+        ImGui::PopID();
+    }
+
+    if (g_config->File.fonts.empty())
+        ImGui::TextDisabled("(no fonts configured - application default will be used)");
+
+    ImGui::EndChild();
+
+    ImGui::Spacing();
+    ImGui::Text("Add font: ");
+    ImGui::SameLine(0, 0);
+    if (ImGui::InputText("##add_font", &new_font, ImGuiInputTextFlags_ElideLeft | ImGuiInputTextFlags_EnterReturnsTrue))
+    {
+        if (!new_font.empty())
+            g_config->File.fonts.push_back(new_font);
+        new_font.clear();
+        ImGui::SetKeyboardFocusHere(-1);  // keep focus on the input
+    }
+}
+
+void ScreenshotTool::DrawPreferencesWindow()
+{
+    if (!show_preferences_window)
+        return;
+
+    static bool config_modified    = false;
+    static int  item_selected      = 0;
+    static bool prev_window_open   = false;
+    const bool  window_just_opened = !prev_window_open;
+
+    static Config::config_file_t snapshot;  // config state at the moment the window opened
+    static constexpr const char* items[2] = { "Defaults", "Wheel - Triangle" };
+
+    prev_window_open = true;
+
+    // Snapshot the config when the window first appears so Discard can restore it.
+    if (window_just_opened)
+        snapshot = g_config->File;
+
+    if (snapshot != g_config->File)
+        config_modified = true;
+
+    bool window_open = true;
+    ImGui::SetNextWindowSize(ImVec2(500, 440), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Preferences", &window_open, ImGuiWindowFlags_NoSavedSettings))
+    {
+        // [x] was clicked this frame: either close cleanly or ask first.
+        // OpenPopup must be called inside Begin/End, so we handle it here
+        // before rendering any content.
+        if (!window_open)
+        {
+            if (config_modified)
+                ImGui::OpenPopup("Unsaved changes##pref");
+            else
+                show_preferences_window = false;
+            // Either way, don't propagate to show_preferences_window yet,
+            // the window_open local resets to true next frame automatically.
+        }
+
+        // Left
+        ImGui::BeginChild("##left_panel", ImVec2(150, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX);
+        for (int i = 0; i < IM_ARRAYSIZE(items); i++)
+            if (ImGui::Selectable(items[i], item_selected == i, ImGuiSelectableFlags_SelectOnNav))
+                item_selected = i;
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+
+        // Right
+        ImGui::BeginGroup();
+        ImGui::BeginChild("##right_panel", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()));
+        switch (item_selected)
+        {
+            case 0: draw_preference_edit_config([&] { RefreshOcrModels(); }); break;
+        }
+        ImGui::EndChild();
+
+        // "Oh why not a switch case?" It's unreadable most of the time with big switch cases.
+        // The compiler is smart enough to make ts a switch case. Please trust the compiler instead of yourself
+        if (item_selected == 0)
+        {
+            if (config_modified && create_timed_button("Save", "Saved!"))
+            {
+                g_config->GenerateConfig(g_config->GetConfigPath(), true);
+                snapshot        = g_config->File;
+                config_modified = false;
+            }
+            if (config_modified)
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("Restart oshot for the new settings to take effect");
+            }
+        }
+        else if (item_selected == 1)
+        {
+            ImGui::TextUnformatted("Place holder for the moment");
+        }
+        ImGui::EndGroup();
+
+        // Confirmation modal
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+        if (ImGui::BeginPopupModal("Unsaved changes##pref", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::Text("You have unsaved changes. What would you like to do?");
+            ImGui::Spacing();
+
+            if (ImGui::Button("Save & Close", ImVec2(110, 0)))
+            {
+                g_config->GenerateConfig(g_config->GetConfigPath(), true);
+                snapshot                = g_config->File;
+                show_preferences_window = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Discard", ImVec2(80, 0)))
+            {
+                g_config->File          = snapshot;
+                show_preferences_window = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(80, 0)))
+            {
+                // Do nothing
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+    }
+    ImGui::End();
+
+    // Clean up tracking state after a confirmed close so the next open is fresh.
+    if (!show_preferences_window)
+    {
+        prev_window_open = false;
+        config_modified  = false;
+    }
 }
 
 void ScreenshotTool::DrawAnnotations()
@@ -1967,7 +2220,7 @@ void ScreenshotTool::CreateCopyTextButton(const std::string& text_copy)
     if (HasError(FailedToCopyText))
     {
         ImGui::SameLine();
-        ImGui::TextColored(k_error_color, "Failed to copy text: %s", GetError(FailedToCopyText).c_str());
+        ImGui::TextColored(error_color, "Failed to copy text: %s", GetError(FailedToCopyText).c_str());
     }
 }
 

@@ -11,6 +11,7 @@
 #include "util.hpp"
 
 Config::Config(const std::string& configFile, const std::string& configDir)
+    : m_config_path(configFile), m_config_dir_path(configDir)
 {
     if (!fs::exists(configDir))
     {
@@ -84,14 +85,31 @@ void Config::OverrideOption(const std::string& opt)
         die("looks like override value '{}' from '{}' is neither a bool, int or string value", value, name);
 }
 
-void Config::GenerateConfig(const std::string& filename)
+void Config::GenerateConfig(const std::string& filename, const bool force)
 {
-    if (fs::exists(filename))
-    {
-        if (!ask_user_yn(false, "WARNING: config file '{}' already exists. Do you want to overwrite it?", filename))
-            std::exit(1);
-    }
+    if (!force && fs::exists(filename) &&
+        !ask_user_yn(false, "WARNING: config file '{}' already exists. Do you want to overwrite it?", filename))
+        std::exit(1);
 
     auto f = fmt::output_file(filename.data());
-    f.print("{}", AUTOCONFIG);
+
+    std::string fonts_str;
+    if (!File.fonts.empty())
+    {
+        for (const std::string& font : File.fonts)
+            fonts_str += '\'' + font + "', ";
+        fonts_str.pop_back();  // ' '
+        fonts_str.pop_back();  // ','
+    }
+
+    f.print(AUTOCONFIG,
+            File.ocr_path,
+            File.ocr_model,
+            File.delay,
+            File.real_full_screen,
+            File.enable_vsync,
+            File.allow_out_edit,
+            File.show_text_tools,
+            File.render_anns,
+            fonts_str);
 }

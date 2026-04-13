@@ -37,15 +37,18 @@ public:
     // They can be overwritten from CLI arguments
     struct config_file_t
     {
-        std::string              ocr_path;
-        std::string              ocr_model;
+        std::string              ocr_path  = "./models";
+        std::string              ocr_model = "eng";
         std::vector<std::string> fonts;
-        int                      delay            = -1;
+        int                      delay            = 0;
         bool                     allow_out_edit   = false;
         bool                     real_full_screen = false;
         bool                     show_text_tools  = true;
         bool                     enable_vsync     = true;
         bool                     render_anns      = true;
+
+        // C++20: Automatic generation of ==, !=, <, <=, >, >=
+        auto operator<=>(const config_file_t&) const = default;
     } File;
 
     // Only from CLI arguments
@@ -62,6 +65,7 @@ public:
 #else
         bool debug_print = false;
 #endif
+        auto operator<=>(const runtime_settings_t&) const = default;
     } Runtime;
 
     /**
@@ -75,8 +79,9 @@ public:
     /**
      * Generate a config file
      * @param filename The config file path
+     * @param force Overwrite without asking
      */
-    void GenerateConfig(const std::string& filename);
+    void GenerateConfig(const std::string& filename, const bool force = false);
 
     /**
      * Override a config value from --override
@@ -116,11 +121,17 @@ public:
         m_overrides[key] = std::move(o);
     }
 
+    const std::string& GetConfigPath() const { return m_config_path; }
+    const std::string& GetConfigDirPath() const { return m_config_dir_path; }
+
 private:
     // Parsed config from loadConfigFile()
     toml::table m_tbl;
 
     std::unordered_map<std::string, override_config_value_t> m_overrides;
+
+    std::string m_config_path;
+    std::string m_config_dir_path;
 
     /**
      * Get value of config variables
@@ -182,41 +193,41 @@ extern std::unique_ptr<Config> g_config;
 inline constexpr std::string_view AUTOCONFIG = R"#([default]
 # Default Path to where we'll use all the '.traineddata' models.
 #ocr-path = "/usr/share/tessdata/"
-ocr-path = "./models"
+ocr-path = "{}"
 
 # Default OCR model.
-ocr-model = "eng"
+ocr-model = "{}"
 
 # Delay the app before acquiring a screenshot (in milliseconds)
 # Doesn't affect if opening external image (i.e. -f flag)
-#delay = 200
+delay = {}
 
 # On some desktop environments (e.g. MATE), the compositor may cause
 # the capture window to look grainy or pixelated. Enabling this uses exclusive
 # fullscreen mode which bypasses the compositor and fixes it.
 # Downside: the window may briefly take over the display on some setups.
-real-full-screen = false
+real-full-screen = {}
 
 # Controls vertical sync (VSync). When enabled, the capture window renders in sync
 # with your monitor's refresh rate, thus being smoother visually but uses slightly more CPU/GPU.
 # Disable if the overlay feels sluggish or unresponsive.
-vsync = true
+vsync = {}
 
 # Allow the extracted output to be editable.
-allow-text-edit = false
+allow-text-edit = {}
 
 # Display the text tools (OCR, Bar/QR code scan) by default.
-show-text-tools = true
+show-text-tools = {}
 
 # Consider annotations when scanning (true)
 # or only when saving the selection (false).
-annotations-in-text-tools = true
+annotations-in-text-tools = {}
 
 # Fonts to use for the application. Can be an absolute path, or just a name.
 # You can combine multiple fonts for multiple language support.
 # for example, using "Roboto-Regular.ttf" and "RobotoCJK-Regular.ttc" for Chinese, Japanese, and Korean support alongside English support.
 # If empty, or non-existent (or commented out), oshot will use the default font for ImGUI.
-fonts = ["Arial.ttf"]
+fonts = [{}]
 )#";
 
 inline constexpr std::string_view oshot_help = (R"(Usage: oshot [OPTIONS]...

@@ -106,6 +106,21 @@ struct annotation_t
     float                thickness = 3.0f;
 };
 
+// Contains user inputs, APIs results,
+// and maybe some user settings
+struct inputs_results_t
+{
+    std::string  ocr_path;
+    std::string  ocr_model;
+    ocr_result_t ocr_results;
+
+    std::string   barcode_text;
+    zbar_result_t zbar_scan_result;
+
+    std::string ann_font;
+    std::string resolved_ann_font_path;
+};
+
 class ScreenshotTool
 {
 public:
@@ -161,21 +176,6 @@ private:
         HandleHovered type;
         ImVec2        pos;
         ImRect        rect;
-    };
-
-    // Contains user inputs, APIs results,
-    // and maybe some user settings
-    struct inputs_results_t
-    {
-        std::string  ocr_path;
-        std::string  ocr_model;
-        ocr_result_t ocr_results;
-
-        std::string   barcode_text;
-        zbar_result_t zbar_scan_result;
-
-        std::string ann_font;
-        std::string resolved_ann_font_path;
     };
 
     ImGuiIO&         m_io;
@@ -239,6 +239,7 @@ private:
     void DrawOcrTools();
     void DrawBarDecodeTools();
     void DrawAnnotationToolbar();
+    void DrawPreferencesWindow();
 
     void UpdateHandleHoverState();
     void UpdateCursor();

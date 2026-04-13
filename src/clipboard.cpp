@@ -7,9 +7,6 @@
 #include "clip/clip.h"
 #include "socket.hpp"
 
-// used to track the wl-copy process
-static int wlcopy_pid = -1;
-
 #ifdef __linux__
 #  include <sys/wait.h>
 #  include <unistd.h>
@@ -20,6 +17,8 @@ static int wlcopy_pid = -1;
 Result<int> start_wlcopy(const std::string_view mime_type = "text/plain;charset=utf-8")
 {
 #ifdef __linux__
+    static int wlcopy_pid = -1;
+
     // stop if already launched
     if (wlcopy_pid > 0)
     {
@@ -83,7 +82,7 @@ Result<> Clipboard::CopyText(const std::string& text)
         return Ok();
     }
 
-    // Linux only, external client with systray already running 
+    // Linux only, external client with systray already running
     if (!g_is_systray && !OSHOT_TOOL_ON_MAIN_THREAD && g_sender->IsConnected())
     {
         const Result<>& res = g_sender->Send(text);
@@ -122,7 +121,7 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
         return Ok();
     }
 
-    // Linux only, external client with systray already running 
+    // Linux only, external client with systray already running
     if (!g_is_systray && !OSHOT_TOOL_ON_MAIN_THREAD && g_sender->IsConnected())
     {
         const size_t         size = static_cast<size_t>(cap.w) * cap.h * 4;
