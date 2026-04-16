@@ -139,6 +139,46 @@ constexpr size_t idx(E e) noexcept
 
 // Forward declaration
 struct capture_result_t;
+struct ImVec4;
+
+// taken from "fmt/color.h" with the addition of alpha.
+// useful in contexts where ImVec4 is not used.
+// Packed as 0xRRGGBBAA
+// clang-format off
+struct rgba
+{
+    constexpr rgba() : r(0), g(0), b(0), a(0) {}
+
+    constexpr rgba(uint8_t r_, uint8_t g_, uint8_t b_, uint8_t a_)
+        : r(r_), g(g_), b(b_), a(a_) {}
+
+    explicit constexpr rgba(uint32_t hex)
+        : r((hex >> 24) & 0xFF),
+          g((hex >> 16) & 0xFF),
+          b((hex >> 8)  & 0xFF),
+          a(hex & 0xFF) {}
+
+    constexpr rgba(ImVec4 vec);
+
+    constexpr rgba(fmt::color hex)
+        : r((uint32_t(hex) >> 16) & 0xFF),
+          g((uint32_t(hex) >> 8)  & 0xFF),
+          b(uint32_t(hex) & 0xFF),
+          a(0xFF) {}
+
+    constexpr uint32_t to_uint32() const
+    {
+        return (uint32_t(r) << 24) |
+               (uint32_t(g) << 16) |
+               (uint32_t(b) << 8)  |
+               uint32_t(a);
+    }
+
+    constexpr ImVec4 to_imvec4() const;
+
+    uint8_t r, g, b, a;
+};
+// clang-format on
 
 extern bool g_is_systray;  // old g_is_clipboard_server;
 extern int  g_sock;
@@ -164,12 +204,16 @@ std::vector<uint8_t> encode_to_png(const capture_result_t& cap);
 
 std::string replace_str(std::string& str, const std::string_view from, const std::string_view to);
 std::string select_image();
+std::string col_to_hexstr(const rgba& col);
+
+bool acquire_tray_lock();
+bool is_system_dark_mode();
+bool hexstr_to_col(const std::string_view hex, uint32_t& out);
+bool hexstr_to_imvec4(const std::string_view hex, ImVec4& out);
 
 #ifndef _WIN32
 fs::path get_runtime_dir();
 #endif
-bool acquire_tray_lock();
-
 fs::path get_font_path(const std::string& font);
 fs::path get_home_config_dir();
 fs::path get_home_dir();
@@ -186,6 +230,8 @@ void fit_to_screen(capture_result_t& img);
 void rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int height);
 
 int get_screen_dpi();
+
+bool parse_hex_rgba(const std::string_view hex, rgba& out);
 
 #define BOLD_COLOR(x) (fmt::emphasis::bold | fmt::fg(x))
 
@@ -207,10 +253,8 @@ template <typename... Args>
 inline void error(fmt::format_string<Args...> fmt, Args&&... args) noexcept
 {
 #ifdef _WIN32
-    MessageBox(nullptr,
-               fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(),
-               "Error",
-               MB_ICONERROR | MB_OK);
+    MessageBox(
+        nullptr, fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(), "Error", MB_ICONERROR | MB_OK);
 #endif
     spdlog::error(fmt, args...);
 }

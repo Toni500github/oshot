@@ -199,6 +199,8 @@ int run_main_tool(const std::string& imgui_ini_path)
         font_cfg.MergeMode = true;
     }
 
+    apply_imgui_theme();
+
     // Start the overlay window
     {
         const Result<>& res = ss_tool.StartWindow();

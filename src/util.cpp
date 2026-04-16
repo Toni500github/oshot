@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <utility>
 #include <vector>
 
 #include "clipboard.hpp"
@@ -67,6 +68,11 @@
 
 char g_sock_path[100];
 int  g_sock = -1;
+
+constexpr ImVec4 rgba::to_imvec4() const
+{
+    return ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
+}
 
 #if __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
@@ -366,6 +372,115 @@ std::string replace_str(std::string& str, const std::string_view from, const std
         start_pos += to.length();  // Handles case where 'to' is a substring of 'from'
     }
     return str;
+}
+
+bool parse_hex_rgba(const std::string_view hex, rgba& out)
+{
+    if (hex.empty() || hex[0] != '#')
+        return false;
+
+    if (hex.size() != 7 && hex.size() != 9)
+        return false;
+
+    const std::string_view s = hex.data() + 1;
+    uint32_t               value;
+    if (std::from_chars(s.data(), s.data() + s.size(), value, 16).ec != std::errc())
+        return false;
+
+    rgba v(value);
+    if (hex.size() == 7)  // #RRGGBB
+        v.a = 0xFF;
+
+    out = std::move(v);
+
+    return true;
+}
+
+std::string col_to_hexstr(const rgba& col)
+{
+    return fmt::format("#{:02x}{:02x}{:02x}{:02x}", col.r, col.g, col.b, col.a);
+}
+
+bool hexstr_to_imvec4(const std::string_view hex, ImVec4& out)
+{
+    rgba c;
+    if (!parse_hex_rgba(hex, c))
+        return false;
+    out = c.to_imvec4();
+    return true;
+}
+
+bool hexstr_to_col(const std::string_view hex, uint32_t& out)
+{
+    rgba c;
+    if (!parse_hex_rgba(hex, c))
+        return false;
+    out = c.to_uint32();
+    return true;
+}
+
+bool is_system_dark_mode()
+{
+#if defined(_WIN32)
+    DWORD value = 1;
+    DWORD size  = sizeof(value);
+    // AppsUseLightTheme == 0  -> dark mode
+    RegGetValueW(HKEY_CURRENT_USER,
+                 L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                 L"AppsUseLightTheme",
+                 RRF_RT_DWORD,
+                 nullptr,
+                 &value,
+                 &size);
+    return value == 0;
+
+#elif defined(__APPLE__)
+    // CFPreferencesCopyAppValue returns nullptr when no preference is set (= light)
+    CFStringRef style =
+        (CFStringRef)CFPreferencesCopyAppValue(CFSTR("AppleInterfaceStyle"), kCFPreferencesAnyApplication);
+    if (!style)
+        return false;
+    bool dark = (CFStringCompare(style, CFSTR("Dark"), kCFCompareCaseInsensitive) == kCFCompareEqualTo);
+    CFRelease(style);
+    return dark;
+
+#elif defined(__linux__)
+    // 1. GSettings (GNOME / most DEs)
+    if (FILE* f = popen("gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null", "r"))
+    {
+        char buf[64] = {};
+        if (fgets(buf, sizeof(buf), f))
+        {
+            pclose(f);
+            return std::string_view(buf).find("dark") != std::string_view::npos;
+        }
+        pclose(f);
+    }
+
+    // 2. GTK_THEME env var (e.g. "Adwaita:dark")
+    if (const char* t = ::getenv("GTK_THEME"))
+    {
+        std::string s(t);
+        std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+        if (s.find("dark") != std::string::npos)
+            return true;
+        if (s.find("light") != std::string::npos)
+            return false;
+    }
+
+    // 3. ~/.config/gtk-3.0/settings.ini
+    // gtk-application-prefer-dark-theme=1
+    if (const char* home = std::getenv("HOME"))
+    {
+        std::ifstream ini(std::string(home) + "/.config/gtk-3.0/settings.ini");
+        for (std::string line; std::getline(ini, line);)
+            if (line.find("gtk-application-prefer-dark-theme") != std::string::npos &&
+                line.find('1') != std::string::npos)
+                return true;
+    }
+#endif
+
+    return true;
 }
 
 fs::path get_home_dir()

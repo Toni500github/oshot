@@ -393,6 +393,8 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
 
     g_config->LoadConfigFile(configFile);
+    if (!g_config->File.theme_file_path.empty())
+        g_config->LoadThemeFile(g_config->File.theme_file_path);
 
     spdlog::set_level(g_config->Runtime.debug_print ? spdlog::level::debug : spdlog::level::info);
 

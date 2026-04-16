@@ -40,6 +40,13 @@ static constexpr ImVec2 origin(0, 0);
 static void*            logo_texture            = nullptr;
 static bool             show_preferences_window = false;
 
+constexpr rgba::rgba(ImVec4 vec)
+    : r(static_cast<uint8_t>(vec.x * 255.0f)),
+      g(static_cast<uint8_t>(vec.y * 255.0f)),
+      b(static_cast<uint8_t>(vec.z * 255.0f)),
+      a(static_cast<uint8_t>(vec.w * 255.0f))
+{}
+
 static std::vector<std::string> get_training_data_list(const std::string& path)
 {
     if (!fs::exists(path))
@@ -212,6 +219,63 @@ static bool create_timed_button(const std::string_view label1,
     }
 
     return false;
+}
+
+static const std::unordered_map<std::string, int>& color_name_map()
+{
+    static std::unordered_map<std::string, int> map;
+    if (map.empty())
+        for (int i = 0; i < ImGuiCol_COUNT; ++i)
+            map[ImGui::GetStyleColorName(i)] = i;
+    return map;
+}
+
+void apply_imgui_theme()
+{
+    const std::string& base = g_config->File.theme_style;
+
+    if (base == "classic")
+    {
+        ImGui::StyleColorsClassic();
+    }
+    else if (base == "light")
+    {
+        ImGui::StyleColorsLight();
+    }
+    else
+    {
+        bool dark = (base == "dark") || (base == "auto" && is_system_dark_mode());
+        dark ? ImGui::StyleColorsDark() : ImGui::StyleColorsLight();
+    }
+
+    ImGuiStyle& style = ImGui::GetStyle();
+    const auto& ov    = g_config->theme_overrides;
+    const auto& cmap  = color_name_map();
+
+    // Apply color overrides
+    for (const auto& [name, hex] : ov.colors)
+    {
+        auto it = cmap.find(name);
+        if (it == cmap.end())
+            continue;
+        ImVec4 col;
+        if (hexstr_to_imvec4(hex.data(), col))
+            style.Colors[it->second] = col;
+    }
+
+    // Apply style var overrides (-1 means "not set")
+    if (ov.window_rounding >= 0.f)
+        style.WindowRounding = ov.window_rounding;
+    if (ov.frame_rounding >= 0.f)
+        style.FrameRounding = ov.frame_rounding;
+    if (ov.grab_rounding >= 0.f)
+        style.GrabRounding = ov.grab_rounding;
+    if (ov.tab_rounding >= 0.f)
+        style.TabRounding = ov.tab_rounding;
+    if (ov.window_border >= 0.f)
+        style.WindowBorderSize = ov.window_border;
+    if (ov.frame_border >= 0.f)
+        style.FrameBorderSize = ov.frame_border;
 }
 
 Result<> ScreenshotTool::Start()
@@ -839,7 +903,7 @@ void ScreenshotTool::UpdateHandleHoverState()
                            ImVec2(sel_x + sel_w + hover_half, sel_y + sel_h / 2 + hover_half)) } }
     };
 
-    for (const auto& handle : handles)
+    for (const handle_info_t& handle : handles)
     {
         if (handle.rect.Contains(mouse_pos))
         {
@@ -1262,7 +1326,7 @@ void ScreenshotTool::DrawBarDecodeTools()
             ClearError(FailedToScanBarCode);
             m_inputs.zbar_scan_result = std::move(scan.get());
             m_inputs.barcode_text.clear();
-            for (const auto& data : m_inputs.zbar_scan_result.datas)
+            for (const std::string& data : m_inputs.zbar_scan_result.datas)
                 m_inputs.barcode_text += data + "\n\n";
         }
     }
@@ -1522,6 +1586,90 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     }
 }
 
+static void draw_theme_editor()
+{
+    ImGui::SeparatorText("Style overrides");
+
+    Config::theme_overrides_t& ov = g_config->theme_overrides;
+
+    // Rounding / border sliders
+    auto style_row = [&](const char* label, float& val, float lo, float hi) {
+        float v = (val < 0.f) ? 0.f : val;
+        if (ImGui::SliderFloat(label, &v, lo, hi, "%.1f"))
+            val = v;
+        ImGui::SameLine();
+        if (ImGui::SmallButton(("reset##" + std::string(label)).c_str()))
+            val = -1.f;
+    };
+
+    style_row("Window rounding", ov.window_rounding, 0, 12);
+    style_row("Frame rounding", ov.frame_rounding, 0, 12);
+    style_row("Grab rounding", ov.grab_rounding, 0, 12);
+    style_row("Tab rounding", ov.tab_rounding, 0, 12);
+    style_row("Window border", ov.window_border, 0, 2);
+    style_row("Frame border", ov.frame_border, 0, 2);
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("Color overrides");
+    ImGui::TextDisabled("Click a swatch to edit. Changes apply on Save.");
+    ImGui::Spacing();
+
+    // We only show the most-used slots to keep the list manageable.
+    // Full list is still editable via the config file directly.
+    static constexpr const char* important[] = {
+        "Text",          "TextDisabled",   "WindowBg",      "ChildBg",       "PopupBg",          "Border",
+        "FrameBg",       "FrameBgHovered", "FrameBgActive", "TitleBg",       "TitleBgActive",    "MenuBarBg",
+        "ScrollbarBg",   "ScrollbarGrab",  "CheckMark",     "SliderGrab",    "SliderGrabActive", "Button",
+        "ButtonHovered", "ButtonActive",   "Header",        "HeaderHovered", "HeaderActive",     "Tab",
+        "TabHovered",    "TabSelected",
+    };
+
+    const auto& cmap = color_name_map();
+
+    ImGui::BeginChild("##color_list", ImVec2(0, 300), true);
+    for (const char* name : important)
+    {
+        auto it = cmap.find(name);
+        if (it == cmap.end())
+            continue;
+
+        // Resolve current color: override first, then live style
+        ImVec4 col = ImGui::GetStyle().Colors[it->second];
+
+        auto oit = ov.colors.find(name);
+        if (oit != ov.colors.end())
+        {
+            const std::string& h = oit->second;
+            if (!h.empty() && h[0] == '#')
+                hexstr_to_imvec4(h, col);
+        }
+        ImGui::PushID(name);
+        if (ImGui::ColorEdit4(
+                "##c", reinterpret_cast<float*>(&col), ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar))
+        {
+            ov.colors[name] = col_to_hexstr(col);
+        }
+        ImGui::SameLine();
+        ImGui::TextUnformatted(name);
+
+        // Allow clearing individual override
+        if (oit != ov.colors.end())
+        {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("x"))
+                ov.colors.erase(name);
+        }
+        ImGui::PopID();
+    }
+    ImGui::EndChild();
+
+    ImGui::Spacing();
+    if (ImGui::Button("Clear all color overrides"))
+        ov.colors.clear();
+    ImGui::SameLine();
+    HelpMarker("Reverts to the base theme colors on next Save.");
+}
+
 void ScreenshotTool::DrawPreferencesWindow()
 {
     if (!show_preferences_window)
@@ -1533,7 +1681,7 @@ void ScreenshotTool::DrawPreferencesWindow()
     const bool  window_just_opened = !prev_window_open;
 
     static Config::config_file_t snapshot;  // config state at the moment the window opened
-    static constexpr const char* items[2] = { "Defaults", "Wheel - Triangle" };
+    static constexpr const char* items[2] = { "Defaults", "Theme" };
 
     prev_window_open = true;
 
@@ -1576,6 +1724,7 @@ void ScreenshotTool::DrawPreferencesWindow()
         switch (item_selected)
         {
             case 0: draw_preference_edit_config([&] { RefreshOcrModels(); }); break;
+            case 1: draw_theme_editor(); break;
         }
         ImGui::EndChild();
 
@@ -1597,7 +1746,13 @@ void ScreenshotTool::DrawPreferencesWindow()
         }
         else if (item_selected == 1)
         {
-            ImGui::TextUnformatted("Place holder for the moment");
+            if (create_timed_button("Save##theme", "Saved!"))
+            {
+                g_config->GenerateTheme(g_config->GetThemePath(), true);
+                apply_imgui_theme();  // live-apply
+                config_modified = false;
+                snapshot        = g_config->File;
+            }
         }
         ImGui::EndGroup();
 
@@ -1934,7 +2089,7 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
         }
     };
 
-    for (const auto& ann : m_annotations)
+    for (const annotation_t& ann : m_annotations)
     {
         int x1 = static_cast<int>(ann.start.x - offset_x);
         int y1 = static_cast<int>(ann.start.y - offset_y);

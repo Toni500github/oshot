@@ -5,8 +5,11 @@
 #include <type_traits>
 #include <unordered_map>
 
+#include "fmt/format.h"
+
 // util.hpp
 std::string expand_var(std::string ret, bool dont = false);
+bool        hexstr_to_col(const std::string_view hex, uint32_t& out);
 
 #define TOML_HEADER_ONLY 0
 #include "toml++/toml.hpp"
@@ -37,8 +40,10 @@ public:
     // They can be overwritten from CLI arguments
     struct config_file_t
     {
-        std::string              ocr_path  = "./models";
-        std::string              ocr_model = "eng";
+        std::string              ocr_path        = "./models";
+        std::string              ocr_model       = "eng";
+        std::string              theme_style     = "auto";
+        std::string              theme_file_path = "";
         std::vector<std::string> fonts;
         int                      delay            = 0;
         bool                     allow_out_edit   = false;
@@ -68,13 +73,31 @@ public:
         auto operator<=>(const runtime_settings_t&) const = default;
     } Runtime;
 
+    struct theme_overrides_t
+    {
+        std::unordered_map<std::string, std::string> colors;  // ImGuiCol name -> "#RRGGBB[AA]"
+
+        float window_rounding = -1.f;
+        float frame_rounding  = -1.f;
+        float grab_rounding   = -1.f;
+        float tab_rounding    = -1.f;
+        float window_border   = -1.f;
+        float frame_border    = -1.f;
+
+        bool operator==(const theme_overrides_t&) const = default;
+    } theme_overrides;
+
     /**
      * Load config file and parse every config variables
      * @param filename The config file path
-     * @param colors The colors struct where we'll put the default config colors.
-     *               It doesn't include the colors in config.alias-colors
      */
     void LoadConfigFile(const std::string& filename);
+
+    /**
+     * Parse the theme file (aka "theme.toml")
+     *  @param filename The directory of the theme file
+     */
+    void LoadThemeFile(const std::string& filename);
 
     /**
      * Generate a config file
@@ -82,6 +105,13 @@ public:
      * @param force Overwrite without asking
      */
     void GenerateConfig(const std::string& filename, const bool force = false);
+
+    /**
+     * Generate a theme file
+     * @param filename The theme file path
+     * @param force Overwrite without asking
+     */
+    void GenerateTheme(const std::string& filename, const bool force = false);
 
     /**
      * Override a config value from --override
@@ -122,15 +152,20 @@ public:
     }
 
     const std::string& GetConfigPath() const { return m_config_path; }
+    const std::string& GetThemePath() const { return m_theme_path; }
     const std::string& GetConfigDirPath() const { return m_config_dir_path; }
 
 private:
-    // Parsed config from loadConfigFile()
+    // Parsed config from LoadConfigFile()
     toml::table m_tbl;
+
+    // Parsed theme from LoadThemeFile()
+    toml::table m_theme_tbl;
 
     std::unordered_map<std::string, override_config_value_t> m_overrides;
 
     std::string m_config_path;
+    std::string m_theme_path;
     std::string m_config_dir_path;
 
     /**
@@ -139,7 +174,10 @@ private:
      * @param fallback Default value if couldn't retrive value
      */
     template <typename T>
-    T GetValue(const std::string_view value, const T& fallback, bool dont_expand_var = false) const
+    T GetValue(const std::string_view value,
+               const T&               fallback,
+               bool                   dont_expand_var = false,
+               bool                   is_theme        = false) const
     {
         const auto& overridePos = m_overrides.find(value.data());
 
@@ -157,7 +195,8 @@ private:
                     return ov.int_value;
         }
 
-        const std::optional<T>& ret = this->m_tbl.at_path(value).value<T>();
+        const std::optional<T>& ret =
+            is_theme ? m_theme_tbl.at_path(value).value<T>() : m_tbl.at_path(value).value<T>();
         if constexpr (toml::is_string<T>)
             return ret ? expand_var(ret.value(), dont_expand_var) : expand_var(fallback, dont_expand_var);
         else
@@ -185,9 +224,39 @@ private:
             return fallback;
         }
     }
+
+    /**
+     * Get the theme color variable and return a rgba type value
+     * @param value The value we want
+     * @param fallback The default value if it doesn't exists
+     * @return rgba type variable
+     */
+    template <typename T>
+    T GetThemeStyleValue(const std::string_view value, const T& fallback, bool dont_expand_var = true) const
+    {
+        return GetValue<T>(fmt::format("theme.style.{}", value), fallback, dont_expand_var, true);
+    }
+
+    /**
+     * Get the theme color variable and return a rgba type value
+     * @param value The value we want
+     * @param fallback The default value if it doesn't exists
+     * @return rgba type variable
+     */
+    uint32_t GetThemeColorValue(const std::string_view value,
+                                const std::string&     fallback,
+                                bool                   dont_expand_var = true) const
+    {
+        uint32_t out;
+        hexstr_to_col(GetValue<std::string>(fmt::format("theme.colors.{}", value), fallback, dont_expand_var, true),
+                      out);
+        return out;
+    }
 };
 
 extern std::unique_ptr<Config> g_config;
+
+void apply_imgui_theme();
 
 // default config
 inline constexpr std::string_view AUTOCONFIG = R"#([default]
@@ -228,7 +297,97 @@ annotations-in-text-tools = {}
 # for example, using "Roboto-Regular.ttf" and "RobotoCJK-Regular.ttc" for Chinese, Japanese, and Korean support alongside English support.
 # If empty, or non-existent (or commented out), oshot will use the default font for ImGUI.
 fonts = [{}]
+
+# Base UI theme: "auto" (follow OS dark/light), "dark", "light", or "classic".
+# Fine-grained overrides live in theme.toml.
+theme = "{}"
+
+# Path to a theme file. Absolute or relative to this config's directory.
+# Delete or comment out to use only the base theme above.
+theme-file = "{}"
 )#";
+
+inline constexpr std::string_view AUTOTHEME = (R"(
+# Drop this next to config.toml or point theme-file at its path.
+# All sections and keys are optional — omit anything you don't want to override.
+
+# ---------------------------------------------------------------
+# Rounding (pixels, 0 = sharp corners, max ~12)
+# ---------------------------------------------------------------
+[theme.style]
+window-rounding = 8.0
+frame-rounding  = 4.0
+grab-rounding   = 4.0
+tab-rounding    = 4.0
+
+# Border width in pixels. 0 = none, 1 = thin line.
+window-border = 1.0
+frame-border  = 0.0
+
+# ---------------------------------------------------------------
+# Color overrides
+# Format: "#RRGGBBAA"
+# Only the entries you list here are overridden;
+# everything else falls back to the base theme.
+#
+# Full list of valid names:
+#   https://github.com/ocornut/imgui/blob/master/imgui.cpp
+#   (search for "GetStyleColorName")
+# ---------------------------------------------------------------
+[theme.colors]
+# --- Text ---
+Text         = "#cdd6f4FF"
+TextDisabled = "#6c7086FF"
+
+# --- Backgrounds ---
+WindowBg       = "#1e1e2eFF"
+ChildBg        = "#181825FF"
+PopupBg        = "#1e1e2eFF"
+FrameBg        = "#313244FF"
+FrameBgHovered = "#45475aFF"
+FrameBgActive  = "#585b70FF"
+MenuBarBg      = "#181825FF"
+
+# --- Title bar ---
+TitleBg       = "#181825FF"
+TitleBgActive = "#313244FF"
+
+# --- Borders ---
+Border       = "#585b70FF"
+BorderShadow = "#00000000"
+
+# --- Scrollbar ---
+ScrollbarBg          = "#181825FF"
+ScrollbarGrab        = "#585b70FF"
+ScrollbarGrabHovered = "#6c7086FF"
+ScrollbarGrabActive  = "#7f849cFF"
+
+# --- Buttons ---
+Button        = "#313244FF"
+ButtonHovered = "#45475aFF"
+ButtonActive  = "#585b70FF"
+
+# --- Headers (selectables, tree nodes, collapsing headers) ---
+Header        = "#313244FF"
+HeaderHovered = "#45475aFF"
+HeaderActive  = "#585b70FF"
+
+# --- Sliders / checkmarks ---
+CheckMark        = "#cba6f7FF"
+SliderGrab       = "#cba6f7FF"
+SliderGrabActive = "#b4befeff"
+
+# --- Tabs ---
+Tab         = "#313244FF"
+TabHovered  = "#cba6f7FF"
+TabSelected = "#45475aFF"
+
+# --- Misc ---
+Separator         = "#585b70FF"
+ResizeGrip        = "#cba6f7FF"
+ResizeGripHovered = "#cba6f7FF"
+ResizeGripActive  = "#cba6f7FF"
+)");
 
 inline constexpr std::string_view oshot_help = (R"(Usage: oshot [OPTIONS]...
 Lightweight Screenshot tool to extract text on the fly.
