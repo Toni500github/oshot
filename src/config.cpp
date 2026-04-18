@@ -201,14 +201,13 @@ void Config::GenerateTheme(const std::string& filename, const bool force)
     }
 
     theme_overrides_t& ov = theme_overrides;
-    f.print(R"([theme]
+    f.print(R"([theme.style]
 # Drop this next to config.toml or point theme-file at its path.
 # All sections and keys are optional — omit anything you don't want to override.
 
 # ---------------------------------------------------------------
 # Rounding (pixels, 0 = sharp corners, max ~12)
 # ---------------------------------------------------------------
-[style]
 window-rounding = {}
 frame-rounding  = {}
 grab-rounding   = {}
@@ -236,7 +235,7 @@ frame-border  = {}
 #   https://github.com/ocornut/imgui/blob/master/imgui.cpp
 #   (search for "GetStyleColorName")
 # ---------------------------------------------------------------
-[colors]
+[theme.colors]
 )");
 
     for (const auto& [name, hex] : ov.colors)

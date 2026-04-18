@@ -332,12 +332,8 @@ Result<> ScreenshotTool::StartWindow()
     m_io    = ImGui::GetIO();
     m_state = ToolState::Selecting;
 
-    m_inputs.ann_font               = g_config->File.fonts.size() > 0 ? g_config->File.fonts[0] : "";
-    m_show_text_tools               = g_config->File.show_text_tools;
-    m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string();
-
     fit_to_screen(m_screenshot);
-    RefreshOcrModels();
+    SyncRuntimeFromConfig();
 
 #ifdef __APPLE__
     m_texture_id = nullptr;  // will be set by backend
@@ -373,7 +369,8 @@ Result<> ScreenshotTool::StartWindow()
 
 void ScreenshotTool::RenderOverlay()
 {
-    bool disable_esc = m_is_text_placing || m_is_color_picking || show_preferences_window;
+    bool disable_esc =
+        (m_is_text_placing || m_is_color_picking || show_preferences_window) && !g_config->File.show_text_tools;
 
     static constexpr int minimal_win_flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
                                              ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoResize |
@@ -1707,6 +1704,8 @@ void ScreenshotTool::DrawPreferencesWindow()
             case PrefTab::kNone: break;
             case PrefTab::Defaults:
                 g_config->GenerateConfig(g_config->GetConfigPath(), true);
+                g_config->LoadConfigFile(g_config->GetConfigPath());
+                SyncRuntimeFromConfig();
                 config_snapshot = g_config->File;
                 break;
 
@@ -2391,6 +2390,21 @@ void ScreenshotTool::CreateCopyTextButton(const std::string& text_copy)
         ImGui::SameLine();
         ImGui::TextColored(error_color, "Failed to copy text: %s", GetError(FailedToCopyText).c_str());
     }
+}
+
+void ScreenshotTool::SyncRuntimeFromConfig()
+{
+    m_inputs.ocr_path  = g_config->File.ocr_path;
+    m_inputs.ocr_model = g_config->File.ocr_model;
+    RefreshOcrModels();
+
+    // Sync annotation font
+    m_inputs.ann_font               = g_config->File.fonts.empty() ? "" : g_config->File.fonts[0];
+    m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string();
+
+    m_show_text_tools = g_config->File.show_text_tools;
+
+    extern_glfwSwapInterval(static_cast<int>(g_config->File.enable_vsync));
 }
 
 void ScreenshotTool::RefreshOcrModels()

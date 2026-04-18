@@ -88,22 +88,15 @@ std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
         {
             for (int y = 0; y < height; ++y)
             {
-                const uint8_t* row =
-                    reinterpret_cast<const uint8_t*>(image->data) + static_cast<size_t>(y) * image->bytes_per_line;
+                const uint32_t* px =
+                    reinterpret_cast<const uint32_t*>(image->data) + static_cast<size_t>(y) * image->bytes_per_line / 4;
 
                 uint8_t* dst = out.data() + static_cast<size_t>(y) * width * 4;
-
-                // Row is 4 bytes/pixel, order is typically B,G,R,X or X,R,G,B depending on endianness.
-                // On little-endian with these masks, reading as uint32_t and extracting works.
-                const uint32_t* px = reinterpret_cast<const uint32_t*>(row);
-
                 for (int x = 0; x < width; ++x)
                 {
-                    uint32_t p     = px[x];
-                    dst[x * 4 + 0] = static_cast<uint8_t>((p >> 16) & 0xff);  // R
-                    dst[x * 4 + 1] = static_cast<uint8_t>((p >> 8) & 0xff);   // G
-                    dst[x * 4 + 2] = static_cast<uint8_t>((p >> 0) & 0xff);   // B
-                    dst[x * 4 + 3] = 0xff;                                    // A
+                    rgba_t c = rgba_t::from_argb(px[x]);
+                    c.a      = 0xFF;
+                    store_rgba(dst + x * 4, c);
                 }
             }
             return out;
@@ -114,16 +107,11 @@ std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
     {
         for (int x = 0; x < width; ++x)
         {
-            uint32_t p = XGetPixel(image, x, y);
-
-            int i      = (y * width + x) * 4;
-            out[i + 0] = (p >> 16) & 0xff;  // R
-            out[i + 1] = (p >> 8) & 0xff;   // G
-            out[i + 2] = (p) & 0xff;        // B
-            out[i + 3] = 0xff;              // A
+            rgba_t c = rgba_t::from_argb(XGetPixel(image, x, y));
+            c.a      = 0xFF;
+            store_rgba(out.data() + (y * width + x) * 4, c);
         }
     }
-
     return out;
 }
 #endif
