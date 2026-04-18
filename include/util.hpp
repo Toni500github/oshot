@@ -137,6 +137,13 @@ constexpr size_t idx(E e) noexcept
     return static_cast<size_t>(e);
 }
 
+template <typename E, typename T>
+constexpr E enum_(T n) noexcept
+{
+    static_assert(std::is_integral_v<T>);
+    return static_cast<E>(n);
+}
+
 // Forward declaration
 struct capture_result_t;
 struct ImVec4;
@@ -145,40 +152,55 @@ struct ImVec4;
 // useful in contexts where ImVec4 is not used.
 // Packed as 0xRRGGBBAA
 // clang-format off
-struct rgba
+struct rgba_t
 {
-    constexpr rgba() : r(0), g(0), b(0), a(0) {}
+    constexpr rgba_t() : r(0), g(0), b(0), a(0) {}
 
-    constexpr rgba(uint8_t r_, uint8_t g_, uint8_t b_, uint8_t a_)
+    constexpr rgba_t(uint8_t r_, uint8_t g_, uint8_t b_, uint8_t a_)
         : r(r_), g(g_), b(b_), a(a_) {}
 
-    explicit constexpr rgba(uint32_t hex)
+    explicit constexpr rgba_t(uint32_t hex)
         : r((hex >> 24) & 0xFF),
           g((hex >> 16) & 0xFF),
           b((hex >> 8)  & 0xFF),
           a(hex & 0xFF) {}
 
-    constexpr rgba(ImVec4 vec);
+    constexpr rgba_t(ImVec4 vec);
 
-    constexpr rgba(fmt::color hex)
+    constexpr rgba_t(fmt::color hex)
         : r((uint32_t(hex) >> 16) & 0xFF),
           g((uint32_t(hex) >> 8)  & 0xFF),
-          b(uint32_t(hex) & 0xFF),
+          b((uint32_t(hex))       & 0xFF),
           a(0xFF) {}
 
-    constexpr uint32_t to_uint32() const
-    {
-        return (uint32_t(r) << 24) |
-               (uint32_t(g) << 16) |
-               (uint32_t(b) << 8)  |
-               uint32_t(a);
-    }
+    static constexpr rgba_t from_rgba(uint32_t v) { return { uint8_t(v >> 24), uint8_t(v >> 16), uint8_t(v >> 8), uint8_t(v) }; }
+    static constexpr rgba_t from_abgr(uint32_t v) { return { uint8_t(v),       uint8_t(v >> 8),  uint8_t(v >> 16), uint8_t(v >> 24) }; }
+    static constexpr rgba_t from_argb(uint32_t v) { return { uint8_t(v >> 16), uint8_t(v >> 8),  uint8_t(v),       uint8_t(v >> 24) }; }
+    static constexpr rgba_t from_bgra(uint32_t v) { return { uint8_t(v >> 8),  uint8_t(v >> 16), uint8_t(v >> 24), uint8_t(v) }; }
+
+    constexpr uint32_t to_rgba() const { return uint32_t(r)<<24 | uint32_t(g)<<16 | uint32_t(b)<<8 | a; }
+    constexpr uint32_t to_abgr() const { return uint32_t(a)<<24 | uint32_t(b)<<16 | uint32_t(g)<<8 | r; }
+    constexpr uint32_t to_argb() const { return uint32_t(a)<<24 | uint32_t(r)<<16 | uint32_t(g)<<8 | b; }
+    constexpr uint32_t to_bgra() const { return uint32_t(b)<<24 | uint32_t(g)<<16 | uint32_t(r)<<8 | a; }
 
     constexpr ImVec4 to_imvec4() const;
 
     uint8_t r, g, b, a;
 };
 // clang-format on
+
+inline rgba_t load_rgba(const uint8_t* p)
+{
+    return rgba_t(p[0], p[1], p[2], p[3]);
+}
+
+inline void store_rgba(uint8_t* p, const rgba_t& c)
+{
+    p[0] = c.r;
+    p[1] = c.g;
+    p[2] = c.b;
+    p[3] = c.a;
+}
 
 extern bool g_is_systray;  // old g_is_clipboard_server;
 extern int  g_sock;
@@ -204,7 +226,7 @@ std::vector<uint8_t> encode_to_png(const capture_result_t& cap);
 
 std::string replace_str(std::string& str, const std::string_view from, const std::string_view to);
 std::string select_image();
-std::string col_to_hexstr(const rgba& col);
+std::string col_to_hexstr(const rgba_t& col);
 
 bool acquire_tray_lock();
 bool is_system_dark_mode();
@@ -231,7 +253,7 @@ void rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int heig
 
 int get_screen_dpi();
 
-bool parse_hex_rgba(const std::string_view hex, rgba& out);
+bool parse_hex_rgba(const std::string_view hex, rgba_t& out);
 
 #define BOLD_COLOR(x) (fmt::emphasis::bold | fmt::fg(x))
 

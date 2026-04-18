@@ -160,14 +160,10 @@ static Pix* rgba_to_pix(std::span<const uint8_t> rgba, int w, int h)
         uint32_t* row = dst + y * stride;
         for (int x = 0; x < w; ++x)
         {
-            const uint8_t* p = src + (static_cast<size_t>(y) * w + x) * 4;
+            const uint8_t* p    = src + (static_cast<size_t>(y) * w + x) * 4;
+            rgba_t         byte = load_rgba(p);
             // Leptonica 32bpp word layout (big-endian word): R G B A
-            SET_DATA_FOUR_BYTES(row,
-                                x,
-                                (static_cast<uint32_t>(p[0]) << 24) |      // R
-                                    (static_cast<uint32_t>(p[1]) << 16) |  // G
-                                    (static_cast<uint32_t>(p[2]) << 8) |   // B
-                                    (static_cast<uint32_t>(p[3])));        // A
+            SET_DATA_FOUR_BYTES(row, x, byte.to_rgba());
         }
     }
 

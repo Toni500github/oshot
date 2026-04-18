@@ -69,7 +69,7 @@
 char g_sock_path[100];
 int  g_sock = -1;
 
-constexpr ImVec4 rgba::to_imvec4() const
+constexpr ImVec4 rgba_t::to_imvec4() const
 {
     return ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
 }
@@ -349,17 +349,14 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
     return Ok();
 }
 
-void rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int height)
+void rgba_to_grayscale(const uint8_t* src, uint8_t* result, int width, int height)
 {
     const int pixels = width * height;
     for (int i = 0; i < pixels; ++i)
     {
-        const uint8_t r = rgba[i * 4 + 0];
-        const uint8_t g = rgba[i * 4 + 1];
-        const uint8_t b = rgba[i * 4 + 2];
-
+        rgba_t c = load_rgba(src + i * 4);
         // ITU-R BT.601 luminance
-        result[i] = static_cast<uint8_t>((77 * r + 150 * g + 29 * b) >> 8);
+        result[i] = static_cast<uint8_t>((77 * c.r + 150 * c.g + 29 * c.b) >> 8);
     }
 }
 
@@ -374,7 +371,7 @@ std::string replace_str(std::string& str, const std::string_view from, const std
     return str;
 }
 
-bool parse_hex_rgba(const std::string_view hex, rgba& out)
+bool parse_hex_rgba(const std::string_view hex, rgba_t& out)
 {
     if (hex.empty() || hex[0] != '#')
         return false;
@@ -382,28 +379,27 @@ bool parse_hex_rgba(const std::string_view hex, rgba& out)
     if (hex.size() != 7 && hex.size() != 9)
         return false;
 
-    const std::string_view s = hex.data() + 1;
     uint32_t               value;
+    const std::string_view s = hex.data() + 1;
     if (std::from_chars(s.data(), s.data() + s.size(), value, 16).ec != std::errc())
         return false;
 
-    rgba v(value);
-    if (hex.size() == 7)  // #RRGGBB
+    rgba_t v(hex.size() == 7 ? (value << 8) : value);
+    if (hex.size() == 7)
         v.a = 0xFF;
 
-    out = std::move(v);
-
+    out = v;
     return true;
 }
 
-std::string col_to_hexstr(const rgba& col)
+std::string col_to_hexstr(const rgba_t& col)
 {
     return fmt::format("#{:02x}{:02x}{:02x}{:02x}", col.r, col.g, col.b, col.a);
 }
 
 bool hexstr_to_imvec4(const std::string_view hex, ImVec4& out)
 {
-    rgba c;
+    rgba_t c;
     if (!parse_hex_rgba(hex, c))
         return false;
     out = c.to_imvec4();
@@ -412,10 +408,10 @@ bool hexstr_to_imvec4(const std::string_view hex, ImVec4& out)
 
 bool hexstr_to_col(const std::string_view hex, uint32_t& out)
 {
-    rgba c;
+    rgba_t c;
     if (!parse_hex_rgba(hex, c))
         return false;
-    out = c.to_uint32();
+    out = c.to_rgba();
     return true;
 }
 

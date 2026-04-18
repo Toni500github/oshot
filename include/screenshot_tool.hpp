@@ -67,6 +67,13 @@ enum class InputOwner
     Tools
 };
 
+enum class PrefTab
+{
+    kNone    = -1,
+    Defaults = 0,
+    Theme
+};
+
 enum ErrorFlag : size_t
 {
     kNone = 0,

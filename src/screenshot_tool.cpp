@@ -40,12 +40,28 @@ static constexpr ImVec2 origin(0, 0);
 static void*            logo_texture            = nullptr;
 static bool             show_preferences_window = false;
 
-constexpr rgba::rgba(ImVec4 vec)
+constexpr rgba_t::rgba_t(ImVec4 vec)
     : r(static_cast<uint8_t>(vec.x * 255.0f)),
       g(static_cast<uint8_t>(vec.y * 255.0f)),
       b(static_cast<uint8_t>(vec.z * 255.0f)),
       a(static_cast<uint8_t>(vec.w * 255.0f))
 {}
+
+constexpr ImVec4 rgba_t::to_imvec4() const
+{
+    return ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
+}
+
+inline rgba_t blend(rgba_t src, rgba_t dst)
+{
+    float a  = src.a / 255.0f;
+    float ia = 1.0f - a;
+
+    return rgba_t{ uint8_t(src.r * a + dst.r * ia),
+                   uint8_t(src.g * a + dst.g * ia),
+                   uint8_t(src.b * a + dst.b * ia),
+                   uint8_t(src.a + dst.a * ia) };
+}
 
 static std::vector<std::string> get_training_data_list(const std::string& path)
 {
@@ -357,6 +373,8 @@ Result<> ScreenshotTool::StartWindow()
 
 void ScreenshotTool::RenderOverlay()
 {
+    bool disable_esc = m_is_text_placing || m_is_color_picking || show_preferences_window;
+
     static constexpr int minimal_win_flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
                                              ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoResize |
                                              ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
@@ -372,9 +390,6 @@ void ScreenshotTool::RenderOverlay()
     // Screenshot as a centered bg image
     UpdateWindowBg();
     ImGui::GetBackgroundDrawList()->AddImage(m_texture_id, m_image_origin, m_image_end);
-
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !m_is_color_picking && !m_is_text_placing)
-        Cancel();
 
     if (m_selection.get_width() == 0 || m_selection.get_height() == 0)
     {
@@ -416,6 +431,9 @@ void ScreenshotTool::RenderOverlay()
     }
 
     HandleShortcutsInput();
+
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !disable_esc)
+        Cancel();
 }
 
 void ScreenshotTool::HandleShortcutsInput()
@@ -757,12 +775,8 @@ void ScreenshotTool::HandleColorPickerInput()
     else
     {
         // Sample the pixel under the cursor
-        const size_t  off = (static_cast<size_t>(py) * m_screenshot.w + px) * 4;
-        const uint8_t r   = m_screenshot.data[off + 0];
-        const uint8_t g   = m_screenshot.data[off + 1];
-        const uint8_t b   = m_screenshot.data[off + 2];
-        const uint8_t a   = m_screenshot.data[off + 3];
-        const ImVec4  hovered_color(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
+        const size_t off = (static_cast<size_t>(py) * m_screenshot.w + px) * 4;
+        const rgba_t c   = load_rgba(m_screenshot.data.data() + off);
 
         // Compute UV window for the zoomed region
         const float half_src_px_x = (k_loupe_px / k_zoom) * 0.5f / static_cast<float>(m_screenshot.w);
@@ -794,7 +808,7 @@ void ScreenshotTool::HandleColorPickerInput()
         dl->AddLine(ImVec2(ctr.x, ctr.y - arm), ImVec2(ctr.x, ctr.y - gap), IM_COL32(255, 255, 255, 230), 1.0f);
         dl->AddLine(ImVec2(ctr.x, ctr.y + gap), ImVec2(ctr.x, ctr.y + arm), IM_COL32(255, 255, 255, 230), 1.0f);
         // Centre dot, filled with the hovered colour so it's always visible
-        dl->AddCircleFilled(ctr, gap - 0.5f, IM_COL32(r, g, b, 255));
+        dl->AddCircleFilled(ctr, gap - 0.5f, IM_COL32(c.r, c.g, c.b, 255));
         dl->AddCircle(ctr, gap - 0.5f, IM_COL32(255, 255, 255, 200), 12, 1.0f);
 
         // Outline around the entire loupe image
@@ -807,23 +821,23 @@ void ScreenshotTool::HandleColorPickerInput()
 
         ImGui::Spacing();
         ImGui::ColorButton("##loupe_swatch",
-                           hovered_color,
+                           c.to_imvec4(),
                            ImGuiColorEditFlags_NoPicker | ImGuiColorEditFlags_AlphaPreview,
                            ImVec2(32, 32));
         ImGui::SameLine();
         ImGui::BeginGroup();
-        ImGui::Text("#%02X%02X%02X", r, g, b);
-        ImGui::TextColored(ImVec4(1, 0, 0, 1), "%-3d ", r);
+        ImGui::Text("#%02X%02X%02X", c.r, c.g, c.b);
+        ImGui::TextColored(ImVec4(1, 0, 0, 1), "%-3d ", c.r);
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0, 1, 0, 1), "%-3d ", g);
+        ImGui::TextColored(ImVec4(0, 1, 0, 1), "%-3d ", c.g);
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0, 0, 1, 1), "%-3d", b);
+        ImGui::TextColored(ImVec4(0, 0, 1, 1), "%-3d", c.b);
         ImGui::EndGroup();
 
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
         {
-            m_picker_color     = hovered_color;
-            m_current_color    = IM_COL32(r, g, b, a);
+            m_picker_color     = c.to_imvec4();
+            m_current_color    = c.to_abgr();
             m_is_color_picking = false;
         }
     }
@@ -1672,36 +1686,67 @@ static void draw_theme_editor()
 
 void ScreenshotTool::DrawPreferencesWindow()
 {
+    static constexpr const char* items[2] = { "Defaults", "Theme" };
+
     if (!show_preferences_window)
         return;
 
-    static bool config_modified    = false;
-    static int  item_selected      = 0;
-    static bool prev_window_open   = false;
-    const bool  window_just_opened = !prev_window_open;
+    static bool    prefs_modified     = false;
+    static bool    prev_window_open   = false;
+    const bool     window_just_opened = !prev_window_open;
+    static PrefTab selected_tab       = PrefTab::Defaults;
 
-    static Config::config_file_t snapshot;  // config state at the moment the window opened
-    static constexpr const char* items[2] = { "Defaults", "Theme" };
+    static Config::config_file_t     config_snapshot;  // config state at the moment the window opened
+    static Config::theme_overrides_t theme_snapshot;   // theme state at the moment the window opened
 
     prev_window_open = true;
 
+    auto save_current_tab = [&]() {
+        switch (selected_tab)
+        {
+            case PrefTab::kNone: break;
+            case PrefTab::Defaults:
+                g_config->GenerateConfig(g_config->GetConfigPath(), true);
+                config_snapshot = g_config->File;
+                break;
+
+            case PrefTab::Theme:
+                g_config->GenerateTheme(g_config->GetThemePath(), true);
+                apply_imgui_theme();
+                theme_snapshot = g_config->theme_overrides;
+                break;
+        }
+    };
+
+    auto discard_current_tab = [&]() {
+        switch (selected_tab)
+        {
+            case PrefTab::kNone:    break;
+            case PrefTab::Defaults: g_config->File = config_snapshot; break;
+            case PrefTab::Theme:    g_config->theme_overrides = theme_snapshot; break;
+        }
+    };
+
     // Snapshot the config when the window first appears so Discard can restore it.
     if (window_just_opened)
-        snapshot = g_config->File;
+    {
+        config_snapshot = g_config->File;
+        theme_snapshot  = g_config->theme_overrides;
+    }
 
-    if (snapshot != g_config->File)
-        config_modified = true;
+    if (config_snapshot != g_config->File || theme_snapshot != g_config->theme_overrides)
+        prefs_modified = true;
 
     bool window_open = true;
     ImGui::SetNextWindowSize(ImVec2(500, 440), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Preferences", &window_open, ImGuiWindowFlags_NoSavedSettings))
     {
-        // [x] was clicked this frame: either close cleanly or ask first.
+        // [x] or Esc was clicked this frame: either close cleanly or ask first.
         // OpenPopup must be called inside Begin/End, so we handle it here
         // before rendering any content.
-        if (!window_open)
+        if (!window_open || ImGui::IsKeyPressed(ImGuiKey_Escape))
         {
-            if (config_modified)
+            if (prefs_modified)
                 ImGui::OpenPopup("Unsaved changes##pref");
             else
                 show_preferences_window = false;
@@ -1712,8 +1757,8 @@ void ScreenshotTool::DrawPreferencesWindow()
         // Left
         ImGui::BeginChild("##left_panel", ImVec2(150, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX);
         for (int i = 0; i < IM_ARRAYSIZE(items); i++)
-            if (ImGui::Selectable(items[i], item_selected == i, ImGuiSelectableFlags_SelectOnNav))
-                item_selected = i;
+            if (ImGui::Selectable(items[i], selected_tab == enum_<PrefTab>(i)))
+                selected_tab = enum_<PrefTab>(i);
         ImGui::EndChild();
 
         ImGui::SameLine();
@@ -1721,39 +1766,25 @@ void ScreenshotTool::DrawPreferencesWindow()
         // Right
         ImGui::BeginGroup();
         ImGui::BeginChild("##right_panel", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()));
-        switch (item_selected)
+        switch (selected_tab)
         {
-            case 0: draw_preference_edit_config([&] { RefreshOcrModels(); }); break;
-            case 1: draw_theme_editor(); break;
+            case PrefTab::kNone:    break;
+            case PrefTab::Defaults: draw_preference_edit_config([&] { RefreshOcrModels(); }); break;
+            case PrefTab::Theme:    draw_theme_editor(); break;
         }
         ImGui::EndChild();
 
-        // "Oh why not a switch case?" It's unreadable most of the time with big switch cases.
-        // The compiler is smart enough to make ts a switch case. Please trust the compiler instead of yourself
-        if (item_selected == 0)
+        if (prefs_modified && create_timed_button("Save##save_press", "Saved!"))
         {
-            if (config_modified && create_timed_button("Save", "Saved!"))
-            {
-                g_config->GenerateConfig(g_config->GetConfigPath(), true);
-                snapshot        = g_config->File;
-                config_modified = false;
-            }
-            if (config_modified)
-            {
-                ImGui::SameLine();
-                ImGui::TextDisabled("Restart oshot for the new settings to take effect");
-            }
+            save_current_tab();
+            prefs_modified = false;
         }
-        else if (item_selected == 1)
+        else if (prefs_modified && selected_tab == PrefTab::Defaults)
         {
-            if (create_timed_button("Save##theme", "Saved!"))
-            {
-                g_config->GenerateTheme(g_config->GetThemePath(), true);
-                apply_imgui_theme();  // live-apply
-                config_modified = false;
-                snapshot        = g_config->File;
-            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("Restart oshot for the new settings to take effect");
         }
+
         ImGui::EndGroup();
 
         // Confirmation modal
@@ -1765,15 +1796,14 @@ void ScreenshotTool::DrawPreferencesWindow()
 
             if (ImGui::Button("Save & Close", ImVec2(110, 0)))
             {
-                g_config->GenerateConfig(g_config->GetConfigPath(), true);
-                snapshot                = g_config->File;
+                save_current_tab();
                 show_preferences_window = false;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
             if (ImGui::Button("Discard", ImVec2(80, 0)))
             {
-                g_config->File          = snapshot;
+                discard_current_tab();
                 show_preferences_window = false;
                 ImGui::CloseCurrentPopup();
             }
@@ -1793,7 +1823,7 @@ void ScreenshotTool::DrawPreferencesWindow()
     if (!show_preferences_window)
     {
         prev_window_open = false;
-        config_modified  = false;
+        prefs_modified   = false;
     }
 }
 
@@ -2000,17 +2030,23 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
     const int start_x = std::max(0, -region.x);
     const int end_x   = std::min(region.width, m_screenshot.w - region.x);
 
+    int width = end_x - start_x;
+
     // Copy only the valid region
-    const size_t bytes_to_copy = static_cast<size_t>(end_x - start_x) * 4;
+    const size_t bytes_to_copy = (width > 0) ? size_t(width) * 4 : 0;
 
-    for (int y = start_y; y < end_y; ++y)
+    if (bytes_to_copy > 0)
     {
-        const int src_y = region.y + y;
+        for (int y = start_y; y < end_y; ++y)
+        {
+            const int src_y = region.y + y;
 
-        const size_t src_row_start = (static_cast<size_t>(src_y) * src_width + (region.x + start_x)) * 4;
-        const size_t dst_row_start = (static_cast<size_t>(y) * dst_width + start_x) * 4;
+            const size_t src_row_start = (size_t(src_y) * src_width + (region.x + start_x)) * 4;
 
-        std::memcpy(dst.data() + dst_row_start, src.data() + src_row_start, bytes_to_copy);
+            const size_t dst_row_start = (size_t(y) * dst_width + start_x) * 4;
+
+            std::memcpy(dst.data() + dst_row_start, src.data() + src_row_start, bytes_to_copy);
+        }
     }
 
     if (is_text_tools && !g_config->File.render_anns)
@@ -2024,35 +2060,18 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
         if (x < 0 || x >= result.w || y < 0 || y >= result.h)
             return;
 
-        uint8_t src_r = (color >> 0) & 0xFF;
-        uint8_t src_g = (color >> 8) & 0xFF;
-        uint8_t src_b = (color >> 16) & 0xFF;
-        uint8_t src_a = (color >> 24) & 0xFF;
+        size_t   idx = (static_cast<size_t>(y) * result.w + x) * 4;
+        uint8_t* p   = &result.data[idx];
 
-        size_t idx = (static_cast<size_t>(y) * result.w + x) * 4;
-
-        if (src_a == 255)
+        rgba_t src = rgba_t::from_abgr(color);
+        if (src.a == 0xFF)
         {
-            result.data[idx + 0] = src_r;
-            result.data[idx + 1] = src_g;
-            result.data[idx + 2] = src_b;
-            result.data[idx + 3] = 255;
+            store_rgba(p, src);
             return;
         }
 
-        // Blend
-        uint8_t dst_r = result.data[idx + 0];
-        uint8_t dst_g = result.data[idx + 1];
-        uint8_t dst_b = result.data[idx + 2];
-        uint8_t dst_a = result.data[idx + 3];
-
-        float a  = src_a / 255.0f;
-        float ia = 1.0f - a;
-
-        result.data[idx + 0] = uint8_t(src_r * a + dst_r * ia);
-        result.data[idx + 1] = uint8_t(src_g * a + dst_g * ia);
-        result.data[idx + 2] = uint8_t(src_b * a + dst_b * ia);
-        result.data[idx + 3] = uint8_t(src_a + dst_a * (1.0f - a));
+        rgba_t dst = load_rgba(p);
+        store_rgba(p, blend(src, dst));
     };
 
     auto draw_line = [&](int x0, int y0, int x1, int y1, uint32_t color, float thickness) {
@@ -2147,14 +2166,10 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
                     break;
 
                 const uint32_t* font_pixels = reinterpret_cast<const uint32_t*>(pixels);
+                rgba_t          c           = rgba_t::from_abgr(ann.color);
 
-                const uint8_t col_r = (ann.color >> 0) & 0xFF;
-                const uint8_t col_g = (ann.color >> 8) & 0xFF;
-                const uint8_t col_b = (ann.color >> 16) & 0xFF;
-                const uint8_t col_a = (ann.color >> 24) & 0xFF;
-
-                float       cursor_x = static_cast<float>(x1);
-                float       cursor_y = static_cast<float>(y1);
+                float       cursor_x = x1;
+                float       cursor_y = y1;
                 const char* p        = ann.text.c_str();
                 const char* end      = p + ann.text.size();
 
@@ -2207,10 +2222,9 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
                             if (glyph_alpha == 0)
                                 continue;
 
-                            uint8_t  src_a       = col_a * glyph_alpha / 255u;
-                            uint32_t final_color = (col_r) | (col_g << 8) | (col_b << 16) | (src_a << 24);
-
-                            set_pixel(dst_x0 + dx, dst_y0 + dy, final_color);
+                            uint8_t src_a = c.a * glyph_alpha / 255u;
+                            rgba_t  pixel(c.r, c.g, c.b, src_a);
+                            set_pixel(dst_x0 + dx, dst_y0 + dy, pixel.to_abgr());
                         }
                     }
 

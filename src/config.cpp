@@ -10,6 +10,23 @@
 #include "toml++/toml.hpp"
 #include "util.hpp"
 
+static fs::path old_pwd;
+
+static void cd(const fs::path& path)
+{
+    if (!path.empty())
+    {
+        old_pwd = fs::current_path();
+        fs::current_path(path);
+    }
+}
+
+static void cd_back()
+{
+    if (!old_pwd.empty())
+        fs::current_path(old_pwd);
+}
+
 Config::Config(const std::string& configFile, const std::string& configDir)
     : m_config_path(configFile), m_config_dir_path(configDir)
 {
@@ -61,11 +78,12 @@ void Config::LoadConfigFile(const std::string& filename)
 
 void Config::LoadThemeFile(const std::string& filename)
 {
+    m_theme_path = filename;
+
     // Since the filename (default.theme-file) will be likely
     // related to relative path of the config directory, let's
     // snapshot and switch to that directory.
-    fs::path old_pwd = fs::current_path();
-    fs::current_path(m_config_dir_path);
+    cd(m_config_dir_path);
 
     if (fs::exists(filename))
     {
@@ -87,8 +105,7 @@ void Config::LoadThemeFile(const std::string& filename)
         }
     }
 
-    // Snap back
-    fs::current_path(old_pwd);
+    cd_back();
 
     theme_overrides_t& ov = theme_overrides;
     if (const toml::table* colors = m_theme_tbl.at_path("theme.colors").as_table())
@@ -139,6 +156,8 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
         !ask_user_yn(false, "WARNING: config file '{}' already exists. Do you want to overwrite it?", filename))
         std::exit(1);
 
+    cd(m_config_dir_path);
+
     auto f = fmt::output_file(filename.data());
 
     std::string fonts_str;
@@ -162,6 +181,8 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             fonts_str,
             File.theme_style,
             File.theme_file_path);
+
+    cd_back();
 }
 
 void Config::GenerateTheme(const std::string& filename, const bool force)
@@ -170,7 +191,7 @@ void Config::GenerateTheme(const std::string& filename, const bool force)
         !ask_user_yn(false, "WARNING: theme file '{}' already exists. Do you want to overwrite it?", filename))
         std::exit(1);
 
-    theme_overrides_t& ov = theme_overrides;
+    cd(m_config_dir_path);
 
     auto f = fmt::output_file(filename.data());
     if (!force)
@@ -179,14 +200,15 @@ void Config::GenerateTheme(const std::string& filename, const bool force)
         return;
     }
 
-    f.print(R"(
+    theme_overrides_t& ov = theme_overrides;
+    f.print(R"([theme]
 # Drop this next to config.toml or point theme-file at its path.
 # All sections and keys are optional — omit anything you don't want to override.
 
 # ---------------------------------------------------------------
 # Rounding (pixels, 0 = sharp corners, max ~12)
 # ---------------------------------------------------------------
-[theme.style]
+[style]
 window-rounding = {}
 frame-rounding  = {}
 grab-rounding   = {}
@@ -214,9 +236,11 @@ frame-border  = {}
 #   https://github.com/ocornut/imgui/blob/master/imgui.cpp
 #   (search for "GetStyleColorName")
 # ---------------------------------------------------------------
-[theme.colors]
+[colors]
 )");
 
     for (const auto& [name, hex] : ov.colors)
         f.print("{} = \"{}\"\n", name, hex);
+
+    cd_back();
 }

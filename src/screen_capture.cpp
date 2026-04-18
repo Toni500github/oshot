@@ -689,17 +689,14 @@ Result<capture_result_t> capture_full_screen_windows_fallback()
     );
 
     // Convert BGRA DIB -> RGBA
-    const uint32_t* s = reinterpret_cast<const uint32_t*>(pBits);
-    uint32_t*       d = reinterpret_cast<uint32_t*>(result.data.data());
+    const uint8_t* s = reinterpret_cast<const uint8_t*>(pBits);
+    uint8_t*       d = reinterpret_cast<uint8_t*>(result.data.data());
 
     const int n = width * height;
     for (int i = 0; i < n; ++i)
     {
-        uint32_t bgra = s[i];
-        uint32_t r    = (bgra & 0x000000FFu) << 16;
-        uint32_t g    = (bgra & 0x0000FF00u);
-        uint32_t b    = (bgra & 0x00FF0000u) >> 16;
-        d[i]          = 0xFF000000u | r | g | b;
+        const uint8_t* p = s + i * 4;
+        store_rgba(d + i * 4, rgba_t(p[2], p[1], p[0], 0xFF));
     }
 
     // Cleanup
