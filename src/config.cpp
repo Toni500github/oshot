@@ -78,7 +78,10 @@ void Config::LoadConfigFile(const std::string& filename)
 
 void Config::LoadThemeFile(const std::string& filename)
 {
-    m_theme_path = filename;
+    m_theme_path    = filename;
+    m_theme_tbl     = {};
+    theme_overrides = {};
+    theme_overrides.colors.clear();
 
     // Since the filename (default.theme-file) will be likely
     // related to relative path of the config directory, let's

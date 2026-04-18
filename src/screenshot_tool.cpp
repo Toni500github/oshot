@@ -114,6 +114,7 @@ static void draw_input_text_path(const char*                  label,
     ImGui::PopItemWidth();
     handle_drop();
 
+    ImGui::PushID(input_id);
     ImGui::SameLine(0, 0);
     if (ImGui::Button("...", ImVec2(button_size, button_size)))
     {
@@ -132,6 +133,7 @@ static void draw_input_text_path(const char*                  label,
         }
     }
     handle_drop();
+    ImGui::PopID();
 
     ImGui::SameLine(0, 3);
     ImGui::Text("%s", label);
@@ -237,7 +239,7 @@ static bool create_timed_button(const std::string_view label1,
     return false;
 }
 
-static const std::unordered_map<std::string, int>& color_name_map()
+static std::unordered_map<std::string, int>& color_name_map()
 {
     static std::unordered_map<std::string, int> map;
     if (map.empty())
@@ -332,6 +334,8 @@ Result<> ScreenshotTool::StartWindow()
     m_io    = ImGui::GetIO();
     m_state = ToolState::Selecting;
 
+    m_show_text_tools = g_config->File.show_text_tools;
+
     fit_to_screen(m_screenshot);
     SyncRuntimeFromConfig();
 
@@ -369,7 +373,7 @@ Result<> ScreenshotTool::StartWindow()
 
 void ScreenshotTool::RenderOverlay()
 {
-    bool disable_esc =
+    const bool disable_esc =
         (m_is_text_placing || m_is_color_picking || show_preferences_window) && !g_config->File.show_text_tools;
 
     static constexpr int minimal_win_flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
@@ -1500,7 +1504,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
     ImGui::End();
 }
 
-static void draw_preference_edit_config(const std::function<void()>& refresh_models_func)
+static void draw_preference_edit_config(const std::function<void()>& refresh_models_func, bool window_just_opened)
 {
     static std::string new_font;
 
@@ -1511,7 +1515,7 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     ImGui::Text("Default OCR path");
     ImGui::SameLine();
     HelpMarker("Full path to the OCR models (.traineddata). Supports drag-and-drop.");
-    draw_input_text_folder("", "##ocr_path", refresh_models_func, g_config->File.ocr_path);
+    draw_input_text_folder("", "##config_ocr_path", refresh_models_func, g_config->File.ocr_path);
     ImGui::Spacing();
 
     // --- OCR model ---
@@ -1526,6 +1530,37 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
         "Delay before acquiring a screenshot (milliseconds).\n"
         "Has no effect when opening an external image (e.g. -f flag).");
     ImGui::InputInt("##config_delay", &g_config->File.delay, 5, 10);
+    ImGui::Spacing();
+
+    // --- Theme settings ---
+    static int theme_selected = 0;
+    if (window_just_opened)
+    {
+        const std::string& ts = g_config->File.theme_style;
+        if (ts == "light")
+            theme_selected = 1;
+        else if (ts == "dark")
+            theme_selected = 2;
+        else if (ts == "classic")
+            theme_selected = 3;
+        else
+            theme_selected = 0;
+    }
+    ImGui::Text("Default Theme style");
+    if (ImGui::Combo("##config_theme_style", &theme_selected, "auto\0light\0dark\0classic\0\0"))
+    {
+        static constexpr const char* names[] = { "auto", "light", "dark", "classic" };
+        g_config->File.theme_style           = names[theme_selected];
+    }
+    ImGui::Spacing();
+
+    static const char* toml_filters[] = { "*.toml" };
+    ImGui::Text("Default Theme file path");
+    ImGui::SameLine();
+    HelpMarker(
+        "Full path to the theme file (aka. theme.toml), or relative to the config directory. Supports drag-and-drop.");
+    draw_input_text_file(
+        "", "##config_theme_file_path", toml_filters, 1, [] { /* applied on Save */ }, g_config->File.theme_file_path);
     ImGui::Spacing();
 
     // --- Checkboxes ---
@@ -1685,9 +1720,6 @@ void ScreenshotTool::DrawPreferencesWindow()
 {
     static constexpr const char* items[2] = { "Defaults", "Theme" };
 
-    if (!show_preferences_window)
-        return;
-
     static bool    prefs_modified     = false;
     static bool    prev_window_open   = false;
     const bool     window_just_opened = !prev_window_open;
@@ -1695,6 +1727,12 @@ void ScreenshotTool::DrawPreferencesWindow()
 
     static Config::config_file_t     config_snapshot;  // config state at the moment the window opened
     static Config::theme_overrides_t theme_snapshot;   // theme state at the moment the window opened
+
+    if (!show_preferences_window)
+    {
+        prev_window_open = false;
+        return;
+    }
 
     prev_window_open = true;
 
@@ -1706,11 +1744,20 @@ void ScreenshotTool::DrawPreferencesWindow()
                 g_config->GenerateConfig(g_config->GetConfigPath(), true);
                 g_config->LoadConfigFile(g_config->GetConfigPath());
                 SyncRuntimeFromConfig();
+                if (!g_config->File.theme_file_path.empty())
+                    g_config->LoadThemeFile(g_config->File.theme_file_path);
+                apply_imgui_theme();
                 config_snapshot = g_config->File;
+                theme_snapshot  = g_config->theme_overrides;
                 break;
 
             case PrefTab::Theme:
-                g_config->GenerateTheme(g_config->GetThemePath(), true);
+                if (!g_config->File.theme_file_path.empty())
+                {
+                    g_config->GenerateTheme(g_config->File.theme_file_path, true);
+                    g_config->LoadThemeFile(g_config->File.theme_file_path);
+                    color_name_map().clear();
+                }
                 apply_imgui_theme();
                 theme_snapshot = g_config->theme_overrides;
                 break;
@@ -1768,7 +1815,7 @@ void ScreenshotTool::DrawPreferencesWindow()
         switch (selected_tab)
         {
             case PrefTab::kNone:    break;
-            case PrefTab::Defaults: draw_preference_edit_config([&] { RefreshOcrModels(); }); break;
+            case PrefTab::Defaults: draw_preference_edit_config([&] { RefreshOcrModels(); }, window_just_opened); break;
             case PrefTab::Theme:    draw_theme_editor(); break;
         }
         ImGui::EndChild();
@@ -2401,8 +2448,6 @@ void ScreenshotTool::SyncRuntimeFromConfig()
     // Sync annotation font
     m_inputs.ann_font               = g_config->File.fonts.empty() ? "" : g_config->File.fonts[0];
     m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string();
-
-    m_show_text_tools = g_config->File.show_text_tools;
 
     extern_glfwSwapInterval(static_cast<int>(g_config->File.enable_vsync));
 }
