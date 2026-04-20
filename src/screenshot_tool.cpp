@@ -1587,6 +1587,117 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     ImGui::SameLine();
     HelpMarker("When enabled, annotations are included in the region passed to the text extractor.");
 
+    // --- Image output format section ---
+    ImGui::Dummy(ImVec2(0, 8));
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    ImGui::Text("Output filename format");
+    ImGui::SameLine();
+    HelpMarker("The .png extension is appended automatically. Uses {fmt} chrono specifiers.");
+    ImGui::Spacing();
+
+    ImGui::InputText("##config_image_out_fmt", &g_config->File.image_out_fmt);
+    const Result<std::string>& r = get_config_image_out_fmt();
+    if (!r.ok())
+        ImGui::TextColored(ImVec4(1, 0, 0, 1), "%s", r.error_v().c_str());
+    else
+        ImGui::TextDisabled("%s", r.get().c_str());
+
+    ImGui::Spacing();
+
+    if (ImGui::TreeNode("Format help"))
+    {
+        auto row = [](const char* spec, const char* desc) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextDisabled("%s", spec);
+                ImGui::TableSetColumnIndex(1);
+                ImGui::Text("%s", desc);
+            };
+
+        ImGui::Spacing();
+        ImGui::TextDisabled("Specifiers:");
+        ImGui::Indent();
+        ImGui::TextDisabled("Date:");
+        ImGui::TableSetupColumn("##spec", ImGuiTableColumnFlags_WidthFixed, 40.f);
+        ImGui::TableSetupColumn("##desc", ImGuiTableColumnFlags_WidthStretch);
+        if (ImGui::BeginTable("##fmt_date", 2, ImGuiTableFlags_SizingFixedFit))
+        {
+            row("%Y", "full year                (e.g. 2025)");
+            row("%y", "2-digit year             (e.g. 25)");
+            row("%C", "century                  (e.g. 20)");
+            row("%m", "month (01-12)");
+            row("%d", "day of month (01-31)");
+            row("%j", "day of year (001-366)");
+            row("%F", "short for %Y-%m-%d       (e.g. 2025-04-19)");
+            ImGui::EndTable();
+        }
+        ImGui::Spacing();
+
+        ImGui::TextDisabled("Time:");
+        if (ImGui::BeginTable("##fmt_time", 2, ImGuiTableFlags_SizingFixedFit))
+        {
+            row("%H", "hour 24h      (00-23)");
+            row("%I", "hour 12h      (01-12)");
+            row("%M", "minute        (00-59)");
+            row("%S", "second        (00-60)");
+            row("%p", "AM / PM");
+            ImGui::EndTable();
+        }
+        ImGui::Spacing();
+
+        ImGui::TextDisabled("Week / Weekday:");
+        if (ImGui::BeginTable("##fmt_week", 2, ImGuiTableFlags_SizingFixedFit))
+        {
+            row("%u", "weekday ISO                    (1=Mon ... 7=Sun)");
+            row("%w", "weekday                        (0=Sun ... 6=Sat)");
+            row("%a", "abbreviated weekday            (e.g. Sat)");
+            row("%A", "full weekday name              (e.g. Saturday)");
+            row("%U", "week of year, Sun-start        (00-53)");
+            row("%W", "week of year, Mon-start        (00-53)");
+            row("%V", "ISO week number                (01-53)");
+            row("%G", "ISO week-based year            (e.g. 2025)");
+            row("%g", "ISO week-based year, 2-digit   (e.g. 25)");
+            ImGui::EndTable();
+        }
+        ImGui::Spacing();
+
+        ImGui::TextDisabled("Month name:");
+        if (ImGui::BeginTable("##fmt_month", 2, ImGuiTableFlags_SizingFixedFit))
+        {
+            row("%b", "abbreviated month           (e.g. Apr)");
+            row("%B", "full month name             (e.g. April)");
+            ImGui::EndTable();
+        }
+        ImGui::Spacing();
+
+        ImGui::TextDisabled("Other:");
+        if (ImGui::BeginTable("##fmt_other", 2, ImGuiTableFlags_SizingFixedFit))
+        {
+            row("%%", "literal %");
+            ImGui::EndTable();
+        }
+        ImGui::Unindent();
+        ImGui::Spacing();
+
+        ImGui::TextDisabled("Examples:");
+        ImGui::Indent();
+        ImGui::BulletText("oshot_{:%%F_%%H-%%M}-test ->  oshot_2025-04-19_14-30-test.png");
+        ImGui::BulletText("oshot_{:%%F_%%H-%%M-%%S}   ->  oshot_2025-04-19_14-30-05.png");
+        ImGui::Unindent();
+        ImGui::Spacing();
+
+        ImGui::TextDisabled("Warnings:");
+        ImGui::Indent();
+        ImGui::BulletText("The colon inside {} is required: {:%%F} correct, {%%F} will error.");
+        ImGui::BulletText("Avoid %%T -- it expands to HH:MM:SS (colons break paths on Windows).");
+        ImGui::BulletText("%%H-%%M is 1-minute precise; add %%S if you take rapid shots.");
+        ImGui::Unindent();
+        ImGui::Spacing();
+        ImGui::TreePop();
+    }
+
     // --- Fonts section ---
     ImGui::Dummy(ImVec2(0, 8));
     ImGui::Separator();

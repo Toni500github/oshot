@@ -306,17 +306,35 @@ Result<capture_result_t> load_image_rgba(const std::string& path)
     return Ok(std::move(result));
 }
 
+Result<std::string> get_config_image_out_fmt()
+{
+    auto        now = std::chrono::system_clock::now();
+    std::string out_path;
+    try
+    {
+        out_path = fmt::format(fmt::runtime(g_config->File.image_out_fmt + ".png"), now);
+    }
+    catch (fmt::format_error& err)
+    {
+        return Err("Bad image output format string: " + std::string(err.what()));
+    }
+    return Ok(out_path);
+}
+
 Result<> save_png(SavingOp op, const capture_result_t& img)
 {
     if (op == SavingOp::Clipboard)
         return g_clipboard->CopyImage(img);
 
+    const Result<std::string>& r = get_config_image_out_fmt();
+    if (!r.ok())
+        return r.error();
+
     minimize_window();
 
-    auto        now       = std::chrono::system_clock::now();
     const char* filter[]  = { "*.png" };
     const char* save_path = tinyfd_saveFileDialog("Save File",
-                                                  fmt::format("oshot_{:%F_%H-%M}.png", now).c_str(),  // default path
+                                                  r.get().c_str(),  // default path
                                                   1,                // number of filter patterns
                                                   filter,           // file filters
                                                   "Images (*.png)"  // filter description
@@ -331,9 +349,11 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
     if (!fp)
         return Err("Failed to open file to write");
 
-    const std::vector<uint8_t>& data = encode_to_png(img);
-    fwrite(data.data(), 1, data.size(), fp);
+    const std::vector<uint8_t>& data    = encode_to_png(img);
+    size_t                      written = fwrite(data.data(), 1, data.size(), fp);
     fclose(fp);
+    if (written != data.size())
+        return Err("Failed to write image data");
     return Ok();
 }
 

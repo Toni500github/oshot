@@ -64,6 +64,7 @@ void Config::LoadConfigFile(const std::string& filename)
     File.ocr_model        = GetValue<std::string>("default.ocr-model", "eng");
     File.theme_style      = GetValue<std::string>("default.theme", "auto");
     File.theme_file_path  = GetValue<std::string>("default.theme-file", "");
+    File.image_out_fmt    = GetValue<std::string>("default.image-out-fmt", "oshot_{:%F_%H-%M}");
     File.delay            = GetValue<int>("default.delay", -1);
     File.show_text_tools  = GetValue<bool>("default.show-text-tools", true);
     File.enable_vsync     = GetValue<bool>("default.vsync", true);
@@ -182,6 +183,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.show_text_tools,
             File.render_anns,
             fonts_str,
+            File.image_out_fmt,
             File.theme_style,
             File.theme_file_path);
 

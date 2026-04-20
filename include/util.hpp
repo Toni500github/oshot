@@ -242,6 +242,7 @@ fs::path get_home_dir();
 fs::path get_config_dir();
 
 Result<capture_result_t> load_image_rgba(const std::string& path);
+Result<std::string>      get_config_image_out_fmt();
 Result<>                 save_png(SavingOp op, const capture_result_t& img);
 
 void minimize_window();               // Defined on main_tool_*

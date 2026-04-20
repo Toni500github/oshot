@@ -40,17 +40,18 @@ public:
     // They can be overwritten from CLI arguments
     struct config_file_t
     {
-        std::string              ocr_path        = "./models";
-        std::string              ocr_model       = "eng";
-        std::string              theme_style     = "auto";
-        std::string              theme_file_path = "";
-        std::vector<std::string> fonts;
+        std::string              ocr_path         = "./models";
+        std::string              ocr_model        = "eng";
+        std::string              theme_style      = "auto";
+        std::string              theme_file_path  = "";
+        std::string              image_out_fmt    = "oshot_{:%F_%H-%M}";
         int                      delay            = 0;
         bool                     allow_out_edit   = false;
         bool                     real_full_screen = false;
         bool                     show_text_tools  = true;
         bool                     enable_vsync     = true;
         bool                     render_anns      = true;
+        std::vector<std::string> fonts;
 
         // C++20: Automatic generation of ==, !=, <, <=, >, >=
         auto operator<=>(const config_file_t&) const = default;
@@ -297,6 +298,13 @@ annotations-in-text-tools = {}
 # for example, using "Roboto-Regular.ttf" and "RobotoCJK-Regular.ttc" for Chinese, Japanese, and Korean support alongside English support.
 # If empty, or non-existent (or commented out), oshot will use the default font for ImGUI.
 fonts = [{}]
+
+# Format of the output image filename when saving.
+# The .png extension is appended automatically.
+# Uses {{fmt}} chrono specifiers — the colon inside {{}} is required: {{:%F}} correct, {{%F}} will error.
+#
+# Default: "oshot_{{:%F_%H-%M}}"
+image-out-fmt = "{}"
 
 # Base UI theme: "auto" (follow OS dark/light), "dark", "light", or "classic".
 # Fine-grained overrides live in theme.toml.
