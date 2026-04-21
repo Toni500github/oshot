@@ -387,14 +387,19 @@ bool parse_hex_rgba(const std::string_view hex, rgba_t& out)
     if (hex.size() != 7 && hex.size() != 9)
         return false;
 
-    uint32_t               value;
-    const std::string_view s = hex.data() + 1;
-    if (std::from_chars(s.data(), s.data() + s.size(), value, 16).ec != std::errc())
+    // strtoul needs a null-terminated string. Construct one explicitly
+    // from the substring
+    const std::string s(hex.substr(1));
+
+    char*          end  = nullptr;
+    unsigned long  parsed = std::strtoul(s.c_str(), &end, 16);
+
+    // Ensure the entire string was consumed and no overflow occurred.
+    if (end != s.c_str() + s.size() || parsed > 0xFFFFFFFFul)
         return false;
 
-    rgba_t v(hex.size() == 7 ? (value << 8) : value);
-    if (hex.size() == 7)
-        v.a = 0xFF;
+    const auto value = static_cast<uint32_t>(parsed);
+    rgba_t v(hex.size() == 7 ? (value << 8) | 0xFF : value);
 
     out = v;
     return true;
