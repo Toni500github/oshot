@@ -31,7 +31,6 @@
 #include "oshot_png.h"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
-#include "socket.hpp"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "switch_fnv1a.hpp"
@@ -49,12 +48,6 @@ struct GLFWwindow;
 // likely to link with a newer binary of GLFW that is adequate for your version of Visual Studio.
 #if defined(_MSC_VER) && (_MSC_VER >= 1900) && !defined(IMGUI_DISABLE_WIN32_FUNCTIONS)
 #  pragma comment(lib, "legacy_stdio_definitions")
-#endif
-
-#if (!__has_include("version.h"))
-#  error "version.h not found, please generate it with ./scripts/generateVersion.sh"
-#else
-#  include "version.h"
 #endif
 
 // clang-format off
@@ -357,11 +350,6 @@ int main(int argc, char* argv[])
         setenv("LD_LIBRARY_PATH", orig, 1);
     else
         unsetenv("LD_LIBRARY_PATH");  // not running from AppImage, clear any stale value
-
-    // Xlib is not thread-safe by default. We call it from both the render thread
-    // and the IPC/clipboard thread; this enables Xlib's internal locking.
-    // Must be called before glfwInit(), which opens a Display* immediately.
-    XInitThreads();
 #endif
 
     atexit(exit_handler_nc);
@@ -403,7 +391,6 @@ int main(int argc, char* argv[])
     const std::string& imgui_ini_path = configDir + "/imgui.ini";
 
     g_clipboard = std::make_unique<Clipboard>(get_session_type());
-    g_sender    = std::make_unique<SocketSender>();
     g_config    = std::make_unique<Config>(configFile, configDir);
     if (!parseargs(argc, argv, configFile))
         return EXIT_FAILURE;
@@ -443,107 +430,6 @@ int main(int argc, char* argv[])
     // AppKit), so capture_worker must not run, because it would call run_main_tool
     // from a background thread and crash with NSInternalInconsistencyException.
     std::thread worker(capture_worker, imgui_ini_path);
-
-    std::thread ipc([&] {
-        while (!quit.load())
-        {
-            const int client = ::accept(g_sock, nullptr, nullptr);
-            if (client < 0)
-            {
-                if (quit.load())
-                    break;
-                continue;
-            }
-
-            // Set receive timeout
-            struct timeval tv;
-            tv.tv_sec  = 2;
-            tv.tv_usec = 0;
-            setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
-            auto recv_all = [](int fd, void* dst, size_t n) {
-                uint8_t* p         = static_cast<uint8_t*>(dst);
-                size_t   remaining = n;
-                while (remaining > 0)
-                {
-                    const ssize_t r = ::recv(fd, p, remaining, 0);
-                    if (r <= 0)
-                    {
-                        if (r == 0)
-                            spdlog::debug("Connection closed by peer");
-                        else
-                            spdlog::debug("recv error: {}", strerror(errno));
-                        return false;
-                    }
-                    p += static_cast<size_t>(r);
-                    remaining -= static_cast<size_t>(r);
-                }
-                return true;
-            };
-
-            char     type = 0;
-            uint32_t len  = 0;
-
-            bool ok = recv_all(client, &type, 1) && recv_all(client, &len, sizeof(len));
-
-            if (ok)
-                spdlog::debug("IPC received type={}, len={}", type, len);
-
-            std::vector<uint8_t> payload;
-            if (ok && len > 0 && len < 100 * 1024 * 1024)  // Sanity check: max 100MB
-            {
-                payload.resize(len);
-                ok = recv_all(client, payload.data(), payload.size());
-            }
-
-            close(client);
-
-            if (!ok)
-                continue;
-
-            if (type == 'T')
-            {
-                std::string text(payload.begin(), payload.end());
-                g_clipboard->CopyText(text);
-            }
-            else if (type == 'I')
-            {
-                if (payload.size() < 8)
-                {
-                    spdlog::debug("IPC image payload too small: {}", payload.size());
-                    continue;
-                }
-
-                int w = 0, h = 0;
-                std::memcpy(&w, payload.data() + 0, 4);
-                std::memcpy(&h, payload.data() + 4, 4);
-
-                spdlog::debug("IPC received image: {}x{}", w, h);
-
-                if (w <= 0 || h <= 0)
-                    continue;
-
-                const size_t expected = static_cast<size_t>(w) * h * 4;
-                if (payload.size() != expected + 8)
-                {
-                    spdlog::debug("IPC image size mismatch: got {}, expected {}", payload.size(), expected + 8);
-                    continue;
-                }
-
-                // Strip the 8-byte header
-                payload.erase(payload.begin(), payload.begin() + 8);
-                capture_result_t cap{ std::move(payload), w, h };
-                {
-                    std::lock_guard lk(mtx);
-                    pending_image = std::move(cap);
-                    do_copy_image = true;
-                    cv.notify_all();
-                }
-            }
-        }
-        close(g_sock);
-        unlink(g_sock_path);
-    });
 #endif
 
     std::vector<TrayMenu*> menu;
@@ -596,8 +482,6 @@ int main(int argc, char* argv[])
     // Quitted the tray
 #if !OSHOT_TOOL_ON_MAIN_THREAD
     worker.join();
-    if (ipc.joinable())
-        ipc.join();
 #endif
 
     return EXIT_SUCCESS;

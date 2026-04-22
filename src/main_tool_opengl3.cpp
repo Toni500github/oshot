@@ -5,7 +5,6 @@
 #  include "imgui/imgui_impl_opengl3.h"
 #  include "screen_capture.hpp"
 #  include "screenshot_tool.hpp"
-#  include "socket.hpp"
 #  include "util.hpp"
 #  define GL_SILENCE_DEPRECATION
 #  if defined(IMGUI_IMPL_OPENGL_ES2)
@@ -298,10 +297,7 @@ int run_main_tool(const std::string& imgui_ini_path)
     window = nullptr;
 
     if (!g_is_systray)
-    {
         glfwTerminate();
-        g_sender->Close();
-    }
 
     return EXIT_SUCCESS;
 }

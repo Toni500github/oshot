@@ -309,8 +309,6 @@ int run_main_tool(const std::string& imgui_ini_path)
     glfwDestroyWindow(window);
     glfwTerminate();
 
-    g_sender->Close();
-
     return EXIT_SUCCESS;
 }
 

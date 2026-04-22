@@ -16,7 +16,6 @@
 #include "fmt/format.h"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
-#include "socket.hpp"
 #include "tinyfiledialogs.h"
 
 #define SVPNG_LINKAGE inline
@@ -61,6 +60,7 @@
 #  include <fcntl.h>
 #  include <sys/select.h>
 #  include <sys/socket.h>
+#  include <sys/file.h>
 #  include <unistd.h>
 #  include <sys/un.h>
 #endif
@@ -155,34 +155,23 @@ fs::path get_runtime_dir()
 
 bool acquire_tray_lock()
 {
-    // we are the "client" (not systray)
-    if (g_sender->Start().ok())
+    std::string lock_path = (get_runtime_dir() / "oshot.lock").string();
+    int         fd        = open(lock_path.c_str(), O_CREAT | O_RDWR, 0600);
+    if (fd < 0)
         return false;
 
-    g_sock = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (g_sock < 0)
-        return false;
+    struct flock fl{};
+    fl.l_type   = F_WRLCK;
+    fl.l_whence = SEEK_SET;
 
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-
-    // Write 99 bytes at most to `addr.sun_path`, with the path to `oshot.sock`.
-    strncpy(addr.sun_path, (get_runtime_dir() / "oshot.sock").c_str(), 99);
-    // ensure null-termination
-    addr.sun_path[99] = '\0';
-
-    strncpy(g_sock_path, addr.sun_path, 100);
-
-    unlink(addr.sun_path);  // remove stale socket
-    if (bind(g_sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
+    if (fcntl(fd, F_SETLK, &fl) == -1)
     {
-        close(g_sock);
-        g_sock = -1;
+        // Another instance holds the lock
+        close(fd);
         return false;
     }
 
-    fcntl(g_sock, F_SETFD, FD_CLOEXEC);
-    listen(g_sock, 1);
+    // We hold the lock. it's released automatically when the process exits
     return true;
 }
 

@@ -6,7 +6,6 @@
 
 #include "clip/clip.h"
 #include "screen_capture.hpp"
-#include "socket.hpp"
 
 #ifdef __linux__
 #  include <sys/wait.h>
