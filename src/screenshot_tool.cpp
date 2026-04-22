@@ -1609,12 +1609,12 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     if (ImGui::TreeNode("Format help"))
     {
         auto row = [](const char* spec, const char* desc) {
-                ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0);
-                ImGui::TextDisabled("%s", spec);
-                ImGui::TableSetColumnIndex(1);
-                ImGui::Text("%s", desc);
-            };
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextDisabled("%s", spec);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%s", desc);
+        };
 
         ImGui::Spacing();
         ImGui::TextDisabled("Specifiers:");

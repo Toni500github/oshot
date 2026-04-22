@@ -391,15 +391,15 @@ bool parse_hex_rgba(const std::string_view hex, rgba_t& out)
     // from the substring
     const std::string s(hex.substr(1));
 
-    char*          end  = nullptr;
-    unsigned long  parsed = std::strtoul(s.c_str(), &end, 16);
+    char*         end    = nullptr;
+    unsigned long parsed = std::strtoul(s.c_str(), &end, 16);
 
     // Ensure the entire string was consumed and no overflow occurred.
     if (end != s.c_str() + s.size() || parsed > 0xFFFFFFFFul)
         return false;
 
     const auto value = static_cast<uint32_t>(parsed);
-    rgba_t v(hex.size() == 7 ? (value << 8) | 0xFF : value);
+    rgba_t     v(hex.size() == 7 ? (value << 8) | 0xFF : value);
 
     out = v;
     return true;

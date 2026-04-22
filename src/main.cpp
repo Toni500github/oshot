@@ -14,6 +14,8 @@
 #include <thread>
 #include <utility>
 
+#include "fmt/format.h"
+
 #ifndef _WIN32
 #  include <netdb.h>
 #  include <netinet/in.h>
@@ -197,7 +199,7 @@ static bool                    do_capture = false;
 static capture_result_t        pending_image;
 static bool                    do_copy_image = false;
 
-void exit_handler(int _)
+void exit_handler(int)
 {
     quit.store(true);
     cv.notify_all();
@@ -207,6 +209,12 @@ void exit_handler(int _)
 #endif
     extern_glfwTerminate();
     trayMaker.Exit();
+    std::error_code ec;
+    fs::remove(fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid()));
+}
+void exit_handler_nc()
+{
+    exit_handler(0);
 }
 
 int run_main_tool(const std::string& imgui_ini_path);
@@ -333,7 +341,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #else
 int main(int argc, char* argv[])
 {
-    const fs::path& log_path = fs::temp_directory_path(ec) / "oshot.log";
+    const fs::path& log_path = fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid());
     fs::create_directories(log_path.parent_path(), ec);
     auto file = std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_path.string(), true);
 #endif
@@ -356,6 +364,7 @@ int main(int argc, char* argv[])
     XInitThreads();
 #endif
 
+    atexit(exit_handler_nc);
     signal(SIGINT, exit_handler);
     signal(SIGTERM, exit_handler);
     signal(SIGABRT, exit_handler);
@@ -376,6 +385,13 @@ int main(int argc, char* argv[])
 
     // [2026-03-10 17:24:07.593] [DEBUG] XRandR capturing: monitor 1920x1080+0+0 (cursor at 1130,682)
     logger.set_pattern("[%Y-%m-%d %T.%e] [%l] %^%v%$");
+    logger.flush_on(spdlog::level::trace);
+
+    logger.info("=== oshot starting ===");
+    logger.info("Log file path: {}", log_path.string());
+    logger.flush();
+
+    spdlog::flush_every(std::chrono::seconds(1));
 
     // Check if demo build.
     // removing it once the hackaton has ended
@@ -439,15 +455,28 @@ int main(int argc, char* argv[])
                 continue;
             }
 
+            // Set receive timeout
+            struct timeval tv;
+            tv.tv_sec  = 2;
+            tv.tv_usec = 0;
+            setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
             auto recv_all = [](int fd, void* dst, size_t n) {
-                uint8_t* p = static_cast<uint8_t*>(dst);
-                while (n)
+                uint8_t* p         = static_cast<uint8_t*>(dst);
+                size_t   remaining = n;
+                while (remaining > 0)
                 {
-                    const ssize_t r = ::recv(fd, p, n, 0);
+                    const ssize_t r = ::recv(fd, p, remaining, 0);
                     if (r <= 0)
+                    {
+                        if (r == 0)
+                            spdlog::debug("Connection closed by peer");
+                        else
+                            spdlog::debug("recv error: {}", strerror(errno));
                         return false;
+                    }
                     p += static_cast<size_t>(r);
-                    n -= static_cast<size_t>(r);
+                    remaining -= static_cast<size_t>(r);
                 }
                 return true;
             };
@@ -457,11 +486,15 @@ int main(int argc, char* argv[])
 
             bool ok = recv_all(client, &type, 1) && recv_all(client, &len, sizeof(len));
 
-            std::vector<uint8_t> payload;
-            payload.resize(len);
+            if (ok)
+                spdlog::debug("IPC received type={}, len={}", type, len);
 
-            if (ok && len > 0)
+            std::vector<uint8_t> payload;
+            if (ok && len > 0 && len < 100 * 1024 * 1024)  // Sanity check: max 100MB
+            {
+                payload.resize(len);
                 ok = recv_all(client, payload.data(), payload.size());
+            }
 
             close(client);
 
@@ -476,18 +509,26 @@ int main(int argc, char* argv[])
             else if (type == 'I')
             {
                 if (payload.size() < 8)
+                {
+                    spdlog::debug("IPC image payload too small: {}", payload.size());
                     continue;
+                }
 
                 int w = 0, h = 0;
                 std::memcpy(&w, payload.data() + 0, 4);
                 std::memcpy(&h, payload.data() + 4, 4);
+
+                spdlog::debug("IPC received image: {}x{}", w, h);
 
                 if (w <= 0 || h <= 0)
                     continue;
 
                 const size_t expected = static_cast<size_t>(w) * h * 4;
                 if (payload.size() != expected + 8)
+                {
+                    spdlog::debug("IPC image size mismatch: got {}, expected {}", payload.size(), expected + 8);
                     continue;
+                }
 
                 // Strip the 8-byte header
                 payload.erase(payload.begin(), payload.begin() + 8);

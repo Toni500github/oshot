@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "clip/clip.h"
+#include "screen_capture.hpp"
 #include "socket.hpp"
 
 #ifdef __linux__
@@ -12,45 +13,53 @@
 #  include <unistd.h>
 #endif
 
-// Starts wlcopy in the background, forgetting it.
-// Sets wlcopy_pid, and returns an stdin pipe on success.
-Result<int> start_wlcopy(const std::string_view mime_type = "text/plain;charset=utf-8")
+// Starts wlcopy/xclip in the background, forgetting it.
+// Sets wlcopy_pid/xclip_pid, and returns an stdin pipe on success.
+Result<int> start_linux_copy(SessionType session, const std::string_view mime_type = "text/plain;charset=utf-8")
 {
 #ifdef __linux__
-    static int wlcopy_pid = -1;
+    static pid_t clip_pid = -1;
 
-    // stop if already launched
-    if (wlcopy_pid > 0)
+    // stop if already launched wlcopy
+    if (clip_pid > 0)
     {
-        kill(wlcopy_pid, SIGINT);
+        kill(clip_pid, SIGINT);
 
         // we need to do this on Linux, because the process will be defunct otherwise.
-        waitpid(wlcopy_pid, NULL, 0);
+        waitpid(clip_pid, NULL, 0);
 
-        wlcopy_pid = -1;
+        clip_pid = -1;
     }
 
     int copy_pipe[2];
     if (pipe(copy_pipe) == -1)
         return Err("Failed to open stdin pipe: " + std::string(strerror(errno)));
 
-    wlcopy_pid = fork();
+    clip_pid = fork();
 
-    if (wlcopy_pid == 0)
+    if (clip_pid == 0)
     {
         close(copy_pipe[1]);
         dup2(copy_pipe[0], STDIN_FILENO);
         close(copy_pipe[0]);
 
-        const char* args[] = { "wl-copy", "--foreground", "--type", mime_type.data(), nullptr };
-        execvp("wl-copy", const_cast<char* const*>(args));
+        if (session == SessionType::Wayland)
+        {
+            const char* args[] = { "wl-copy", "--foreground", "--type", mime_type.data(), nullptr };
+            execvp("wl-copy", const_cast<char* const*>(args));
+        }
+        else
+        {
+            const char* args[] = { "xclip", "-selection", "clipboard", "-t", mime_type.data(), "-i", nullptr };
+            execvp("xclip", const_cast<char* const*>(args));
+        }
 
         exit(-1);
     }
 
     close(copy_pipe[0]);
 
-    if (wlcopy_pid < 0)
+    if (clip_pid < 0)
     {
         close(copy_pipe[1]);
         return Err("Failed to fork: " + std::string(strerror(errno)));
@@ -64,9 +73,9 @@ Result<int> start_wlcopy(const std::string_view mime_type = "text/plain;charset=
 
 Result<> Clipboard::CopyText(const std::string& text)
 {
-    if (m_session == SessionType::Wayland)
+    if (m_session == SessionType::Wayland || m_session == SessionType::X11)
     {
-        const Result<int>& res = start_wlcopy();
+        const Result<int>& res = start_linux_copy(m_session);
         if (!res.ok())
             return res.error();
 
@@ -82,15 +91,6 @@ Result<> Clipboard::CopyText(const std::string& text)
         return Ok();
     }
 
-    // Linux only, external client with systray already running
-    if (!g_is_systray && !OSHOT_TOOL_ON_MAIN_THREAD && g_sender->IsConnected())
-    {
-        const Result<>& res = g_sender->Send(text);
-        if (res.ok())
-            return Ok();
-        return Err("Failed to send text to copy: " + res.error_v());
-    }
-
     if (clip::set_text(text))
         return Ok();
     return Err("Failed to copy text into clipboard");
@@ -101,9 +101,9 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
     if (cap.w <= 0 || cap.h <= 0)
         return Err("Image size is empty");
 
-    if (m_session == SessionType::Wayland)
+    if (m_session == SessionType::Wayland || m_session == SessionType::X11)
     {
-        const Result<int>& res = start_wlcopy("image/png");
+        const Result<int>& res = start_linux_copy(m_session, "image/png");
         if (!res.ok())
             return res.error();
 
@@ -119,23 +119,6 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
         close(fd);
 
         return Ok();
-    }
-
-    // Linux only, external client with systray already running
-    if (!g_is_systray && !OSHOT_TOOL_ON_MAIN_THREAD && g_sender->IsConnected())
-    {
-        const size_t         size = static_cast<size_t>(cap.w) * cap.h * 4;
-        std::vector<uint8_t> payload;
-        payload.resize(8 + size);
-
-        std::memcpy(payload.data() + 0, &cap.w, 4);
-        std::memcpy(payload.data() + 4, &cap.h, 4);
-        std::memcpy(payload.data() + 8, cap.view().data(), size);
-
-        const Result<>& res = g_sender->Send(SendMsg::Image, payload.data(), payload.size());
-        if (res.ok())
-            return Ok();
-        return Err("Failed to send image to copy: " + res.error_v());
     }
 
     clip::image_spec spec;
