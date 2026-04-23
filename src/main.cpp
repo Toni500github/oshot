@@ -376,7 +376,7 @@ int main(int argc, char* argv[])
     logger.flush_on(spdlog::level::trace);
 
     logger.info("=== oshot starting ===");
-    logger.info("Log file path: {}", log_path.string());
+    logger.info("Log file path: {}", file.filename());
     logger.flush();
 
     spdlog::flush_every(std::chrono::seconds(1));

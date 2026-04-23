@@ -19,7 +19,6 @@
 #  include "config.hpp"
 #  include "screen_capture.hpp"
 #  include "screenshot_tool.hpp"
-#  include "socket.hpp"
 #  include "tool_icons.h"
 #  include "util.hpp"
 
