@@ -446,6 +446,16 @@ void ScreenshotTool::HandleShortcutsInput()
         ImGui::ClearActiveID();
     }
 
+    if (ImGui::Shortcut(ImGuiKey_A | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
+    {
+        m_selection.start = point_t{ m_image_origin.x, m_image_origin.y };
+
+        m_selection.end = point_t{ m_image_origin.x + static_cast<float>(m_screenshot.w),
+                                   m_image_origin.y + static_cast<float>(m_screenshot.h) };
+
+        m_state = ToolState::Selected;
+    }
+
     if (ImGui::Shortcut(ImGuiKey_Z | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal) && !m_annotations.empty())
         m_annotations.pop_back();
 
