@@ -397,6 +397,7 @@ void ScreenshotTool::RenderOverlay()
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
         ImGui::Begin("##select_area", nullptr, minimal_win_flags);
         ImGui::TextColored(ImVec4(0, 1, 0, 1), "Select an area");
+        ImGui::TextColored(ImVec4(0, 1, 1, 1), "Save/Copy for whole screenshot");
         ImGui::End();
     }
 
@@ -456,7 +457,8 @@ void ScreenshotTool::HandleShortcutsInput()
             m_on_complete(SavingOp::File, Ok(GetFinalImage()));
 
     if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl | (g_config->File.ctrl_c_copy_img ? 0 : ImGuiMod_Shift),
-                        ImGuiInputFlags_RouteGlobal) && !ui_blocks_selection())
+                        ImGuiInputFlags_RouteGlobal) &&
+        !ui_blocks_selection())
         if (m_on_complete)
             m_on_complete(SavingOp::Clipboard, Ok(GetFinalImage()));
 }
@@ -2170,12 +2172,7 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
 {
     UpdateWindowBg();
 
-    region_t region{
-        static_cast<int>(m_selection.get_x() - m_image_origin.x),
-        static_cast<int>(m_selection.get_y() - m_image_origin.y),
-        static_cast<int>(m_selection.get_width()),
-        static_cast<int>(m_selection.get_height()),
-    };
+    const region_t& region = GetActiveRegion();
 
     capture_result_t result;
     result.w = region.width;
@@ -2203,10 +2200,8 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
     {
         for (int y = start_y; y < end_y; ++y)
         {
-            const int src_y = region.y + y;
-
+            const int    src_y         = region.y + y;
             const size_t src_row_start = (size_t(src_y) * src_width + (region.x + start_x)) * 4;
-
             const size_t dst_row_start = (size_t(y) * dst_width + start_x) * 4;
 
             std::memcpy(dst.data() + dst_row_start, src.data() + src_row_start, bytes_to_copy);
@@ -2481,6 +2476,31 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
     }
 
     return result;
+}
+
+region_t ScreenshotTool::GetActiveRegion() const
+{
+    bool has_selection = m_selection.get_width() > 0 && m_selection.get_height() > 0;
+
+    if (!has_selection)
+    {
+        // Full screenshot (visible area)
+        return region_t{ 0, 0, m_screenshot.w, m_screenshot.h };
+    }
+
+    // Convert from screen space -> image space
+    float x = m_selection.get_x() - m_image_origin.x;
+    float y = m_selection.get_y() - m_image_origin.y;
+    float w = m_selection.get_width();
+    float h = m_selection.get_height();
+
+    // Clamp to image bounds (important if user drags outside)
+    x = std::clamp(x, 0.0f, static_cast<float>(m_screenshot.w));
+    y = std::clamp(y, 0.0f, static_cast<float>(m_screenshot.h));
+    w = std::clamp(w, 0.0f, static_cast<float>(m_screenshot.w - x));
+    h = std::clamp(h, 0.0f, static_cast<float>(m_screenshot.h - y));
+
+    return region_t{ static_cast<int>(x), static_cast<int>(y), static_cast<int>(w), static_cast<int>(h) };
 }
 
 void ScreenshotTool::UpdateWindowBg()

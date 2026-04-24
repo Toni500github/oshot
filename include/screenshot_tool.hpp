@@ -145,6 +145,7 @@ public:
     void SetOnImageReload(std::function<void(const capture_result_t&)> fn) { m_on_image_reload = std::move(fn); }
 
     capture_result_t GetFinalImage(bool is_text_tools = false);
+    region_t         GetActiveRegion() const;
 
     ImFont* CacheAndGetFont(const std::string& font_name, const float font_size);
 
