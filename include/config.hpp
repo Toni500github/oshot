@@ -51,6 +51,7 @@ public:
         bool                     show_text_tools  = true;
         bool                     enable_vsync     = true;
         bool                     render_anns      = true;
+        bool                     ctrl_c_copy_img  = true;
         std::vector<std::string> fonts;
 
         // C++20: Automatic generation of ==, !=, <, <=, >, >=
@@ -292,6 +293,11 @@ show-text-tools = {}
 # Consider annotations when scanning (true)
 # or only when saving the selection (false).
 annotations-in-text-tools = {}
+
+# Copy image shortcut to use.
+# true: CTRL+C
+# false: CTRL+SHIFT+C
+ctrl-c-copy-img = {}
 
 # Fonts to use for the application. Can be an absolute path, or just a name.
 # You can combine multiple fonts for multiple language support.

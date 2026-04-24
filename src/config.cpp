@@ -70,6 +70,7 @@ void Config::LoadConfigFile(const std::string& filename)
     File.enable_vsync     = GetValue<bool>("default.vsync", true);
     File.real_full_screen = GetValue<bool>("default.real-full-screen", false);
     File.render_anns      = GetValue<bool>("default.annotations-in-text-tools", true);
+    File.ctrl_c_copy_img  = GetValue<bool>("default.ctrl-c-copy-img", false);
 
     File.fonts = GetValueArrayStr("default.fonts", { GetValue<std::string>("default.font", "") });
 
@@ -182,6 +183,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.allow_out_edit,
             File.show_text_tools,
             File.render_anns,
+            File.ctrl_c_copy_img,
             fonts_str,
             File.image_out_fmt,
             File.theme_style,

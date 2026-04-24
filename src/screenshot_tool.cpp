@@ -455,7 +455,8 @@ void ScreenshotTool::HandleShortcutsInput()
         if (m_on_complete)
             m_on_complete(SavingOp::File, Ok(GetFinalImage()));
 
-    if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl | ImGuiMod_Shift, ImGuiInputFlags_RouteGlobal))
+    if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl | (g_config->File.ctrl_c_copy_img ? 0 : ImGuiMod_Shift),
+                        ImGuiInputFlags_RouteGlobal) && !ui_blocks_selection())
         if (m_on_complete)
             m_on_complete(SavingOp::Clipboard, Ok(GetFinalImage()));
 }
@@ -1084,7 +1085,7 @@ void ScreenshotTool::DrawMenuItems()
                 if (m_on_complete)
                     m_on_complete(SavingOp::File, Ok(GetFinalImage()));
 
-            if (ImGui::MenuItem("Copy Image", "CTRL+SHIFT+C"))
+            if (ImGui::MenuItem("Copy Image", g_config->File.ctrl_c_copy_img ? "CTRL+C" : "CTRL+SHIFT+C"))
                 if (m_on_complete)
                     m_on_complete(SavingOp::Clipboard, Ok(GetFinalImage()));
 
@@ -1506,7 +1507,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
 static void draw_preference_edit_config(const std::function<void()>& refresh_models_func, bool window_just_opened)
 {
-    static std::string new_font;
+    static std::string         new_font;
     static Result<std::string> r = get_config_image_out_fmt();
 
     ImGui::SeparatorText("Edit default config");
@@ -1587,6 +1588,10 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     ImGui::Checkbox("Consider annotations when scanning##config_render_anns", &g_config->File.render_anns);
     ImGui::SameLine();
     HelpMarker("When enabled, annotations are included in the region passed to the text extractor.");
+
+    ImGui::Checkbox("Use CTRL+C to copy image##config_ctrl_c_copy_img", &g_config->File.ctrl_c_copy_img);
+    ImGui::SameLine();
+    HelpMarker("Shortcut to use when copying the image selection.\nIf disabled, the shortcut will be CTRL+SHIFT+C.");
 
     // --- Image output format section ---
     ImGui::Dummy(ImVec2(0, 8));
