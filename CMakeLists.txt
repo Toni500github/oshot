@@ -292,8 +292,8 @@ if(WIN32)
     )
 elseif(APPLE)
     target_sources(clip PRIVATE src/libs/clip/clip_osx.mm)
-elseif(UNIX)
-    target_sources(clip PRIVATE src/libs/clip/clip_x11.cpp)
+else()
+    target_sources(clip PRIVATE src/libs/clip/clip_none.cpp)
 endif()
 
 if(MSVC)
@@ -304,18 +304,9 @@ elseif(MINGW)
     target_link_libraries(clip PUBLIC shlwapi windowscodecs)
 endif()
 
-if(UNIX AND NOT APPLE)
-    pkg_check_modules(XCB REQUIRED IMPORTED_TARGET xcb)
-    pkg_check_modules(LIBPNG REQUIRED IMPORTED_TARGET libpng)
-    target_link_libraries(
-        clip
-        PRIVATE PkgConfig::XCB Threads::Threads PkgConfig::LIBPNG
-    )
-endif()
-
 target_include_directories(clip PUBLIC include/libs/clip)
 target_compile_features(clip PRIVATE cxx_std_20)
-target_compile_definitions(clip PUBLIC CLIP_ENABLE_IMAGE=1 CLIP_X11_WITH_PNG=1 HAVE_PNG_H=1)
+target_compile_definitions(clip PUBLIC CLIP_ENABLE_IMAGE=1)
 set_target_properties(
     clip
     PROPERTIES

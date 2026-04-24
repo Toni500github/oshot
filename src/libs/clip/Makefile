@@ -1,6 +1,6 @@
 CXX		?= g++
 CXXSTD		?= c++20
-CXXFLAGS 	 = -I../../../include/libs/clip -std=$(CXXSTD) $(LTO_FLAGS) -fvisibility=default -fvisibility-inlines-hidden -fPIC -DCLIP_ENABLE_IMAGE=1 -DCLIP_X11_WITH_PNG=1 -DHAVE_PNG_H=1
+CXXFLAGS 	 = -I../../../include/libs/clip -std=$(CXXSTD) $(LTO_FLAGS) -fvisibility=default -fvisibility-inlines-hidden -fPIC -DCLIP_ENABLE_IMAGE=1
 
 ifeq ($(DEBUG),1)
 	CXXFLAGS  := -ggdb3 -Wall -Wextra -pedantic -Wno-unused-parameter \
@@ -20,7 +20,7 @@ ifeq ($(findstring NT,$(UNAME_S)),NT)
     endif
 else
     CXXFLAGS 	+= -Wall -Wextra
-    SRC 	+= clip_x11.cpp
+    SRC 	+= clip_none.cpp
 endif
 
 LIBNAME 	= libclip.a
