@@ -1507,6 +1507,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
 static void draw_preference_edit_config(const std::function<void()>& refresh_models_func, bool window_just_opened)
 {
     static std::string new_font;
+    static Result<std::string> r = get_config_image_out_fmt();
 
     ImGui::SeparatorText("Edit default config");
     ImGui::Spacing();
@@ -1597,8 +1598,9 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     HelpMarker("The .png extension is appended automatically. Uses {fmt} chrono specifiers.");
     ImGui::Spacing();
 
-    ImGui::InputText("##config_image_out_fmt", &g_config->File.image_out_fmt);
-    const Result<std::string>& r = get_config_image_out_fmt();
+    if (ImGui::InputText("##config_image_out_fmt", &g_config->File.image_out_fmt))
+        r = get_config_image_out_fmt();
+
     if (!r.ok())
         ImGui::TextColored(ImVec4(1, 0, 0, 1), "%s", r.error_v().c_str());
     else

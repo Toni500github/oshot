@@ -66,7 +66,7 @@ Result<int> start_linux_copy(SessionType session, const std::string_view mime_ty
 
     return Ok(copy_pipe[1]);
 #else
-    return Err("wl-copy scheme is not supported on non-linux systems!");
+    return Err("wl-copy/xclip scheme is not supported on non-linux systems!");
 #endif
 }
 
