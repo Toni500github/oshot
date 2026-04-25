@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "cache.hpp"
 #include "clipboard.hpp"
 #include "config.hpp"
 #include "imgui/imgui.h"
@@ -649,7 +650,7 @@ void ScreenshotTool::HandleAnnotationInput()
             ImFont* ann_font = CacheAndGetFont(m_inputs.resolved_ann_font_path, m_current_annotation.thickness);
             ImGui::PushFont(ann_font);
 
-            ImGui::PushStyleColor(ImGuiCol_Text, m_current_annotation.color);
+            ImGui::PushStyleColor(ImGuiCol_Text, m_current_annotation.color.to_abgr());
             if (ImGui::InputText(
                     "##text_ann_input_text", &m_current_annotation.text, ImGuiInputTextFlags_EnterReturnsTrue))
             {
@@ -850,8 +851,7 @@ void ScreenshotTool::HandleColorPickerInput()
 
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
         {
-            m_picker_color     = c.to_imvec4();
-            m_current_color    = c.to_abgr();
+            m_current_color    = c;
             m_is_color_picking = false;
         }
     }
@@ -1385,6 +1385,7 @@ void ScreenshotTool::DrawBarDecodeTools()
 
 void ScreenshotTool::DrawAnnotationToolbar()
 {
+    cache_entry_t&               cache_entry      = g_cache_files[CacheFilesEnum::Colors];
     static int                   item_picker      = 0;
     static constexpr const char* color_pickers[2] = { "Bar - Square", "Wheel - Triangle" };
 
@@ -1495,9 +1496,11 @@ void ScreenshotTool::DrawAnnotationToolbar()
             ImGui::SameLine();
             HelpMarker("Click anywhere on the image to pick a color");
 
-            ImGui::ColorPicker4("Color", reinterpret_cast<float*>(&m_picker_color), color_picker_flags);
+            ImVec4 picker = m_current_color.to_imvec4();
+            ImGui::ColorPicker4("Color", reinterpret_cast<float*>(&picker), color_picker_flags);
 
-            m_current_color = ImGui::ColorConvertFloat4ToU32(m_picker_color);
+            m_current_color = rgba_t(picker);
+            Cache::SetValue(cache_entry, m_current_color.to_rgba());
             ImGui::EndPopup();
         }
 
@@ -2023,21 +2026,21 @@ void ScreenshotTool::DrawAnnotations()
     const float dpi       = m_io.DisplayFramebufferScale.x;
 
     auto draw_line = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
-        draw_list->AddLine(p1, p2, ann.color, t);
+        draw_list->AddLine(p1, p2, ann.color.to_abgr(), t);
     };
 
     auto draw_text = [&](const annotation_t& ann, const ImVec2& p1) {
         const float font_size = ann.thickness > 8.0f ? ann.thickness : ImGui::GetFontSize();
         ImFont*     font      = CacheAndGetFont(m_inputs.resolved_ann_font_path, font_size);
-        draw_list->AddText(font, font_size, p1, ann.color, ann.text.c_str());
+        draw_list->AddText(font, font_size, p1, ann.color.to_abgr(), ann.text.c_str());
     };
 
     auto draw_rectangle_or_filled =
         [&](const bool filled, const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
             ImVec2 min(std::min(p1.x, p2.x), std::min(p1.y, p2.y));
             ImVec2 max(std::max(p1.x, p2.x), std::max(p1.y, p2.y));
-            filled ? draw_list->AddRectFilled(min, max, ann.color, 0.0f, 0)
-                   : draw_list->AddRect(min, max, ann.color, 0.0f, 0, t);
+            filled ? draw_list->AddRectFilled(min, max, ann.color.to_abgr(), 0.0f, 0)
+                   : draw_list->AddRect(min, max, ann.color.to_abgr(), 0.0f, 0, t);
         };
 
     auto draw_circle_or_filled =
@@ -2045,8 +2048,8 @@ void ScreenshotTool::DrawAnnotations()
             float dx     = p2.x - p1.x;
             float dy     = p2.y - p1.y;
             float radius = std::sqrt(dx * dx + dy * dy);
-            filled ? draw_list->AddCircleFilled(p1, radius, ann.color, 0)
-                   : draw_list->AddCircle(p1, radius, ann.color, 0, t);
+            filled ? draw_list->AddCircleFilled(p1, radius, ann.color.to_abgr(), 0)
+                   : draw_list->AddCircle(p1, radius, ann.color.to_abgr(), 0, t);
         };
 
     auto draw_pencil = [&](const annotation_t& ann, const float t) {
@@ -2054,7 +2057,7 @@ void ScreenshotTool::DrawAnnotations()
         {
             draw_list->AddPolyline(reinterpret_cast<const ImVec2*>(ann.points.data()),
                                    static_cast<int>(ann.points.size()),
-                                   ann.color,
+                                   ann.color.to_abgr(),
                                    ImDrawFlags_None,
                                    t);
         }
@@ -2079,10 +2082,10 @@ void ScreenshotTool::DrawAnnotations()
         ImVec2 right(base.x - perp.x * (head_w * 0.5f), base.y - perp.y * (head_w * 0.5f));
 
         // shaft
-        draw_list->AddLine(p1, base, ann.color, t);
+        draw_list->AddLine(p1, base, ann.color.to_abgr(), t);
 
         // head
-        draw_list->AddTriangleFilled(p2, left, right, ann.color);
+        draw_list->AddTriangleFilled(p2, left, right, ann.color.to_abgr());
     };
 
     auto draw_annotation = [&](const annotation_t& ann) {
@@ -2236,25 +2239,24 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
     const float offset_x = m_selection.get_x();
     const float offset_y = m_selection.get_y();
 
-    auto set_pixel = [&](int x, int y, uint32_t color) {
+    auto set_pixel = [&](int x, int y, rgba_t color) {
         if (x < 0 || x >= result.w || y < 0 || y >= result.h)
             return;
 
         size_t   idx = (static_cast<size_t>(y) * result.w + x) * 4;
         uint8_t* p   = &result.data[idx];
 
-        rgba_t src = rgba_t::from_abgr(color);
-        if (src.a == 0xFF)
+        if (color.a == 0xFF)
         {
-            store_rgba(p, src);
+            store_rgba(p, color);
             return;
         }
 
         rgba_t dst = load_rgba(p);
-        store_rgba(p, blend(src, dst));
+        store_rgba(p, blend(color, dst));
     };
 
-    auto draw_line = [&](int x0, int y0, int x1, int y1, uint32_t color, float thickness) {
+    auto draw_line = [&](int x0, int y0, int x1, int y1, rgba_t color, float thickness) {
         // Bresenham's line algorithm with thickness
         int dx     = std::abs(x1 - x0);
         int dy     = std::abs(y1 - y0);
@@ -2346,7 +2348,7 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
                     break;
 
                 const uint32_t* font_pixels = reinterpret_cast<const uint32_t*>(pixels);
-                rgba_t          c           = rgba_t::from_abgr(ann.color);
+                rgba_t          c           = ann.color;
 
                 float       cursor_x = x1;
                 float       cursor_y = y1;
@@ -2404,7 +2406,7 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
 
                             uint8_t src_a = c.a * glyph_alpha / 255u;
                             rgba_t  pixel(c.r, c.g, c.b, src_a);
-                            set_pixel(dst_x0 + dx, dst_y0 + dy, pixel.to_abgr());
+                            set_pixel(dst_x0 + dx, dst_y0 + dy, pixel);
                         }
                     }
 

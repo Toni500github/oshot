@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "cache.hpp"
 #include "config.hpp"
 #include "imgui/imgui.h"
 #include "imgui/imgui_internal.h"
@@ -107,9 +108,9 @@ struct annotation_t
     ToolType             type = ToolType::kNone;
     point_t              start;
     point_t              end;
-    std::string          text;                    // For text tool
-    std::vector<point_t> points;                  // For pencil tool
-    uint32_t             color     = 0xFF0000FF;  // RGBA
+    std::string          text;                                       // For text tool
+    std::vector<point_t> points;                                     // For pencil tool
+    rgba_t               color     = rgba_t::from_rgba(0xFF0000FF);  // RGBA
     float                thickness = 3.0f;
 };
 
@@ -131,7 +132,11 @@ struct inputs_results_t
 class ScreenshotTool
 {
 public:
-    ScreenshotTool() : m_io(dummy), m_inputs{ g_config->File.ocr_path, g_config->File.ocr_model, {}, "", {}, "", "" } {}
+    ScreenshotTool()
+        : m_io(dummy),
+          m_inputs{ g_config->File.ocr_path, g_config->File.ocr_model, {}, "", {}, "", "" },
+          m_current_color(rgba_t(Cache::GetValue(g_cache_files[CacheFilesEnum::Colors], 0xFF0000FF)))
+    {}
 
     Result<>          Start();
     Result<>          StartWindow();
@@ -223,7 +228,7 @@ private:
     ToolType                                m_current_tool = ToolType::kNone;
     std::vector<annotation_t>               m_annotations;
     annotation_t                            m_current_annotation;
-    uint32_t                                m_current_color = 0xFF0000FF;
+    rgba_t                                  m_current_color;
     std::array<float, idx(ToolType::Count)> m_tool_thickness;
     ImVec4                                  m_picker_color{ 1, 0, 0, 1 };
     bool                                    m_is_drawing       = false;

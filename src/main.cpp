@@ -14,6 +14,7 @@
 #include <thread>
 #include <utility>
 
+#include "cache.hpp"
 #include "fmt/format.h"
 
 #ifndef _WIN32
@@ -63,6 +64,7 @@ struct GLFWwindow;
 // Extern variables declariaions
 std::deque<std::string> g_dropped_paths;
 std::unique_ptr<Config> g_config;
+std::unique_ptr<Cache>  g_cache;
 bool                    g_is_systray = false;
 int                     g_scr_w{}, g_scr_h{};
 Clipboard               g_clipboard(SessionType::Unknown);
@@ -202,7 +204,6 @@ void exit_handler(int)
 #endif
     extern_glfwTerminate();
     trayMaker.Exit();
-    std::error_code ec;
     fs::remove(fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid()));
 }
 void exit_handler_nc()
@@ -388,10 +389,12 @@ int main(int argc, char* argv[])
     if (fs::exists("models", ec))
         configDir = ".";
 
+    const std::string& cacheDir       = get_cache_dir().string();
     const std::string& configFile     = parse_config_path(argc, argv, configDir).string();
     const std::string& imgui_ini_path = configDir + "/imgui.ini";
 
-    g_config    = std::make_unique<Config>(configFile, configDir);
+    g_cache  = std::make_unique<Cache>(cacheDir);
+    g_config = std::make_unique<Config>(configFile, configDir);
     if (!parseargs(argc, argv, configFile))
         return EXIT_FAILURE;
 

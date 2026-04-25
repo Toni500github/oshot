@@ -507,15 +507,13 @@ fs::path get_home_dir()
     die("Cannot determine home directory");
 }
 
-std::string expand_var(std::string ret, bool dont)
+std::string expand_var(std::string ret)
 {
-    if (ret.empty() || dont)
+    if (ret.empty())
         return ret;
 
     if (ret.front() == '~')
-    {
         ret.replace(0, 1, get_home_dir().string());
-    }
 
     Dotenv env;
     env.parse_line(ret);
@@ -553,9 +551,43 @@ fs::path get_home_config_dir()
 #endif
 }
 
+fs::path get_home_cache_dir()
+{
+#ifndef _WIN32
+    const char* dir = std::getenv("XDG_CACHE_HOME");
+    if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
+        return fs::path(dir);
+    else
+        return get_home_dir() / ".cache";
+#else
+    PWSTR widePath = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, NULL, &widePath)))
+    {
+        int         size = WideCharToMultiByte(CP_UTF8, 0, widePath, -1, NULL, 0, NULL, NULL);
+        std::string narrowPath(size, 0);
+        WideCharToMultiByte(CP_UTF8, 0, widePath, -1, &narrowPath[0], size, NULL, NULL);
+        CoTaskMemFree(widePath);
+
+        narrowPath.pop_back();  // remove null terminator
+        return narrowPath;
+    }
+
+    const char* dir = std::getenv("LOCALAPPDATA");
+    if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
+        return fs::path(dir);
+    else
+        die("Failed to get %LOCALAPPDATA% path");
+#endif
+}
+
 fs::path get_config_dir()
 {
     return get_home_config_dir() / "oshot";
+}
+
+fs::path get_cache_dir()
+{
+    return get_home_cache_dir() / "oshot";
 }
 
 fs::path get_font_path(const std::string& font)

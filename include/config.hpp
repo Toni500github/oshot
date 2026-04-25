@@ -8,7 +8,7 @@
 #include "fmt/format.h"
 
 // util.hpp
-std::string expand_var(std::string ret, bool dont = false);
+std::string expand_var(std::string ret);
 bool        hexstr_to_col(const std::string_view hex, uint32_t& out);
 
 #define TOML_HEADER_ONLY 0
@@ -153,23 +153,6 @@ public:
         m_overrides[key] = std::move(o);
     }
 
-    const std::string& GetConfigPath() const { return m_config_path; }
-    const std::string& GetThemePath() const { return m_theme_path; }
-    const std::string& GetConfigDirPath() const { return m_config_dir_path; }
-
-private:
-    // Parsed config from LoadConfigFile()
-    toml::table m_tbl;
-
-    // Parsed theme from LoadThemeFile()
-    toml::table m_theme_tbl;
-
-    std::unordered_map<std::string, override_config_value_t> m_overrides;
-
-    std::string m_config_path;
-    std::string m_theme_path;
-    std::string m_config_dir_path;
-
     /**
      * Get value of config variables
      * @param value The config variable "path" (e.g "config.source-path")
@@ -200,7 +183,10 @@ private:
         const std::optional<T>& ret =
             is_theme ? m_theme_tbl.at_path(value).value<T>() : m_tbl.at_path(value).value<T>();
         if constexpr (toml::is_string<T>)
-            return ret ? expand_var(ret.value(), dont_expand_var) : expand_var(fallback, dont_expand_var);
+            if (!dont_expand_var)
+                return ret ? expand_var(ret.value()) : expand_var(fallback);
+            else
+                return ret ? ret.value() : fallback;
         else
             return ret.value_or(fallback);
     }
@@ -254,6 +240,23 @@ private:
                       out);
         return out;
     }
+
+    const std::string& GetConfigPath() const { return m_config_path; }
+    const std::string& GetThemePath() const { return m_theme_path; }
+    const std::string& GetConfigDirPath() const { return m_config_dir_path; }
+
+private:
+    // Parsed config from LoadConfigFile()
+    toml::table m_tbl;
+
+    // Parsed theme from LoadThemeFile()
+    toml::table m_theme_tbl;
+
+    std::unordered_map<std::string, override_config_value_t> m_overrides;
+
+    std::string m_config_path;
+    std::string m_theme_path;
+    std::string m_config_dir_path;
 };
 
 extern std::unique_ptr<Config> g_config;

@@ -2,7 +2,6 @@
 #define _SCREEN_CAPTURE_HPP_
 
 #include <cstdint>
-#include <functional>
 #include <span>
 #include <vector>
 
@@ -35,8 +34,6 @@ enum class SessionType
     KDE,
     Unknown
 };
-
-using CaptureCallback = std::function<void(capture_result_t)>;
 
 Result<capture_result_t> capture_full_screen_x11();
 Result<capture_result_t> capture_full_screen_wayland();

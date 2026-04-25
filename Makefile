@@ -70,14 +70,14 @@ LDFLAGS   	+= -L$(BUILDDIR) $(LTO_FLAGS)
 LDLIBS		+= $(LIBS) `pkg-config --static --libs glfw3 tesseract zbar`
 CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
 
-LIBS = \
+LIBS := \
   $(BUILDDIR)/libimgui.a \
   $(BUILDDIR)/libfmt.a \
   $(BUILDDIR)/libclip.a \
   $(BUILDDIR)/libtray.a \
   $(BUILDDIR)/libtiny-process-library.a
 
-OBJ += \
+EXTRA_OBJ := \
   $(BUILDDIR)/toml.o \
   $(BUILDDIR)/tinyfiledialogs.o \
   $(BUILDDIR)/getopt.o
@@ -118,8 +118,8 @@ $(BUILDDIR)/getopt.o:
 genver:
 	./scripts/generateVersion.sh
 
-$(BUILDDIR)/$(TARGET): genver $(OBJ) $(LIBS)
-	$(CXX) -o $@ $(OBJ) $(LDFLAGS) $(LDLIBS)
+$(BUILDDIR)/$(TARGET): genver $(OBJ) $(EXTRA_OBJ) $(LIBS)
+	$(CXX) -o $@ $(OBJ) $(EXTRA_OBJ) $(LDFLAGS) $(LDLIBS)
 
 dist: $(TARGET)
 	zip -j $(NAME)-v$(VERSION).zip LICENSE README.md $(BUILDDIR)/$(TARGET)

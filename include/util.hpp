@@ -238,8 +238,10 @@ fs::path get_runtime_dir();
 #endif
 fs::path get_font_path(const std::string& font);
 fs::path get_home_config_dir();
+fs::path get_home_cache_dir();
 fs::path get_home_dir();
 fs::path get_config_dir();
+fs::path get_cache_dir();
 
 Result<capture_result_t> load_image_rgba(const std::string& path);
 Result<std::string>      get_config_image_out_fmt();
