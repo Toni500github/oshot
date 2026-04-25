@@ -19,7 +19,7 @@ typedef std::map<format, Buffer> Map;
 static format g_last_format = 100; // TODO create an enum with common formats
 static Map g_data;
 
-lock::impl::impl(void* native_handle) : m_locked(true) {
+lock::impl::impl(void*) : m_locked(true) {
 }
 
 lock::impl::~impl() {
@@ -49,7 +49,7 @@ bool lock::impl::set_data(format f, const char* buf, size_t len) {
   return true;
 }
 
-bool lock::impl::get_data(format f, char* buf, size_t len) const {
+bool lock::impl::get_data(format f, char* buf, size_t) const {
   assert(buf);
 
   if (!buf || !is_convertible(f))
@@ -69,21 +69,21 @@ size_t lock::impl::get_data_length(format f) const {
 
 #if CLIP_ENABLE_IMAGE
 
-bool lock::impl::set_image(const image& image) {
+bool lock::impl::set_image(const image&) {
   return false;               // TODO
 }
 
-bool lock::impl::get_image(image& image) const {
+bool lock::impl::get_image(image&) const {
   return false;               // TODO
 }
 
-bool lock::impl::get_image_spec(image_spec& spec) const {
+bool lock::impl::get_image_spec(image_spec&) const {
   return false;               // TODO
 }
 
 #endif // CLIP_ENABLE_IMAGE
 
-format register_format(const std::string& name) {
+format register_format(const std::string&) {
   return g_last_format++;
 }
 

@@ -9,6 +9,8 @@
 #define FMT_FORMAT_INL_H_
 
 #ifndef FMT_MODULE
+#  include <stddef.h>  // ptrdiff_t
+
 #  include <algorithm>
 #  include <cerrno>  // errno
 #  include <climits>
@@ -90,8 +92,8 @@ FMT_FUNC void format_error_code(detail::buffer<char>& out, int error_code,
   // Report error code making sure that the output fits into inline_buffer_size
   // to avoid dynamic memory allocation and potential bad_alloc.
   out.try_resize(0);
-  static const char SEP[] = ": ";
-  static const char ERROR_STR[] = "error ";
+  static constexpr char SEP[] = ": ";
+  static constexpr char ERROR_STR[] = "error ";
   // Subtract 2 to account for terminating null characters in SEP and ERROR_STR.
   size_t error_code_size = sizeof(SEP) + sizeof(ERROR_STR) - 2;
   auto abs_value = static_cast<uint32_or_64_or_128_t<int>>(error_code);
@@ -209,10 +211,9 @@ inline auto umul96_upper64(uint32_t x, uint64_t y) noexcept -> uint64_t {
 
 // Computes lower 128 bits of multiplication of a 64-bit unsigned integer and a
 // 128-bit unsigned integer.
-inline auto umul192_lower128(uint64_t x, uint128_fallback y) noexcept
-    -> uint128_fallback {
+inline auto umul192_lower128(uint64_t x, uint128 y) noexcept -> uint128 {
   uint64_t high = x * y.high();
-  uint128_fallback high_low = umul128(x, y.low());
+  uint128 high_low = umul128(x, y.low());
   return {high + high_low.high(), high_low.low()};
 }
 
@@ -380,13 +381,13 @@ template <> struct cache_accessor<float> {
 
 template <> struct cache_accessor<double> {
   using carrier_uint = float_info<double>::carrier_uint;
-  using cache_entry_type = uint128_fallback;
+  using cache_entry_type = uint128;
 
-  static auto get_cached_power(int k) noexcept -> uint128_fallback {
+  static auto get_cached_power(int k) noexcept -> uint128 {
     FMT_ASSERT(k >= float_info<double>::min_k && k <= float_info<double>::max_k,
                "k is out of range");
 
-    static constexpr uint128_fallback pow10_significands[] = {
+    static constexpr uint128 pow10_significands[] = {
 #if FMT_USE_FULL_CACHE_DRAGONBOX
         {0xff77b1fcbebcdc4f, 0x25e8e89c13bb0f7b},
         {0x9faacf3df73609b1, 0x77b191618c54e9ad},
@@ -1072,7 +1073,7 @@ template <> struct cache_accessor<double> {
     int offset = k - kb;
 
     // Get base cache.
-    uint128_fallback base_cache = pow10_significands[cache_index];
+    uint128 base_cache = pow10_significands[cache_index];
     if (offset == 0) return base_cache;
 
     // Compute the required amount of bit-shift.
@@ -1081,17 +1082,16 @@ template <> struct cache_accessor<double> {
 
     // Try to recover the real cache.
     uint64_t pow5 = powers_of_5_64[offset];
-    uint128_fallback recovered_cache = umul128(base_cache.high(), pow5);
-    uint128_fallback middle_low = umul128(base_cache.low(), pow5);
+    uint128 recovered_cache = umul128(base_cache.high(), pow5);
+    uint128 middle_low = umul128(base_cache.low(), pow5);
 
     recovered_cache += middle_low.high();
 
     uint64_t high_to_middle = recovered_cache.high() << (64 - alpha);
     uint64_t middle_to_low = recovered_cache.low() << (64 - alpha);
 
-    recovered_cache =
-        uint128_fallback{(recovered_cache.low() >> alpha) | high_to_middle,
-                         ((middle_low.low() >> alpha) | middle_to_low)};
+    recovered_cache = uint128{(recovered_cache.low() >> alpha) | high_to_middle,
+                              ((middle_low.low() >> alpha) | middle_to_low)};
     FMT_ASSERT(recovered_cache.low() + 1 != 0, "");
     return {recovered_cache.high(), recovered_cache.low() + 1};
 #endif
@@ -1152,7 +1152,7 @@ template <> struct cache_accessor<double> {
   }
 };
 
-FMT_FUNC auto get_cached_power(int k) noexcept -> uint128_fallback {
+FMT_FUNC auto get_cached_power(int k) noexcept -> uint128 {
   return cache_accessor<double>::get_cached_power(k);
 }
 
@@ -1477,10 +1477,10 @@ template <typename T> struct span {
 };
 
 template <typename F> auto flockfile(F* f) -> decltype(_lock_file(f)) {
-  _lock_file(f);
+  return _lock_file(f);
 }
 template <typename F> auto funlockfile(F* f) -> decltype(_unlock_file(f)) {
-  _unlock_file(f);
+  return _unlock_file(f);
 }
 
 #ifndef getc_unlocked
@@ -1489,12 +1489,16 @@ template <typename F> auto getc_unlocked(F* f) -> decltype(_fgetc_nolock(f)) {
 }
 #endif
 
+#ifndef FMT_USE_FLOCKFILE
+#  define FMT_USE_FLOCKFILE 1
+#endif
+
 template <typename F = FILE, typename Enable = void>
 struct has_flockfile : std::false_type {};
 
 template <typename F>
 struct has_flockfile<F, void_t<decltype(flockfile(&std::declval<F&>()))>>
-    : std::true_type {};
+    : bool_constant<FMT_USE_FLOCKFILE != 0> {};
 
 // A FILE wrapper. F is FILE defined as a template parameter to make system API
 // detection work.
