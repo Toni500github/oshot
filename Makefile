@@ -64,62 +64,62 @@ NAME		 = oshot
 TARGET		?= $(NAME)
 OLDVERSION	 = 0.4.2
 VERSION    	 = 0.4.3
-SRC	 	 = $(wildcard src/*.cpp)
-OBJ	 	 = $(SRC:.cpp=.o)
+SRC		 = $(wildcard src/*.cpp)
+OBJ 		 = $(patsubst src/%.cpp,$(BUILDDIR)/%.o,$(SRC))
 LDFLAGS   	+= -L$(BUILDDIR) $(LTO_FLAGS)
-LDLIBS		+= $(wildcard $(BUILDDIR)/*.a) `pkg-config --static --libs glfw3 tesseract zbar`
+LDLIBS		+= $(LIBS) `pkg-config --static --libs glfw3 tesseract zbar`
 CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
 
-all: imgui fmt tfd tpl clip tray getopt-port toml $(TARGET)
+LIBS = \
+  $(BUILDDIR)/libimgui.a \
+  $(BUILDDIR)/libfmt.a \
+  $(BUILDDIR)/libclip.a \
+  $(BUILDDIR)/libtray.a \
+  $(BUILDDIR)/libtiny-process-library.a
 
-imgui:
-ifeq ($(wildcard $(BUILDDIR)/libimgui.a),)
+OBJ += \
+  $(BUILDDIR)/toml.o \
+  $(BUILDDIR)/tinyfiledialogs.o \
+  $(BUILDDIR)/getopt.o
+
+all: $(BUILDDIR)/$(TARGET)
+
+$(BUILDDIR):
 	mkdir -p $(BUILDDIR)
+
+$(BUILDDIR)/%.o: src/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(BUILDDIR)/libimgui.a: | $(BUILDDIR)
 	$(MAKE) -C src/libs/imgui BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
-endif
 
-fmt:
-ifeq ($(wildcard $(BUILDDIR)/libfmt.a),)
-	mkdir -p $(BUILDDIR)
+$(BUILDDIR)/libfmt.a: | $(BUILDDIR)
 	$(MAKE) -C src/libs/fmt BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
-endif
 
-toml:
-ifeq ($(wildcard $(BUILDDIR)/toml.o),)
+$(BUILDDIR)/toml.o:
 	$(MAKE) -C src/libs/toml++ BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
-endif
 
-clip:
-ifeq ($(wildcard $(BUILDDIR)/libclip.a),)
+$(BUILDDIR)/libclip.a:
 	$(MAKE) -C src/libs/clip BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
-endif
 
-tray:
-ifeq ($(wildcard $(BUILDDIR)/libtray.a),)
+$(BUILDDIR)/libtray.a:
 	$(MAKE) -C src/libs/tray BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
-endif
 
-tfd:
-ifeq ($(wildcard $(BUILDDIR)/tinyfiledialogs.o),)
+$(BUILDDIR)/tinyfiledialogs.o:
 	$(MAKE) -C src/libs/tinyfiledialogs BUILDDIR=$(BUILDDIR)
-endif
 
-tpl:
-ifeq ($(wildcard $(BUILDDIR)/libtiny-process-library.a),)
+$(BUILDDIR)/libtiny-process-library.a:
 	$(MAKE) -C src/libs/tiny-process-library BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
-endif
 
-getopt-port:
-ifeq ($(wildcard $(BUILDDIR)/getopt.o),)
+$(BUILDDIR)/getopt.o:
 	$(MAKE) -C src/libs/getopt_port BUILDDIR=$(BUILDDIR)
-endif
 
-genver: ./scripts/generateVersion.sh
+genver:
 	./scripts/generateVersion.sh
 
-$(TARGET): genver fmt toml tfd tpl clip tray getopt-port $(OBJ)
-	mkdir -p $(BUILDDIR)
-	$(CXX) -o $(BUILDDIR)/$(TARGET) $(OBJ) $(BUILDDIR)/*.o $(LDFLAGS) $(LDLIBS)
+$(BUILDDIR)/$(TARGET): genver $(OBJ) $(LIBS)
+	$(CXX) -o $@ $(OBJ) $(LDFLAGS) $(LDLIBS)
 
 dist: $(TARGET)
 	zip -j $(NAME)-v$(VERSION).zip LICENSE README.md $(BUILDDIR)/$(TARGET)

@@ -7,6 +7,8 @@ CXXSTD		?= c++20
 # CXX_DEFINES 	= -DFMT_LIB_EXPORT -Dfmt_EXPORTS
 CXXFLAGS 	= -I../../../include/libs -std=$(CXXSTD) $(LTO_FLAGS) -fvisibility=hidden -fvisibility-inlines-hidden -fPIC
 
+OBJ = format.cc.o os.cc.o
+
 ifeq ($(DEBUG),1)
 	CXXFLAGS  := -ggdb3 -Wall -Wextra -pedantic -Wno-unused-parameter \
                         -DDEBUG=1 -fno-omit-frame-pointer $(DEBUG_CXXFLAGS) $(CXXFLAGS)
@@ -16,12 +18,14 @@ endif
 
 all: fmt
 
-fmt: format.cc os.cc
-	$(CXX) $(CXX_DEFINES) $(CXXFLAGS) -c format.cc -o format.cc.o
-	$(CXX) $(CXX_DEFINES) $(CXXFLAGS) -c os.cc -o os.cc.o
-	ar qc libfmt.a os.cc.o format.cc.o
+fmt: $(OBJ)
+	ar qc libfmt.a $(OBJ)
 	ranlib libfmt.a
+	mkdir -p ../../../$(BUILDDIR)
 	mv -f libfmt.a ../../../$(BUILDDIR)/libfmt.a
+
+%.cc.o: %.cc
+	$(CXX) $(CXX_DEFINES) $(CXXFLAGS) -c $< -o $@
 
 clean:
 	rm -f *.o *.so *.a ../../../$(BUILDDIR)/fmt/.*a
