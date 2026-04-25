@@ -61,11 +61,11 @@ struct GLFWwindow;
 // clang-format on
 
 // Extern variables declariaions
-std::deque<std::string>    g_dropped_paths;
-std::unique_ptr<Config>    g_config;
-std::unique_ptr<Clipboard> g_clipboard;
-bool                       g_is_systray = false;
-int                        g_scr_w{}, g_scr_h{};
+std::deque<std::string> g_dropped_paths;
+std::unique_ptr<Config> g_config;
+bool                    g_is_systray = false;
+int                     g_scr_w{}, g_scr_h{};
+Clipboard               g_clipboard(SessionType::Unknown);
 
 std::error_code ec;
 
@@ -238,7 +238,7 @@ void capture_worker(const std::string& imgui_ini_path)
             do_copy_image        = false;
             capture_result_t img = std::move(pending_image);
             lk.unlock();
-            g_clipboard->CopyImage(img);
+            g_clipboard.CopyImage(img);
             continue;
         }
 
@@ -378,8 +378,9 @@ int main(int argc, char* argv[])
     logger.info("=== oshot starting ===");
     logger.info("Log file path: {}", file->filename());
     logger.flush();
-
     spdlog::flush_every(std::chrono::seconds(1));
+
+    g_clipboard.SetSession(get_session_type());
 
     // Check if demo build.
     // removing it once the hackaton has ended
@@ -390,7 +391,6 @@ int main(int argc, char* argv[])
     const std::string& configFile     = parse_config_path(argc, argv, configDir).string();
     const std::string& imgui_ini_path = configDir + "/imgui.ini";
 
-    g_clipboard = std::make_unique<Clipboard>(get_session_type());
     g_config    = std::make_unique<Config>(configFile, configDir);
     if (!parseargs(argc, argv, configFile))
         return EXIT_FAILURE;

@@ -313,7 +313,7 @@ Result<std::string> get_config_image_out_fmt()
 Result<> save_png(SavingOp op, const capture_result_t& img)
 {
     if (op == SavingOp::Clipboard)
-        return g_clipboard->CopyImage(img);
+        return g_clipboard.CopyImage(img);
 
     const Result<std::string>& r = get_config_image_out_fmt();
     if (!r.ok())

@@ -1182,7 +1182,7 @@ void ScreenshotTool::DrawMenuItems()
             ImGui::Text("%s", version_infos.c_str());
 
             if (ImGui::Button("Copy text"))
-                g_clipboard->CopyText(version_infos);
+                g_clipboard.CopyText(version_infos);
             ImGui::EndChild();
             ImGui::TreePop();
         }
@@ -2578,7 +2578,7 @@ void ScreenshotTool::CreateCopyTextButton(const std::string& text_copy)
 
     if (ImGui::Button(just_copied ? "Copied!" : "Copy Text"))
     {
-        const Result<>& res = g_clipboard->CopyText(text_copy);
+        const Result<>& res = g_clipboard.CopyText(text_copy);
         if (!res.ok())
         {
             SetError(FailedToCopyText, res.error_v());
