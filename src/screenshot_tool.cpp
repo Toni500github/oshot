@@ -765,8 +765,8 @@ void ScreenshotTool::HandleColorPickerInput()
     ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 
     const ImVec2& mouse_pos = ImGui::GetMousePos();
-    const int     px        = static_cast<int>(mouse_pos.x - m_image_origin.x);
-    const int     py        = static_cast<int>(mouse_pos.y - m_image_origin.y);
+    const int     px        = int(mouse_pos.x - m_image_origin.x);
+    const int     py        = int(mouse_pos.y - m_image_origin.y);
 
     const bool in_image = px >= 0 && px < m_screenshot.w && py >= 0 && py < m_screenshot.h;
 
@@ -806,14 +806,14 @@ void ScreenshotTool::HandleColorPickerInput()
     else
     {
         // Sample the pixel under the cursor
-        const size_t off = (static_cast<size_t>(py) * m_screenshot.w + px) * 4;
+        const size_t off = (size_t(py) * m_screenshot.w + px) * 4;
         const rgba_t c   = load_rgba(m_screenshot.data.data() + off);
 
         // Compute UV window for the zoomed region
-        const float half_src_px_x = (k_loupe_px / k_zoom) * 0.5f / static_cast<float>(m_screenshot.w);
-        const float half_src_px_y = (k_loupe_px / k_zoom) * 0.5f / static_cast<float>(m_screenshot.h);
-        const float uv_cx         = (static_cast<float>(px) + 0.5f) / static_cast<float>(m_screenshot.w);
-        const float uv_cy         = (static_cast<float>(py) + 0.5f) / static_cast<float>(m_screenshot.h);
+        const float half_src_px_x = (k_loupe_px / k_zoom) * 0.5f / float(m_screenshot.w);
+        const float half_src_px_y = (k_loupe_px / k_zoom) * 0.5f / float(m_screenshot.h);
+        const float uv_cx         = (float(px) + 0.5f) / float(m_screenshot.w);
+        const float uv_cy         = (float(py) + 0.5f) / float(m_screenshot.h);
 
         const ImVec2 uv_min(uv_cx - half_src_px_x, uv_cy - half_src_px_y);
         const ImVec2 uv_max(uv_cx + half_src_px_x, uv_cy + half_src_px_y);
@@ -1142,7 +1142,7 @@ void ScreenshotTool::DrawMenuItems()
             ImGui::MenuItem("View Handles", "CTRL+G", &g_config->Runtime.enable_handles);
             ImGui::MenuItem("Anns. in image scans", "", &g_config->File.render_anns);
             if (ImGui::MenuItem("Enable vsync", "", &g_config->File.enable_vsync))
-                extern_glfwSwapInterval(static_cast<int>(g_config->File.enable_vsync));
+                extern_glfwSwapInterval(int(g_config->File.enable_vsync));
             if (ImGui::MenuItem("Allow text edit", "CTRL+E", &g_config->File.allow_out_edit))
                 ImGui::ClearActiveID();
 
@@ -2099,7 +2099,7 @@ void ScreenshotTool::DrawAnnotations()
         if (ann.points.size() > 1)
         {
             draw_list->AddPolyline(reinterpret_cast<const ImVec2*>(ann.points.data()),
-                                   static_cast<int>(ann.points.size()),
+                                   int(ann.points.size()),
                                    ann.color.to_abgr(),
                                    ImDrawFlags_None,
                                    t);
@@ -2247,7 +2247,7 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
     capture_result_t result;
     result.w = region.width;
     result.h = region.height;
-    result.data.resize(static_cast<size_t>(region.width) * region.height * 4);
+    result.data.resize(size_t(region.width) * region.height * 4);
 
     std::span<const uint8_t> src(m_screenshot.view());
     std::span<uint8_t>       dst(result.data);
@@ -2289,7 +2289,7 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
         if (x < 0 || x >= result.w || y < 0 || y >= result.h)
             return;
 
-        size_t   idx = (static_cast<size_t>(y) * result.w + x) * 4;
+        size_t   idx = (size_t(y) * result.w + x) * 4;
         uint8_t* p   = &result.data[idx];
 
         if (color.a == 0xFF)
@@ -2309,7 +2309,7 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
         int sx     = x0 < x1 ? 1 : -1;
         int sy     = y0 < y1 ? 1 : -1;
         int err    = dx - dy;
-        int radius = static_cast<int>(thickness / 2.0f);
+        int radius = int(thickness / 2.0f);
 
         while (true)
         {
@@ -2338,15 +2338,18 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
 
     for (const annotation_t& ann : m_annotations)
     {
-        int x1 = static_cast<int>(ann.start.x - offset_x);
-        int y1 = static_cast<int>(ann.start.y - offset_y);
-        int x2 = static_cast<int>(ann.end.x - offset_x);
-        int y2 = static_cast<int>(ann.end.y - offset_y);
+        int x1 = int(ann.start.x - offset_x);
+        int y1 = int(ann.start.y - offset_y);
+        int x2 = int(ann.end.x - offset_x);
+        int y2 = int(ann.end.y - offset_y);
         int cx = x1;
         int cy = y1;
 
         int radius = int(std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)));
 
+        // Previous switch case has been moved to an if/else if long branch for keeping away duplicated code because of the counter bubble being
+        // a combination of a circle and text inside it.
+        // Please stfu, the compiler will make ts into a switch case automatically. Stop fighting the machine
         if (ann.type == ToolType::Text || ann.type == ToolType::CounterBubble)
         {
             const std::string& label = ann.type == ToolType::CounterBubble ? fmt::to_string(ann.count) : ann.text;
@@ -2374,9 +2377,6 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
             if (!pixels || atlas_w == 0 || atlas_h == 0)
                 continue;
 
-            const uint32_t* font_pixels = reinterpret_cast<const uint32_t*>(pixels);
-            rgba_t          c           = ann.color;
-
             const char* p   = label.c_str();
             const char* end = p + label.size();
 
@@ -2396,7 +2396,7 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
                         pp += ImTextCharFromUtf8(&cp, pp, end);
                         if (cp == 0)
                             break;
-                        const ImFontGlyph* g = baked->FindGlyph(static_cast<ImWchar>(cp));
+                        const ImFontGlyph* g = baked->FindGlyph(ImWchar(cp));
                         if (g)
                         {
                             total_w += g->AdvanceX;
@@ -2405,8 +2405,8 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
                     }
                 }
 
-                cursor_x = static_cast<float>(cx) - total_w * 0.5f;
-                cursor_y = static_cast<float>(cy) - total_h * 0.5f;
+                cursor_x = float(cx) - total_w * 0.5f;
+                cursor_y = float(cy) - total_h * 0.5f;
             }
             else
             {
@@ -2421,19 +2421,19 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
                 if (codepoint == 0)
                     break;
 
-                const ImFontGlyph* glyph = baked->FindGlyph(static_cast<ImWchar>(codepoint));
+                const ImFontGlyph* glyph = baked->FindGlyph(ImWchar(codepoint));
                 if (!glyph)
                     continue;
 
-                const int dst_x0 = static_cast<int>(cursor_x + glyph->X0);
-                const int dst_y0 = static_cast<int>(cursor_y + glyph->Y0);
-                const int dst_x1 = static_cast<int>(cursor_x + glyph->X1);
-                const int dst_y1 = static_cast<int>(cursor_y + glyph->Y1);
+                const int dst_x0 = int(cursor_x + glyph->X0);
+                const int dst_y0 = int(cursor_y + glyph->Y0);
+                const int dst_x1 = int(cursor_x + glyph->X1);
+                const int dst_y1 = int(cursor_y + glyph->Y1);
 
-                const int src_x0 = static_cast<int>(glyph->U0 * atlas_w);
-                const int src_y0 = static_cast<int>(glyph->V0 * atlas_h);
-                const int src_x1 = static_cast<int>(glyph->U1 * atlas_w);
-                const int src_y1 = static_cast<int>(glyph->V1 * atlas_h);
+                const int src_x0 = int(glyph->U0 * atlas_w);
+                const int src_y0 = int(glyph->V0 * atlas_h);
+                const int src_x1 = int(glyph->U1 * atlas_w);
+                const int src_y1 = int(glyph->V1 * atlas_h);
 
                 const int dst_gw = dst_x1 - dst_x0;
                 const int dst_gh = dst_y1 - dst_y0;
@@ -2446,6 +2446,8 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
                     continue;
                 }
 
+                const uint32_t* font_pixels = reinterpret_cast<const uint32_t*>(pixels);
+                rgba_t          col         = ann.color;
                 for (int dy = 0; dy < dst_gh; ++dy)
                 {
                     const int src_ay = src_y0 + dy * src_gh / dst_gh;
@@ -2459,12 +2461,12 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
                             continue;
 
                         const uint32_t atlas_px    = font_pixels[src_ay * atlas_w + src_ax];
-                        const uint8_t  glyph_alpha = static_cast<uint8_t>((atlas_px >> 24) & 0xFF);
+                        const uint8_t  glyph_alpha = uint8_t((atlas_px >> 24) & 0xFF);
                         if (glyph_alpha == 0)
                             continue;
 
-                        uint8_t src_a = c.a * glyph_alpha / 255u;
-                        rgba_t  pixel(c.r, c.g, c.b, src_a);
+                        uint8_t src_a = col.a * glyph_alpha / 255u;
+                        rgba_t  pixel(col.r, col.g, col.b, src_a);
                         set_pixel(dst_x0 + dx, dst_y0 + dy, pixel);
                     }
                 }
@@ -2479,7 +2481,7 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
             int x       = radius;
             int y       = 0;
             int err     = 0;
-            int thick_r = static_cast<int>(ann.thickness / 2.0f);
+            int thick_r = int(ann.thickness / 2.0f);
 
             while (x >= y)
             {
@@ -2524,10 +2526,10 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
                 dx /= len;
                 dy /= len;
                 float arrow_size = 15.0f + ann.thickness;
-                int   ax1        = static_cast<int>(x2 - arrow_size * dx + arrow_size * 0.5f * dy);
-                int   ay1        = static_cast<int>(y2 - arrow_size * dy - arrow_size * 0.5f * dx);
-                int   ax2        = static_cast<int>(x2 - arrow_size * dx - arrow_size * 0.5f * dy);
-                int   ay2        = static_cast<int>(y2 - arrow_size * dy + arrow_size * 0.5f * dx);
+                int   ax1        = int(x2 - arrow_size * dx + arrow_size * 0.5f * dy);
+                int   ay1        = int(y2 - arrow_size * dy - arrow_size * 0.5f * dx);
+                int   ax2        = int(x2 - arrow_size * dx - arrow_size * 0.5f * dy);
+                int   ay2        = int(y2 - arrow_size * dy + arrow_size * 0.5f * dx);
                 draw_line(x2, y2, ax1, ay1, ann.color, ann.thickness);
                 draw_line(x2, y2, ax2, ay2, ann.color, ann.thickness);
             }
@@ -2564,10 +2566,10 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
         {
             for (size_t i = 1; i < ann.points.size(); ++i)
             {
-                int px1 = static_cast<int>(ann.points[i - 1].x - offset_x);
-                int py1 = static_cast<int>(ann.points[i - 1].y - offset_y);
-                int px2 = static_cast<int>(ann.points[i].x - offset_x);
-                int py2 = static_cast<int>(ann.points[i].y - offset_y);
+                int px1 = int(ann.points[i - 1].x - offset_x);
+                int py1 = int(ann.points[i - 1].y - offset_y);
+                int px2 = int(ann.points[i].x - offset_x);
+                int py2 = int(ann.points[i].y - offset_y);
                 draw_line(px1, py1, px2, py2, ann.color, ann.thickness);
             }
         }
@@ -2593,12 +2595,12 @@ region_t ScreenshotTool::GetActiveRegion() const
     float h = m_selection.get_height();
 
     // Clamp to image bounds (important if user drags outside)
-    x = std::clamp(x, 0.0f, static_cast<float>(m_screenshot.w));
-    y = std::clamp(y, 0.0f, static_cast<float>(m_screenshot.h));
-    w = std::clamp(w, 0.0f, static_cast<float>(m_screenshot.w - x));
-    h = std::clamp(h, 0.0f, static_cast<float>(m_screenshot.h - y));
+    x = std::clamp(x, 0.0f, float(m_screenshot.w));
+    y = std::clamp(y, 0.0f, float(m_screenshot.h));
+    w = std::clamp(w, 0.0f, float(m_screenshot.w - x));
+    h = std::clamp(h, 0.0f, float(m_screenshot.h - y));
 
-    return region_t{ static_cast<int>(x), static_cast<int>(y), static_cast<int>(w), static_cast<int>(h) };
+    return region_t{ int(x), int(y), int(w), int(h) };
 }
 
 void ScreenshotTool::UpdateWindowBg()
@@ -2607,8 +2609,8 @@ void ScreenshotTool::UpdateWindowBg()
     // clang-format off
     auto* vp = ImGui::GetMainViewport();
     ImVec2 image_size(
-        static_cast<float>(m_screenshot.w),
-        static_cast<float>(m_screenshot.h)
+        float(m_screenshot.w),
+        float(m_screenshot.h)
     );
 
     m_image_origin = ImVec2(
@@ -2685,7 +2687,7 @@ void ScreenshotTool::SyncRuntimeFromConfig()
     m_inputs.ann_font               = g_config->File.fonts.empty() ? "" : g_config->File.fonts[0];
     m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string();
 
-    extern_glfwSwapInterval(static_cast<int>(g_config->File.enable_vsync));
+    extern_glfwSwapInterval(int(g_config->File.enable_vsync));
 }
 
 void ScreenshotTool::RefreshOcrModels()

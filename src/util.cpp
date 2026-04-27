@@ -20,7 +20,7 @@
 
 #define SVPNG_LINKAGE inline
 #define SVPNG_OUTPUT  std::vector<uint8_t>* output
-#define SVPNG_PUT(u)  output->push_back(static_cast<uint8_t>(u))
+#define SVPNG_PUT(u)  output->push_back(uint8_t(u))
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wfree-nonheap-object"
 #include "svpng.h"
@@ -77,7 +77,7 @@ constexpr ImVec4 rgba_t::to_imvec4() const
 #if __linux__
 std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
 {
-    std::vector<uint8_t> out(static_cast<size_t>(width) * height * 4);
+    std::vector<uint8_t> out(size_t(width) * height * 4);
 
     // 32bpp packed pixels
     // Faster method than XGetPixel() if possible
@@ -89,9 +89,9 @@ std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
             for (int y = 0; y < height; ++y)
             {
                 const uint32_t* px =
-                    reinterpret_cast<const uint32_t*>(image->data) + static_cast<size_t>(y) * image->bytes_per_line / 4;
+                    reinterpret_cast<const uint32_t*>(image->data) + size_t(y) * image->bytes_per_line / 4;
 
-                uint8_t* dst = out.data() + static_cast<size_t>(y) * width * 4;
+                uint8_t* dst = out.data() + size_t(y) * width * 4;
                 for (int x = 0; x < width; ++x)
                 {
                     rgba_t c = rgba_t::from_argb(px[x]);
@@ -186,8 +186,8 @@ int get_screen_dpi()
     if (size_mm.width <= 0)
         return 96;  // fallback
 
-    double dpi = static_cast<double>(width_px) / (size_mm.width / 25.4);
-    return static_cast<int>(dpi + 0.5);
+    double dpi = double(width_px) / (size_mm.width / 25.4);
+    return int(dpi + 0.5);
 #  else
     Display* dpy = XOpenDisplay(nullptr);
     if (!dpy)
@@ -198,7 +198,7 @@ int get_screen_dpi()
     XCloseDisplay(dpy);
 
     double dpi = width_px / (width_mm / 25.4);
-    return static_cast<int>(dpi + 0.5);
+    return int(dpi + 0.5);
 #  endif
 }
 #endif
@@ -206,7 +206,7 @@ int get_screen_dpi()
 std::vector<uint8_t> encode_to_png(const capture_result_t& cap)
 {
     std::vector<uint8_t> png;
-    png.reserve(static_cast<size_t>(cap.w) * cap.h * 4);
+    png.reserve(size_t(cap.w) * cap.h * 4);
     svpng(&png, cap.w, cap.h, cap.view().data(), 1);
     return png;
 }
@@ -219,10 +219,10 @@ void fit_to_screen(capture_result_t& img)
     if (img_w <= g_scr_w && img_h <= g_scr_h)
         return;
 
-    float scale = std::min(static_cast<float>(g_scr_w) / img_w, static_cast<float>(g_scr_h) / img_h);
+    float scale = std::min(float(g_scr_w) / img_w, float(g_scr_h) / img_h);
 
-    int new_w = static_cast<int>(std::round(img_w * scale));
-    int new_h = static_cast<int>(std::round(img_h * scale));
+    int new_w = int(std::round(img_w * scale));
+    int new_h = int(std::round(img_h * scale));
 
     std::vector<uint8_t> resized(new_w * new_h * 4);
 
@@ -277,7 +277,7 @@ Result<capture_result_t> load_image_rgba(const std::string& path)
             return Err("stdin reported data but was empty");
 
         pixels = stbi_load_from_memory(
-            input.data(), static_cast<int>(input.size()), &width, &height, &channels, STBI_rgb_alpha);
+            input.data(), int(input.size()), &width, &height, &channels, STBI_rgb_alpha);
     }
 
     if (!pixels)
@@ -287,7 +287,7 @@ Result<capture_result_t> load_image_rgba(const std::string& path)
     result.w = width;
     result.h = height;
 
-    const size_t size = static_cast<size_t>(width) * height * 4;
+    const size_t size = size_t(width) * height * 4;
     result.data.assign(pixels, pixels + size);
 
     stbi_image_free(pixels);
@@ -353,7 +353,7 @@ void rgba_to_grayscale(const uint8_t* src, uint8_t* result, int width, int heigh
     {
         rgba_t c = load_rgba(src + i * 4);
         // ITU-R BT.601 luminance
-        result[i] = static_cast<uint8_t>((77 * c.r + 150 * c.g + 29 * c.b) >> 8);
+        result[i] = uint8_t((77 * c.r + 150 * c.g + 29 * c.b) >> 8);
     }
 }
 
@@ -387,7 +387,7 @@ bool parse_hex_rgba(const std::string_view hex, rgba_t& out)
     if (end != s.c_str() + s.size() || parsed > 0xFFFFFFFFul)
         return false;
 
-    const auto value = static_cast<uint32_t>(parsed);
+    const auto value = uint32_t(parsed);
     rgba_t     v(hex.size() == 7 ? (value << 8) | 0xFF : value);
 
     out = v;

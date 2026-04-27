@@ -44,8 +44,8 @@ static GLFWmonitor* get_monitor_at_cursor()
     POINT pt{};
     if (GetCursorPos(&pt))
     {
-        cursor_x  = static_cast<int>(pt.x);
-        cursor_y  = static_cast<int>(pt.y);
+        cursor_x  = int(pt.x);
+        cursor_y  = int(pt.y);
         cursor_ok = true;
     }
 #  elif defined(__linux__)

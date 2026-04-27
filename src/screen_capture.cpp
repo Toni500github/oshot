@@ -234,7 +234,7 @@ Result<capture_result_t> capture_full_screen_spectacle()
 
     result.w = w;
     result.h = h;
-    result.data.assign(rgba, rgba + static_cast<size_t>(w) * h * 4);
+    result.data.assign(rgba, rgba + size_t(w) * h * 4);
     stbi_image_free(rgba);
 
     return Ok(std::move(result));
@@ -267,7 +267,7 @@ Result<capture_result_t> capture_full_screen_wayland()
         return Err("Screenshot too large to decode (buffer > INT_MAX).");
 
     int      w = 0, h = 0, comp = 0;
-    uint8_t* rgba = stbi_load_from_memory(buf.data(), static_cast<int>(buf.size()), &w, &h, &comp, STBI_rgb_alpha);
+    uint8_t* rgba = stbi_load_from_memory(buf.data(), int(buf.size()), &w, &h, &comp, STBI_rgb_alpha);
 
     if (!rgba)
     {
@@ -277,7 +277,7 @@ Result<capture_result_t> capture_full_screen_wayland()
 
     result.w = w;
     result.h = h;
-    result.data.assign(rgba, rgba + (static_cast<size_t>(w) * static_cast<size_t>(h) * 4));
+    result.data.assign(rgba, rgba + (size_t(w) * size_t(h) * 4));
     stbi_image_free(rgba);
 
     return Ok(std::move(result));
@@ -470,7 +470,7 @@ Result<capture_result_t> capture_full_screen_portal()
 
     st.cap.w = w;
     st.cap.h = h;
-    st.cap.data.assign(rgba, rgba + (static_cast<size_t>(w) * h * 4));
+    st.cap.data.assign(rgba, rgba + (size_t(w) * h * 4));
     stbi_image_free(rgba);
 
     // The portal backend (on KDE mostly) writes a permanent file to ~/Pictures named "Screenshot_*.png".
@@ -496,12 +496,12 @@ Result<capture_result_t> capture_full_screen_portal()
             if (new_w > 0 && new_h > 0)
             {
                 const int            src_stride = st.cap.w;
-                std::vector<uint8_t> cropped(static_cast<size_t>(new_w) * new_h * 4);
+                std::vector<uint8_t> cropped(size_t(new_w) * new_h * 4);
                 for (int row = 0; row < new_h; ++row)
                 {
-                    const uint8_t* src = st.cap.data.data() + (static_cast<size_t>(y0 + row) * src_stride + x0) * 4;
-                    uint8_t*       dst = cropped.data() + static_cast<size_t>(row) * new_w * 4;
-                    std::memcpy(dst, src, static_cast<size_t>(new_w) * 4);
+                    const uint8_t* src = st.cap.data.data() + (size_t(y0 + row) * src_stride + x0) * 4;
+                    uint8_t*       dst = cropped.data() + size_t(row) * new_w * 4;
+                    std::memcpy(dst, src, size_t(new_w) * 4);
                 }
                 st.cap.data = std::move(cropped);
                 st.cap.w    = new_w;
@@ -561,8 +561,8 @@ static int cursor_display_index()
     {
         if (active[i] == hit)
         {
-            debug("macOS capture: display index {} (CGDirectDisplayID {})", i + 1, static_cast<unsigned>(hit));
-            return static_cast<int>(i + 1);
+            debug("macOS capture: display index {} (CGDirectDisplayID {})", i + 1, unsigned(hit));
+            return int(i + 1);
         }
     }
 
@@ -604,7 +604,7 @@ Result<capture_result_t> capture_full_screen_macos()
 
     result.w = w;
     result.h = h;
-    result.data.assign(rgba, rgba + static_cast<size_t>(w) * h * 4);
+    result.data.assign(rgba, rgba + size_t(w) * h * 4);
     stbi_image_free(rgba);
 
     return Ok(std::move(result));
@@ -646,7 +646,7 @@ Result<capture_result_t> capture_full_screen_windows_fallback()
 
     result.w = width;
     result.h = height;
-    result.data.resize(static_cast<size_t>(width) * height * 4);
+    result.data.resize(size_t(width) * height * 4);
 
     // Get Device Contexts
     HDC hScreenDC = GetDC(nullptr);  // virtual-desktop DC
@@ -712,7 +712,7 @@ static bool hr_failed(HRESULT hr, const char* what)
 {
     if (FAILED(hr))
     {
-        debug("{} failed: 0x{:08X}", what, static_cast<unsigned>(hr));
+        debug("{} failed: 0x{:08X}", what, unsigned(hr));
         return true;
     }
     return false;
@@ -730,7 +730,7 @@ struct com_ptr
     }
 
     T** operator&() { return &ptr; }
-    T*  operator->() const { return ptr; }
+    T*  operator-() const { return ptr; }
         operator T*() const { return ptr; }
         operator bool() const { return ptr != nullptr; }
 
@@ -906,7 +906,7 @@ Result<capture_result_t> capture_full_screen_windows()
         desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM && desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
     {
         duplication->ReleaseFrame();
-        debug("Unsupported DXGI format: {}", static_cast<unsigned>(desc.Format));
+        debug("Unsupported DXGI format: {}", unsigned(desc.Format));
         return capture_full_screen_windows_fallback();
     }
 
@@ -937,20 +937,20 @@ Result<capture_result_t> capture_full_screen_windows()
     }
 
     // Copy to RGBA buffer
-    const uint8_t* src    = static_cast<const uint8_t*>(mapped.pData);
+    const uint8_t* src    = const uint8_t*(mapped.pData);
     const uint32_t width  = desc.Width;
     const uint32_t height = desc.Height;
 
-    result.w = static_cast<int>(width);
-    result.h = static_cast<int>(height);
-    result.data.resize(static_cast<size_t>(width) * height * 4);
+    result.w = int(width);
+    result.h = int(height);
+    result.data.resize(size_t(width) * height * 4);
 
     if (desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM || desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
     {
         for (uint32_t y = 0; y < height; ++y)
         {
-            const uint8_t* row = src + static_cast<size_t>(y) * mapped.RowPitch;
-            uint8_t*       out = result.data.data() + static_cast<size_t>(y) * width * 4;
+            const uint8_t* row = src + size_t(y) * mapped.RowPitch;
+            uint8_t*       out = result.data.data() + size_t(y) * width * 4;
 
             for (uint32_t x = 0; x < width; ++x)
             {
@@ -966,9 +966,9 @@ Result<capture_result_t> capture_full_screen_windows()
         // R8G8B8A8
         for (uint32_t y = 0; y < height; ++y)
         {
-            const uint8_t* row = src + static_cast<size_t>(y) * mapped.RowPitch;
-            uint8_t*       out = result.data.data() + static_cast<size_t>(y) * width * 4;
-            std::memcpy(out, row, static_cast<size_t>(width) * 4);
+            const uint8_t* row = src + size_t(y) * mapped.RowPitch;
+            uint8_t*       out = result.data.data() + size_t(y) * width * 4;
+            std::memcpy(out, row, size_t(width) * 4);
         }
     }
 

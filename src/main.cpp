@@ -258,7 +258,7 @@ static std::string wide_to_utf8(const wchar_t* w)
     if (needed <= 0)
         return {};
     std::string out;
-    out.resize(static_cast<size_t>(needed) - 1);
+    out.resize(size_t(needed) - 1);
     WideCharToMultiByte(CP_UTF8, 0, w, -1, out.data(), needed, nullptr, nullptr);
     return out;
 }
@@ -331,7 +331,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
         setvbuf(stderr, nullptr, _IOLBF, 0);
     }
 
-    auto file = std::make_shared<spdlog::sinks::basic_file_sink_mt>("oshot.log", true);
+    auto file = std::make_shared<spdlog::sinks::basic_file_sink_mt("oshot.log", true);
 #else
 int main(int argc, char* argv[])
 {
@@ -445,7 +445,7 @@ int main(int argc, char* argv[])
     const fs::path& png_path = fs::temp_directory_path(ec) / "oshot.png";
     std::ofstream   out(png_path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
 
-    out.write(reinterpret_cast<const char*>(oshot_png), static_cast<std::streamsize>(oshot_png_len));
+    out.write(reinterpret_cast<const char*>(oshot_png), std::streamsize(oshot_png_len));
     out.close();
     TrayIcon tray = { png_path.string(), "oshot.ico", "oshot", menu };
 #endif

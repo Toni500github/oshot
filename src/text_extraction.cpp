@@ -38,10 +38,10 @@ static tesseract::PageSegMode choose_psm(int w, int h)
     using namespace tesseract;
 
     if (g_config->Runtime.preferred_psm != 0)
-        return static_cast<PageSegMode>(g_config->Runtime.preferred_psm);
+        return PageSegMode(g_config->Runtime.preferred_psm);
 
-    const size_t area   = static_cast<size_t>(w) * h;
-    const float  aspect = (h > 0) ? static_cast<float>(w) / static_cast<float>(h) : 1.0f;
+    const size_t area   = size_t(w) * h;
+    const float  aspect = (h > 0) ? float(w) / float(h) : 1.0f;
 
     spdlog::debug("Choosing PSM, area: {}*{}={}, aspect: {}", w, h, area, aspect);
 
@@ -143,7 +143,7 @@ static PIX* preprocess_pix(PIX* src)
 
 static Pix* rgba_to_pix(std::span<const uint8_t> rgba, int w, int h)
 {
-    const size_t required = static_cast<size_t>(w) * h * 4;
+    const size_t required = size_t(w) * h * 4;
     if (rgba.size() < required)
         return nullptr;
 
@@ -160,7 +160,7 @@ static Pix* rgba_to_pix(std::span<const uint8_t> rgba, int w, int h)
         uint32_t* row = dst + y * stride;
         for (int x = 0; x < w; ++x)
         {
-            const uint8_t* p    = src + (static_cast<size_t>(y) * w + x) * 4;
+            const uint8_t* p    = src + (size_t(y) * w + x) * 4;
             rgba_t         byte = load_rgba(p);
             // Leptonica 32bpp word layout (big-endian word): R G B A
             SET_DATA_FOUR_BYTES(row, x, byte.to_rgba());
@@ -219,7 +219,7 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
     if (cap.view().empty() || cap.w <= 0 || cap.h <= 0)
         return Err("Image is empty");
 
-    const size_t required = static_cast<size_t>(cap.w) * cap.h * 4;
+    const size_t required = size_t(cap.w) * cap.h * 4;
     if (cap.view().size() < required)
         return Err("Image size is larger than required");
 
@@ -239,8 +239,8 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
 
     tesseract::PageSegMode psm = choose_psm(proc_w, proc_h);
 
-    float scale         = std::min(static_cast<float>(g_scr_w) / cap.w, static_cast<float>(g_scr_h) / cap.h);
-    int   effective_dpi = static_cast<int>(get_screen_dpi() * scale);
+    float scale         = std::min(float(g_scr_w) / cap.w, float(g_scr_h) / cap.h);
+    int   effective_dpi = int(get_screen_dpi() * scale);
     effective_dpi       = std::clamp(effective_dpi, 150, 300);
 
     m_api->SetPageSegMode(psm);
@@ -278,7 +278,7 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
             }
         } while (ri->Next(tesseract::RIL_WORD));
 
-        ret.confidence = count ? static_cast<int>(std::round(sum / count)) : 0;
+        ret.confidence = count ? int(std::round(sum / count)) : 0;
         delete ri;
     }
     else
