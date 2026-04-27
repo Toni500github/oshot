@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <bitset>
+#include <cstdint>
 #include <cstdlib>
 #include <deque>
 #include <functional>
@@ -25,6 +26,7 @@ enum class ToolType : size_t
     RectangleFilled,
     Circle,
     CircleFilled,
+    CounterBubble,
     Line,
     Text,
     Pencil,
@@ -109,6 +111,7 @@ struct annotation_t
     point_t              start;
     point_t              end;
     std::string          text;                                       // For text tool
+    std::uint8_t         count = 1;                                  // For CounterBubble tool
     std::vector<point_t> points;                                     // For pencil tool
     rgba_t               color     = rgba_t::from_rgba(0xFF0000FF);  // RGBA
     float                thickness = 3.0f;
@@ -229,6 +232,7 @@ private:
     std::vector<annotation_t>               m_annotations;
     annotation_t                            m_current_annotation;
     rgba_t                                  m_current_color;
+    std::uint8_t                            m_current_count = 1;
     std::array<float, idx(ToolType::Count)> m_tool_thickness;
     ImVec4                                  m_picker_color{ 1, 0, 0, 1 };
     bool                                    m_is_drawing       = false;

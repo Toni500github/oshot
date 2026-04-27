@@ -133,6 +133,38 @@ def create_filled_rectangle_pixels(margin=5):
 
     return pixels
 
+def create_counter_bubble_pixels(circle_thickness=1.5):
+    size = 24
+    pixels = create_circle_pixels(circle_thickness)
+
+    def dist_to_segment(px, py, ax, ay, bx, by):
+        dx, dy = bx - ax, by - ay
+        len_sq = dx * dx + dy * dy
+        if len_sq == 0:
+            return ((px - ax) ** 2 + (py - ay) ** 2) ** 0.5
+        t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / len_sq))
+        return ((px - ax - t * dx) ** 2 + (py - ay - t * dy) ** 2) ** 0.5
+
+    def blend_pixel(idx, alpha):
+        if alpha > pixels[idx + 3]:
+            pixels[idx:idx + 4] = [255, 255, 255, alpha]
+
+    def draw_segment(ax, ay, bx, by, seg_thickness=1.4):
+        ht = seg_thickness / 2.0
+        for y in range(size):
+            for x in range(size):
+                d = dist_to_segment(x, y, ax, ay, bx, by)
+                if d <= ht:
+                    alpha = 255 if d <= ht - 0.5 else int(255 * (ht + 0.5 - d))
+                    blend_pixel((y * size + x) * 4, alpha)
+
+    # "1" glyph, centered in the circle
+    draw_segment(12,  7,   12, 15)   # Main vertical stroke
+    draw_segment(10,  9,   12,  7)   # Top-left diagonal flag
+    draw_segment(10, 16, 13.5, 16)   # Bottom serif
+
+    return pixels
+
 def create_icon_from_image(image_path, use_rgba=False, threshold=128):
     try:
         from PIL import Image
@@ -187,11 +219,12 @@ def format_c_array(name, pixels):
 
 def main():
     icons = [
-        ("ICON_CIRCLE", create_circle_pixels()),
-        ("ICON_CIRCLE_FILLED", create_filled_circle_pixels()),
-        ("ICON_SQUARE", create_square_pixels()),
-        ("ICON_RECT_FILLED", create_filled_rectangle_pixels()),
-        ("ICON_LINE", create_line_pixels()),
+    #    ("ICON_CIRCLE", create_circle_pixels()),
+    #    ("ICON_CIRCLE_FILLED", create_filled_circle_pixels()),
+    #    ("ICON_SQUARE", create_square_pixels()),
+    #    ("ICON_RECT_FILLED", create_filled_rectangle_pixels()),
+    #    ("ICON_LINE", create_line_pixels()),
+        ("ICON_COUNTER_BUBBLE", create_counter_bubble_pixels())
     ]
     
     header = """#pragma once
@@ -199,10 +232,10 @@ def main():
 """
     # Optional: Add external images
     external_images = [
-        ("ICON_PENCIL", "/tmp/image.png"),
-        ("ICON_ARROW", "/tmp/image2.png"),
-        ("ICON_TEXT", "/tmp/text.png")
-         ("OSHOT_LOGO", "./oshot.png", True)
+    #    ("ICON_PENCIL", "/tmp/image.png"),
+    #    ("ICON_ARROW", "/tmp/image2.png"),
+    #    ("ICON_TEXT", "/tmp/text.png")
+    #    ("OSHOT_LOGO", "./oshot.png", True)
     ]
     
     for name, image_path, use_rgba in external_images:

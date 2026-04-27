@@ -21,6 +21,7 @@
 #include "cache.hpp"
 #include "clipboard.hpp"
 #include "config.hpp"
+#include "fmt/format.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3_loader.h"
 #include "imgui/imgui_internal.h"
@@ -360,6 +361,8 @@ Result<> ScreenshotTool::StartWindow()
         CreateTexture(nullptr, ICON_TEXT_TOOLS_RGBA, ICON_TEXT_TOOLS_W, ICON_TEXT_TOOLS_H).get();
     m_tool_textures[idx(ToolType::Circle)] =
         CreateTexture(nullptr, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
+    m_tool_textures[idx(ToolType::CounterBubble)] =
+        CreateTexture(nullptr, ICON_COUNTER_BUBBLE_RGBA, ICON_COUNTER_BUBBLE_W, ICON_COUNTER_BUBBLE_H).get();
     m_tool_textures[idx(ToolType::Pencil)] =
         CreateTexture(nullptr, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
 
@@ -698,7 +701,16 @@ void ScreenshotTool::HandleAnnotationInput()
         m_current_annotation.points.clear();
 
         if (m_current_tool == ToolType::Pencil)
+        {
             m_current_annotation.points.push_back(m_current_annotation.start);
+        }
+        // Assign the next counter value for CounterBubble annotations
+        else if (m_current_tool == ToolType::CounterBubble)
+        {
+            if (m_current_count < 1)
+                m_current_count = 0;
+            m_current_annotation.count = ++m_current_count;
+        }
     }
 
     if (m_is_drawing && ImGui::IsMouseDown(ImGuiMouseButton_Left))
@@ -737,7 +749,11 @@ void ScreenshotTool::HandleAnnotationInput()
         }
 
         if (should_add)
+        {
+            if (m_current_tool == ToolType::CounterBubble)
+                m_current_annotation.count = m_current_count;
             m_annotations.push_back(m_current_annotation);
+        }
 
         m_current_annotation = annotation_t{};
     }
@@ -1398,8 +1414,8 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
     const float display_h = ImGui::GetIO().DisplaySize.y;
 
-    float below_y = sel_y + sel_h + k_toolbar_offset;
-    float above_y = sel_y - k_toolbar_offset - k_approx_toolbar_h;
+    const float below_y = sel_y + sel_h + k_toolbar_offset;
+    const float above_y = sel_y - k_toolbar_offset - k_approx_toolbar_h;
 
     float toolbar_y = below_y;
 
@@ -1411,7 +1427,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
         // If above also invalid, clamp
         if (toolbar_y < 0.0f)
-            toolbar_y = ImClamp(below_y, 0.0f, display_h - k_approx_toolbar_h);
+            toolbar_y = std::clamp(below_y, 0.0f, display_h - k_approx_toolbar_h);
     }
 
     const ImVec2 toolbar_pos(sel_x, toolbar_y);
@@ -1513,6 +1529,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
         ToolType::RectangleFilled, "##Rectangle_filled", m_tool_textures[idx(ToolType::RectangleFilled)]);
     draw_and_set_button(ToolType::Circle, "##Circle", m_tool_textures[idx(ToolType::Circle)]);
     draw_and_set_button(ToolType::CircleFilled, "##Circle_filled", m_tool_textures[idx(ToolType::CircleFilled)]);
+    draw_and_set_button(ToolType::CounterBubble, "##Counter_bubble", m_tool_textures[idx(ToolType::CounterBubble)]);
     draw_and_set_button(ToolType::Line, "##Line", m_tool_textures[idx(ToolType::Line)]);
     draw_and_set_button(ToolType::Text, "##icon_Text", m_tool_textures[idx(ToolType::Text)]);
     draw_and_set_button(ToolType::Pencil, "##Pencil", m_tool_textures[idx(ToolType::Pencil)]);
@@ -1526,7 +1543,11 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
     ImGui::SameLine();
     if (ImGui::Button("Undo") && !m_annotations.empty())
+    {
+        if (m_annotations.back().type == ToolType::CounterBubble)
+            --m_current_count;
         m_annotations.pop_back();
+    }
 
     ImGui::End();
 }
@@ -2052,6 +2073,28 @@ void ScreenshotTool::DrawAnnotations()
                    : draw_list->AddCircle(p1, radius, ann.color.to_abgr(), 0, t);
         };
 
+    auto draw_counter_bubble = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
+        // Draw the circle outline
+        draw_circle_or_filled(false, ann, p1, p2, t);
+
+        const std::string& label = fmt::to_string(ann.count);
+
+        // Pick a font size that fits comfortably inside the circle
+        const float dx     = p2.x - p1.x;
+        const float dy     = p2.y - p1.y;
+        const float radius = std::sqrt(dx * dx + dy * dy);
+        // Use ~70 % of the diameter so the number has breathing room
+        const float font_size = std::max(8.0f, radius * 1.4f);
+        ImFont*     font      = CacheAndGetFont(m_inputs.resolved_ann_font_path, font_size);
+
+        // Measure the rendered label so we can center it
+        const ImVec2 text_size =
+            font ? font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, label.c_str()) : ImGui::CalcTextSize(label.c_str());
+
+        const ImVec2 text_pos(p1.x - text_size.x * 0.5f, p1.y - text_size.y * 0.5f);
+        draw_list->AddText(font, font_size, text_pos, ann.color.to_abgr(), label.c_str());
+    };
+
     auto draw_pencil = [&](const annotation_t& ann, const float t) {
         if (ann.points.size() > 1)
         {
@@ -2101,10 +2144,13 @@ void ScreenshotTool::DrawAnnotations()
             case ToolType::RectangleFilled: draw_rectangle_or_filled(true, ann, p1, p2, t); break;
             case ToolType::Circle:          draw_circle_or_filled(false, ann, p1, p2, t); break;
             case ToolType::CircleFilled:    draw_circle_or_filled(true, ann, p1, p2, t); break;
+            case ToolType::CounterBubble:   draw_counter_bubble(ann, p1, p2, t); break;
             case ToolType::Text:            draw_text(ann, p1); break;
             case ToolType::Pencil:          draw_pencil(ann, t); break;
 
-            default: break;
+            case ToolType::kNone:
+            case ToolType::ToggleTextTools:
+            case ToolType::Count:           break;
         }
     };
 
@@ -2296,205 +2342,234 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
         int y1 = static_cast<int>(ann.start.y - offset_y);
         int x2 = static_cast<int>(ann.end.x - offset_x);
         int y2 = static_cast<int>(ann.end.y - offset_y);
+        int cx = x1;
+        int cy = y1;
 
-        switch (ann.type)
+        int radius = int(std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)));
+
+        if (ann.type == ToolType::Text || ann.type == ToolType::CounterBubble)
         {
-            case ToolType::kNone:
-            case ToolType::Count:
-            case ToolType::ToggleTextTools: break;
+            const std::string& label = ann.type == ToolType::CounterBubble ? fmt::to_string(ann.count) : ann.text;
 
-            case ToolType::Line:
-            case ToolType::Arrow:
-                draw_line(x1, y1, x2, y2, ann.color, ann.thickness);
-                if (ann.type == ToolType::Arrow)
-                {
-                    // Draw arrowhead
-                    float dx  = x2 - x1;
-                    float dy  = y2 - y1;
-                    float len = std::sqrt(dx * dx + dy * dy);
-                    if (len > 0.1f)
-                    {
-                        dx /= len;
-                        dy /= len;
-                        float arrow_size = 15.0f + ann.thickness;
-                        int   ax1        = static_cast<int>(x2 - arrow_size * dx + arrow_size * 0.5f * dy);
-                        int   ay1        = static_cast<int>(y2 - arrow_size * dy - arrow_size * 0.5f * dx);
-                        int   ax2        = static_cast<int>(x2 - arrow_size * dx - arrow_size * 0.5f * dy);
-                        int   ay2        = static_cast<int>(y2 - arrow_size * dy + arrow_size * 0.5f * dx);
-                        draw_line(x2, y2, ax1, ay1, ann.color, ann.thickness);
-                        draw_line(x2, y2, ax2, ay2, ann.color, ann.thickness);
-                    }
-                }
-                break;
+            if (label.empty())
+                continue;
 
-            case ToolType::Text:
+            float font_size;
+            if (ann.type == ToolType::CounterBubble)
+                font_size = std::max(8.0f, float(radius) * 1.4f);  // ~70 % of diameter so the digit has breathing room
+            else
+                font_size = ann.thickness > 8.0f ? ann.thickness : ImGui::GetFontSize();
+
+            ImFont* font = CacheAndGetFont(m_inputs.resolved_ann_font_path, font_size);
+            if (!font || !font->OwnerAtlas)
+                continue;
+
+            ImFontBaked* baked = font->GetFontBaked(font_size);
+            if (!baked)
+                continue;
+
+            unsigned char* pixels  = nullptr;
+            int            atlas_w = 0, atlas_h = 0;
+            font->OwnerAtlas->GetTexDataAsRGBA32(&pixels, &atlas_w, &atlas_h);
+            if (!pixels || atlas_w == 0 || atlas_h == 0)
+                continue;
+
+            const uint32_t* font_pixels = reinterpret_cast<const uint32_t*>(pixels);
+            rgba_t          c           = ann.color;
+
+            const char* p   = label.c_str();
+            const char* end = p + label.size();
+
+            float cursor_x;
+            float cursor_y;
+            if (ann.type == ToolType::CounterBubble)
             {
-                if (ann.text.empty())
-                    break;
-
-                const float font_size = ann.thickness > 8.0f ? ann.thickness : ImGui::GetFontSize();
-                ImFont*     font      = CacheAndGetFont(m_inputs.resolved_ann_font_path, font_size);
-                if (!font || !font->OwnerAtlas)
-                    break;
-
-                ImFontBaked* baked = font->GetFontBaked(font_size);
-                if (!baked)
-                    break;
-
-                unsigned char* pixels  = nullptr;
-                int            atlas_w = 0, atlas_h = 0;
-                font->OwnerAtlas->GetTexDataAsRGBA32(&pixels, &atlas_w, &atlas_h);
-                if (!pixels || atlas_w == 0 || atlas_h == 0)
-                    break;
-
-                const uint32_t* font_pixels = reinterpret_cast<const uint32_t*>(pixels);
-                rgba_t          c           = ann.color;
-
-                float       cursor_x = x1;
-                float       cursor_y = y1;
-                const char* p        = ann.text.c_str();
-                const char* end      = p + ann.text.size();
-
-                while (p < end)
+                // Measure total advance to compute the centered origin
+                float total_w = 0.0f;
+                float total_h = font_size;  // approximate; refined below
                 {
-                    unsigned int codepoint = 0;
-                    p += ImTextCharFromUtf8(&codepoint, p, end);
-                    if (codepoint == 0)
-                        break;
-
-                    const ImFontGlyph* glyph = baked->FindGlyph(static_cast<ImWchar>(codepoint));
-                    if (!glyph)
-                        continue;
-
-                    const int dst_x0 = static_cast<int>(cursor_x + glyph->X0);
-                    const int dst_y0 = static_cast<int>(cursor_y + glyph->Y0);
-                    const int dst_x1 = static_cast<int>(cursor_x + glyph->X1);
-                    const int dst_y1 = static_cast<int>(cursor_y + glyph->Y1);
-
-                    const int src_x0 = static_cast<int>(glyph->U0 * atlas_w);
-                    const int src_y0 = static_cast<int>(glyph->V0 * atlas_h);
-                    const int src_x1 = static_cast<int>(glyph->U1 * atlas_w);
-                    const int src_y1 = static_cast<int>(glyph->V1 * atlas_h);
-
-                    const int dst_gw = dst_x1 - dst_x0;
-                    const int dst_gh = dst_y1 - dst_y0;
-                    const int src_gw = src_x1 - src_x0;
-                    const int src_gh = src_y1 - src_y0;
-
-                    if (dst_gw <= 0 || dst_gh <= 0 || src_gw <= 0 || src_gh <= 0)
+                    const char* pp  = label.c_str();
+                    const char* end = p + label.size();
+                    while (pp < end)
                     {
-                        cursor_x += glyph->AdvanceX;
-                        continue;
-                    }
-
-                    for (int dy = 0; dy < dst_gh; ++dy)
-                    {
-                        const int src_ay = src_y0 + dy * src_gh / dst_gh;
-                        if (src_ay < 0 || src_ay >= atlas_h)
-                            continue;
-
-                        for (int dx = 0; dx < dst_gw; ++dx)
+                        unsigned int cp = 0;
+                        pp += ImTextCharFromUtf8(&cp, pp, end);
+                        if (cp == 0)
+                            break;
+                        const ImFontGlyph* g = baked->FindGlyph(static_cast<ImWchar>(cp));
+                        if (g)
                         {
-                            const int src_ax = src_x0 + dx * src_gw / dst_gw;
-                            if (src_ax < 0 || src_ax >= atlas_w)
-                                continue;
-
-                            const uint32_t atlas_px    = font_pixels[src_ay * atlas_w + src_ax];
-                            const uint8_t  glyph_alpha = static_cast<uint8_t>((atlas_px >> 24) & 0xFF);
-                            if (glyph_alpha == 0)
-                                continue;
-
-                            uint8_t src_a = c.a * glyph_alpha / 255u;
-                            rgba_t  pixel(c.r, c.g, c.b, src_a);
-                            set_pixel(dst_x0 + dx, dst_y0 + dy, pixel);
+                            total_w += g->AdvanceX;
+                            total_h = std::max(total_h, g->Y1 - g->Y0);
                         }
                     }
-
-                    cursor_x += glyph->AdvanceX;
                 }
-                break;
+
+                cursor_x = static_cast<float>(cx) - total_w * 0.5f;
+                cursor_y = static_cast<float>(cy) - total_h * 0.5f;
+            }
+            else
+            {
+                cursor_x = x1;
+                cursor_y = y2;
             }
 
-            case ToolType::Rectangle:
-                draw_line(x1, y1, x2, y1, ann.color, ann.thickness);
-                draw_line(x2, y1, x2, y2, ann.color, ann.thickness);
-                draw_line(x2, y2, x1, y2, ann.color, ann.thickness);
-                draw_line(x1, y2, x1, y1, ann.color, ann.thickness);
-                break;
-
-            case ToolType::RectangleFilled:
+            while (p < end)
             {
-                int rx1 = std::min(x1, x2);
-                int rx2 = std::max(x1, x2);
-                int ry1 = std::min(y1, y2);
-                int ry2 = std::max(y1, y2);
-                for (int fy = ry1; fy <= ry2; ++fy)
-                    for (int fx = rx1; fx <= rx2; ++fx)
-                        set_pixel(fx, fy, ann.color);
-                break;
-            }
+                unsigned int codepoint = 0;
+                p += ImTextCharFromUtf8(&codepoint, p, end);
+                if (codepoint == 0)
+                    break;
 
-            case ToolType::Circle:
-            {
-                int cx     = x1;
-                int cy     = y1;
-                int radius = static_cast<int>(std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)));
+                const ImFontGlyph* glyph = baked->FindGlyph(static_cast<ImWchar>(codepoint));
+                if (!glyph)
+                    continue;
 
-                // Midpoint circle algorithm
-                int x       = radius;
-                int y       = 0;
-                int err     = 0;
-                int thick_r = static_cast<int>(ann.thickness / 2.0f);
+                const int dst_x0 = static_cast<int>(cursor_x + glyph->X0);
+                const int dst_y0 = static_cast<int>(cursor_y + glyph->Y0);
+                const int dst_x1 = static_cast<int>(cursor_x + glyph->X1);
+                const int dst_y1 = static_cast<int>(cursor_y + glyph->Y1);
 
-                while (x >= y)
+                const int src_x0 = static_cast<int>(glyph->U0 * atlas_w);
+                const int src_y0 = static_cast<int>(glyph->V0 * atlas_h);
+                const int src_x1 = static_cast<int>(glyph->U1 * atlas_w);
+                const int src_y1 = static_cast<int>(glyph->V1 * atlas_h);
+
+                const int dst_gw = dst_x1 - dst_x0;
+                const int dst_gh = dst_y1 - dst_y0;
+                const int src_gw = src_x1 - src_x0;
+                const int src_gh = src_y1 - src_y0;
+
+                if (dst_gw <= 0 || dst_gh <= 0 || src_gw <= 0 || src_gh <= 0)
                 {
-                    for (int oy = -thick_r; oy <= thick_r; ++oy)
-                        for (int ox = -thick_r; ox <= thick_r; ++ox)
-                            if (ox * ox + oy * oy <= thick_r * thick_r)
-                            {
-                                set_pixel(cx + x + ox, cy + y + oy, ann.color);
-                                set_pixel(cx + y + ox, cy + x + oy, ann.color);
-                                set_pixel(cx - y + ox, cy + x + oy, ann.color);
-                                set_pixel(cx - x + ox, cy + y + oy, ann.color);
-                                set_pixel(cx - x + ox, cy - y + oy, ann.color);
-                                set_pixel(cx - y + ox, cy - x + oy, ann.color);
-                                set_pixel(cx + y + ox, cy - x + oy, ann.color);
-                                set_pixel(cx + x + ox, cy - y + oy, ann.color);
-                            }
+                    cursor_x += glyph->AdvanceX;
+                    continue;
+                }
 
-                    y += 1;
-                    err += 1 + 2 * y;
-                    if (2 * (err - x) + 1 > 0)
+                for (int dy = 0; dy < dst_gh; ++dy)
+                {
+                    const int src_ay = src_y0 + dy * src_gh / dst_gh;
+                    if (src_ay < 0 || src_ay >= atlas_h)
+                        continue;
+
+                    for (int dx = 0; dx < dst_gw; ++dx)
                     {
-                        x -= 1;
-                        err += 1 - 2 * x;
+                        const int src_ax = src_x0 + dx * src_gw / dst_gw;
+                        if (src_ax < 0 || src_ax >= atlas_w)
+                            continue;
+
+                        const uint32_t atlas_px    = font_pixels[src_ay * atlas_w + src_ax];
+                        const uint8_t  glyph_alpha = static_cast<uint8_t>((atlas_px >> 24) & 0xFF);
+                        if (glyph_alpha == 0)
+                            continue;
+
+                        uint8_t src_a = c.a * glyph_alpha / 255u;
+                        rgba_t  pixel(c.r, c.g, c.b, src_a);
+                        set_pixel(dst_x0 + dx, dst_y0 + dy, pixel);
                     }
                 }
-                break;
-            }
 
-            case ToolType::CircleFilled:
+                cursor_x += glyph->AdvanceX;
+            }
+        }
+
+        if (ann.type == ToolType::CounterBubble || ann.type == ToolType::Circle)
+        {
+            // Midpoint circle algorithm
+            int x       = radius;
+            int y       = 0;
+            int err     = 0;
+            int thick_r = static_cast<int>(ann.thickness / 2.0f);
+
+            while (x >= y)
             {
-                int cx     = x1;
-                int cy     = y1;
-                int radius = static_cast<int>(std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)));
-                for (int fy = cy - radius; fy <= cy + radius; ++fy)
-                    for (int fx = cx - radius; fx <= cx + radius; ++fx)
-                        if ((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy) <= radius * radius)
-                            set_pixel(fx, fy, ann.color);
-                break;
-            }
+                for (int oy = -thick_r; oy <= thick_r; ++oy)
+                    for (int ox = -thick_r; ox <= thick_r; ++ox)
+                        if (ox * ox + oy * oy <= thick_r * thick_r)
+                        {
+                            set_pixel(cx + x + ox, cy + y + oy, ann.color);
+                            set_pixel(cx + y + ox, cy + x + oy, ann.color);
+                            set_pixel(cx - y + ox, cy + x + oy, ann.color);
+                            set_pixel(cx - x + ox, cy + y + oy, ann.color);
+                            set_pixel(cx - x + ox, cy - y + oy, ann.color);
+                            set_pixel(cx - y + ox, cy - x + oy, ann.color);
+                            set_pixel(cx + y + ox, cy - x + oy, ann.color);
+                            set_pixel(cx + x + ox, cy - y + oy, ann.color);
+                        }
 
-            case ToolType::Pencil:
-                for (size_t i = 1; i < ann.points.size(); ++i)
+                y += 1;
+                err += 1 + 2 * y;
+                if (2 * (err - x) + 1 > 0)
                 {
-                    int px1 = static_cast<int>(ann.points[i - 1].x - offset_x);
-                    int py1 = static_cast<int>(ann.points[i - 1].y - offset_y);
-                    int px2 = static_cast<int>(ann.points[i].x - offset_x);
-                    int py2 = static_cast<int>(ann.points[i].y - offset_y);
-                    draw_line(px1, py1, px2, py2, ann.color, ann.thickness);
+                    x -= 1;
+                    err += 1 - 2 * x;
                 }
-                break;
+            }
+        }
+
+        else if (ann.type == ToolType::Line)
+        {
+            draw_line(x1, y1, x2, y2, ann.color, ann.thickness);
+        }
+
+        else if (ann.type == ToolType::Arrow)
+        {
+            draw_line(x1, y1, x2, y2, ann.color, ann.thickness);
+            // Draw arrowhead
+            float dx  = x2 - x1;
+            float dy  = y2 - y1;
+            float len = std::sqrt(dx * dx + dy * dy);
+            if (len > 0.1f)
+            {
+                dx /= len;
+                dy /= len;
+                float arrow_size = 15.0f + ann.thickness;
+                int   ax1        = static_cast<int>(x2 - arrow_size * dx + arrow_size * 0.5f * dy);
+                int   ay1        = static_cast<int>(y2 - arrow_size * dy - arrow_size * 0.5f * dx);
+                int   ax2        = static_cast<int>(x2 - arrow_size * dx - arrow_size * 0.5f * dy);
+                int   ay2        = static_cast<int>(y2 - arrow_size * dy + arrow_size * 0.5f * dx);
+                draw_line(x2, y2, ax1, ay1, ann.color, ann.thickness);
+                draw_line(x2, y2, ax2, ay2, ann.color, ann.thickness);
+            }
+        }
+
+        else if (ann.type == ToolType::Rectangle)
+        {
+            draw_line(x1, y1, x2, y1, ann.color, ann.thickness);
+            draw_line(x2, y1, x2, y2, ann.color, ann.thickness);
+            draw_line(x2, y2, x1, y2, ann.color, ann.thickness);
+            draw_line(x1, y2, x1, y1, ann.color, ann.thickness);
+        }
+
+        else if (ann.type == ToolType::RectangleFilled)
+        {
+            int rx1 = std::min(x1, x2);
+            int rx2 = std::max(x1, x2);
+            int ry1 = std::min(y1, y2);
+            int ry2 = std::max(y1, y2);
+            for (int fy = ry1; fy <= ry2; ++fy)
+                for (int fx = rx1; fx <= rx2; ++fx)
+                    set_pixel(fx, fy, ann.color);
+        }
+
+        else if (ann.type == ToolType::CircleFilled)
+        {
+            for (int fy = cy - radius; fy <= cy + radius; ++fy)
+                for (int fx = cx - radius; fx <= cx + radius; ++fx)
+                    if ((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy) <= radius * radius)
+                        set_pixel(fx, fy, ann.color);
+        }
+
+        else if (ann.type == ToolType::Pencil)
+        {
+            for (size_t i = 1; i < ann.points.size(); ++i)
+            {
+                int px1 = static_cast<int>(ann.points[i - 1].x - offset_x);
+                int py1 = static_cast<int>(ann.points[i - 1].y - offset_y);
+                int px2 = static_cast<int>(ann.points[i].x - offset_x);
+                int py2 = static_cast<int>(ann.points[i].y - offset_y);
+                draw_line(px1, py1, px2, py2, ann.color, ann.thickness);
+            }
         }
     }
 
