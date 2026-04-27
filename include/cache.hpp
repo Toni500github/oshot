@@ -21,8 +21,6 @@ struct cache_entry_t
     toml::table       tbl = {};
 };
 
-extern std::unordered_map<CacheFilesEnum, cache_entry_t> g_cache_files;
-
 class Cache
 {
 public:
@@ -84,8 +82,14 @@ public:
         }
     }
 
+    std::unordered_map<CacheFilesEnum, cache_entry_t>& GetEntries() { return m_cache_entries; }
+
 private:
     std::string m_cache_dir_path;
+
+    std::unordered_map<CacheFilesEnum, cache_entry_t> m_cache_entries = {
+        { CacheFilesEnum::Colors, { "colors.toml", "cache.default-color-picker-color" } }
+    };
 };
 
 extern std::unique_ptr<Cache> g_cache;

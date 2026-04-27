@@ -135,7 +135,7 @@ public:
     ScreenshotTool()
         : m_io(dummy),
           m_inputs{ g_config->File.ocr_path, g_config->File.ocr_model, {}, "", {}, "", "" },
-          m_current_color(rgba_t(Cache::GetValue(g_cache_files[CacheFilesEnum::Colors], 0xFF0000FF)))
+          m_current_color(rgba_t(Cache::GetValue(g_cache->GetEntries()[CacheFilesEnum::Colors], 0xFF0000FF)))
     {}
 
     Result<>          Start();

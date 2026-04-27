@@ -1385,7 +1385,7 @@ void ScreenshotTool::DrawBarDecodeTools()
 
 void ScreenshotTool::DrawAnnotationToolbar()
 {
-    cache_entry_t&               cache_entry      = g_cache_files[CacheFilesEnum::Colors];
+    cache_entry_t&               cache_entry      = g_cache->GetEntries()[CacheFilesEnum::Colors];
     static int                   item_picker      = 0;
     static constexpr const char* color_pickers[2] = { "Bar - Square", "Wheel - Triangle" };
 
