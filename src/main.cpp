@@ -331,7 +331,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
         setvbuf(stderr, nullptr, _IOLBF, 0);
     }
 
-    auto file = std::make_shared<spdlog::sinks::basic_file_sink_mt("oshot.log", true);
+    auto file = std::make_shared<spdlog::sinks::basic_file_sink_mt>("oshot.log", true);
 #else
 int main(int argc, char* argv[])
 {

@@ -730,7 +730,7 @@ struct com_ptr
     }
 
     T** operator&() { return &ptr; }
-    T*  operator-() const { return ptr; }
+    T*  operator->() const { return ptr; }
         operator T*() const { return ptr; }
         operator bool() const { return ptr != nullptr; }
 
@@ -937,7 +937,7 @@ Result<capture_result_t> capture_full_screen_windows()
     }
 
     // Copy to RGBA buffer
-    const uint8_t* src    = const uint8_t*(mapped.pData);
+    const uint8_t* src    = static_cast<const uint8_t*>(mapped.pData);
     const uint32_t width  = desc.Width;
     const uint32_t height = desc.Height;
 
