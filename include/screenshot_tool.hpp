@@ -111,7 +111,7 @@ struct annotation_t
     point_t              start;
     point_t              end;
     std::string          text;                                       // For text tool
-    std::uint8_t         count = 1;                                  // For CounterBubble tool
+    std::uint8_t         count = 0;                                  // For CounterBubble tool
     std::vector<point_t> points;                                     // For pencil tool
     rgba_t               color     = rgba_t::from_rgba(0xFF0000FF);  // RGBA
     float                thickness = 3.0f;
@@ -136,8 +136,7 @@ class ScreenshotTool
 {
 public:
     ScreenshotTool()
-        : m_io(dummy),
-          m_inputs{ g_config->File.ocr_path, g_config->File.ocr_model, {}, "", {}, "", "" },
+        : m_inputs{ g_config->File.ocr_path, g_config->File.ocr_model, {}, "", {}, "", "" },
           m_current_color(rgba_t(Cache::GetValue(g_cache->GetEntries()[CacheFilesEnum::Colors], 0xFF0000FF)))
     {}
 
@@ -194,7 +193,6 @@ private:
         ImRect        rect;
     };
 
-    ImGuiIO&         m_io;
     OcrAPI           m_ocr_api;
     ZbarAPI          m_zbar_api;
     capture_result_t m_screenshot;
@@ -212,7 +210,6 @@ private:
 
     inputs_results_t m_inputs;
     bool             m_show_text_tools = true;
-    bool             m_is_selecting    = false;
 
     ImVec2 m_drag_start_mouse;
     ImVec2 m_image_origin;
@@ -225,16 +222,13 @@ private:
     std::function<void(const capture_result_t&)>                   m_on_image_reload;
     std::function<void(SavingOp, const Result<capture_result_t>&)> m_on_complete;
 
-    ImGuiIO dummy;
-
     std::array<void*, idx(ToolType::Count)> m_tool_textures{};
     ToolType                                m_current_tool = ToolType::kNone;
     std::vector<annotation_t>               m_annotations;
     annotation_t                            m_current_annotation;
     rgba_t                                  m_current_color;
-    std::uint8_t                            m_current_count = 1;
+    std::uint8_t                            m_current_count = 0;
     std::array<float, idx(ToolType::Count)> m_tool_thickness;
-    ImVec4                                  m_picker_color{ 1, 0, 0, 1 };
     bool                                    m_is_drawing       = false;
     bool                                    m_is_color_picking = false;
     bool                                    m_is_text_placing  = false;

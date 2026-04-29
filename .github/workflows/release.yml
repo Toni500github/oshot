@@ -164,6 +164,7 @@ jobs:
           printf '#!/bin/bash\ncp oshot /usr/local/bin/oshot\n' > package/oshot/install.sh
           chmod +x package/oshot/install.sh package/oshot/oshot
           wget https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -O package/oshot/models/eng.traineddata
+          wget https://github.com/tesseract-ocr/tessdata/raw/main/pol.traineddata -O package/oshot/models/pol.traineddata
           wget https://github.com/matomo-org/travis-scripts/raw/refs/heads/master/fonts/Arial.ttf -O package/oshot/Arial.ttf
           cd package && zip -r oshot-linux.zip oshot/
 
@@ -175,6 +176,7 @@ jobs:
           chmod +x oshot-x86_64.AppImage
           mv oshot-x86_64.AppImage package/oshot/
           wget https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -O package/oshot/models/eng.traineddata
+          wget https://github.com/tesseract-ocr/tessdata/raw/main/pol.traineddata -O package/oshot/models/pol.traineddata
           wget https://github.com/matomo-org/travis-scripts/raw/refs/heads/master/fonts/Arial.ttf -O package/oshot/Arial.ttf
           cd package && zip -r oshot-appimage.zip oshot/
 
@@ -186,6 +188,7 @@ jobs:
           ./scripts/create_app_bundle.sh ./build/oshot oshot-macos-${ARCH}.dmg
           mv oshot-macos-${ARCH}.dmg package/oshot/
           curl -L https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -o package/oshot/models/eng.traineddata
+          curl -L https://github.com/tesseract-ocr/tessdata/raw/main/pol.traineddata -o package/oshot/models/pol.traineddata
           curl -L https://github.com/matomo-org/travis-scripts/raw/refs/heads/master/fonts/Arial.ttf -o package/oshot/Arial.ttf
           cd package && zip -r oshot-macos-${ARCH}.zip oshot/
 
@@ -197,6 +200,7 @@ jobs:
           cp ./build/oshot.exe ./oshot.ico package/oshot/
           ldd ./build/oshot.exe | grep -i mingw | awk '{print $3}' | xargs -I {} cp {} package/oshot/ || true
           curl -L https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -o package/oshot/models/eng.traineddata
+          curl -L https://github.com/tesseract-ocr/tessdata/raw/main/pol.traineddata -o package/oshot/models/pol.traineddata
           cd package && zip -r oshot-windows.zip oshot/
 
       # Upload artifact

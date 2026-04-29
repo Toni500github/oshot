@@ -222,22 +222,19 @@ static ImVec4 get_confidence_color(const int confidence)
 
 static bool create_timed_button(const std::string_view label1,
                                 const std::string_view label2,
+                                bool&                  armed,  // caller controls arming
                                 const float            delay_secs = 1.5f)
 {
-    static bool  just_pressed = false;
-    static float copy_time    = 0.0;
+    static float press_time = 0.0f;
+    const double now        = ImGui::GetTime();
+    if (armed && now - press_time > delay_secs)
+        armed = false;
 
-    const double now = ImGui::GetTime();
-    if (just_pressed && now - copy_time > delay_secs)
-        just_pressed = false;
-
-    if (ImGui::Button(!just_pressed ? label1.data() : label2.data()))
+    if (ImGui::Button(!armed ? label1.data() : label2.data()))
     {
-        just_pressed = true;
-        copy_time    = now;
-        return true;
+        press_time = now;
+        return true;  // caller decides whether to set armed=true
     }
-
     return false;
 }
 
@@ -333,7 +330,6 @@ Result<> ScreenshotTool::Start()
 
 Result<> ScreenshotTool::StartWindow()
 {
-    m_io    = ImGui::GetIO();
     m_state = ToolState::Selecting;
 
     m_show_text_tools = g_config->File.show_text_tools;
@@ -386,11 +382,12 @@ void ScreenshotTool::RenderOverlay()
                                              ImGuiWindowFlags_NoBackground;
     // Overlay window
     ImGui::SetNextWindowPos(origin);
-    ImGui::SetNextWindowSize(m_io.DisplaySize);
+    ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, origin);
     ImGui::Begin("Screenshot Tool",
                  nullptr,
-                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground |
+                     ImGuiWindowFlags_NoInputs);
 
     // Screenshot as a centered bg image
     UpdateWindowBg();
@@ -415,12 +412,12 @@ void ScreenshotTool::RenderOverlay()
 
     if (m_state == ToolState::Selected)
     {
+        DrawAnnotationToolbar();
+
         if (m_is_color_picking)
             HandleColorPickerInput();
         else
             HandleAnnotationInput();
-
-        DrawAnnotationToolbar();
     }
 
     ImGui::End();
@@ -495,10 +492,9 @@ void ScreenshotTool::HandleSelectionInput()
     float         sel_h     = m_selection.get_height();
     ImRect        selection_rect(ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h));
 
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !m_is_selecting)
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && m_input_owner != InputOwner::Selection)
     {
-        m_input_owner  = InputOwner::Selection;
-        m_is_selecting = true;
+        m_input_owner = InputOwner::Selection;
 
         // Check if we're starting to resize from a handle
         if (m_handle_hover != HandleHovered::kNone)
@@ -525,7 +521,7 @@ void ScreenshotTool::HandleSelectionInput()
         }
     }
 
-    if (m_is_selecting && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+    if (m_input_owner == InputOwner::Selection && ImGui::IsMouseDown(ImGuiMouseButton_Left))
     {
         if (m_state == ToolState::Resizing)
             HandleResizeInput();
@@ -533,9 +529,8 @@ void ScreenshotTool::HandleSelectionInput()
             m_selection.end = { mouse_pos.x, mouse_pos.y };
     }
 
-    if (m_is_selecting && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+    if (m_input_owner == InputOwner::Selection && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
     {
-        m_is_selecting    = false;
         m_dragging_handle = HandleHovered::kNone;
         m_input_owner     = InputOwner::kNone;
 
@@ -1876,6 +1871,7 @@ void ScreenshotTool::DrawPreferencesWindow()
 
     static bool    prefs_modified     = false;
     static bool    prev_window_open   = false;
+    static bool    armed              = false;
     const bool     window_just_opened = !prev_window_open;
     static PrefTab selected_tab       = PrefTab::Defaults;
 
@@ -1974,10 +1970,11 @@ void ScreenshotTool::DrawPreferencesWindow()
         }
         ImGui::EndChild();
 
-        if (prefs_modified && create_timed_button("Save##save_press", "Saved!"))
+        if (prefs_modified && create_timed_button("Save##save_press", "Saved!", armed))
         {
             save_current_tab();
             prefs_modified = false;
+            armed          = true;
         }
         else if (prefs_modified && selected_tab == PrefTab::Defaults)
         {
@@ -2033,7 +2030,7 @@ void ScreenshotTool::DrawAnnotations()
                   "point_t and ImVec2 layout mismatch");
 
     ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
-    const float dpi       = m_io.DisplayFramebufferScale.x;
+    const float dpi       = ImGui::GetIO().DisplayFramebufferScale.x;
 
     auto draw_line = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
         draw_list->AddLine(p1, p2, ann.color.to_abgr(), t);
@@ -2217,7 +2214,6 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     m_dragging_handle = HandleHovered::kNone;
     m_input_owner     = InputOwner::kNone;
 
-    m_is_selecting         = false;
     m_selection            = {};
     m_drag_start_selection = {};
     m_drag_start_mouse     = {};
@@ -2625,37 +2621,30 @@ ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const floa
     if (it != m_font_cache.end())
         return it->second.font;
 
-    ImFont* font =
-        m_io.Fonts->AddFontFromFileTTF(font_path.c_str(), font_size, nullptr, m_io.Fonts->GetGlyphRangesDefault());
+    ImFont* font = ImGui::GetIO().Fonts->AddFontFromFileTTF(
+        font_path.c_str(), font_size, nullptr, ImGui::GetIO().Fonts->GetGlyphRangesDefault());
 
     m_font_cache[key] = { font_path, font, true };
     if (font)
-        m_io.Fonts->Build();
+        ImGui::GetIO().Fonts->Build();
 
     return font;
 }
 
 void ScreenshotTool::CreateCopyTextButton(const std::string& text_copy)
 {
-    static bool   just_copied = false;
-    static double copy_time   = 0.0;
-
-    const double now = ImGui::GetTime();
-    if (just_copied && now - copy_time > 1.5)
-        just_copied = false;
-
-    if (ImGui::Button(just_copied ? "Copied!" : "Copy Text"))
+    static bool armed = false;
+    if (create_timed_button("Copy Text", "Copied!", armed))
     {
         const Result<>& res = g_clipboard.CopyText(text_copy);
-        if (!res.ok())
+        if (res.ok())
         {
-            SetError(FailedToCopyText, res.error_v());
+            ClearError(FailedToCopyText);
+            armed = true;
         }
         else
         {
-            ClearError(FailedToCopyText);
-            just_copied = true;
-            copy_time   = now;
+            SetError(FailedToCopyText, res.error_v());
         }
     }
 
