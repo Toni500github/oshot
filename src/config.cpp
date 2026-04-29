@@ -208,13 +208,14 @@ void Config::GenerateTheme(const std::string& filename, const bool force)
     }
 
     theme_overrides_t& ov = theme_overrides;
-    f.print(R"([theme.style]
+    f.print(R"(
 # Drop this next to config.toml or point theme-file at its path.
 # All sections and keys are optional — omit anything you don't want to override.
 
 # ---------------------------------------------------------------
 # Rounding (pixels, 0 = sharp corners, max ~12)
 # ---------------------------------------------------------------
+[theme.style]
 window-rounding = {}
 frame-rounding  = {}
 grab-rounding   = {}

@@ -276,8 +276,7 @@ Result<capture_result_t> load_image_rgba(const std::string& path)
         if (input.empty())
             return Err("stdin reported data but was empty");
 
-        pixels = stbi_load_from_memory(
-            input.data(), int(input.size()), &width, &height, &channels, STBI_rgb_alpha);
+        pixels = stbi_load_from_memory(input.data(), int(input.size()), &width, &height, &channels, STBI_rgb_alpha);
     }
 
     if (!pixels)

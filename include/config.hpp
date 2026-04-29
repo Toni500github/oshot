@@ -43,7 +43,7 @@ public:
         std::string              ocr_path         = "./models";
         std::string              ocr_model        = "eng";
         std::string              theme_style      = "auto";
-        std::string              theme_file_path  = "";
+        std::string              theme_file_path  = "theme.toml";
         std::string              image_out_fmt    = "oshot_{:%F_%H-%M}";
         int                      delay            = 0;
         bool                     allow_out_edit   = false;
