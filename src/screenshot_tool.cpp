@@ -404,10 +404,10 @@ void ScreenshotTool::RenderOverlay()
 
     if (m_state == ToolState::Selecting || m_state == ToolState::Selected || m_state == ToolState::Resizing)
     {
-        HandleSelectionInput();
+        DrawAnnotations();
         DrawDarkOverlay();
         DrawSelectionBorder();
-        DrawAnnotations();
+        HandleSelectionInput();
     }
 
     if (m_state == ToolState::Selected)
@@ -1018,7 +1018,7 @@ void ScreenshotTool::DrawDarkOverlay()
 
 void ScreenshotTool::DrawSelectionBorder()
 {
-    ImDrawList* draw_list = ImGui::GetForegroundDrawList();
+    ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
 
     const float sel_x = m_selection.get_x();
     const float sel_y = m_selection.get_y();
