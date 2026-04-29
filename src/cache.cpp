@@ -8,17 +8,6 @@
 #include "toml++/toml.hpp"
 #include "util.hpp"
 
-struct CdGuard
-{
-    fs::path saved;
-    CdGuard(const fs::path& p) : saved(fs::current_path())
-    {
-        if (!p.empty())
-            fs::current_path(p);
-    }
-    ~CdGuard() { fs::current_path(saved); }
-};
-
 // https://github.com/hyprwm/Hyprland/blob/2d2a5bebff72c73cd27db3b9e954b8fa2a7623e8/hyprpm/src/core/DataState.cpp#L24
 static bool write_cache(const std::string& str, const std::string& to)
 {

@@ -10,23 +10,6 @@
 #include "toml++/toml.hpp"
 #include "util.hpp"
 
-static fs::path old_pwd;
-
-static void cd(const fs::path& path)
-{
-    if (!path.empty())
-    {
-        old_pwd = fs::current_path();
-        fs::current_path(path);
-    }
-}
-
-static void cd_back()
-{
-    if (!old_pwd.empty())
-        fs::current_path(old_pwd);
-}
-
 Config::Config(const std::string& configFile, const std::string& configDir)
     : m_config_path(configFile), m_config_dir_path(configDir)
 {
@@ -88,7 +71,7 @@ void Config::LoadThemeFile(const std::string& filename)
     // Since the filename (default.theme-file) will be likely
     // related to relative path of the config directory, let's
     // snapshot and switch to that directory.
-    cd(m_config_dir_path);
+    CdGuard guard(m_config_dir_path);
 
     if (fs::exists(filename))
     {
@@ -98,8 +81,6 @@ void Config::LoadThemeFile(const std::string& filename)
         }
         catch (const toml::parse_error& err)
         {
-            // Snap back
-            fs::current_path(old_pwd);
             die("Parsing theme file '{}' failed:\n"
                 "{}\n"
                 "\t(error occurred at line {} column {})",
@@ -109,8 +90,6 @@ void Config::LoadThemeFile(const std::string& filename)
                 err.source().begin.column);
         }
     }
-
-    cd_back();
 
     theme_overrides_t& ov = theme_overrides;
     if (const toml::table* colors = m_theme_tbl.at_path("theme.colors").as_table())
@@ -161,7 +140,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
         !ask_user_yn(false, "WARNING: config file '{}' already exists. Do you want to overwrite it?", filename))
         std::exit(1);
 
-    cd(m_config_dir_path);
+    CdGuard guard(m_config_dir_path);
 
     auto f = fmt::output_file(filename.data());
 
@@ -188,8 +167,6 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.image_out_fmt,
             File.theme_style,
             File.theme_file_path);
-
-    cd_back();
 }
 
 void Config::GenerateTheme(const std::string& filename, const bool force)
@@ -198,7 +175,7 @@ void Config::GenerateTheme(const std::string& filename, const bool force)
         !ask_user_yn(false, "WARNING: theme file '{}' already exists. Do you want to overwrite it?", filename))
         std::exit(1);
 
-    cd(m_config_dir_path);
+    CdGuard guard(m_config_dir_path);
 
     auto f = fmt::output_file(filename.data());
     if (!force)
@@ -248,6 +225,4 @@ frame-border  = {}
 
     for (const auto& [name, hex] : ov.colors)
         f.print("{} = \"{}\"\n", name, hex);
-
-    cd_back();
 }

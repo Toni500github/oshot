@@ -353,4 +353,16 @@ inline struct GlfwGuard
     ~GlfwGuard() { extern_glfwTerminate(); }
 } glfw_guard;
 
+class CdGuard
+{
+public:
+    fs::path saved;
+    CdGuard(const fs::path& p) : saved(fs::current_path())
+    {
+        if (!p.empty())
+            fs::current_path(p);
+    }
+    ~CdGuard() { fs::current_path(saved); }
+};
+
 #endif  // !_UTIL_HPP_
