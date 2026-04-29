@@ -696,9 +696,17 @@ void ScreenshotTool::HandleAnnotationInput()
         m_current_annotation.points.clear();
 
         if (m_current_tool == ToolType::Pencil)
+        {
             m_current_annotation.points.push_back(m_current_annotation.start);
+        }
         else if (m_current_tool == ToolType::CounterBubble)
-            m_current_annotation.count = m_current_count++;
+        {
+            uint8_t next = 1;
+            for (const auto& ann : m_annotations)
+                if (ann.type == ToolType::CounterBubble && ann.count >= next)
+                    next = ann.count + 1;
+            m_current_annotation.count = next;
+        }
     }
 
     if (m_is_drawing && ImGui::IsMouseDown(ImGuiMouseButton_Left))
@@ -1527,11 +1535,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
     ImGui::SameLine();
     if (ImGui::Button("Undo") && !m_annotations.empty())
-    {
-        if (m_annotations.back().type == ToolType::CounterBubble)
-            --m_current_count;
         m_annotations.pop_back();
-    }
 
     ImGui::End();
 }

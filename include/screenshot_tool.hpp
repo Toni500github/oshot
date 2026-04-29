@@ -227,7 +227,6 @@ private:
     std::vector<annotation_t>               m_annotations;
     annotation_t                            m_current_annotation;
     rgba_t                                  m_current_color;
-    std::uint8_t                            m_current_count = 0;
     std::array<float, idx(ToolType::Count)> m_tool_thickness;
     bool                                    m_is_drawing       = false;
     bool                                    m_is_color_picking = false;
