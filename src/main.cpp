@@ -376,11 +376,6 @@ int main(int argc, char* argv[])
     logger.set_pattern("[%Y-%m-%d %T.%e] [%l] %^%v%$");
     logger.flush_on(spdlog::level::trace);
 
-    logger.info("=== oshot starting ===");
-    logger.info("Log file path: {}", file->filename());
-    logger.flush();
-    spdlog::flush_every(std::chrono::seconds(1));
-
     g_clipboard.SetSession(get_session_type());
 
     const std::string& configDir      = get_config_dir().string();
@@ -398,6 +393,11 @@ int main(int argc, char* argv[])
         g_config->LoadThemeFile(g_config->File.theme_file_path);
 
     spdlog::set_level(g_config->Runtime.debug_print ? spdlog::level::debug : spdlog::level::info);
+
+    logger.info("=== oshot starting ===");
+    logger.info("Log file path: {}", file->filename());
+    logger.flush();
+    spdlog::flush_every(std::chrono::seconds(1));
 
     const bool tray_lock_acquired = acquire_tray_lock();
 
