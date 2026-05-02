@@ -40,7 +40,15 @@ public:
     // They can be overwritten from CLI arguments
     struct config_file_t
     {
+        // Since we package the eng.traineddata file on Windows/MacOS
+        // because the user may not know how to download one or doesn't want to,
+        // just for out-of-box experience sake, let's use the relative
+        // ./models directory for the OCR models.
+#ifdef __linux__
+        std::string              ocr_path         = "/usr/share/tessdata/";
+#else
         std::string              ocr_path         = "./models";
+#endif
         std::string              ocr_model        = "eng";
         std::string              theme_style      = "auto";
         std::string              theme_file_path  = "theme.toml";
@@ -54,8 +62,7 @@ public:
         bool                     ctrl_c_copy_img  = true;
         std::vector<std::string> fonts;
 
-        // C++20: Automatic generation of ==, !=, <, <=, >, >=
-        auto operator<=>(const config_file_t&) const = default;
+        bool operator==(const config_file_t&) const = default;
     } File;
 
     // Only from CLI arguments
@@ -72,7 +79,7 @@ public:
 #else
         bool debug_print = false;
 #endif
-        auto operator<=>(const runtime_settings_t&) const = default;
+        bool operator==(const runtime_settings_t&) const = default;
     } Runtime;
 
     struct theme_overrides_t
@@ -266,7 +273,6 @@ void apply_imgui_theme();
 // default config
 inline constexpr std::string_view AUTOCONFIG = R"#([default]
 # Default Path to where we'll use all the '.traineddata' models.
-#ocr-path = "/usr/share/tessdata/"
 ocr-path = "{}"
 
 # Default OCR model.
@@ -310,7 +316,8 @@ fonts = [{}]
 
 # Format of the output image filename when saving.
 # The .png extension is appended automatically.
-# Uses {{fmt}} chrono specifiers — the colon inside {{}} is required: {{:%F}} correct, {{%F}} will error.
+# Uses {{fmt}} chrono specifiers. NOTE: 
+#    the colon inside {{}} is required: {{:%F}} correct, {{%F}} will error.
 #
 # Default: "oshot_{{:%F_%H-%M}}"
 image-out-fmt = "{}"

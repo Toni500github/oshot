@@ -4,9 +4,6 @@ on:
   push:
     tags: "v*"
 
-env:
-  MODELS_URL_RAW: "https://github.com/tesseract-ocr/tessdata/raw/main"
-
 jobs:
   get-version:
     name: Get Version
@@ -162,27 +159,19 @@ jobs:
       - name: Package Linux binary
         if: matrix.artifact-name == 'linux'
         run: |
-          mkdir -p package/oshot/models
+          mkdir -p package/oshot/
           cp ./build/oshot package/oshot/
           printf '#!/bin/bash\ncp oshot /usr/local/bin/oshot\n' > package/oshot/install.sh
           chmod +x package/oshot/install.sh package/oshot/oshot
-          wget $MODELS_URL_RAW/eng.traineddata -O package/oshot/models/eng.traineddata
-          wget $MODELS_URL_RAW/pol.traineddata -O package/oshot/models/pol.traineddata
-          wget $MODELS_URL_RAW/osd.traineddata -O package/oshot/models/osd.traineddata
-          wget https://github.com/matomo-org/travis-scripts/raw/refs/heads/master/fonts/Arial.ttf -O package/oshot/Arial.ttf
           cd package && zip -r oshot-linux.zip oshot/
 
       - name: Package Linux AppImage
         if: matrix.artifact-name == 'linux-appimage'
         run: |
-          mkdir -p package/oshot/models
+          mkdir -p package/oshot/
           ./scripts/create_appimage.sh ./build/oshot oshot-x86_64.AppImage
           chmod +x oshot-x86_64.AppImage
           mv oshot-x86_64.AppImage package/oshot/
-          wget $MODELS_URL_RAW/eng.traineddata -O package/oshot/models/eng.traineddata
-          wget $MODELS_URL_RAW/pol.traineddata -O package/oshot/models/pol.traineddata
-          wget $MODELS_URL_RAW/osd.traineddata -O package/oshot/models/osd.traineddata
-          wget https://github.com/matomo-org/travis-scripts/raw/refs/heads/master/fonts/Arial.ttf -O package/oshot/Arial.ttf
           cd package && zip -r oshot-appimage.zip oshot/
 
       - name: Package macOS bundle
@@ -193,9 +182,6 @@ jobs:
           ./scripts/create_app_bundle.sh ./build/oshot oshot-macos-${ARCH}.dmg
           mv oshot-macos-${ARCH}.dmg package/oshot/
           curl -L $MODELS_URL_RAW/eng.traineddata -o package/oshot/models/eng.traineddata
-          curl -L $MODELS_URL_RAW/pol.traineddata -o package/oshot/models/pol.traineddata
-          curl -L $MODELS_URL_RAW/osd.traineddata -o package/oshot/models/osd.traineddata
-          curl -L https://github.com/matomo-org/travis-scripts/raw/refs/heads/master/fonts/Arial.ttf -o package/oshot/Arial.ttf
           cd package && zip -r oshot-macos-${ARCH}.zip oshot/
 
       - name: Package Windows binary
@@ -206,8 +192,6 @@ jobs:
           cp ./build/oshot.exe ./oshot.ico package/oshot/
           ldd ./build/oshot.exe | grep -i mingw | awk '{print $3}' | xargs -I {} cp {} package/oshot/ || true
           curl -L $MODELS_URL_RAW/eng.traineddata -o package/oshot/models/eng.traineddata
-          curl -L $MODELS_URL_RAW/pol.traineddata -o package/oshot/models/pol.traineddata
-          curl -L $MODELS_URL_RAW/osd.traineddata -o package/oshot/models/osd.traineddata
           cd package && zip -r oshot-windows.zip oshot/
 
       # Upload artifact

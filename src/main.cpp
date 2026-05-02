@@ -372,7 +372,7 @@ int main(int argc, char* argv[])
     spdlog::logger logger("oshot_logger", { console, file });
     spdlog::set_default_logger(std::make_shared<spdlog::logger>(logger));
 
-    // [2026-03-10 17:24:07.593] [DEBUG] XRandR capturing: monitor 1920x1080+0+0 (cursor at 1130,682)
+    // [2026-03-10 17:24:07.593] [DEBUG] <col>message</col>
     logger.set_pattern("[%Y-%m-%d %T.%e] [%l] %^%v%$");
     logger.flush_on(spdlog::level::trace);
 
@@ -383,12 +383,7 @@ int main(int argc, char* argv[])
 
     g_clipboard.SetSession(get_session_type());
 
-    // Check if demo build.
-    // removing it once the hackaton has ended
-    std::string configDir = get_config_dir().string();
-    if (fs::exists("models", ec))
-        configDir = ".";
-
+    const std::string& configDir      = get_config_dir().string();
     const std::string& cacheDir       = get_cache_dir().string();
     const std::string& configFile     = parse_config_path(argc, argv, configDir).string();
     const std::string& imgui_ini_path = configDir + "/imgui.ini";
