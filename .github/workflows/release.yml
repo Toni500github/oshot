@@ -4,6 +4,9 @@ on:
   push:
     tags: "v*"
 
+env:
+  MODELS_URL_RAW: "https://github.com/tesseract-ocr/tessdata/raw/main"
+
 jobs:
   get-version:
     name: Get Version
