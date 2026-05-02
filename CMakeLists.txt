@@ -379,12 +379,6 @@ install(TARGETS ${PROJECT_NAME}
 )
 
 install(
-    PROGRAMS launcher/${PROJECT_NAME}_launcher.py
-    DESTINATION bin
-    RENAME ${PROJECT_NAME}-launcher
-)
-
-install(
     FILES LICENSE
     DESTINATION share/licenses/${PROJECT_NAME}
     COMPONENT documentation
