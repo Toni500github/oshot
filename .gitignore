@@ -9,7 +9,7 @@ AppDir
 *.tar.*
 *.mo
 
-/debian/
+/debian/*
 !/debian/control
 !/debian/rules
 !/debian/copyright
