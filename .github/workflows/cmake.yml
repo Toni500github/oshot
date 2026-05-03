@@ -41,6 +41,8 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
+            container:
+              image: archlinux
             artifact-name: linux
             package-file: package/oshot-linux.zip
 
@@ -75,27 +77,18 @@ jobs:
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux' && matrix.artifact-name != 'debian-package'
         run: |
-          sudo apt-get update && sudo apt-get purge firefox -y
-          sudo apt-get install -y \
-            build-essential \
-            pkg-config \
-            make \
-            cmake \
-            git \
-            zip \
-            fuse \
-            libx11-dev \
-            libxcb1-dev \
-            libglfw3-dev \
-            libtesseract-dev \
-            libcurl4-openssl-dev \
-            libpng-dev \
-            libjpeg-dev \
-            libgif-dev \
-            libtiff-dev \
-            libwebp-dev \
-            libzbar-dev \
-            libappindicator3-dev
+          sudo pacman -Syu --noconfirm --needed \
+          git \
+          base-devel \
+          cmake \
+          zip \
+          libx11 \
+          libxcb \
+          libpng \
+          glfw \
+          tesseract \
+          zbar \
+          libappindicator-gtk3
 
       - name: Install dependencies (debian-package)
         if: matrix.artifact-name == 'debian-package'
