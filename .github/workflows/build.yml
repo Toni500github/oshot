@@ -46,7 +46,8 @@ jobs:
         include:
           - os: ubuntu-latest
             container:
-              image: archlinux:base-devel
+              image: ghcr.io/toni500github/arch-dev:latest
+              options: --user 0
             artifact-name: linux
             package-file: package/oshot-linux.zip
 
@@ -75,6 +76,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Fix git safe directory
+        run: git config --global --add safe.directory '*'
 
       # Dependencies
       - name: Install dependencies (Linux)
