@@ -48,6 +48,10 @@ jobs:
             artifact-name: linux-appimage
             package-file: package/oshot-appimage.zip
 
+          - os: ubuntu-22.04
+            artifact-name: debian-package
+            package-file: package/oshot-debian-package.deb
+
           - os: macos-latest
             artifact-name: macos-arm64
             package-file: package/oshot-macos-arm64.zip
@@ -69,7 +73,7 @@ jobs:
 
       # Dependencies
       - name: Install dependencies (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.artifact-name != 'debian-package'
         run: |
           sudo apt-get update && sudo apt-get purge firefox -y
           sudo apt-get install -y \
@@ -92,6 +96,24 @@ jobs:
             libwebp-dev \
             libzbar-dev \
             libappindicator3-dev
+
+      - name: Install dependencies (debian-package)
+        if: matrix.artifact-name == 'debian-package'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            debhelper \
+            devscripts \
+            cmake \
+            libx11-dev \
+            libxcb1-dev \
+            libglfw3-dev \
+            libtesseract-dev \
+            libpng-dev \
+            libzbar-dev \
+            libayatana-appindicator3-dev
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
@@ -127,13 +149,21 @@ jobs:
 
       # Build
       - name: Build project (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.artifact-name != 'debian-package'
         run: |
           ./scripts/generateVersion.sh
           mkdir -p build
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cd build && make
           strip --strip-unneeded ./oshot
+
+      - name: Build deb package (Linux)
+        if: matrix.artifact-name == 'debian-package'
+        run: |
+          ./scripts/generateVersion.sh
+          dpkg-buildpackage -us -uc -b
+          mkdir -p package
+          mv ../oshot_*.deb package/oshot-debian-package.deb
 
       - name: Build project (macOS)
         if: runner.os == 'macOS'
@@ -224,10 +254,12 @@ jobs:
         env:
           VERSION: ${{ needs.get-version.outputs.version }}
         run: |
-          for zip in artifacts/**/*.zip; do
-            base=$(basename "$zip" .zip)
-            dir=$(dirname "$zip")
-            mv "$zip" "$dir/${base}-${VERSION}.zip"
+          for f in artifacts/**/*.zip artifacts/**/*.deb; do
+            [ -f "$f" ] || continue
+            ext="${f##*.}"
+            base=$(basename "$f" ".$ext")
+            dir=$(dirname "$f")
+            mv "$f" "$dir/${base}-${VERSION}.${ext}"
           done
           find artifacts/ -type f | sort
 
@@ -239,6 +271,8 @@ jobs:
           draft: false
           prerelease: false
           fail_on_unmatched_files: true
-          files: artifacts/**/*.zip
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

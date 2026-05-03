@@ -1,0 +1,5 @@
+oshot (0.4.4-1) unstable; urgency=medium
+
+  * Initial Debian packaging.
+
+ -- Toni500 <tonino512@linuxmail.org>  Sun, 03 May 2026 00:00:00 +0000

@@ -9,6 +9,15 @@ AppDir
 *.tar.*
 *.mo
 
+/debian/
+!/debian/control
+!/debian/rules
+!/debian/copyright
+!/debian/source/
+!/debian/compat
+!/debian/changelog
+/obj-*
+
 # Prerequisites
 *.d
 

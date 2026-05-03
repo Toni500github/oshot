@@ -1,0 +1,31 @@
+Source: oshot
+Section: graphics
+Priority: optional
+Maintainer: Toni500 <tonino512@linuxmail.org>
+Build-Depends:
+ debhelper-compat (= 13),
+ cmake,
+ pkg-config,
+ libx11-dev,
+ libxcb1-dev,
+ libpng-dev,
+ libglfw3-dev,
+ libtesseract-dev,
+ libzbar-dev,
+ libayatana-appindicator3-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/Toni500github/oshot
+
+Package: oshot
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ tesseract-ocr-eng
+Recommends:
+ grim,
+ wl-clipboard
+Description: Fast and lightweight screenshot tool for extracting text on the fly
+ oshot is a cross-platform screenshot and annotation tool with built-in OCR
+ (via tesseract), barcode/QR scanning (via ZBar), and clipboard integration.
+ Supports X11, Wayland (via grim/portal), and multi-monitor setups.
