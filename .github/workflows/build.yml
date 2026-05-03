@@ -1,11 +1,14 @@
-name: CMake CI (Test oshot)
+name: Build/Release oshot
 
 on:
   push:
+    branches: ["**"]
+    tags: ["v*"]
   pull_request:
 
 env:
   MODELS_URL_RAW: "https://github.com/tesseract-ocr/tessdata/raw/main"
+  BUILD_TYPE: ${{ startsWith(github.ref, 'refs/tags/v') && 'Release' || 'Debug' }}
 
 jobs:
   get-version:
@@ -34,6 +37,7 @@ jobs:
   build:
     name: Build (${{ matrix.artifact-name }})
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
     permissions:
       contents: read
     strategy:
@@ -42,7 +46,7 @@ jobs:
         include:
           - os: ubuntu-latest
             container:
-              image: archlinux
+              image: archlinux:base-devel
             artifact-name: linux
             package-file: package/oshot-linux.zip
 
@@ -70,25 +74,49 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 0
 
       # Dependencies
       - name: Install dependencies (Linux)
-        if: runner.os == 'Linux' && matrix.artifact-name != 'debian-package'
+        if: matrix.artifact-name == 'linux'
         run: |
-          sudo pacman -Syu --noconfirm --needed \
-          git \
-          base-devel \
-          cmake \
-          zip \
-          libx11 \
-          libxcb \
-          libpng \
-          glfw \
-          tesseract \
-          zbar \
-          libappindicator-gtk3
+          pacman -Syu --noconfirm --needed \
+            git \
+            base-devel \
+            cmake \
+            zip \
+            libx11 \
+            libxcb \
+            libpng \
+            glfw \
+            tesseract \
+            zbar \
+            libappindicator-gtk3
+
+      - name: Install dependencies (AppImage)
+        if: matrix.artifact-name == 'linux-appimage'
+        run: |
+          sudo apt-get update && sudo apt-get purge firefox -y
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            make \
+            cmake \
+            git \
+            zip \
+            fuse \
+            libx11-dev \
+            libxcb1-dev \
+            libglfw3-dev \
+            libtesseract-dev \
+            libcurl4-openssl-dev \
+            libpng-dev \
+            libjpeg-dev \
+            libgif-dev \
+            libtiff-dev \
+            libwebp-dev \
+            libzbar-dev \
+            libappindicator3-dev
 
       - name: Install dependencies (debian-package)
         if: matrix.artifact-name == 'debian-package'
@@ -142,13 +170,13 @@ jobs:
 
       # Build
       - name: Build project (Linux)
-        if: runner.os == 'Linux' && matrix.artifact-name != 'debian-package'
+        if: matrix.artifact-name == 'linux' || matrix.artifact-name == 'linux-appimage'
         run: |
           ./scripts/generateVersion.sh
           mkdir -p build
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-          make -C build
-          ./build/oshot --version
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
+          cd build && make
+          strip --strip-unneeded ./oshot
 
       - name: Build deb package (Linux)
         if: matrix.artifact-name == 'debian-package'
@@ -165,10 +193,11 @@ jobs:
           BREW=$(brew --prefix)
           mkdir -p build
           cmake -S . -B build \
-            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
             -DCMAKE_PREFIX_PATH="$BREW" \
             -DPKG_CONFIG_PATH="$BREW/lib/pkgconfig:$BREW/share/pkgconfig"
-          make -C build
+          cd build && make
+          strip -x ./oshot
 
       - name: Build project (Windows)
         if: runner.os == 'Windows'
@@ -176,8 +205,9 @@ jobs:
         run: |
           ./scripts/generateVersion.sh
           mkdir -p build
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWINDOWS_CMD=ON
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DWINDOWS_CMD=OFF
           ninja -C build
+          cd build && strip --strip-unneeded ./oshot.exe
 
       # Package
       - name: Package Linux binary
@@ -225,3 +255,46 @@ jobs:
           name: ${{ matrix.artifact-name }}-package
           path: ${{ matrix.package-file }}
           if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    name: Create GitHub Release & Upload Assets
+    needs: [build, get-version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: List downloaded files
+        run: find artifacts/ -type f | sort
+
+      - name: Rename assets to include version tag
+        env:
+          VERSION: ${{ needs.get-version.outputs.version }}
+        run: |
+          for f in artifacts/**/*.zip artifacts/**/*.deb; do
+            [ -f "$f" ] || continue
+            ext="${f##*.}"
+            base=$(basename "$f" ".$ext")
+            dir=$(dirname "$f")
+            mv "$f" "$dir/${base}-${VERSION}.${ext}"
+          done
+          find artifacts/ -type f | sort
+
+      - name: Create release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.get-version.outputs.version }}
+          name: oshot ${{ needs.get-version.outputs.version }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
