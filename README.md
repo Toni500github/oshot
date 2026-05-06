@@ -312,23 +312,23 @@ You can move the resulting binary to any directory in your `$PATH`.
 
 ## Why it's fast
 
-oshot is deliberately optimized to stay out of your way — capture, recognize, done. Behind the scenes, several design choices keep everything snappy:
+oshot is deliberately optimized to stay out of your way. Capture, recognize, done. Behind the scenes, several design choices keep everything snappy:
 
-**Zero-warmup startup** — OCR, barcode scanning, and font loading are fully on-demand. Tesseract and ZBar are configured only when extraction is triggered, and the Tesseract engine is reused across extractions within the same session.
+**Zero-warmup startup**: OCR, barcode scanning, and font loading are fully on-demand. Tesseract and ZBar are configured only when extraction is triggered, and the Tesseract engine is reused across extractions within the same session.
 
-**Hardware-accelerated screen capture** — on Windows, frames come directly from the GPU's front buffer via DXGI Desktop Duplication, bypassing software rasterization entirely. On X11, pixel acquisition takes a fast-path `memcpy` row scan for 32bpp packed formats, falling back to `XGetPixel` only for non-standard layouts. The captured buffer is held once and reused for the entire session.
+**Hardware-accelerated screen capture**: on Windows, frames come directly from the GPU's front buffer via DXGI Desktop Duplication, bypassing software rasterization entirely. On X11, pixel acquisition takes a fast-path `memcpy` row scan for 32bpp packed formats, falling back to `XGetPixel` only for non-standard layouts. The captured buffer is held once and reused for the entire session.
 
-**Smart OCR dispatch** — Tesseract's page segmentation mode can be selected based on region aspect ratio and area heuristics, avoiding expensive full-page layout analysis on single-line or single-word selections.
+**Smart OCR dispatch**: Tesseract's page segmentation mode can be selected based on region aspect ratio and area heuristics, avoiding expensive full-page layout analysis on single-line or single-word selections.
 
-**Integer-only image processing** — grayscale conversion for barcode scanning uses integer ITU-R BT.601 coefficients `(77r + 150g + 29b) >> 8` instead of floating-point luminance, keeping the pixel walk entirely in the integer pipeline.
+**Integer-only image processing**: grayscale conversion for barcode scanning uses integer ITU-R BT.601 coefficients `(77r + 150g + 29b) >> 8` instead of floating-point luminance, keeping the pixel walk entirely in the integer pipeline.
 
-**Efficient annotation rendering** — drawing primitives use Bresenham's line algorithm O(max(Δx, Δy)) and the midpoint circle algorithm O(radius). Pencil stroke simplification uses a squared-distance threshold (`dx²+dy² > 4.0`) to avoid a `sqrt` per mouse-move event and keep point arrays compact.
+**Efficient annotation rendering**: drawing primitives use Bresenham's line algorithm O(max(Δx, Δy)) and the midpoint circle algorithm O(radius). Pencil stroke simplification uses a squared-distance threshold (`dx²+dy² > 4.0`) to avoid a `sqrt` per mouse-move event and keep point arrays compact.
 
-**No exclusive fullscreen** — the overlay is a borderless windowed surface, avoiding GPU mode switches and the display corruption they can leave on abnormal exit.
+**No exclusive fullscreen**: the overlay is a borderless windowed surface, avoiding GPU mode switches and the display corruption they can leave on abnormal exit.
 
-**Minimal, embeddable dependencies** — image loading, resizing, and writing use single-header stb libraries compiled only where needed. Downscaling of oversized images uses `stbir_resize_uint8_linear`, a cache-friendly separable linear filter.
+**Minimal, embeddable dependencies**: image loading, resizing, and writing use single-header stb libraries compiled only where needed. Downscaling of oversized images uses `stbir_resize_uint8_linear`, a cache-friendly separable linear filter.
 
-**Font caching** — an O(log n) lookup keyed on `(path, size)` ensures repeated text renders at the same size never re-trigger font atlas rebuilds or filesystem reads.
+**Font caching**: an O(log n) lookup keyed on `(path, size)` ensures repeated text renders at the same size never re-trigger font atlas rebuilds or filesystem reads.
 
 **Monitor detection** is O(monitors), comparing cursor coordinates against bounding rectangles without touching pixel data.
 
