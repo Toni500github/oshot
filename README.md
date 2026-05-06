@@ -31,13 +31,13 @@ https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 
 Most screenshot tools are general-purpose: they capture, save, and maybe annotate. oshot is **purpose-built for extraction**. That means:
 
-- **Instant text extraction** — select an area, click "Extract Text", and recognized text appears ready to copy. No saving, no cropping dialog, no drag-to-upload workflow.
-- **Built-in QR/barcode decoding** — scan QR codes, barcodes, and other symbologies directly from your screen without needing your phone.
-- **No cloud, no telemetry** — all OCR and barcode decoding runs locally on your machine using Tesseract and ZBar.
-- **Minimal memory footprint** — OCR engine, barcode scanner, and fonts load on-demand and are reused across extractions within a session.
-- **Runs where clipboard sharing breaks** — virtual machines, remote desktops, locked-down applications. If you can see text on your screen, oshot can extract it.
-- **Full annotation toolkit** — if you need to save an annotated screenshot, draw arrows, rectangles, circles, text, and more right in the overlay before saving.
-- **GUI preferences editor** — customize settings and themes through a built-in preferences window — no manual config file editing required.
+- **Instant text extraction**: select an area, click "Extract Text", and recognized text appears ready to copy. No saving, no cropping dialog, no drag-to-upload workflow.
+- **Built-in QR/barcode decoding**: scan QR codes, barcodes, and other symbologies directly from your screen without needing your phone.
+- **No cloud, no telemetry**: all OCR and barcode decoding runs locally on your machine using Tesseract and ZBar.
+- **Minimal memory footprint**: the OCR engine, barcode scanner, and fonts load on-demand and are reused across extractions within a session.
+- **Runs where clipboard sharing breaks**: virtual machines, remote desktops, locked-down applications. If you can see text on your screen, oshot can extract it.
+- **Full annotation toolkit**: draw arrows, rectangles, circles, text, and more right in the overlay before saving.
+- **GUI preferences editor**: customize settings and themes through a built-in preferences window, no manual config file editing required.
 
 ## Features
 
