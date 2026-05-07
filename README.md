@@ -1,10 +1,12 @@
 <p align="center">
-  <img src="oshot.png" width="10%"/>
+  <img src="oshot.png" width="10%" />
 </p>
+
 <h1 align="center">oshot</h1>
+
 <p align="center">
-A <b>fast, lightweight, cross-platform screenshot OCR tool</b><br>
-Capture any area of your screen, instantly extract text, and decode QR/barcodes.
+Fast, lightweight, cross-platform screenshot OCR.<br>
+Capture any screen region, extract text, and decode QR/barcodes locally.
 </p>
 
 <p align="center">
@@ -12,244 +14,265 @@ Capture any area of your screen, instantly extract text, and decode QR/barcodes.
   <img src="https://img.shields.io/github/actions/workflow/status/Toni500github/oshot/build.yml" />
 </p>
 
-## What is oshot?
+# Overview
 
-oshot is a **lightweight, cross-platform screenshot tool that extracts text and decodes barcodes from your screen instantly**. Select any region of your screen, and oshot copies the recognized text or QR/barcode content directly to your clipboard — no saving files, no opening a separate editor, no cloud uploads, no heavy dependencies.
+oshot is a native screenshot utility focused on **text extraction** and **barcode decoding**.
 
-oshot is built for real-world productivity: copy error messages from locked-down applications, grab text from virtual machines when shared clipboard fails, decode QR codes displayed on your monitor, or extract text from remote desktops and streaming sessions.
+Select any part of your screen, run OCR or QR/barcode scan, and copy the result directly to your clipboard. No uploads, no browser workflow, no bulky image editor.
 
-oshot works on **Windows**, **Linux**, and **macOS**.
+Useful for:
 
-## Demo
+- copying text from applications that block selection
+- extracting text inside VMs or remote desktops
+- reading text from videos, slides, or images
+- decoding QR codes shown on screen
+- replacing heavier screenshot tools when you only need capture + extraction
 
-<!-- Demo GIFs/videos from the original README -->
+Supports **Windows**, **Linux**, and **macOS**.
+
+# Demo
+
 https://github.com/user-attachments/assets/8367490a-f7b0-4320-86e9-8ef8764a56b5
 
 https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 
-## Why use oshot?
+# Features
 
-Most screenshot tools are general-purpose: they capture, save, and maybe annotate. oshot is **purpose-built for extraction**. That means:
+## Capture
 
-- **Instant text extraction**: select an area, click "Extract Text", and recognized text appears ready to copy. No saving, no cropping dialog, no drag-to-upload workflow.
-- **Built-in QR/barcode decoding**: scan QR codes, barcodes, and other symbologies directly from your screen without needing your phone.
-- **No cloud, no telemetry**: all OCR and barcode decoding runs locally on your machine using Tesseract and ZBar.
-- **Minimal memory footprint**: the OCR engine, barcode scanner, and fonts load on-demand and are reused across extractions within a session.
-- **Runs where clipboard sharing breaks**: virtual machines, remote desktops, locked-down applications. If you can see text on your screen, oshot can extract it.
-- **Full annotation toolkit**: draw arrows, rectangles, circles, text, and more right in the overlay before saving.
-- **GUI preferences editor**: customize settings and themes through a built-in preferences window, no manual config file editing required.
+- Region selection with resize handles
+- Full-screen select (`Ctrl+A`)
+- Capture delay
+- Open external image files
+- Borderless overlay window
 
-## Features
+## OCR & Barcode
 
-### Text & barcode extraction
-- **OCR** using Tesseract with on-demand engine initialization and session reuse
-- **QR code and barcode decoding** using ZBar, with symbology detection details
-- **Text copied to clipboard** with a single click
-- **Editable output** — toggle text editing to correct OCR results in-place before copying
-- **Multiple language support** via standard Tesseract `.traineddata` models
-- **PSM optimization** — choose page segmentation mode (word, line, block, auto) for better accuracy
+- OCR powered by Tesseract
+- QR/barcode decoding via ZBar
+- Copy extracted text to clipboard
+- Editable OCR output before copying
+- Multiple language models supported
+- Configurable OCR segmentation mode
 
-### Annotation tools
-- **Arrow**, **Line**, **Rectangle** (outline & filled), **Circle** (outline & filled)
-- **Counter bubble** — numbered annotation markers
-- **Text** with customizable font, size, and color
-- **Pencil** for freehand drawing
-- **Color picker** with magnifying loupe for precise color selection
-- **Undo** support for annotations
-- GPU-rendered during editing, CPU-rasterized into saved images
+## Annotation
 
-### Capture & UI
-- **Cross-platform** (Windows, Linux, macOS)
-- **Region selection** with draggable handles and move support
-- **Select all** (Ctrl+A) for full-screen extraction
-- **Borderless windowed overlay** — no exclusive fullscreen mode switching
-- **System tray support** on Linux for clipboard workarounds
-- **Load external images** for extraction (File → Open Image)
-- **Configurable capture delay** for capturing transient UI elements
+- Arrow, line, rectangle, circle
+- Filled shapes
+- Numbered counters
+- Text tool
+- Pencil / freehand drawing
+- Color picker with zoom loupe
+- Undo support
 
-### Customization
-- **GUI preferences window** — edit settings without touching config files
-- **Theme system** — choose auto/dark/light/classic base styles, with per-color overrides and style variable tuning (rounding, borders)
-- **Custom fonts** — configure multiple fonts for UI and annotation text
-- **Customizable output filename format** with chrono-based datetime specifiers
-- **Configurable VSync**, annotation rendering in scans, copy shortcuts, and more
+## Customization
 
-## Installation / Downloads
+- Preferences window
+- Light / dark / auto / classic themes
+- Font configuration
+- Output filename format
+- Behavior and rendering options
 
-### Linux
+# Installation
 
-**Prebuilt packages:**
-- **AppImage**: `oshot-appimage-<version>.zip` from the [releases page](https://github.com/Toni500github/oshot/releases/latest)
-- **Binary tarball**: `oshot-linux-<version>.zip` from the [releases page](https://github.com/Toni500github/oshot/releases/latest)
-- **Debian package**: `oshot-debian-package-<version>.deb` from the [releases page](https://github.com/Toni500github/oshot/releases/latest)
-- **AUR** (Arch Linux):
-  ```bash
-  yay -S oshot-bin
-  ```
+#### Linux
 
-**Wayland note:** On Wayland, oshot requires `grim` for screen capture and `wl-clipboard` for clipboard access. Install both packages separately.
+Download from the latest release page:
 
-### Windows
-Download `oshot-windows-<version>.zip` from the [releases page](https://github.com/Toni500github/oshot/releases/latest). Extract and run `oshot.exe`. A bundled `eng.traineddata` model is included.
+- `oshot-appimage-<version>.zip`
+- `oshot-linux-<version>.zip`
+- `oshot-debian-package-<version>.deb`
 
-### macOS
-Download `oshot-macos-arm64-<version>.zip` (Apple Silicon) or `oshot-macos-x86_64-<version>.zip` (Intel) from the [releases page](https://github.com/Toni500github/oshot/releases/latest). Includes a `.dmg` bundle and the English language model.
+https://github.com/Toni500github/oshot/releases/latest
 
+#### Arch Linux (AUR)
 
-## Common real-world use cases
+```bash
+yay -S oshot-bin
+````
 
-**Copy text from virtual machines**  \
-When host/guest clipboard sharing doesn't work (common in minimal VMs, older OSes, or certain hypervisor configurations), select the text on screen and extract it.
+### Wayland
 
-**Grab text from locked-down applications**  \
-Some apps prevent text selection or don't allow copy-paste. oshot extracts whatever is visible on screen.
+Install:
 
-**Decode QR codes and barcodes shown on screen**  \
-No need to reach for your phone — select the barcode region and the decoded content goes straight to your clipboard.
+* `grim`
+* `wl-clipboard`
 
-**Extract text from remote desktops**  \
-When working over RDP, VNC, or streaming services where clipboard integration is unreliable.
+Required for screen capture and clipboard support.
 
-**Pull text from images, presentations, and video**  \
-Paused video frames, presentation slides, or photos — extract visible text in seconds.
+## Windows
 
-**Lightweight alternative to heavy screenshot suites**  \
-If you primarily need text extraction and barcode scanning, oshot replaces tools that bundle full image editors and cloud sync clients.
+Download:
 
-## Usage
+* `oshot-windows-<version>.zip`
 
-1. **Launch oshot** from your application menu or terminal.
-2. **Select a region** of the screen by clicking and dragging. Use Ctrl+A to select the entire screen.
-3. **Annotate** if desired using the toolbar (arrows, rectangles, circles, text, pencil).
-4. **Open the Text tools panel** (toggle button in toolbar) to access OCR and barcode extraction.
-5. **Click "Extract Text"** for OCR or **"Extract Text"** under QR/Bar Decode for barcodes.
-6. **Click "Copy Text"** to copy results to your clipboard.
+Includes bundled English OCR data.
 
-### Command-line options
+[https://github.com/Toni500github/oshot/releases/latest](https://github.com/Toni500github/oshot/releases/latest)
 
-| Command | Description |
-|---------|-------------|
-| `oshot` | Launch the interactive overlay |
-| `oshot --tray` | Start minimized to system tray (Linux workaround for clipboard issues) |
-| `oshot -f <path>` | Open a specific image file |
+Extract and run:
 
-### Keyboard shortcuts
+```bash
+oshot.exe
+```
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+C` | Copy selected region as image (or `Ctrl+Shift+C` if "Use CTRL+C to copy image" is disabled) |
-| `Ctrl+S` | Save selected region as PNG |
-| `Ctrl+A` | Select entire screen |
-| `Ctrl+Z` | Undo last annotation |
-| `Ctrl+G` | Toggle selection handles |
-| `Ctrl+E` | Toggle output text editing |
-| `Esc` | Cancel / close overlay |
+## macOS
 
-### Preferences window
+Download:
 
-oshot includes a built-in preferences editor accessible from **Edit → Preferences** in the text tools menu. It has two tabs:
+* `oshot-macos-arm64-<version>.zip` (Apple Silicon)
+* `oshot-macos-x86_64-<version>.zip` (Intel)
 
-- **Defaults** — configure OCR path, default OCR model, capture delay, theme, fonts, VSync, output format, and various behavioral toggles
-- **Theme** — customize the application appearance with style variable overrides (rounding, borders) and per-color adjustments
+Includes `.dmg` bundle and bundled English OCR data.
 
-Changes can be saved and applied, or discarded. A confirmation dialog prevents accidental loss of unsaved changes.
+[https://github.com/Toni500github/oshot/releases/latest](https://github.com/Toni500github/oshot/releases/latest)
 
-## OCR language models (Tesseract)
+# Usage
 
-oshot uses Tesseract for OCR. By default, it bundles English language data. To add more languages:
+## Quick Start
 
-1. **Download language models** (`.traineddata` files) from the [official Tesseract tessdata repository](https://github.com/tesseract-ocr/tessdata).
-2. **Place the `.traineddata` files** in one of these locations:
-   - The `models/` directory next to the `oshot` binary (recommended)
-   - Any custom directory of your choice
-3. **Configure the path** in the Preferences window or directly in `config.toml`:
-   - **Windows**: `%APPDATA%/oshot/config.toml`
-   - **Linux**: `~/.config/oshot/config.toml`
-   - **macOS**: `~/Library/Application Support/oshot/config.toml`
+1. Launch `oshot`
+2. Select a screen region
+3. Annotate if needed
+4. Open the text tools panel
+5. Run OCR or QR/barcode scan
+6. Copy the result
 
-   Set `ocr-path` to the directory containing your `.traineddata` files:
-   ```toml
-   ocr-path = "~/Downloads/oshot/models"
-   ```
+## Command Line
 
-You can also change the default OCR model and optimize the page segmentation mode via **Edit → Optimize OCR for...**.
+| Command           | Description                     |
+| ----------------- | ------------------------------- |
+| `oshot`           | Launch interactive overlay      |
+| `oshot --tray`    | Start minimized to tray (Linux) |
+| `oshot -f <path>` | Open image file                 |
 
-## Troubleshooting
+## Keyboard Shortcuts
 
-### Windows
+| Shortcut       | Action                    |
+| -------------- | ------------------------- |
+| `Ctrl+C`       | Copy selection as image   |
+| `Ctrl+Shift+C` | Alternate image copy mode |
+| `Ctrl+S`       | Save selection as PNG     |
+| `Ctrl+A`       | Select full screen        |
+| `Ctrl+Z`       | Undo                      |
+| `Ctrl+G`       | Toggle handles            |
+| `Ctrl+E`       | Toggle text editing       |
+| `Esc`          | Close                     |
 
-**Screen flickering on launch or application won't start:**
+# OCR Languages
 
-1. Download [MesaForWindows-x64-20.1.8.7z](https://downloads.fdossena.com/geth.php?r=mesa64-latest).
-2. Extract the `opengl32.dll` file into the directory where `oshot.exe` is located.
-3. Launch oshot again.
+oshot ships with English OCR data by default.
 
-### Linux
+To add more languages:
 
-**Linking library errors at runtime:**  
-Use the AppImage release instead of the native binary.
+1. Download `.traineddata` files from the Tesseract tessdata repository
+   [https://github.com/tesseract-ocr/tessdata](https://github.com/tesseract-ocr/tessdata)
 
-**Clipboard does not work:**  
-Launch oshot with the system tray flag: `oshot --tray`, then trigger a capture from the system tray icon.
+2. Place them in:
 
-**Wayland-specific notes:**  
-On Wayland, oshot relies on `grim` for screen capture and `wl-clipboard` for clipboard access. Install both:
-- `grim`
-- `wl-clipboard`
+* `models/` beside the executable
+* any custom directory
 
-### All platforms
+3. Configure the OCR path in preferences or `config.toml`
 
-If problems persist, please open an [Issue](https://github.com/Toni500github/oshot/issues) and include:
-- The exact error message from the terminal
-- Your OS and version
-- Steps to reproduce
+## Config Paths
 
-## Build from source
+| Platform | Path                                              |
+| -------- | ------------------------------------------------- |
+| Windows  | `%APPDATA%/oshot/config.toml`                     |
+| Linux    | `~/.config/oshot/config.toml`                     |
+| macOS    | `~/Library/Application Support/oshot/config.toml` |
 
-### Dependencies
+Example:
 
-oshot requires a **C++20** compiler and the following libraries:
+```toml
+ocr-path = "~/Downloads/oshot/models"
+```
 
-#### All platforms
-| Dependency | Purpose |
-|-----------|---------|
-| `glfw3` | Window creation and OpenGL context |
-| `tesseract` | OCR engine |
-| `leptonica` | Image processing (Tesseract dependency) |
-| `zbar` | Barcode and QR code decoding |
-| `OpenGL` | Rendering backend |
-| `libpng` | PNG read/write support |
+# Troubleshooting
 
-#### Linux only
-| Dependency | Purpose |
-|-----------|---------|
-| `libx11` | X11 screen capture and display |
-| `libxcb` | X11 protocol C bindings |
-| `xrandr` | Monitor detection |
-| `gio-2.0` | GLib I/O abstractions |
-| `gtk+-3.0` | System tray support |
-| `libappindicator3` (or `ayatana-appindicator3`) | System tray indicator |
+## Windows
 
-#### macOS only
-| Dependency | Purpose |
-|-----------|---------|
-| `Cocoa` | Native windowing |
-| `Metal` | GPU rendering backend |
-| `QuartzCore` | Display and compositing |
-| `CoreGraphics` | Screen capture |
-| `IOKit` | System information |
+### Flicker on launch / app fails to start
 
-#### Windows only
-| Dependency | Purpose |
-|-----------|---------|
-| `d3d11` | DirectX 11 for screen capture |
-| `dxgi` | DXGI Desktop Duplication API |
-| `shcore` | DPI awareness |
-| `ws2_32` | Sockets (single-instance lock) |
+Use Mesa software OpenGL:
 
-#### Installing dependencies
+[https://downloads.fdossena.com/geth.php?r=mesa64-latest](https://downloads.fdossena.com/geth.php?r=mesa64-latest)
 
-**Ubuntu/Debian:**
+Extract `opengl32.dll` beside `oshot.exe`.
+
+## Linux
+
+### Missing runtime libraries
+
+Use the AppImage build.
+
+### Clipboard issues
+
+```bash
+oshot --tray
+```
+
+Then launch capture from the tray icon.
+
+### Wayland
+
+Install:
+
+* `grim`
+* `wl-clipboard`
+
+## Still having issues?
+
+Open an issue with:
+
+* operating system + version
+* exact error message
+* steps to reproduce
+
+[https://github.com/Toni500github/oshot/issues](https://github.com/Toni500github/oshot/issues)
+
+# Build from Source
+
+Requires a **C++20** compiler.
+
+## Core Dependencies
+
+* glfw3
+* tesseract
+* leptonica
+* zbar
+* OpenGL
+* libpng
+
+## Linux Extras
+
+* libx11
+* libxcb
+* libxrandr
+* gio-2.0
+* gtk+-3.0
+* libappindicator3 / ayatana-appindicator3
+
+## macOS Frameworks
+
+* Cocoa
+* Metal
+* QuartzCore
+* CoreGraphics
+* IOKit
+
+## Windows Libraries
+
+* d3d11
+* dxgi
+* shcore
+* ws2_32
+
+## Install Dependencies
+
+### Ubuntu / Debian
+
 ```bash
 sudo apt-get install -y \
   build-essential pkg-config cmake \
@@ -260,7 +283,8 @@ sudo apt-get install -y \
   libgtk-3-dev libayatana-appindicator3-dev
 ```
 
-**Arch Linux:**
+### Arch Linux
+
 ```bash
 sudo pacman -S --needed \
   base-devel cmake \
@@ -271,12 +295,14 @@ sudo pacman -S --needed \
   gtk3 libappindicator-gtk3
 ```
 
-**macOS (Homebrew):**
+### macOS (Homebrew)
+
 ```bash
 brew install cmake glfw tesseract leptonica zbar
 ```
 
-**Windows (MSYS2 UCRT64):**
+### Windows (MSYS2 UCRT64)
+
 ```bash
 pacman -S --needed \
   mingw-w64-ucrt-x86_64-toolchain \
@@ -288,6 +314,8 @@ pacman -S --needed \
   mingw-w64-ucrt-x86_64-zbar
 ```
 
+## Build
+
 ### Make
 
 ```bash
@@ -297,7 +325,7 @@ make
 ./build/release/oshot
 ```
 
-### CMake (Ninja)
+### CMake + Ninja
 
 ```bash
 git clone https://github.com/Toni500github/oshot/
@@ -308,34 +336,13 @@ ninja
 ./oshot
 ```
 
-You can move the resulting binary to any directory in your `$PATH`.
+# Contributing
 
-## Why it's fast
+Contributions are welcome.
 
-oshot is deliberately optimized to stay out of your way. Capture, recognize, done. Behind the scenes, several design choices keep everything snappy:
+* Bug reports
+* Focused pull requests
+* Performance improvements
+* Feature proposals (open an issue first)
 
-**Zero-warmup startup**: OCR, barcode scanning, and font loading are fully on-demand. Tesseract and ZBar are configured only when extraction is triggered, and the Tesseract engine is reused across extractions within the same session.
-
-**Hardware-accelerated screen capture**: on Windows, frames come directly from the GPU's front buffer via DXGI Desktop Duplication, bypassing software rasterization entirely. On X11, pixel acquisition takes a fast-path `memcpy` row scan for 32bpp packed formats, falling back to `XGetPixel` only for non-standard layouts. The captured buffer is held once and reused for the entire session.
-
-**Smart OCR dispatch**: Tesseract's page segmentation mode can be selected based on region aspect ratio and area heuristics, avoiding expensive full-page layout analysis on single-line or single-word selections.
-
-**Integer-only image processing**: grayscale conversion for barcode scanning uses integer ITU-R BT.601 coefficients `(77r + 150g + 29b) >> 8` instead of floating-point luminance, keeping the pixel walk entirely in the integer pipeline.
-
-**Efficient annotation rendering**: drawing primitives use Bresenham's line algorithm O(max(Δx, Δy)) and the midpoint circle algorithm O(radius). Pencil stroke simplification uses a squared-distance threshold (`dx²+dy² > 4.0`) to avoid a `sqrt` per mouse-move event and keep point arrays compact.
-
-**No exclusive fullscreen**: the overlay is a borderless windowed surface, avoiding GPU mode switches and the display corruption they can leave on abnormal exit.
-
-**Minimal, embeddable dependencies**: image loading, resizing, and writing use single-header stb libraries compiled only where needed. Downscaling of oversized images uses `stbir_resize_uint8_linear`, a cache-friendly separable linear filter.
-
-**Font caching**: an O(log n) lookup keyed on `(path, size)` ensures repeated text renders at the same size never re-trigger font atlas rebuilds or filesystem reads.
-
-**Monitor detection** is O(monitors), comparing cursor coordinates against bounding rectangles without touching pixel data.
-
-## Contributing
-
-Contributions are welcome — whether it's bug reports, feature ideas, or pull requests.
-
-- **Issues**: Check the [issue tracker](https://github.com/Toni500github/oshot/issues) for existing discussions or open a new one.
-- **Pull Requests**: Keep them focused. Performance-related changes are especially appreciated; include benchmarks or rationale when possible.
-- **Feature requests**: Open an issue first to discuss the idea before investing time in implementation.
+[https://github.com/Toni500github/oshot/issues](https://github.com/Toni500github/oshot/issues)
