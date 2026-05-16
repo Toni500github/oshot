@@ -439,6 +439,14 @@ void ScreenshotTool::RenderOverlay()
         Cancel();
 }
 
+void ScreenshotTool::NormalizeSelection()
+{
+    if (m_selection.start.x > m_selection.end.x)
+        std::swap(m_selection.start.x, m_selection.end.x);
+    if (m_selection.start.y > m_selection.end.y)
+        std::swap(m_selection.start.y, m_selection.end.y);
+}
+
 void ScreenshotTool::HandleShortcutsInput()
 {
     if (ImGui::Shortcut(ImGuiKey_E | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
@@ -499,6 +507,9 @@ void ScreenshotTool::HandleSelectionInput()
         // Check if we're starting to resize from a handle
         if (m_handle_hover != HandleHovered::kNone)
         {
+            // Normalize before storing the drag anchor so HandleResizeInput
+            // always starts from a canonical (start <= end) selection.
+            NormalizeSelection();
             m_dragging_handle      = m_handle_hover;
             m_drag_start_mouse     = mouse_pos;
             m_drag_start_selection = m_selection;
@@ -507,6 +518,7 @@ void ScreenshotTool::HandleSelectionInput()
         // Check if we're clicking inside the selection to move it
         else if (selection_rect.Contains(mouse_pos))
         {
+            NormalizeSelection();
             m_dragging_handle      = HandleHovered::Move;
             m_drag_start_mouse     = mouse_pos;
             m_drag_start_selection = m_selection;
@@ -536,6 +548,8 @@ void ScreenshotTool::HandleSelectionInput()
 
         if (m_selection.get_width() > 10 && m_selection.get_height() > 10)
             m_state = ToolState::Selected;
+
+        NormalizeSelection();
     }
 }
 

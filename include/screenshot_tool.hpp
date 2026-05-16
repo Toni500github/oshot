@@ -234,6 +234,7 @@ private:
 
     void CreateCopyTextButton(const std::string& text);
     void RefreshOcrModels();
+    void NormalizeSelection();
     void SyncRuntimeFromConfig();
 
     void HandleShortcutsInput();
