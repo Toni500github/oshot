@@ -2,12 +2,14 @@
 #define _SCREENSHOT_TOOL_HPP_
 
 #include <algorithm>
+#include <atomic>
 #include <bitset>
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <unordered_map>
 #include <utility>
 
@@ -141,6 +143,8 @@ struct inputs_results_t
 {
     std::string  ocr_path;
     std::string  ocr_model;
+    std::string  ocr_download_repo;
+    std::string  ocr_model_downloaded_path;
     ocr_result_t ocr_results;
 
     std::string   barcode_text;
@@ -156,10 +160,10 @@ struct ErrorContext
     std::bitset<idx(Enum::COUNT)>             flags;
     std::array<std::string, idx(Enum::COUNT)> texts;
 
-    void Set(Enum e, std::string msg = "")
+    void Set(Enum e, std::string_view msg = {})
     {
         flags.set(idx(e));
-        texts[idx(e)] = std::move(msg);
+        texts[idx(e)] = msg;
     }
 
     void Clear(Enum e)
@@ -183,7 +187,15 @@ class ScreenshotTool
 {
 public:
     ScreenshotTool()
-        : m_inputs{ g_config->File.ocr_path, g_config->File.ocr_model, {}, "", {}, "", "" },
+        : m_inputs{ g_config->File.ocr_path,
+                    g_config->File.ocr_model,
+                    g_config->File.ocr_get_repo,
+                    get_config_dir() / "models",
+                    {},
+                    "",
+                    {},
+                    "",
+                    "" },
           m_current_color(rgba_t(Cache::GetValue(g_cache->GetEntries()[CacheFilesEnum::Colors], 0xFF0000FF)))
     {}
 
@@ -209,7 +221,7 @@ public:
     template <typename Enum>
     void SetError(ErrorContext<Enum>& ctx, Enum e, const std::string_view err = "")
     {
-        ctx.Set(e, err.data());
+        ctx.Set(e, err);
     }
 
     template <typename Enum>
@@ -255,6 +267,17 @@ private:
         ImRect        rect;
     };
 
+    struct ocr_download_t
+    {
+        std::atomic<bool>  running{ true };
+        std::atomic<float> progress{ -1.f };  // -1 = indeterminate
+        std::atomic<int>   exit_code{ -1 };
+        std::mutex         err_mutex;
+        std::string        err;
+        std::string        line_buf;                 // accumulates partial stderr lines
+        float              display_progress{ 0.f };  // smoothed, main thread only
+    };
+
     OcrAPI           m_ocr_api;
     ZbarAPI          m_zbar_api;
     capture_result_t m_screenshot;
@@ -265,6 +288,7 @@ private:
     HandleHovered m_dragging_handle = HandleHovered::kNone;
     InputOwner    m_input_owner     = InputOwner::kNone;
 
+    ErrorContext<OcrDownloadError> m_download_errors;
     ErrorContext<OcrError>         m_ocr_errors;
     ErrorContext<ZbarError>        m_zbar_errors;
     ErrorContext<GeneralError>     m_general_errors;
@@ -279,6 +303,7 @@ private:
     ImVec2 m_image_origin;
     ImVec2 m_image_end;
 
+    std::shared_ptr<ocr_download_t>                                m_ocr_download;
     std::vector<std::string>                                       m_ocr_models_list;
     std::map<std::pair<std::string, float>, font_cache_t>          m_font_cache;
     std::function<void()>                                          m_on_cancel;
@@ -315,20 +340,19 @@ private:
     void DrawBarDecodeTools();
     void DrawAnnotationToolbar();
     void DrawPreferencesWindow();
+    void DrawDownloadOCRWindow();
 
     void UpdateHandleHoverState();
     void UpdateCursor();
     void UpdateWindowBg();
 
     template <typename Enum>
-    void ShowIfError(const ErrorContext<Enum> ctx, Enum e)
+    bool ShowIfError(const ErrorContext<Enum>& ctx, Enum e)
     {
-        if (ctx.Has(e))
-        {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0, 0, 1));
-            ImGui::Text("%s", ctx.Get(e).c_str());
-            ImGui::PopStyleColor();
-        }
+        bool has = ctx.Has(e);
+        if (has)
+            ImGui::TextColored(ImVec4(1, 0, 0, 1), "%s", ctx.Get(e).c_str());
+        return has;
     }
 };
 

@@ -45,10 +45,11 @@ public:
         // just for out-of-box experience sake, let's use the relative
         // ./models directory for the OCR models.
 #ifdef __linux__
-        std::string              ocr_path         = "/usr/share/tessdata/";
+        std::string ocr_path = "/usr/share/tessdata/";
 #else
-        std::string              ocr_path         = "./models";
+        std::string ocr_path = "./models";
 #endif
+        std::string              ocr_get_repo     = "tesseract-ocr/tessdata";
         std::string              ocr_model        = "eng";
         std::string              theme_style      = "auto";
         std::string              theme_file_path  = "theme.toml";
@@ -277,6 +278,11 @@ ocr-path = "{}"
 
 # Default OCR model.
 ocr-model = "{}"
+
+# GitHub repository from where we are going to
+# download an OCR '.traineddata' model.
+# The models must be on the root directory of the repository
+ocr-repo-downlaod = "{}"
 
 # Delay the app before acquiring a screenshot (in milliseconds)
 # Doesn't affect if opening external image (i.e. -f flag)

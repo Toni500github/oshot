@@ -43,7 +43,8 @@ void Config::LoadConfigFile(const std::string& filename)
             err.source().begin.column);
     }
 
-    File.ocr_path         = GetValue<std::string>("default.ocr-path", "/usr/share/tessdata");
+    File.ocr_path         = GetValue<std::string>("default.ocr-path", File.ocr_path);
+    File.ocr_get_repo     = GetValue<std::string>("default.ocr-repo-downlaod", "tesseract-ocr/tessdata");
     File.ocr_model        = GetValue<std::string>("default.ocr-model", "eng");
     File.theme_style      = GetValue<std::string>("default.theme", "auto");
     File.theme_file_path  = GetValue<std::string>("default.theme-file", "");
@@ -156,6 +157,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
     f.print(AUTOCONFIG,
             File.ocr_path,
             File.ocr_model,
+            File.ocr_get_repo,
             File.delay,
             File.real_full_screen,
             File.enable_vsync,
