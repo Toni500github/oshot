@@ -17,6 +17,7 @@
 #include "imgui/imgui_internal.h"
 #include "screen_capture.hpp"
 #include "text_extraction.hpp"
+#include "util.hpp"
 
 enum class ToolType : size_t
 {
@@ -77,15 +78,32 @@ enum class PrefTab
     Theme
 };
 
-enum ErrorFlag : size_t
+enum class OcrDownloadError : size_t
 {
-    kNone = 0,
-    FailedToScanOcr,
+    InvalidRepo,
     InvalidPath,
-    InvalidModel,
-    FailedToScanBarCode,
-    FailedToCopyText,
+    FailedToDownload,
     COUNT
+};
+
+enum class OcrError : size_t
+{
+    InvalidModel,
+    InvalidPath,
+    FailedToScan,
+    COUNT
+};
+
+enum class ZbarError : size_t
+{
+    FailedToScan,
+    COUNT,
+};
+
+enum class GeneralError : size_t
+{
+    FailedToCopyText,
+    COUNT,
 };
 
 struct point_t
@@ -132,6 +150,35 @@ struct inputs_results_t
     std::string resolved_ann_font_path;
 };
 
+template <typename Enum>
+struct ErrorContext
+{
+    std::bitset<idx(Enum::COUNT)>             flags;
+    std::array<std::string, idx(Enum::COUNT)> texts;
+
+    void Set(Enum e, std::string msg = "")
+    {
+        flags.set(idx(e));
+        texts[idx(e)] = std::move(msg);
+    }
+
+    void Clear(Enum e)
+    {
+        flags.reset(idx(e));
+        texts[idx(e)].clear();
+    }
+
+    bool Has(Enum e) const { return flags.test(idx(e)); }
+
+    template <typename... E>
+    bool HasAny(E... e) const
+    {
+        return (Has(e) || ...);
+    }
+
+    const std::string& Get(Enum e) const { return texts[idx(e)]; }
+};
+
 class ScreenshotTool
 {
 public:
@@ -159,14 +206,29 @@ public:
     void RenderOverlay();
     void Cancel();
 
-    void SetError(ErrorFlag f, const std::string& err = "")
+    template <typename Enum>
+    void SetError(ErrorContext<Enum>& ctx, Enum e, const std::string_view err = "")
     {
-        m_errors.set(static_cast<size_t>(f));
-        m_err_texts[f] = err;
+        ctx.Set(e, err.data());
     }
-    const std::string& GetError(ErrorFlag f) { return m_err_texts[f]; }
-    void               ClearError(ErrorFlag f) { m_errors.reset(static_cast<size_t>(f)); }
-    bool               HasError(ErrorFlag f) const { return m_errors.test(static_cast<size_t>(f)); }
+
+    template <typename Enum>
+    const std::string& GetError(const ErrorContext<Enum>& ctx, Enum e) const
+    {
+        return ctx.Get(e);
+    }
+
+    template <typename Enum>
+    void ClearError(ErrorContext<Enum>& ctx, Enum e)
+    {
+        ctx.Clear(e);
+    }
+
+    template <typename Enum>
+    bool HasError(const ErrorContext<Enum>& ctx, Enum e) const
+    {
+        return ctx.Has(e);
+    }
 
     void SetOnComplete(const std::function<void(SavingOp, const Result<capture_result_t>&)>& cb)
     {
@@ -203,7 +265,9 @@ private:
     HandleHovered m_dragging_handle = HandleHovered::kNone;
     InputOwner    m_input_owner     = InputOwner::kNone;
 
-    std::bitset<idx(ErrorFlag::COUNT)> m_errors;
+    ErrorContext<OcrError>         m_ocr_errors;
+    ErrorContext<ZbarError>        m_zbar_errors;
+    ErrorContext<GeneralError>     m_general_errors;
 
     selection_rect_t m_selection;
     selection_rect_t m_drag_start_selection;
@@ -216,7 +280,6 @@ private:
     ImVec2 m_image_end;
 
     std::vector<std::string>                                       m_ocr_models_list;
-    std::unordered_map<ErrorFlag, std::string>                     m_err_texts;
     std::map<std::pair<std::string, float>, font_cache_t>          m_font_cache;
     std::function<void()>                                          m_on_cancel;
     std::function<void(const capture_result_t&)>                   m_on_image_reload;
@@ -256,6 +319,17 @@ private:
     void UpdateHandleHoverState();
     void UpdateCursor();
     void UpdateWindowBg();
+
+    template <typename Enum>
+    void ShowIfError(const ErrorContext<Enum> ctx, Enum e)
+    {
+        if (ctx.Has(e))
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0, 0, 1));
+            ImGui::Text("%s", ctx.Get(e).c_str());
+            ImGui::PopStyleColor();
+        }
+    }
 };
 
 extern std::deque<std::string> g_dropped_paths;

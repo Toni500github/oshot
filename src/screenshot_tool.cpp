@@ -1227,6 +1227,8 @@ void ScreenshotTool::DrawMenuItems()
 
 void ScreenshotTool::DrawOcrTools()
 {
+    ErrorContext<OcrError>& ectx = m_ocr_errors;
+
     std::string& ocr_path  = m_inputs.ocr_path;
     std::string& ocr_model = m_inputs.ocr_model;
 
@@ -1254,8 +1256,8 @@ void ScreenshotTool::DrawOcrTools()
     ImGui::PushID("OcrTools");
     ImGui::SeparatorText("OCR");
 
-    const bool invalid_path  = HasError(InvalidPath);
-    const bool invalid_model = HasError(InvalidModel);
+    const bool invalid_path  = HasError(ectx, OcrError::InvalidPath);
+    const bool invalid_model = HasError(ectx, OcrError::InvalidModel);
 
     // --- Path input ---
     push_error_style(invalid_path);
@@ -1289,7 +1291,7 @@ void ScreenshotTool::DrawOcrTools()
                     {
                         item_selected_idx = i;
                         ocr_model         = m_ocr_models_list[i];
-                        ClearError(InvalidModel);
+                        ClearError(ectx, OcrError::InvalidModel);
                     }
                 }
             }
@@ -1306,29 +1308,29 @@ void ScreenshotTool::DrawOcrTools()
             const Result<>& configure_res = m_ocr_api.Configure(ocr_path.c_str(), ocr_model.c_str());
             if (!configure_res.ok())
             {
-                SetError(FailedToScanOcr, configure_res.error_v());
+                SetError(ectx, OcrError::FailedToScan, configure_res.error_v());
             }
             else
             {
                 Result<ocr_result_t> result = m_ocr_api.ExtractTextCapture(GetFinalImage(true));
                 if (result.ok())
                 {
-                    ClearError(FailedToScanOcr);
+                    ClearError(ectx, OcrError::FailedToScan);
                     m_inputs.ocr_results = std::move(result.get());
                 }
                 else
                 {
-                    SetError(FailedToScanOcr, result.error_v());
+                    SetError(ectx, OcrError::FailedToScan, result.error_v());
                 }
             }
         }
 
         ImGui::SameLine();
 
-        if (HasError(FailedToScanOcr))
+        if (HasError(ectx, OcrError::FailedToScan))
         {
             ImGui::SameLine();
-            ImGui::TextColored(error_color, "Failed to scan: %s", GetError(FailedToScanOcr).c_str());
+            ImGui::TextColored(error_color, "Failed to scan: %s", GetError(ectx, OcrError::FailedToScan).c_str());
         }
         else
         {
@@ -1361,6 +1363,8 @@ void ScreenshotTool::DrawOcrTools()
 
 void ScreenshotTool::DrawBarDecodeTools()
 {
+    ErrorContext<ZbarError>& ectx = m_zbar_errors;
+
     ImGui::PushID("BarDecodeTools");
     ImGui::SeparatorText("QR/Bar Decode");
 
@@ -1369,11 +1373,11 @@ void ScreenshotTool::DrawBarDecodeTools()
         const Result<zbar_result_t>& scan = m_zbar_api.ExtractTextsCapture(GetFinalImage(true));
         if (!scan.ok())
         {
-            SetError(FailedToScanBarCode, scan.error_v());
+            SetError(ectx, ZbarError::FailedToScan, scan.error_v());
         }
         else
         {
-            ClearError(FailedToScanBarCode);
+            ClearError(ectx, ZbarError::FailedToScan);
             m_inputs.zbar_scan_result = std::move(scan.get());
             m_inputs.barcode_text.clear();
             for (const std::string& data : m_inputs.zbar_scan_result.datas)
@@ -1381,10 +1385,10 @@ void ScreenshotTool::DrawBarDecodeTools()
         }
     }
 
-    if (HasError(FailedToScanBarCode))
+    if (HasError(ectx, ZbarError::FailedToScan))
     {
         ImGui::SameLine();
-        ImGui::TextColored(error_color, "Failed to decode: %s", GetError(FailedToScanBarCode).c_str());
+        ImGui::TextColored(error_color, "Failed to decode: %s", GetError(ectx, ZbarError::FailedToScan).c_str());
     }
     else if (!m_inputs.zbar_scan_result.datas.empty() && ImGui::TreeNode("Details"))
     {
@@ -2651,25 +2655,27 @@ ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const floa
 
 void ScreenshotTool::CreateCopyTextButton(const std::string& text_copy)
 {
+    ErrorContext<GeneralError>& ectx = m_general_errors;
+
     static bool armed = false;
     if (create_timed_button("Copy Text", "Copied!", armed))
     {
         const Result<>& res = g_clipboard.CopyText(text_copy);
         if (res.ok())
         {
-            ClearError(FailedToCopyText);
+            ClearError(ectx, GeneralError::FailedToCopyText);
             armed = true;
         }
         else
         {
-            SetError(FailedToCopyText, res.error_v());
+            SetError(ectx, GeneralError::FailedToCopyText, res.error_v());
         }
     }
 
-    if (HasError(FailedToCopyText))
+    if (HasError(ectx, GeneralError::FailedToCopyText))
     {
         ImGui::SameLine();
-        ImGui::TextColored(error_color, "Failed to copy text: %s", GetError(FailedToCopyText).c_str());
+        ImGui::TextColored(error_color, "Failed to copy text: %s", GetError(ectx, GeneralError::FailedToCopyText).c_str());
     }
 }
 
@@ -2688,19 +2694,21 @@ void ScreenshotTool::SyncRuntimeFromConfig()
 
 void ScreenshotTool::RefreshOcrModels()
 {
+    ErrorContext<OcrError>& ectx = m_ocr_errors;
+
     m_ocr_models_list = get_training_data_list(m_inputs.ocr_path);
     if (m_ocr_models_list.empty())
     {
-        SetError(InvalidPath);
+        SetError(ectx, OcrError::InvalidPath);
     }
     else
     {
-        ClearError(InvalidPath);
+        ClearError(ectx, OcrError::InvalidPath);
         const auto& it = std::find(m_ocr_models_list.begin(), m_ocr_models_list.end(), m_inputs.ocr_model);
         if (it == m_ocr_models_list.end())
-            SetError(InvalidModel);
+            SetError(ectx, OcrError::InvalidModel);
         else
-            ClearError(InvalidModel);
+            ClearError(ectx, OcrError::InvalidModel);
     }
 }
 
