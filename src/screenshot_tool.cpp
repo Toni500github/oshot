@@ -2076,27 +2076,43 @@ void ScreenshotTool::DrawDownloadOCRWindow()
 
     static bool        has_downloaded = false;
     static std::string model_to_get   = "eng";
+    static std::string prev_model;
+
+    // Reset success banner when the user targets a different model
+    if (prev_model != model_to_get)
+    {
+        has_downloaded = false;
+        prev_model     = model_to_get;
+    }
+
+    const bool is_downloading = m_ocr_download && m_ocr_download->running.load();
 
     bool window_open = true;
-    ImGui::SetNextWindowSize(ImVec2(500, 440), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Download OCR##ocr_download_window", &window_open, ImGuiWindowFlags_NoSavedSettings))
+    ImGui::SetNextWindowSize(ImVec2(520, 0), ImGuiCond_FirstUseEver);  // 0 = auto height
+    if (ImGui::Begin("Download OCR Model##ocr_download_window", &window_open, ImGuiWindowFlags_NoSavedSettings))
     {
-        ImGui::Text("GitHub repo");
-        ImGui::TextDisabled(
-            "This is where you'll locate the repository for downloading\n"
-            "the needed OCR language model");
+        // Lock all inputs while a download is in flight
+        if (is_downloading)
+            ImGui::BeginDisabled();
+
+        ImGui::SeparatorText("Source");
+        ImGui::TextDisabled("GitHub repository containing Tesseract '.traineddata' models");
+        ImGui::SetNextItemWidth(-1);
         if (ImGui::InputText("##ocr_download_repo", &m_inputs.ocr_download_repo))
             ClearError(ectx, OcrDownloadError::FailedToDownload);
 
         ImGui::Spacing();
 
-        ImGui::Text("Model to download");
+        ImGui::SeparatorText("Model");
+        ImGui::TextDisabled("Language code (e.g eng, fra, deu, chi_sim)");
+        ImGui::SetNextItemWidth(-1);
         if (ImGui::InputText("##ocr_model_to_download", &model_to_get))
             ClearError(ectx, OcrDownloadError::FailedToDownload);
 
         ImGui::Spacing();
 
-        ImGui::Text("Path to where to download the model");
+        ImGui::SeparatorText("Destination");
+        ImGui::SetNextItemWidth(-1);
         if (ImGui::InputText("##ocr_download_path", &m_inputs.ocr_model_downloaded_path))
         {
             if (!fs::exists(m_inputs.ocr_model_downloaded_path))
@@ -2108,97 +2124,132 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         }
         ShowIfError(ectx, OcrDownloadError::InvalidPath);
 
-        // Only show button when not already downloading
-        if (!m_ocr_download && !ectx.HasAny(OcrDownloadError::InvalidPath, OcrDownloadError::FailedToDownload))
+        if (is_downloading)
+            ImGui::EndDisabled();
+
+        // URL preview when both field are filled
+        if (!m_inputs.ocr_download_repo.empty() && !model_to_get.empty())
         {
-            if (ImGui::Button("Download"))
-            {
-                const std::vector<std::string> cmd{
-                    "curl",
-                    "-fL",
-                    fmt::format("https://raw.githubusercontent.com/{}/main/{}.traineddata",
-                                m_inputs.ocr_download_repo,
-                                model_to_get),
-                    "-o",
-                    fmt::format("{}/{}.traineddata", m_inputs.ocr_model_downloaded_path, model_to_get)
-                };
-
-                m_ocr_download = std::make_shared<ocr_download_t>();
-
-                std::thread([dl = m_ocr_download, cmd = std::move(cmd)]() mutable {
-                    TinyProcessLib::Process proc(
-                        cmd,
-                        "",
-                        [](const char*, size_t) { /* stdout: unused */ },
-                        [&dl](const char* buf, size_t n) {
-                            std::lock_guard g(dl->err_mutex);
-
-                            dl->line_buf.append(buf, n);
-
-                            size_t pos = 0;
-                            while (pos < dl->line_buf.size())
-                            {
-                                // curl progress uses \r to overwrite the same line.
-                                // Format: "  25  1234k   25   308k  ..."
-                                // First integer on a data line is the overall percentage
-                                size_t end = dl->line_buf.find_first_of("\r\n", pos);
-                                if (end == std::string::npos)
-                                    break;  // incomplete data, waiting for more
-
-                                if (end > pos)
-                                {
-                                    const std::string_view line(dl->line_buf.c_str() + pos, end - pos);
-                                    int                    pct = -1;
-                                    if (sscanf(line.data(), " %d", &pct) == 1 && pct >= 0 && pct <= 100)
-                                    {
-                                        dl->progress.store(static_cast<float>(pct));
-                                    }
-                                    else
-                                    {
-                                        dl->err.append(line);
-                                        dl->err.push_back('\n');
-                                    }
-                                }
-                                pos = end + 1;
-                            }
-
-                            // Keep only the unprocessed tail
-                            dl->line_buf.erase(0, pos);
-                        });
-
-                    dl->exit_code.store(proc.get_exit_status());
-                    dl->running.store(false);
-                }).detach();
-            }
+            ImGui::Spacing();
+            ImGui::TextDisabled("https://raw.githubusercontent.com/%s/main/%s.traineddata",
+                                m_inputs.ocr_download_repo.c_str(),
+                                model_to_get.c_str());
         }
 
-        // Progress / completion display
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // Determine why the button should be disabled (if at all)
+        const bool fields_filled =
+            !m_inputs.ocr_download_repo.empty() && !model_to_get.empty() && !m_inputs.ocr_model_downloaded_path.empty();
+        const bool can_download = !m_ocr_download && fields_filled &&
+                                  !ectx.HasAny(OcrDownloadError::InvalidPath, OcrDownloadError::FailedToDownload);
+
+        if (!can_download)
+            ImGui::BeginDisabled();
+
+        // Only show button when not already downloading
+        if (ImGui::Button("Download", ImVec2(-1, 0)))
+        {
+            const std::vector<std::string> cmd{
+                "curl",
+                "-fL",
+                fmt::format("https://raw.githubusercontent.com/{}/main/{}.traineddata",
+                            m_inputs.ocr_download_repo,
+                            model_to_get),
+                "-o",
+                fmt::format("{}/{}.traineddata", m_inputs.ocr_model_downloaded_path, model_to_get)
+            };
+
+            m_ocr_download = std::make_shared<ocr_download_t>();
+
+            std::thread([dl = m_ocr_download, cmd = std::move(cmd)]() mutable {
+                TinyProcessLib::Process proc(
+                    cmd,
+                    "",
+                    [](const char*, size_t) { /* stdout: unused */ },
+                    [&dl](const char* buf, size_t n) {
+                        std::lock_guard g(dl->err_mutex);
+
+                        dl->line_buf.append(buf, n);
+
+                        size_t pos = 0;
+                        while (pos < dl->line_buf.size())
+                        {
+                            // curl progress uses \r to overwrite the same line.
+                            // Format: "  25  1234k   25   308k  ..."
+                            // First integer on a data line is the overall percentage
+                            size_t end = dl->line_buf.find_first_of("\r\n", pos);
+                            if (end == std::string::npos)
+                                break;  // incomplete line, waiting for more data
+
+                            if (end > pos)
+                            {
+                                const std::string_view line(dl->line_buf.c_str() + pos, end - pos);
+                                int                    pct = -1;
+                                if (sscanf(line.data(), " %d", &pct) == 1 && pct >= 0 && pct <= 100)
+                                {
+                                    dl->progress.store(static_cast<float>(pct));
+                                }
+                                else
+                                {
+                                    dl->err.append(line);
+                                    dl->err.push_back('\n');
+                                }
+                            }
+                            pos = end + 1;
+                        }
+
+                        // Keep only the unprocessed tail
+                        dl->line_buf.erase(0, pos);
+                    });
+
+                dl->exit_code.store(proc.get_exit_status());
+                dl->running.store(false);
+            }).detach();
+        }
+
+        if (!can_download)
+            ImGui::EndDisabled();
+
+        // Tooltip on the disabled button explaining why
+        if (!can_download && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        {
+            ImGui::BeginTooltip();
+            if (is_downloading)
+                ImGui::Text("Download already in progress");
+            else if (!fields_filled)
+                ImGui::Text("Fill all fields first");
+            else if (HasError(ectx, OcrDownloadError::InvalidPath))
+                ImGui::Text("Fix the destination path error first");
+            else
+                ImGui::Text("Edit the fields above to retry");
+            ImGui::EndTooltip();
+        }
+
+        // Progress bar
         if (m_ocr_download)
         {
             if (m_ocr_download->running.load())
             {
+                ImGui::Spacing();
                 const float pct = m_ocr_download->progress.load();
                 if (pct < 0.f)
                 {
                     // Size unknown yet, so let's show a marquee-style bar
-                    const float t     = std::fmod(static_cast<float>(ImGui::GetTime()) * 0.8f, 1.0f);
-                    const float width = ImGui::GetContentRegionAvail().x;
-                    ImGui::ProgressBar(-1.f * t, ImVec2(width, 0.f), "Downloading...");
+                    const float t = std::fmod(static_cast<float>(ImGui::GetTime()) * 0.8f, 1.0f);
+                    ImGui::ProgressBar(-1.f * t, ImVec2(-1.f, 0.f), "Downloading...");
+                }
+                else if (g_config->theme_overrides.smooth_animations)
+                {
+                    float& dp = m_ocr_download->display_progress;
+                    dp += (pct - dp) * std::min(1.f, 6.f * ImGui::GetIO().DeltaTime);
+                    ImGui::ProgressBar(dp / 100.f, ImVec2(-1.f, 0.f), fmt::format("{:.2f}%", dp).c_str());
                 }
                 else
                 {
-                    if (g_config->theme_overrides.smooth_animations)
-                    {
-                        const float dt = ImGui::GetIO().DeltaTime;
-                        float&      dp = m_ocr_download->display_progress;
-                        dp += (pct - dp) * std::min(1.0f, 6.0f * dt);
-                        ImGui::ProgressBar(dp / 100.f, ImVec2(-1.f, 0.f), fmt::format("{:.2f}%", dp).c_str());
-                    }
-                    else
-                    {
-                        ImGui::Text("Downloading... %.0f%%", pct);
-                        ImGui::ProgressBar(pct / 100.f, ImVec2(-1.f, 0.f));
-                    }
+                    ImGui::ProgressBar(pct / 100.f, ImVec2(-1.f, 0.f), fmt::format("{:.0f}%", pct).c_str());
                 }
             }
             else
@@ -2213,7 +2264,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
                     }
                     SetError(ectx,
                              OcrDownloadError::FailedToDownload,
-                             fmt::format("Failed to download OCR model '{}' to '{}':\n{}",
+                             fmt::format("Failed to download '{}' to '{}':\n{}",
                                          model_to_get,
                                          m_inputs.ocr_model_downloaded_path,
                                          err));
@@ -2227,11 +2278,15 @@ void ScreenshotTool::DrawDownloadOCRWindow()
             }
         }
 
+        ImGui::Spacing();
         if (has_downloaded && !ShowIfError(ectx, OcrDownloadError::FailedToDownload))
-            ImGui::TextColored(ImVec4(0, 1, 0, 1), "Downloaded successfully (it seems)!");
+            ImGui::TextColored(ImVec4(0.2f, 0.85f, 0.2f, 1.f), "Downloaded successfully!");
 
         ImGui::End();
     }
+
+    if (!window_open)
+        show_toosl_window = false;
 }
 
 void ScreenshotTool::DrawAnnotations()
