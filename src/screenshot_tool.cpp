@@ -383,7 +383,8 @@ Result<> ScreenshotTool::StartWindow()
 void ScreenshotTool::RenderOverlay()
 {
     const bool disable_esc =
-        (m_is_text_placing || m_is_color_picking || show_preferences_window) && !g_config->File.show_text_tools;
+        (m_is_text_placing || m_is_color_picking || show_preferences_window || show_toosl_window) &&
+        !g_config->File.show_text_tools;
 
     static constexpr int minimal_win_flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
                                              ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoResize |
@@ -1855,11 +1856,11 @@ static void draw_theme_editor()
     // We only show the most-used slots to keep the list manageable.
     // Full list is still editable via the config file directly.
     static constexpr const char* important[] = {
-        "Text",          "TextDisabled",   "WindowBg",      "ChildBg",       "PopupBg",          "Border",
-        "FrameBg",       "FrameBgHovered", "FrameBgActive", "TitleBg",       "TitleBgActive",    "MenuBarBg",
-        "ScrollbarBg",   "ScrollbarGrab",  "CheckMark",     "SliderGrab",    "SliderGrabActive", "Button",
-        "ButtonHovered", "ButtonActive",   "Header",        "HeaderHovered", "HeaderActive",     "Tab",
-        "TabHovered",    "TabSelected",
+        "Text",          "TextDisabled",  "WindowBg",       "ChildBg",       "PopupBg",       "Border",
+        "PlotHistogram", "FrameBg",       "FrameBgHovered", "FrameBgActive", "TitleBg",       "TitleBgActive",
+        "MenuBarBg",     "ScrollbarBg",   "ScrollbarGrab",  "CheckMark",     "SliderGrab",    "SliderGrabActive",
+        "Button",        "ButtonHovered", "ButtonActive",   "Header",        "HeaderHovered", "HeaderActive",
+        "Tab",           "TabHovered",    "TabSelected",
     };
 
     const auto& cmap = color_name_map();

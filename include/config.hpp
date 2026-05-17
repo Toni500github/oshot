@@ -435,6 +435,7 @@ Separator         = "#585b70FF"
 ResizeGrip        = "#cba6f7FF"
 ResizeGripHovered = "#cba6f7FF"
 ResizeGripActive  = "#cba6f7FF"
+PlotHistogram     = "#2ba2f0FF"  # original: "#e6b300FF"
 )");
 
 inline constexpr std::string_view oshot_help = (R"(Usage: oshot [OPTIONS]...
