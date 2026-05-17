@@ -94,6 +94,9 @@ public:
         float window_border   = -1.f;
         float frame_border    = -1.f;
 
+        // custom oshot specific theme options
+        bool smooth_animations = false;
+
         bool operator==(const theme_overrides_t&) const = default;
     } theme_overrides;
 
@@ -222,7 +225,7 @@ public:
     }
 
     /**
-     * Get the theme color variable and return a rgba type value
+     * Get the theme style variable and return a rgba type value
      * @param value The value we want
      * @param fallback The default value if it doesn't exists
      * @return rgba type variable
@@ -231,6 +234,18 @@ public:
     T GetThemeStyleValue(const std::string_view value, const T& fallback, bool dont_expand_var = true) const
     {
         return GetValue<T>(fmt::format("theme.style.{}", value), fallback, dont_expand_var, true);
+    }
+
+    /**
+     * Get the theme style variable and return a rgba type value
+     * @param value The value we want
+     * @param fallback The default value if it doesn't exists
+     * @return rgba type variable
+     */
+    template <typename T>
+    T GetThemeValue(const std::string_view value, const T& fallback, bool dont_expand_var = true) const
+    {
+        return GetValue<T>(fmt::format("theme.{}", value), fallback, dont_expand_var, true);
     }
 
     /**
@@ -340,6 +355,9 @@ theme-file = "{}"
 inline constexpr std::string_view AUTOTHEME = (R"(
 # Drop this next to config.toml or point theme-file at its path.
 # All sections and keys are optional — omit anything you don't want to override.
+
+[theme]
+smooth-animations = false
 
 # ---------------------------------------------------------------
 # Rounding (pixels, 0 = sharp corners, max ~12)

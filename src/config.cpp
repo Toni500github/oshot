@@ -105,6 +105,8 @@ void Config::LoadThemeFile(const std::string& filename)
     ov.tab_rounding    = GetThemeStyleValue("tab-rounding", -1.f);
     ov.window_border   = GetThemeStyleValue("window-border", -1.f);
     ov.frame_border    = GetThemeStyleValue("frame-border", -1.f);
+
+    ov.smooth_animations = GetThemeValue("smooth-animations", false);
 }
 
 void Config::OverrideOption(const std::string& opt)

@@ -1822,9 +1822,13 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
 
 static void draw_theme_editor()
 {
-    ImGui::SeparatorText("Style overrides");
-
     Config::theme_overrides_t& ov = g_config->theme_overrides;
+
+    ImGui::SeparatorText("Custom theme options");
+
+    ImGui::Checkbox("Enable smooth animations", &ov.smooth_animations);
+
+    ImGui::SeparatorText("Style overrides");
 
     // Rounding / border sliders
     auto style_row = [&](const char* label, float& val, float lo, float hi) {
@@ -2183,10 +2187,18 @@ void ScreenshotTool::DrawDownloadOCRWindow()
                 }
                 else
                 {
-                    const float dt = ImGui::GetIO().DeltaTime;
-                    float& dp = m_ocr_download->display_progress;
-                    dp += (pct - dp) * std::min(1.0f, 6.0f * dt);
-                    ImGui::ProgressBar(dp / 100.f, ImVec2(-1.f, 0.f), fmt::format("Downloading... {:.2f}%", dp).c_str());
+                    if (g_config->theme_overrides.smooth_animations)
+                    {
+                        const float dt = ImGui::GetIO().DeltaTime;
+                        float&      dp = m_ocr_download->display_progress;
+                        dp += (pct - dp) * std::min(1.0f, 6.0f * dt);
+                        ImGui::ProgressBar(dp / 100.f, ImVec2(-1.f, 0.f), fmt::format("{:.2f}%", dp).c_str());
+                    }
+                    else
+                    {
+                        ImGui::Text("Downloading... %.0f%%", pct);
+                        ImGui::ProgressBar(pct / 100.f, ImVec2(-1.f, 0.f));
+                    }
                 }
             }
             else
