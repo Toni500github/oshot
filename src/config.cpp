@@ -143,8 +143,6 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
         !ask_user_yn(false, "WARNING: config file '{}' already exists. Do you want to overwrite it?", filename))
         std::exit(1);
 
-    CdGuard guard(m_config_dir_path);
-
     auto f = fmt::output_file(filename.data());
 
     std::string fonts_str;

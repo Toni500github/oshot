@@ -368,6 +368,9 @@ int main(int argc, char* argv[])
     });
 #endif
 
+    if (nvd_init() != 0)
+        return -67;
+
     auto           console = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     spdlog::logger logger("oshot_logger", { console, file });
     spdlog::set_default_logger(std::make_shared<spdlog::logger>(logger));

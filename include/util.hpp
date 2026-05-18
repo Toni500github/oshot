@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
-#include <iostream>
 #include <string>
 #include <utility>
 #include <variant>
@@ -12,6 +11,10 @@
 
 #include "fmt/base.h"
 #include "fmt/color.h"
+extern "C" {
+#include "nvdialog/nvdialog_core.h"
+#include "nvdialog/nvdialog_dialog.h"
+}
 #include "spdlog/spdlog.h"
 #include "version.h"
 
@@ -261,88 +264,65 @@ bool parse_hex_rgba(const std::string_view hex, rgba_t& out);
 #define BOLD_COLOR(x) (fmt::emphasis::bold | fmt::fg(x))
 
 template <typename... Args>
-[[noreturn]] inline void die(fmt::format_string<Args...> fmt, Args&&... args) noexcept
+[[noreturn]] inline void die(const std::string_view fmt, Args&&... args) noexcept
 {
-#ifdef _WIN32
-    MessageBox(nullptr,
-               fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(),
-               "Fatal Error",
-               MB_ICONERROR | MB_OK);
-#endif
-    spdlog::critical(fmt, std::forward<Args>(args)...);
+    const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
+
+    spdlog::critical("{}", str);
+    NvdDialogBox* dialog = nvd_dialog_box_new("oshot Fatal Error", str.c_str(), NVD_DIALOG_ERROR);
+    nvd_show_dialog(dialog);
+    nvd_free_object(dialog);
 
     std::exit(1);
 }
 
 template <typename... Args>
-inline void error(fmt::format_string<Args...> fmt, Args&&... args) noexcept
+inline void error(const std::string_view fmt, Args&&... args) noexcept
 {
-#ifdef _WIN32
-    MessageBox(
-        nullptr, fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(), "Error", MB_ICONERROR | MB_OK);
-#endif
-    spdlog::error(fmt, args...);
+    const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
+
+    spdlog::error("{}", str);
+    NvdDialogBox* dialog = nvd_dialog_box_new("oshot Error", str.c_str(), NVD_DIALOG_ERROR);
+    nvd_show_dialog(dialog);
+    nvd_free_object(dialog);
 }
 
 template <typename... Args>
-inline void warn(fmt::format_string<Args...> fmt, Args&&... args) noexcept
+inline void warn(const std::string_view fmt, Args&&... args) noexcept
 {
-#ifdef _WIN32
-    MessageBox(nullptr,
-               fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(),
-               "Warning",
-               MB_ICONWARNING | MB_OK);
-#endif
-    spdlog::warn(fmt, args...);
+    const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
+
+    spdlog::warn("{}", str);
+    NvdDialogBox* dialog = nvd_dialog_box_new("oshot Warning", str.c_str(), NVD_DIALOG_WARNING);
+    nvd_show_dialog(dialog);
+    nvd_free_object(dialog);
 }
 
 template <typename... Args>
-inline void info(fmt::format_string<Args...> fmt, Args&&... args) noexcept
+inline void info(const std::string_view fmt, Args&&... args) noexcept
 {
-#ifdef _WIN32
-    MessageBox(nullptr,
-               fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(),
-               "Info",
-               MB_ICONINFORMATION | MB_OK);
-#endif
-    spdlog::info(fmt, std::forward<Args>(args)...);
+    const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
+
+    spdlog::info("{}", str);
+    NvdDialogBox* dialog = nvd_dialog_box_new("oshot Info", str.c_str(), NVD_DIALOG_SIMPLE);
+    nvd_show_dialog(dialog);
+    nvd_free_object(dialog);
 }
 
 /** Ask the user a yes or no question.
- * @param def The default result
+ * @param def The default result (Removed)
  * @param fmt The format string
  * @param args Arguments in the format
  * @returns the result, y = true, n = false, only returns def if the result is def
  */
 template <typename... Args>
-inline bool ask_user_yn(bool def, const std::string_view fmt, Args&&... args)
+inline bool ask_user_yn(bool, const std::string_view fmt, Args&&... args)
 {
-#ifdef _WIN32
-    int result = MessageBox(NULL,
-                            fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str(),
-                            "Confirmation",
-                            MB_YESNO | MB_ICONQUESTION);
-    return (result == IDYES);
-#else
-    const std::string_view inputs_str = def ? " [Y/n]:" : " [y/N]:";
-    std::string            result;
-    fmt::print(fmt::runtime(fmt), std::forward<Args>(args)...);
-    fmt::print("{}", inputs_str);
-
-    while (std::getline(std::cin, result) && (result.length() > 1))
-        fmt::print(BOLD_COLOR(fmt::rgb(fmt::color::yellow)), "Please answear y or n,{}", inputs_str);
-
-    if (std::cin.eof())
-        die("Exiting due to CTRL-D or EOF");
-
-    if (result.empty())
-        return def;
-
-    if (def ? std::tolower(result[0]) != 'n' : std::tolower(result[0]) != 'y')
-        return def;
-
-    return !def;
-#endif
+    const std::string& str      = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
+    NvdQuestionBox*    question = nvd_dialog_question_new("Confirmation", str.c_str(), NVD_YES_NO);
+    if (!question)
+        die("Couldn't create question dialog box");
+    return nvd_get_reply(question) == NVD_REPLY_OK;
 }
 
 // RAII guard: ensures glfwTerminate() runs even on crash/signal.

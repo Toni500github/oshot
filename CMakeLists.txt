@@ -80,6 +80,8 @@ if(UNIX AND NOT APPLE)
     endif()
     pkg_check_modules(GIO REQUIRED gio-2.0)
     pkg_check_modules(XRANDR REQUIRED xrandr)
+    pkg_check_modules(GTK REQUIRED gtk+-3.0)
+    pkg_check_modules(DBUS REQUIRED dbus-1)
 endif()
 
 # -----------------------------
@@ -161,12 +163,18 @@ if(WIN32)
         set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
 elseif(APPLE)
-    target_compile_options(${PROJECT_NAME} PRIVATE -fobjc-arc $<$<CXX_COMPILER_ID:AppleClang>:-stdlib=libc++>)
+    target_compile_options(
+        ${PROJECT_NAME}
+        PRIVATE -fobjc-arc $<$<CXX_COMPILER_ID:AppleClang>:-stdlib=libc++>
+    )
 
     # Add Metal render loop source
     target_sources(${PROJECT_NAME} PRIVATE src/main_tool_metal.mm)
 
-    target_link_options(${PROJECT_NAME} PRIVATE $<$<CXX_COMPILER_ID:AppleClang>:-stdlib=libc++>)
+    target_link_options(
+        ${PROJECT_NAME}
+        PRIVATE $<$<CXX_COMPILER_ID:AppleClang>:-stdlib=libc++>
+    )
     target_link_libraries(
         ${PROJECT_NAME}
         PRIVATE
@@ -186,8 +194,14 @@ elseif(UNIX)
         ${GIO_INCLUDE_DIRS}
         ${XRANDR_INCLUDE_DIRS}
     )
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${GIO_LIBRARIES} ${XRANDR_LIBRARIES})
-    target_compile_options(${PROJECT_NAME} PRIVATE ${GIO_CFLAGS_OTHER} ${XRANDR_CFLAGS_OTHER})
+    target_link_libraries(
+        ${PROJECT_NAME}
+        PRIVATE ${GIO_LIBRARIES} ${XRANDR_LIBRARIES}
+    )
+    target_compile_options(
+        ${PROJECT_NAME}
+        PRIVATE ${GIO_CFLAGS_OTHER} ${XRANDR_CFLAGS_OTHER}
+    )
 endif()
 
 # -----------------------------
@@ -235,7 +249,6 @@ else()
             find_library(COCOA Cocoa REQUIRED)
             list(APPEND TRAY_SOURCES src/libs/tray/tray_darwin.mm)
         else()
-            pkg_check_modules(GTK REQUIRED gtk+-3.0)
             list(APPEND TRAY_SOURCES src/libs/tray/tray_linux.cpp)
         endif()
     endif()
@@ -271,10 +284,7 @@ target_include_directories(tray PUBLIC include/libs)
 target_compile_features(tray PRIVATE cxx_std_20)
 set_target_properties(
     tray
-    PROPERTIES
-        CXX_STANDARD 20
-        CXX_EXTENSIONS OFF
-        CXX_STANDARD_REQUIRED ON
+    PROPERTIES CXX_STANDARD 20 CXX_EXTENSIONS OFF CXX_STANDARD_REQUIRED ON
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE tray)
@@ -312,13 +322,64 @@ target_compile_features(clip PRIVATE cxx_std_20)
 target_compile_definitions(clip PUBLIC CLIP_ENABLE_IMAGE=1)
 set_target_properties(
     clip
-    PROPERTIES
-        CXX_STANDARD 20
-        CXX_EXTENSIONS OFF
-        CXX_STANDARD_REQUIRED ON
+    PROPERTIES CXX_STANDARD 20 CXX_EXTENSIONS OFF CXX_STANDARD_REQUIRED ON
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE clip)
+
+# -----------------------------
+# nvdialog (integrated from its own CMakeLists.txt)
+# -----------------------------
+file(GLOB NVD_COMMON_SOURCES src/libs/nvdialog/*.c)
+
+if(WIN32)
+    file(GLOB NVD_BACKEND_SOURCES src/libs/nvdialog/backend/win32/*.c)
+elseif(APPLE)
+    file(GLOB NVD_BACKEND_SOURCES src/libs/nvdialog/backend/cocoa/*.m)
+else()
+    file(GLOB NVD_BACKEND_SOURCES src/libs/nvdialog/backend/gtk/*.c)
+endif()
+
+add_library(nvdialog STATIC ${NVD_COMMON_SOURCES} ${NVD_BACKEND_SOURCES})
+enable_lto(nvdialog)
+
+target_compile_definitions(
+    nvdialog
+    PUBLIC NVDIALOG_MAXBUF=4096 NVD_STATIC_LINKAGE=1
+    PRIVATE NVD_EXPORT_SYMBOLS
+)
+
+target_include_directories(
+    nvdialog
+    PUBLIC include/libs/nvdialog/ include/libs
+    PRIVATE src/libs/nvdialog/impl/
+)
+
+set_target_properties(nvdialog PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
+
+if(WIN32)
+    target_link_libraries(
+        nvdialog
+        PRIVATE comdlg32 shell32 user32 gdi32 ole32
+    )
+elseif(APPLE)
+    target_compile_definitions(nvdialog PRIVATE NVD_USE_COCOA=1)
+    target_compile_options(nvdialog PRIVATE -fno-objc-arc)
+    target_link_libraries(
+        nvdialog
+        PRIVATE
+            "-framework AppKit"
+            "-framework Cocoa"
+            "-framework Foundation"
+            "-framework UserNotifications"
+    )
+else()
+    target_compile_options(nvdialog PRIVATE ${GTK_CFLAGS} ${GTK_CFLAGS_OTHER})
+    target_link_directories(nvdialog PRIVATE ${GTK_LIBRARY_DIRS})
+    target_link_libraries(nvdialog PRIVATE ${GTK_LIBRARIES} ${DBUS_LIBRARIES})
+endif()
+
+target_link_libraries(${PROJECT_NAME} PRIVATE nvdialog)
 
 # -----------------------------
 # tiny-process-library (integrated from its own CMakeLists.txt)
@@ -376,10 +437,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE tiny-process-library)
 # Install
 # -----------------------------
 
-install(TARGETS ${PROJECT_NAME}
-    RUNTIME DESTINATION bin
-    COMPONENT runtime
-)
+install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin COMPONENT runtime)
 
 install(
     FILES LICENSE

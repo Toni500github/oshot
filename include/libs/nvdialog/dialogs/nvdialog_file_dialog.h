@@ -1,0 +1,120 @@
+/*
+ *  The MIT License (MIT)
+ *
+ *  Copyright (c) 2025 Aggelos Tselios
+ *
+ *  Permission is hereby granted, free of charge, to any person obtaining a copy
+ *  of this software and associated documentation files (the "Software"), to
+ * deal in the Software without restriction, including without limitation the
+ * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+ * sell copies of the Software, and to permit persons to whom the Software is
+ *  furnished to do so, subject to the following conditions:
+ *
+ *  The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ *  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+ * IN THE SOFTWARE.
+ */
+
+#include "../nvdialog_platform.h"
+#include "../nvdialog_string.h"
+
+/**
+ * @brief An opaque file dialog type, representing either a file
+ * dialog that can be used to open a file or save a file, and since v0.9.0,
+ * opening a directory instead.
+ * @since v0.1.0
+ * @ingroup FileDialog
+ * @sa nvd_open_file_dialog_new
+ */
+typedef struct _NvdFileDialog NvdFileDialog;
+
+/**
+ * @brief Creates a new, empty @ref NvdFileDialog to be used for
+ * retrieving a file and returns it.
+ *
+ * This creates a new file dialog and returns it. In order to use it, you must
+ * call @ref nvd_get_file_location and pass a pointer to write the file location
+ * to.
+ * @warning The `file_extensions` parameter has no effect with the `gtk` backend
+ * due to the `gtk` library's limitations.
+ * @param title A string to put as the dialog title.
+ * @param file_extensions A string of file extensions/endings allowed, see the
+ * example below for details.
+ * @returns An empty @ref NvdFileDialog object if successful, otherwise NULL and
+ * an error retrievable through @ref nvd_get_error is set.
+ * @example
+ * @code
+ * int main(void) {
+ *      const char* filters = ".img;.png;.jpeg;.ico;.svg";
+ *      NvdFileDialog* dialog = nvd_open_file_dialog_new("Open File", filters);
+ *
+ *      NvdDynamicString *filename = nvd_get_file_location(dialog);
+ *      if (filename != NULL) printf("Chosen file: %s\n", NVD_CSTR(filename));
+ *
+ *      nvd_free_object(dialog);
+ *      return 0;
+ * }
+ * @endcode
+ * @ingroup FileDialog
+ */
+NVD_API NvdFileDialog *nvd_open_file_dialog_new(const char *title,
+						const char *file_extensions);
+
+/**
+ * @brief Creates a new, empty @ref NvdFileDialog object that will be used to
+ * save a file in the selected (from the user) location.
+ * @param title The title of the dialog, default is "Save file"
+ * @param default_filename The default filename to use for saving.
+ * @return An @ref NvdFileDialog on success, otherwise NULL and @ref
+ * nvd_get_error should be called to get the failure reason.
+ * @ingroup FileDialog
+ */
+NVD_API NvdFileDialog *nvd_save_file_dialog_new(const char *title,
+						const char *default_filename);
+
+/**
+ * @brief Creates a new, empty @ref NvdFileDialog object that will be used to
+ * request a directory or folder in the filesystem.
+ *
+ * @param title The title of the dialog, default is "Open directory"
+ * @param default_folder Path to the default folder to open. May be ignored in
+ * some platforms.
+ * @return An @ref NvdFileDialog on success or NULL otherwise. @ref
+ * nvd_get_error should be called for further information about the error
+ * occurring.
+ * @ingroup FileDialog
+ * @since v0.9.0
+ */
+NVD_API NvdFileDialog *nvd_open_folder_dialog_new(const char *title,
+						  const char *default_folder);
+
+/**
+ * @brief Returns the filesystem path chosen through the @ref NvdFileDialog
+ * passed.
+ *
+ * @details This function will return the path on the filesystem from the dialog
+ * chosen, that you can then use to either open or save the file given. It works
+ * with both save and open file dialog types.
+ *
+ * @sa nvd_open_file_dialog_new
+ * @param dialog The file dialog to take the filename from.
+ * @returns A @ref NvdDynamicString if a file/folder was selected, or NULL if no
+ * path was selected by the user.
+ * @ingroup FileDialog
+ */
+NVD_API NvdDynamicString *nvd_get_file_location(NvdFileDialog *dialog);
+
+/**
+ * @brief Returns the raw object behind the dialog.
+ * @param dialog The dialog to retrieve the object from.
+ * @return void* The raw toolkit-created object.
+ * @ingroup FileDialog
+ */
+NVD_API void *nvd_open_file_dialog_get_raw(NvdFileDialog *dialog);
