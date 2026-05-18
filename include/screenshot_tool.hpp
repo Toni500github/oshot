@@ -190,7 +190,11 @@ public:
         : m_inputs{ g_config->File.ocr_path,
                     g_config->File.ocr_model,
                     g_config->File.ocr_get_repo,
+        #if defined(__unix__) && !defined(__APPLE__)
                     get_config_dir() / "models",
+        #else
+                    "./models",
+        #endif
                     {},
                     "",
                     {},

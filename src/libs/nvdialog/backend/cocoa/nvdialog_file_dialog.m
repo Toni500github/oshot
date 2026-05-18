@@ -41,7 +41,7 @@ NvdFileDialog *nvd_open_file_dialog_cocoa(const char *title, const char *file_ex
 	dialog->file_extensions = (char *) file_extensions;
 	NSOpenPanel *dialog_raw = [NSOpenPanel openPanel];
 	dialog_raw.title = [NSString stringWithUTF8String:title];
-	dialog_raw.canChooseFiles = (id) true;
+	dialog_raw.canChooseFiles = true;
 	dialog_raw.canChooseDirectories = false;
 	dialog_raw.allowsMultipleSelection = false;
 
@@ -117,7 +117,7 @@ NvdFileDialog *nvd_open_folder_dialog_cocoa(const char *title, const char *defau
     NSOpenPanel* dialog_raw = [NSOpenPanel openPanel];
     dialog_raw.title = [NSString stringWithUTF8String:title];;
     dialog_raw.canChooseFiles = false;
-    dialog_raw.canChooseDirectories = (id) true;
+    dialog_raw.canChooseDirectories =  true;
     dialog_raw.allowsMultipleSelection = false;
 
     if (default_filename != NULL) {

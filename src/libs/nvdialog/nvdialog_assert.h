@@ -25,13 +25,11 @@
 #ifndef __nvdialog_assert_h__
 #define __nvdialog_assert_h__
 
-#ifndef __FILE_NAME__
-#if defined(__GNUC__) || defined(__clang__)
-#define __FILENAME__ __FILE_NAME__
-#else
-#define __FILE_NAME__ "nvdialog"
-#endif /* __GNUC__ */
-#endif /* __FILE_NAME__ */
+#ifndef NVD_FILE_NAME
+#	include <string.h>
+#	define NVD_FILE_NAME (strrchr(__FILE__, '/') ? \
+		strrchr(__FILE__, '/') + 1 : __FILE__)
+#endif
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -63,7 +61,7 @@ nvd_print_assert(const char *msg, ...) {
 	do {                                                                  \
 		if (!(eq)) {                                                  \
 			nvd_print_assert("%s:%d (%s): assertion %s failed\n", \
-					 __FILE_NAME__, __LINE__,             \
+					 NVD_FILE_NAME, __LINE__,             \
 					 NVD_FN_IDENT, #eq);                  \
 		}                                                             \
 	} while (0)
@@ -87,7 +85,7 @@ nvd_print_assert(const char *msg, ...) {
 		if (!(x)) {                                           \
 			nvd_error_message(                            \
 				"%s::%d: %s is NULL, returning NULL", \
-				__FILE_NAME__, __LINE__, #x);         \
+				NVD_FILE_NAME, __LINE__, #x);         \
 			return NULL;                                  \
 		}                                                     \
 	} while (0);
@@ -101,7 +99,7 @@ nvd_print_assert(const char *msg, ...) {
 				"**CRITICAL ASSERTION FAILURE**: "      \
 				"%s\n  Line: %d\n  Filename: "          \
 				"%s\n  Function: %s\n",                 \
-				#eq, __LINE__, __FILE_NAME__, __func__); \
+				#eq, __LINE__, NVD_FILE_NAME, __func__); \
 			abort();                                        \
 		}                                                       \
 	} while (0);
