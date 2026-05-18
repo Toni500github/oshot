@@ -2114,15 +2114,18 @@ void ScreenshotTool::DrawDownloadOCRWindow()
 
         ImGui::SeparatorText("Destination");
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::InputText("##ocr_download_path", &m_inputs.ocr_model_downloaded_path))
-        {
-            if (!fs::exists(m_inputs.ocr_model_downloaded_path))
-                SetError(ectx, OcrDownloadError::InvalidPath, "No such directory or path");
-            else if (!fs::is_directory(m_inputs.ocr_model_downloaded_path))
-                SetError(ectx, OcrDownloadError::InvalidPath, "Not a directory");
-            else
-                ClearError(ectx, OcrDownloadError::InvalidPath);
-        }
+        draw_input_text_folder(
+            "",
+            "##ocr_download_path",
+            [&] {
+                if (!fs::exists(m_inputs.ocr_model_downloaded_path))
+                    SetError(ectx, OcrDownloadError::InvalidPath, "No such directory or path");
+                else if (!fs::is_directory(m_inputs.ocr_model_downloaded_path))
+                    SetError(ectx, OcrDownloadError::InvalidPath, "Not a directory");
+                else
+                    ClearError(ectx, OcrDownloadError::InvalidPath);
+            },
+            m_inputs.ocr_model_downloaded_path);
         ShowIfError(ectx, OcrDownloadError::InvalidPath);
 
         if (is_downloading)

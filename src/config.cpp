@@ -193,6 +193,9 @@ void Config::GenerateTheme(const std::string& filename, const bool force)
 # Drop this next to config.toml or point theme-file at its path.
 # All sections and keys are optional — omit anything you don't want to override.
 
+[theme]
+smooth-animations = {}
+
 # ---------------------------------------------------------------
 # Rounding (pixels, 0 = sharp corners, max ~12)
 # ---------------------------------------------------------------
@@ -206,6 +209,7 @@ tab-rounding    = {}
 window-border = {}
 frame-border  = {}
 )",
+            ov.smooth_animations,
             ov.window_rounding,
             ov.frame_rounding,
             ov.grab_rounding,
