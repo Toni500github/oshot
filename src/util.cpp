@@ -355,15 +355,15 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
         return fmt.error();
 
     minimize_window();
-    cache_entry_t& cache = g_cache->GetEntries()[CacheFilesEnum::Filesystem];
+    cache_entry_t&  cache          = g_cache->GetEntries()[CacheFilesEnum::Filesystem];
     const fs::path& saved_path_dir = Cache::GetValue(cache, get_home_pictures_dir().string());
 
     const char* filter[]  = { "*.png" };
     const char* save_path = tinyfd_saveFileDialog("Save File",
                                                   (saved_path_dir / fmt.get()).string().c_str(),  // default path
-                                                  1,                  // number of filter patterns
-                                                  filter,             // file filters
-                                                  "Images (*.png)"    // filter description
+                                                  1,                // number of filter patterns
+                                                  filter,           // file filters
+                                                  "Images (*.png)"  // filter description
     );
 
     maximize_window();
@@ -570,7 +570,7 @@ fs::path get_home_config_dir()
 {
 #ifndef _WIN32
     constexpr const char* xdg = "XDG_CONFIG_HOME";
-    const char* dir = std::getenv(xdg);
+    const char*           dir = std::getenv(xdg);
     if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
         return fs::path(dir);
 
@@ -605,7 +605,7 @@ fs::path get_home_cache_dir()
 {
 #ifndef _WIN32
     constexpr const char* xdg = "XDG_CACHE_HOME";
-    const char* dir = std::getenv(xdg);
+    const char*           dir = std::getenv(xdg);
     if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
         return fs::path(dir);
 
@@ -639,7 +639,7 @@ fs::path get_home_pictures_dir()
 {
 #ifndef _WIN32
     constexpr const char* xdg = "XDG_PICTURES_DIR";
-    const char* dir = std::getenv(xdg);
+    const char*           dir = std::getenv(xdg);
     if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
         return fs::path(dir);
 

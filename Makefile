@@ -60,21 +60,22 @@ else
         BUILDDIR  := build/release
 endif
 
-NAME		 = oshot
-TARGET		?= $(NAME)
-OLDVERSION	 = 0.4.3
-VERSION    	 = 0.4.4
-SRC		 = $(wildcard src/*.cpp)
-OBJ 		 = $(patsubst src/%.cpp,$(BUILDDIR)/%.o,$(SRC))
-LDFLAGS   	+= -L$(BUILDDIR) $(LTO_FLAGS)
-LDLIBS		+= $(LIBS) `pkg-config --static --libs glfw3 tesseract zbar`
-CXXFLAGS        += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
+NAME         = oshot
+TARGET      ?= $(NAME)
+OLDVERSION   = 0.4.3
+VERSION      = 0.4.4
+SRC          = $(wildcard src/*.cpp)
+OBJ          = $(patsubst src/%.cpp,$(BUILDDIR)/%.o,$(SRC))
+LDFLAGS     += -L$(BUILDDIR) $(LTO_FLAGS)
+LDLIBS      += $(LIBS) `pkg-config --static --libs glfw3 tesseract zbar`
+CXXFLAGS    += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
 
 LIBS := \
   $(BUILDDIR)/libimgui.a \
   $(BUILDDIR)/libfmt.a \
   $(BUILDDIR)/libclip.a \
   $(BUILDDIR)/libtray.a \
+  $(BUILDDIR)/libnvdialog.a \
   $(BUILDDIR)/libtiny-process-library.a
 
 EXTRA_OBJ := \
@@ -105,6 +106,9 @@ $(BUILDDIR)/libclip.a:
 
 $(BUILDDIR)/libtray.a:
 	$(MAKE) -C src/libs/tray BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
+
+$(BUILDDIR)/libnvdialog.a:
+	$(MAKE) -C src/libs/nvdialog BUILDDIR=$(BUILDDIR) DEBUG=$(DEBUG)
 
 $(BUILDDIR)/tinyfiledialogs.o:
 	$(MAKE) -C src/libs/tinyfiledialogs BUILDDIR=$(BUILDDIR)

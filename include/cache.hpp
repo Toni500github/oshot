@@ -90,7 +90,7 @@ private:
 
     std::unordered_map<CacheFilesEnum, cache_entry_t> m_cache_entries = {
         { CacheFilesEnum::Colors, { "colors.toml", "cache.default-color-picker-color", {} } },
-        { CacheFilesEnum::Filesystem, { "fs.toml", "cache.last-saved-dir", {} }},
+        { CacheFilesEnum::Filesystem, { "fs.toml", "cache.last-saved-dir", {} } },
     };
 };
 
