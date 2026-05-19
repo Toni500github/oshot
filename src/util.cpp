@@ -14,6 +14,9 @@
 #include "dotenv.h"
 #include "fmt/chrono.h"
 #include "fmt/format.h"
+extern "C" {
+#include "nvdialog/nvdialog_notification.h"
+}
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "tinyfiledialogs.h"
@@ -311,27 +314,41 @@ Result<std::string> get_config_image_out_fmt()
 
 Result<> save_png(SavingOp op, const capture_result_t& img)
 {
-    if (op == SavingOp::Clipboard)
-        return g_clipboard.CopyImage(img);
+    auto deleter = [](NvdNotification* p) {
+        nvd_send_notification(p);
+        nvd_delete_notification(p);
+    };
+    std::unique_ptr<NvdNotification, decltype(deleter)> notif(nullptr, deleter);
 
-    const Result<std::string>& r = get_config_image_out_fmt();
-    if (!r.ok())
-        return r.error();
+    if (op == SavingOp::Clipboard)
+    {
+        const Result<>& res = g_clipboard.CopyImage(img);
+        if (res.ok())
+            notif.reset(nvd_notification_new("Copied!", "Screenshot copied to clipboard", NVD_NOTIFICATION_SIMPLE));
+        return res;
+    }
+
+    const Result<std::string>& fmt = get_config_image_out_fmt();
+    if (!fmt.ok())
+        return fmt.error();
 
     minimize_window();
 
     const char* filter[]  = { "*.png" };
     const char* save_path = tinyfd_saveFileDialog("Save File",
-                                                  r.get().c_str(),  // default path
-                                                  1,                // number of filter patterns
-                                                  filter,           // file filters
-                                                  "Images (*.png)"  // filter description
+                                                  fmt.get().c_str(),  // default path
+                                                  1,                  // number of filter patterns
+                                                  filter,             // file filters
+                                                  "Images (*.png)"    // filter description
     );
 
     maximize_window();
 
     if (!save_path)
+    {
+        notif.reset(nvd_notification_new("Cancelled", "Save cancelled", NVD_NOTIFICATION_WARNING));
         return Ok();  // Not really an error, maybe the user cancelled
+    }
 
     FILE* fp = fopen(save_path, "wb");
     if (!fp)
@@ -342,6 +359,7 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
     fclose(fp);
     if (written != data.size())
         return Err("Failed to write image data");
+    notif.reset(nvd_notification_new("Saved!", "Screenshot saved successfully", NVD_NOTIFICATION_SIMPLE));
     return Ok();
 }
 

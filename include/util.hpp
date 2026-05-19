@@ -60,8 +60,6 @@ Err(E) -> Err<E>;
 template <typename T = Ok<>, typename E = Err<>>
 class Result
 {
-    std::variant<T, E> value;
-
 public:
     template <typename U>
     Result(Ok<U> const& v) : value(std::in_place_index<0>, v.value)
@@ -106,6 +104,9 @@ public:
     {
         return std::get<E>(value).value;
     }
+
+private:
+    std::variant<T, E> value;
 };
 
 // custom structs for fmt::format
