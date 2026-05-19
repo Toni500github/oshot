@@ -243,6 +243,7 @@ fs::path get_runtime_dir();
 fs::path get_font_path(const std::string& font);
 fs::path get_home_config_dir();
 fs::path get_home_cache_dir();
+fs::path get_home_pictures_dir();
 fs::path get_home_dir();
 fs::path get_config_dir();
 fs::path get_cache_dir();

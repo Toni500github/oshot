@@ -11,7 +11,7 @@
 
 #include "clipboard.hpp"
 #include "config.hpp"
-#include "dotenv.h"
+#include "dotenv.hpp"
 #include "fmt/chrono.h"
 #include "fmt/format.h"
 extern "C" {
@@ -71,6 +71,28 @@ extern "C" {
 
 char g_sock_path[100];
 int  g_sock = -1;
+
+static const std::unordered_map<std::string, std::string>& get_xdg_user_dirs()
+{
+    static std::unordered_map<std::string, std::string> cache;
+    if (!cache.empty())
+        return cache;
+
+#ifndef _WIN32
+    fs::path file = get_home_config_dir() / "user-dirs.dirs";
+
+    if (!fs::exists(file))
+        return cache;
+
+    Dotenv env;
+    if (!env.load(file.string()))
+        return cache;
+
+    cache = env.data();
+#endif
+
+    return cache;
+}
 
 constexpr ImVec4 rgba_t::to_imvec4() const
 {
@@ -333,10 +355,12 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
         return fmt.error();
 
     minimize_window();
+    cache_entry_t& cache = g_cache->GetEntries()[CacheFilesEnum::Filesystem];
+    const fs::path& saved_path_dir = Cache::GetValue(cache, get_home_pictures_dir().string());
 
     const char* filter[]  = { "*.png" };
     const char* save_path = tinyfd_saveFileDialog("Save File",
-                                                  fmt.get().c_str(),  // default path
+                                                  (saved_path_dir / fmt.get()).string().c_str(),  // default path
                                                   1,                  // number of filter patterns
                                                   filter,             // file filters
                                                   "Images (*.png)"    // filter description
@@ -352,7 +376,7 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
 
     FILE* fp = fopen(save_path, "wb");
     if (!fp)
-        return Err("Failed to open file to write");
+        return Err("Failed to open file to write image");
 
     const std::vector<uint8_t>& data    = encode_to_png(img);
     size_t                      written = fwrite(data.data(), 1, data.size(), fp);
@@ -360,6 +384,10 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
     if (written != data.size())
         return Err("Failed to write image data");
     notif.reset(nvd_notification_new("Saved!", "Screenshot saved successfully", NVD_NOTIFICATION_SIMPLE));
+
+    fs::path path(save_path);
+    Cache::SetValue(cache, path.parent_path().string());
+
     return Ok();
 }
 
@@ -541,11 +569,16 @@ std::string expand_var(std::string ret)
 fs::path get_home_config_dir()
 {
 #ifndef _WIN32
-    const char* dir = std::getenv("XDG_CONFIG_HOME");
+    constexpr const char* xdg = "XDG_CONFIG_HOME";
+    const char* dir = std::getenv(xdg);
     if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
         return fs::path(dir);
-    else
-        return get_home_dir() / ".config";
+
+    const auto& dirs = get_xdg_user_dirs();
+    if (dirs.find(xdg) != dirs.end())
+        return dirs.at(xdg);
+
+    return get_home_dir() / ".config";
 #else
     PWSTR widePath = nullptr;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &widePath)))
@@ -571,11 +604,16 @@ fs::path get_home_config_dir()
 fs::path get_home_cache_dir()
 {
 #ifndef _WIN32
-    const char* dir = std::getenv("XDG_CACHE_HOME");
+    constexpr const char* xdg = "XDG_CACHE_HOME";
+    const char* dir = std::getenv(xdg);
     if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
         return fs::path(dir);
-    else
-        return get_home_dir() / ".cache";
+
+    const auto& dirs = get_xdg_user_dirs();
+    if (dirs.find(xdg) != dirs.end())
+        return dirs.at(xdg);
+
+    return get_home_dir() / ".cache";
 #else
     PWSTR widePath = nullptr;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, NULL, &widePath)))
@@ -594,6 +632,49 @@ fs::path get_home_cache_dir()
         return fs::path(dir);
     else
         die("Failed to get %LOCALAPPDATA% path");
+#endif
+}
+
+fs::path get_home_pictures_dir()
+{
+#ifndef _WIN32
+    constexpr const char* xdg = "XDG_PICTURES_DIR";
+    const char* dir = std::getenv(xdg);
+    if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
+        return fs::path(dir);
+
+    const auto& dirs = get_xdg_user_dirs();
+    if (dirs.find(xdg) != dirs.end())
+        return dirs.at(xdg);
+
+    return get_home_dir() / "Pictures";
+#else
+    PWSTR widePath = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Pictures, 0, NULL, &widePath)))
+    {
+        // Get required buffer size
+        int size = WideCharToMultiByte(CP_UTF8, 0, widePath, -1, NULL, 0, NULL, NULL);
+
+        std::string narrowPath(size, 0);
+        WideCharToMultiByte(CP_UTF8, 0, widePath, -1, &narrowPath[0], size, NULL, NULL);
+
+        CoTaskMemFree(widePath);
+
+        // Remove null terminator from string
+        narrowPath.pop_back();
+
+        return narrowPath;
+    }
+
+    const char* dir = std::getenv("USERPROFILE");
+    if (dir != NULL && dir[0] != '\0')
+    {
+        fs::path pictures = fs::path(dir) / "Pictures";
+        if (fs::exists(pictures))
+            return pictures;
+    }
+
+    die("Failed to get Pictures directory path");
 #endif
 }
 

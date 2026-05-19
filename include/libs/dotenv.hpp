@@ -144,6 +144,10 @@ public:
         env_map.emplace(std::move(key), std::move(value));
     }
 
+    const std::unordered_map<std::string, std::string>& data() const {
+        return env_map;
+    }
+
 private:
     std::unordered_map<std::string, std::string> env_map;
 

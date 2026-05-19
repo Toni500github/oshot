@@ -11,6 +11,7 @@
 enum class CacheFilesEnum
 {
     Colors,
+    Filesystem,
     COUNT
 };
 
@@ -18,7 +19,7 @@ struct cache_entry_t
 {
     const std::string file_path;
     const std::string toml_path;
-    toml::table       tbl = {};
+    toml::table       tbl;
 };
 
 class Cache
@@ -88,7 +89,8 @@ private:
     std::string m_cache_dir_path;
 
     std::unordered_map<CacheFilesEnum, cache_entry_t> m_cache_entries = {
-        { CacheFilesEnum::Colors, { "colors.toml", "cache.default-color-picker-color" } }
+        { CacheFilesEnum::Colors, { "colors.toml", "cache.default-color-picker-color", {} } },
+        { CacheFilesEnum::Filesystem, { "fs.toml", "cache.last-saved-dir", {} }},
     };
 };
 
