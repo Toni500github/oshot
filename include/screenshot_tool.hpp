@@ -34,6 +34,7 @@ enum class ToolType : size_t
     Text,
     Pencil,
     ToggleTextTools,
+    CopyImage,
     Count
 };
 

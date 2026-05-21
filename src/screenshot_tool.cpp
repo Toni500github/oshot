@@ -368,8 +368,9 @@ Result<> ScreenshotTool::StartWindow()
 
     m_tool_textures[idx(ToolType::Arrow)] = CreateTexture(nullptr, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
     m_tool_textures[idx(ToolType::Text)]  = CreateTexture(nullptr, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H).get();
-    m_tool_textures[idx(ToolType::Line)]  = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
-    logo_texture                          = CreateTexture(nullptr, OSHOT_LOGO_RGBA, OSHOT_LOGO_W, OSHOT_LOGO_H).get();
+    m_tool_textures[idx(ToolType::CopyImage)] = CreateTexture(nullptr, ICON_COPY_RGBA, ICON_COPY_W, ICON_COPY_H).get();
+    m_tool_textures[idx(ToolType::Line)]      = CreateTexture(nullptr, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
+    logo_texture = CreateTexture(nullptr, OSHOT_LOGO_RGBA, OSHOT_LOGO_W, OSHOT_LOGO_H).get();
 #endif
 
     if (!fs::exists(m_inputs.ocr_model_downloaded_path))
@@ -1562,9 +1563,16 @@ void ScreenshotTool::DrawAnnotationToolbar()
     draw_and_set_button(ToolType::Text, "##icon_Text", m_tool_textures[idx(ToolType::Text)]);
     draw_and_set_button(ToolType::Pencil, "##Pencil", m_tool_textures[idx(ToolType::Pencil)]);
 
-    if (!m_show_text_tools &&
-        ImGui::ImageButton("##ShowTextTools", m_tool_textures[idx(ToolType::ToggleTextTools)], ImVec2(24, 24)))
-        m_show_text_tools = true;
+    if (!m_show_text_tools)
+    {
+        if (ImGui::ImageButton("##ShowTextTools", m_tool_textures[idx(ToolType::ToggleTextTools)], ImVec2(24, 24)))
+            m_show_text_tools = true;
+        ImGui::SameLine();
+    }
+
+    if (ImGui::ImageButton("##CopyImageButton", m_tool_textures[idx(ToolType::CopyImage)], ImVec2(24, 24)) &&
+        m_on_complete)
+        m_on_complete(SavingOp::Clipboard, Ok(GetFinalImage()));
 
     ImGui::SameLine();
     ImGui::Separator();
@@ -2405,6 +2413,7 @@ void ScreenshotTool::DrawAnnotations()
 
             case ToolType::kNone:
             case ToolType::ToggleTextTools:
+            case ToolType::CopyImage:
             case ToolType::Count:           break;
         }
     };
