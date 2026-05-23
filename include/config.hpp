@@ -1,6 +1,7 @@
 #ifndef _CONFIG_HPP_
 #define _CONFIG_HPP_
 
+#include <filesystem>
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
@@ -34,7 +35,7 @@ class Config
 {
 public:
     // Create .config directories and files and load the config file (args or default)
-    Config(const std::string& configFile, const std::string& configDir);
+    Config(const std::filesystem::path& configFile, const std::filesystem::path& configDir);
 
     // Variables of config file in [default] table.
     // They can be overwritten from CLI arguments

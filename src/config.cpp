@@ -10,19 +10,20 @@
 #include "toml++/toml.hpp"
 #include "util.hpp"
 
-Config::Config(const std::string& configFile, const std::string& configDir)
-    : m_config_path(configFile), m_config_dir_path(configDir)
+Config::Config(const fs::path& configFile, const fs::path& configDir)
+    : m_config_path(configFile.string()), m_config_dir_path(configDir.string())
 {
     if (!fs::exists(configDir))
     {
-        warn("oshot config folder was not found, Creating folders at {}!", configDir);
+        warn("oshot config folder was not found, Creating folders at {}!", configDir.string());
         fs::create_directories(configDir);
+        fs::create_directories(configDir / "models");
     }
 
     if (!fs::exists(configFile))
     {
-        warn("config file {} not found, generating new one", configFile);
-        GenerateConfig(configFile);
+        warn("config file {} not found, generating new one", configFile.string());
+        GenerateConfig(configFile.string());
     }
 }
 
