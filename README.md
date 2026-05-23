@@ -80,3 +80,7 @@ https://github.com/user-attachments/assets/8367490a-f7b0-4320-86e9-8ef8764a56b5
 
 ### Useful use-case (old footage)
 https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
+
+## AI usage
+Used AI for complex math and fixing some issue on the fly (pun intended).\
+Always tested before shipping
