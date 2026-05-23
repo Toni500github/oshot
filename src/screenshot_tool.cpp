@@ -2204,7 +2204,8 @@ void ScreenshotTool::DrawDownloadOCRWindow()
                                 {
                                     dl->progress.store(static_cast<float>(pct));
                                 }
-                                else
+                                // Skip curl's two progress-table header lines
+                                else if (line.find("% Total") == line.npos && line.find("Dload") == line.npos)
                                 {
                                     dl->err.append(line);
                                     dl->err.push_back('\n');
@@ -2291,7 +2292,8 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         }
 
         ImGui::Spacing();
-        if (has_downloaded && !ShowIfError(ectx, OcrDownloadError::FailedToDownload))
+        ShowIfError(ectx, OcrDownloadError::FailedToDownload);
+        if (has_downloaded && !HasError(ectx, OcrDownloadError::FailedToDownload))
             ImGui::TextColored(ImVec4(0.2f, 0.85f, 0.2f, 1.f), "Downloaded successfully!");
 
         ImGui::End();
