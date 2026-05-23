@@ -61,28 +61,6 @@ $ ninja
 $ ./oshot
 ```
 
-## Downloading additional language models
-Tesseract uses separate language model files (`.traineddata`) for each language.  
-You can store these files anywhere you like, as long as the path is configured correctly.
-
-1. Download the required language model(s) from the official Tesseract repository:  
-   https://github.com/tesseract-ocr/tessdata
-
-2. Place the downloaded `.traineddata` files in one of the following locations:
-   - The `models/` directory next to the `oshot` binary (recommended)
-   - Or any other directory of your choice (configure the path in the config file)
-
-3. Configure the language data path in `config.toml`:
-   - Windows: `%APPDATA%/oshot/config.toml`
-   - Linux: `~/.config/oshot/config.toml`
-
-   Set the `ocr-path` variable to the directory containing the `.traineddata` files.
-   Example:
-   ```toml
-   # Works on windows too
-   ocr-path = "~/Downloads/oshot/models"
-   ```
-
 ## Troubleshooting
 ### Windows
 If when starting oshot, it starts to flick a screen black (or it won't launch), try the following steps:
