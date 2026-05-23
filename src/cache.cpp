@@ -32,7 +32,7 @@ Cache::Cache(const std::string& cache_dir) : m_cache_dir_path(cache_dir)
     }
 
     for (int i = 0; i < int(idx(CacheFilesEnum::COUNT)); ++i)
-        LoadCacheFile(m_cache_entries[enum_<CacheFilesEnum>(i)]);
+        LoadCacheFile(m_cache_entries[toe<CacheFilesEnum>(i)]);
 }
 
 Cache::~Cache()

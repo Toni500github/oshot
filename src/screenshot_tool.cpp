@@ -1112,11 +1112,11 @@ void ScreenshotTool::DrawMenuItems()
 
                 const char* filter[]  = { "*.png", "*.jpeg", "*.jpg", "*.bmp" };
                 const char* open_path = tinyfd_openFileDialog("Open Image",
-                                                              "",                // default path
-                                                              4,                 // number of filter patterns
-                                                              filter,            // file filters
-                                                              "Images (*.png)",  // filter description
-                                                              false              // allow multiple selections
+                                                              "",        // default path
+                                                              4,         // number of filter patterns
+                                                              filter,    // file filters
+                                                              "Images",  // filter description
+                                                              false      // allow multiple selections
                 );
 
                 maximize_window();
@@ -2005,8 +2005,8 @@ void ScreenshotTool::DrawPreferencesWindow()
         // Left
         ImGui::BeginChild("##left_panel", ImVec2(150, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX);
         for (int i = 0; i < IM_ARRAYSIZE(items); i++)
-            if (ImGui::Selectable(items[i], selected_tab == enum_<PrefTab>(i)))
-                selected_tab = enum_<PrefTab>(i);
+            if (ImGui::Selectable(items[i], selected_tab == toe<PrefTab>(i)))
+                selected_tab = toe<PrefTab>(i);
         ImGui::EndChild();
 
         ImGui::SameLine();

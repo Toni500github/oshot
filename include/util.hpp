@@ -39,14 +39,23 @@ enum class SavingOp;
 #endif
 
 // shotout to the better c++ server for these helper structs
-template <typename T = bool>
+template <typename T>
 struct Ok
 {
     using value_type = T;
     T value;
 };
+
+// fire-and-forget result
+template <>
+struct Ok<void>
+{
+};
+
+// Deduction guide
 template <typename T>
 Ok(T) -> Ok<T>;
+Ok() -> Ok<void>;
 
 template <typename E = std::string>
 struct Err
@@ -57,56 +66,92 @@ struct Err
 template <typename E>
 Err(E) -> Err<E>;
 
-template <typename T = Ok<>, typename E = Err<>>
+template <typename T = Ok<void>, typename E = Err<std::string>>
 class Result
 {
 public:
     template <typename U>
-    Result(Ok<U> const& v) : value(std::in_place_index<0>, v.value)
+    Result(Ok<U> const& v) : m_value(std::in_place_index<0>, v.value)
     {}
     template <typename U>
-    Result(Ok<U>&& v) : value(std::in_place_index<0>, std::move(v.value))
+    Result(Ok<U>&& v) : m_value(std::in_place_index<0>, std::move(v.value))
     {}
 
     template <typename U>
-    Result(Err<U> const& e) : value(std::in_place_index<1>, e.value)
+    Result(Err<U> const& e) : m_value(std::in_place_index<1>, e.value)
     {}
     template <typename U>
-    Result(Err<U>&& e) : value(std::in_place_index<1>, std::move(e.value))
+    Result(Err<U>&& e) : m_value(std::in_place_index<1>, std::move(e.value))
     {}
 
-    bool     ok() const { return std::holds_alternative<T>(value); }
-    T&       get() { return std::get<T>(value); }
-    E&       error() { return std::get<E>(value); }
-    const T& get() const { return std::get<T>(value); }
-    const E& error() const { return std::get<E>(value); }
+    bool     ok() const { return std::holds_alternative<T>(m_value); }
+             operator bool() const { return ok(); }
+    T&       get() { return std::get<T>(m_value); }
+    E&       error() { return std::get<E>(m_value); }
+    const T& get() const { return std::get<T>(m_value); }
+    const E& error() const { return std::get<E>(m_value); }
 
     template <typename U = T, typename = typename U::value_type>
     typename U::value_type& get_v()
     {
-        return std::get<T>(value).value;
+        return std::get<T>(m_value).value;
     }
 
     template <typename U = T, typename = typename U::value_type>
     const typename U::value_type& get_v() const
     {
-        return std::get<T>(value).value;
+        return std::get<T>(m_value).value;
     }
 
     template <typename U = E, typename = typename U::value_type>
     typename U::value_type& error_v()
     {
-        return std::get<E>(value).value;
+        return std::get<E>(m_value).value;
     }
 
     template <typename U = E, typename = typename U::value_type>
     const typename U::value_type& error_v() const
     {
-        return std::get<E>(value).value;
+        return std::get<E>(m_value).value;
     }
 
 private:
-    std::variant<T, E> value;
+    std::variant<T, E> m_value;
+};
+
+template <typename E>
+class Result<Ok<void>, E>
+{
+public:
+    Result() : m_ok(true) {}
+    Result(Ok<void>) : m_ok(true) {}
+
+    template <typename U>
+    Result(const Err<U>& err) : m_ok(false), m_err{ err.value }
+    {}
+    template <typename U>
+    Result(Err<U>&& err) : m_ok(false), m_err{ std::move(err.value) }
+    {}
+
+    bool     ok() const { return m_ok; }
+    E&       error() { return m_err; }
+    const E& error() const { return m_err; }
+
+    template <typename U = E, typename = typename U::value_type>
+    typename U::value_type& error_v()
+    {
+        return m_err.value;
+    }
+
+    template <typename U = E, typename = typename U::value_type>
+    const typename U::value_type& error_v() const
+    {
+        return m_err.value;
+    }
+
+private:
+    bool m_ok;
+    E    m_err;
 };
 
 // custom structs for fmt::format
@@ -142,7 +187,7 @@ constexpr size_t idx(E e) noexcept
 }
 
 template <typename E, typename T>
-constexpr E enum_(T n) noexcept
+constexpr E toe(T n) noexcept
 {
     static_assert(std::is_integral_v<T>);
     return static_cast<E>(n);
