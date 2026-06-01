@@ -98,7 +98,7 @@ void maximize_window()
     glfwFocusWindow(window);
 }
 
-int run_main_tool(const std::string& imgui_ini_path)
+int run_main_tool()
 {
     // Setup Screenshot Tool
     // Calling it before starting the window so that
@@ -204,8 +204,10 @@ int run_main_tool(const std::string& imgui_ini_path)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
-    ImGuiIO& io    = ImGui::GetIO();
-    io.IniFilename = imgui_ini_path.c_str();
+
+    const std::string ini = (get_config_dir() / "imgui.ini").string();
+    ImGuiIO&          io  = ImGui::GetIO();
+    io.IniFilename        = ini.c_str();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     // Setup Platform/Renderer backends

@@ -35,6 +35,7 @@
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "switch_fnv1a.hpp"
+#include "tinyfiledialogs.h"
 #include "tray.hpp"
 #include "util.hpp"
 
@@ -211,7 +212,7 @@ void exit_handler_nc()
     exit_handler(0);
 }
 
-int run_main_tool(const std::string& imgui_ini_path);
+int run_main_tool();
 
 void glfw_error_callback(int i_error, const char* description)
 {
@@ -224,7 +225,7 @@ void glfw_drop_callback(GLFWwindow*, int count, const char** paths)
         g_dropped_paths.emplace_back(paths[i]);
 }
 
-void capture_worker(const std::string& imgui_ini_path)
+void capture_worker()
 {
     while (!quit.load())
     {
@@ -245,7 +246,7 @@ void capture_worker(const std::string& imgui_ini_path)
 
         do_capture = false;
         lk.unlock();
-        run_main_tool(imgui_ini_path);
+        run_main_tool();
     }
 }
 
@@ -405,7 +406,7 @@ int main(int argc, char* argv[])
     const bool tray_lock_acquired = acquire_tray_lock();
 
     if (g_config->Runtime.only_launch_gui)
-        return run_main_tool(imgui_ini_path);
+        return run_main_tool();
 
     if (g_config->Runtime.only_launch_tray)
     {
@@ -417,12 +418,12 @@ int main(int argc, char* argv[])
     else
     {
         if (!tray_lock_acquired)
-            return run_main_tool(imgui_ini_path);
+            return run_main_tool();
 
 #if OSHOT_TOOL_ON_MAIN_THREAD
-        run_main_tool(imgui_ini_path);
+        run_main_tool();
 #else
-        std::thread([&] { run_main_tool(imgui_ini_path); }).detach();
+        std::thread([&] { run_main_tool(); }).detach();
 #endif
     }
 
@@ -430,7 +431,7 @@ int main(int argc, char* argv[])
     // On macOS the tray loop polls do_capture on the main thread (required by
     // AppKit), so capture_worker must not run, because it would call run_main_tool
     // from a background thread and crash with NSInternalInconsistencyException.
-    std::thread worker(capture_worker, imgui_ini_path);
+    std::thread worker(capture_worker);
 #endif
 
     std::vector<TrayMenu*> menu;
@@ -454,7 +455,7 @@ int main(int argc, char* argv[])
                                       false,
                                       [&](TrayMenu*) {
 #if OSHOT_TOOL_ON_MAIN_THREAD
-                                          run_main_tool(imgui_ini_path);
+                                          run_main_tool();
 #else
                                           std::lock_guard lk(mtx);
                                           // only queue if not already queued
@@ -464,6 +465,37 @@ int main(int argc, char* argv[])
                                               cv.notify_all();
                                           }
 #endif
+                                      },
+                                      {} });
+
+    tray.menu.push_back(new TrayMenu{ "Open Image",
+                                      true,
+                                      false,
+                                      false,
+                                      [&](TrayMenu*) {
+                                          const char* filter[] = { "*.png", "*.jpeg", "*.jpg", "*.bmp" };
+                                          const char* open_path =
+                                              tinyfd_openFileDialog("Open Image",
+                                                                    "",        // default path
+                                                                    4,         // number of filter patterns
+                                                                    filter,    // file filters
+                                                                    "Images",  // filter description
+                                                                    false      // allow multiple selections
+                                              );
+
+#if OSHOT_TOOL_ON_MAIN_THREAD
+                                          run_main_tool();
+#else
+                                          std::lock_guard lk(mtx);
+                                          // only queue if not already queued
+                                          if (!do_capture)
+                                          {
+                                              do_capture = true;
+                                              cv.notify_all();
+                                          }
+#endif
+                                          if (open_path)
+                                              g_config->Runtime.source_file = open_path;
                                       },
                                       {} });
 

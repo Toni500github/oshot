@@ -63,7 +63,7 @@ static id<MTLTexture> create_metal_texture(id<MTLDevice> device, const uint8_t* 
     return tex;
 }
 
-int run_main_tool(const std::string& imgui_ini_path)
+int run_main_tool()
 {
     id<MTLDevice>  device;
     ScreenshotTool ss_tool;
@@ -165,8 +165,9 @@ int run_main_tool(const std::string& imgui_ini_path)
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
 
+    const std::string ini = (get_config_dir() / "imgui.ini").string();
     ImGuiIO& io    = ImGui::GetIO();
-    io.IniFilename = imgui_ini_path.c_str();
+    io.IniFilename = ini.c_str();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     ImGui_ImplGlfw_InitForOther(window, true);  // "Other" = non-GL backend

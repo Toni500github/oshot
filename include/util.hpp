@@ -310,16 +310,20 @@ bool parse_hex_rgba(const std::string_view hex, rgba_t& out);
 
 #define BOLD_COLOR(x) (fmt::emphasis::bold | fmt::fg(x))
 
+static void create_dialog(const char* title, const NvdDialogType type, const std::string& str) noexcept
+{
+    NvdDialogBox* dialog = nvd_dialog_box_new(title, str.c_str(), type);
+    nvd_show_dialog(dialog);
+    nvd_free_object(dialog);
+}
+
 template <typename... Args>
 [[noreturn]] inline void die(const std::string_view fmt, Args&&... args) noexcept
 {
     const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
 
     spdlog::critical("{}", str);
-    NvdDialogBox* dialog = nvd_dialog_box_new("oshot Fatal Error", str.c_str(), NVD_DIALOG_ERROR);
-    nvd_show_dialog(dialog);
-    nvd_free_object(dialog);
-
+    create_dialog("oshot Fatal Error", NVD_DIALOG_ERROR, str);
     std::exit(1);
 }
 
@@ -329,9 +333,7 @@ inline void error(const std::string_view fmt, Args&&... args) noexcept
     const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
 
     spdlog::error("{}", str);
-    NvdDialogBox* dialog = nvd_dialog_box_new("oshot Error", str.c_str(), NVD_DIALOG_ERROR);
-    nvd_show_dialog(dialog);
-    nvd_free_object(dialog);
+    create_dialog("oshot Error", NVD_DIALOG_ERROR, str);
 }
 
 template <typename... Args>
@@ -340,9 +342,7 @@ inline void warn(const std::string_view fmt, Args&&... args) noexcept
     const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
 
     spdlog::warn("{}", str);
-    NvdDialogBox* dialog = nvd_dialog_box_new("oshot Warning", str.c_str(), NVD_DIALOG_WARNING);
-    nvd_show_dialog(dialog);
-    nvd_free_object(dialog);
+    create_dialog("oshot Warning", NVD_DIALOG_WARNING, str);
 }
 
 template <typename... Args>
@@ -351,9 +351,7 @@ inline void info(const std::string_view fmt, Args&&... args) noexcept
     const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
 
     spdlog::info("{}", str);
-    NvdDialogBox* dialog = nvd_dialog_box_new("oshot Info", str.c_str(), NVD_DIALOG_SIMPLE);
-    nvd_show_dialog(dialog);
-    nvd_free_object(dialog);
+    create_dialog("oshot Info", NVD_DIALOG_SIMPLE, str);
 }
 
 /** Ask the user a yes or no question.

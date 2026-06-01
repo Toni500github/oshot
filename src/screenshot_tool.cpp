@@ -410,6 +410,7 @@ void ScreenshotTool::RenderOverlay()
         ImGui::Begin("##select_area", nullptr, minimal_win_flags);
         ImGui::TextColored(ImVec4(0, 1, 0, 1), "Select an area");
         ImGui::TextColored(ImVec4(0, 1, 1, 1), "Save/Copy for whole screenshot");
+        ImGui::TextColored(ImVec4(0, 1, 0.5f, 1), "CTRL+A for whole image selection");
         ImGui::End();
     }
 
