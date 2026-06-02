@@ -1555,15 +1555,17 @@ void ScreenshotTool::DrawAnnotationToolbar()
     };
 
     draw_and_set_button(ToolType::Arrow, "##Arrow", m_tool_textures[idx(ToolType::Arrow)]);
+    draw_and_set_button(ToolType::Line, "##Line", m_tool_textures[idx(ToolType::Line)]);
     draw_and_set_button(ToolType::Rectangle, "##Rectangle", m_tool_textures[idx(ToolType::Rectangle)]);
     draw_and_set_button(
         ToolType::RectangleFilled, "##Rectangle_filled", m_tool_textures[idx(ToolType::RectangleFilled)]);
     draw_and_set_button(ToolType::Circle, "##Circle", m_tool_textures[idx(ToolType::Circle)]);
     draw_and_set_button(ToolType::CircleFilled, "##Circle_filled", m_tool_textures[idx(ToolType::CircleFilled)]);
     draw_and_set_button(ToolType::CounterBubble, "##Counter_bubble", m_tool_textures[idx(ToolType::CounterBubble)]);
-    draw_and_set_button(ToolType::Line, "##Line", m_tool_textures[idx(ToolType::Line)]);
     draw_and_set_button(ToolType::Text, "##icon_Text", m_tool_textures[idx(ToolType::Text)]);
     draw_and_set_button(ToolType::Pencil, "##Pencil", m_tool_textures[idx(ToolType::Pencil)]);
+
+    ImGui::SameLine(0, 16.0f);
 
     if (!m_show_text_tools)
     {

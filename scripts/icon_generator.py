@@ -246,8 +246,8 @@ def main():
     #    ("ICON_ARROW", "/tmp/image2.png"),
     #    ("ICON_TEXT", "/tmp/text.png")
     #    ("OSHOT_LOGO", "./oshot.png", True)
-         ("ICON_SAVE", "/tmp/image-down.png", False),
-         ("ICON_COPY", "/tmp/copy.png", False)
+         ("ICON_COPY", "/tmp/copy.png", False),
+         ("ICON_SAVE", "/tmp/save2.png", False),
     ]
     
     for name, image_path, use_rgba in external_images:
