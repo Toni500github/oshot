@@ -165,51 +165,6 @@ def create_counter_bubble_pixels(circle_thickness=1.5):
 
     return pixels
 
-def create_copy_button_pixels(thickness=1.5):
-    """Copy icon: L-shaped corner (back page) + full square (front page), offset diagonally."""
-    size = 24
-    pixels = [0] * (size * size * 4)
-    ht = thickness / 2.0
-
-    def blend(x, y, alpha):
-        if 0 <= x < size and 0 <= y < size:
-            idx = (y * size + x) * 4
-            if alpha > pixels[idx + 3]:
-                pixels[idx:idx + 4] = [255, 255, 255, alpha]
-
-    def draw_segment(ax, ay, bx, by):
-        """Draw an axis-aligned line segment."""
-        for y in range(size):
-            for x in range(size):
-                if ax == bx:  # vertical
-                    if ay <= y <= by:
-                        d = abs(x - ax)
-                    else:
-                        continue
-                else:  # horizontal
-                    if ax <= x <= bx:
-                        d = abs(y - ay)
-                    else:
-                        continue
-                if d <= ht:
-                    alpha = 255 if d <= ht - 0.5 else int(255 * (ht + 0.5 - d))
-                    blend(x, y, alpha)
-
-    def draw_rect_outline(x0, y0, x1, y1):
-        draw_segment(x0, y0, x1, y0)  # top
-        draw_segment(x0, y1, x1, y1)  # bottom
-        draw_segment(x0, y0, x0, y1)  # left
-        draw_segment(x1, y0, x1, y1)  # right
-
-    # Back page: only top and left edges (L-shape), at top-left
-    draw_segment(2, 2, 18, 2)   # top horizontal
-    draw_segment(2, 2,  2, 18)  # left vertical
-
-    # Front page: full square, 3px diagonally offset
-    draw_rect_outline(5, 5, 21, 21)
-
-    return pixels
-
 def create_icon_from_image(image_path, use_rgba=False, threshold=128):
     try:
         from PIL import Image
@@ -226,16 +181,26 @@ def create_icon_from_image(image_path, use_rgba=False, threshold=128):
             for x in range(24):
                 r, g, b, a = img.getpixel((x, y))
 
-                # Snap to pure black or white based on brightness
                 brightness = (r + g + b) // 3
-                white = 255 if brightness >= threshold else 0
 
-                # Snap alpha to fully opaque or transparent
-                a = 0 if brightness < threshold else (255 if a >= threshold else 0)
                 if use_rgba:
                     pixels.extend([r, g, b, a])
                 else:
-                    pixels.extend([white, white, white, a])
+                    # Use alpha as the shape mask (handles dark-on-transparent icons),
+                    # fall back to brightness for fully opaque images (dark-on-white, etc.)
+                    max_channel = max(r, g, b)
+                    has_transparency = a < 255
+
+                    if has_transparency:
+                        # Shape is encoded in alpha: snap opaque pixels to white
+                        snapped_a = 255 if a >= threshold else 0
+                        pixels.extend([snapped_a, snapped_a, snapped_a, snapped_a])
+                    else:
+                        # Fully opaque image: dark pixels are the icon, light pixels are background
+                        # Invert brightness so dark → white icon
+                        white = 255 if brightness < (255 - threshold) else 0
+                        snapped_a = white
+                        pixels.extend([white, white, white, snapped_a])
 
         return pixels
 
@@ -270,7 +235,6 @@ def main():
     #    ("ICON_RECT_FILLED", create_filled_rectangle_pixels()),
     #    ("ICON_LINE", create_line_pixels()),
     #    ("ICON_COUNTER_BUBBLE", create_counter_bubble_pixels())
-         ("ICON_COPY", create_copy_button_pixels())
     ]
     
     header = """#pragma once
@@ -282,6 +246,8 @@ def main():
     #    ("ICON_ARROW", "/tmp/image2.png"),
     #    ("ICON_TEXT", "/tmp/text.png")
     #    ("OSHOT_LOGO", "./oshot.png", True)
+         ("ICON_SAVE", "/tmp/image-down.png", False),
+         ("ICON_COPY", "/tmp/copy.png", False)
     ]
     
     for name, image_path, use_rgba in external_images:
