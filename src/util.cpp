@@ -688,6 +688,21 @@ fs::path get_cache_dir()
     return get_home_cache_dir() / "oshot";
 }
 
+#ifdef _WIN32
+static bool is_hidden_directory(const fs::directory_entry& e)
+{
+    const std::wstring& wpath = e.path().wstring();
+    DWORD               attrs = GetFileAttributesW(wpath.c_str());
+    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_HIDDEN);
+}
+#else
+static bool is_hidden_directory(const fs::directory_entry& e)
+{
+    const std::string& name = e.path().filename().string();
+    return !name.empty() && name.front() == '.';
+}
+#endif
+
 fs::path get_font_path(const std::string& font)
 {
     if (font.empty())
@@ -739,7 +754,12 @@ fs::path get_font_path(const std::string& font)
                 continue;
             }
 
-            const auto& e = *it;
+            const fs::directory_entry& e = *it;
+            if (e.is_directory(ec) && is_hidden_directory(e))
+            {
+                it.disable_recursion_pending();
+                continue;
+            }
             if (!e.is_regular_file(ec))
                 continue;
 
@@ -749,4 +769,43 @@ fs::path get_font_path(const std::string& font)
     }
 
     return {};
+}
+
+void build_font_atlas(ImGuiIO& io)
+{
+    io.Fonts->Clear();
+
+    ImFontConfig font_cfg;
+    ImFont*      first = nullptr;
+
+    for (const std::string& font : g_config->File.fonts)
+    {
+        const fs::path& path = get_font_path(font);
+        if (path.empty())
+        {
+            warn("Font '{}' not found, skipping", font);
+            continue;
+        }
+
+        ImFont* f = io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, &font_cfg);
+        if (!f)
+        {
+            warn("Font '{}' failed to load", font);
+            continue;
+        }
+
+        if (!first)
+        {
+            first = f;
+            // this value is false by default, and we can't set it to true without adding atleast one font first.
+            // so, after we add the first font, this will be true (and will stay true).
+            // MergeMode fills the gap in previous fonts with glyphs from this font, for example, adding Arabic glyphs to a non-Arabic font.
+            font_cfg.MergeMode = true;
+        }
+    }
+
+    if (!first)
+        first = io.Fonts->AddFontDefault();  // nothing loaded, use ImGui built-in
+
+    io.FontDefault = first;
 }

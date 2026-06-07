@@ -102,7 +102,8 @@ static void draw_input_text_path(const char*                  label,
                                  const char*                  filters[],
                                  int                          filter_count,
                                  const std::function<void()>& if_edited,
-                                 std::string&                 path)
+                                 std::string&                 path,
+                                 ImGuiInputFlags              flags)
 {
     auto handle_drop = [&]() {
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && !g_dropped_paths.empty())
@@ -115,7 +116,7 @@ static void draw_input_text_path(const char*                  label,
 
     const float button_size = ImGui::GetFrameHeight();
     ImGui::PushItemWidth(ImGui::CalcItemWidth() - button_size);
-    if (ImGui::InputText(input_id, &path))
+    if (ImGui::InputText(input_id, &path, flags))
         if_edited();
     ImGui::PopItemWidth();
     handle_drop();
@@ -150,17 +151,19 @@ static void draw_input_text_file(const char*                  label,
                                  const char*                  filters[],
                                  int                          filter_count,
                                  const std::function<void()>& if_edited,
-                                 std::string&                 path)
+                                 std::string&                 path,
+                                 ImGuiInputFlags              flags = 0)
 {
-    draw_input_text_path(label, input_id, true, filters, filter_count, if_edited, path);
+    draw_input_text_path(label, input_id, true, filters, filter_count, if_edited, path, flags);
 }
 
 static void draw_input_text_folder(const char*                  label,
                                    const char*                  input_id,
                                    const std::function<void()>& if_edited,
-                                   std::string&                 path)
+                                   std::string&                 path,
+                                   ImGuiInputFlags              flags = 0)
 {
-    draw_input_text_path(label, input_id, false, nullptr, 0, if_edited, path);
+    draw_input_text_path(label, input_id, false, nullptr, 0, if_edited, path, flags);
 }
 
 static HandleHovered flip_handle_x(HandleHovered handle)
@@ -1584,7 +1587,6 @@ void ScreenshotTool::DrawAnnotationToolbar()
         m_on_complete)
         m_on_complete(SavingOp::File, Ok(GetFinalImage()));
 
-
     ImGui::SameLine();
     ImGui::Separator();
 
@@ -1597,8 +1599,22 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
 static void draw_preference_edit_config(const std::function<void()>& refresh_models_func, bool window_just_opened)
 {
-    static std::string         new_font;
-    static Result<std::string> r = get_config_image_out_fmt();
+    static const char* font_filters[] = { "*.ttf", "*.otf", "*.ttc", "*.woff", "*.woff2" };
+
+    static std::string           new_font;
+    static Result<std::string>   r = get_config_image_out_fmt();
+    static std::vector<fs::path> resolved_font_paths;
+    static bool                  should_refocus = false;
+
+    // Rebuild cache on open or when the list changes
+    auto rebuild_font_cache = [&]() {
+        resolved_font_paths.clear();
+        for (const std::string& f : g_config->File.fonts)
+            resolved_font_paths.push_back(get_font_path(f));
+    };
+
+    if (window_just_opened)
+        rebuild_font_cache();
 
     ImGui::SeparatorText("Edit default config");
     ImGui::Spacing();
@@ -1807,36 +1823,54 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     ImGui::Spacing();
 
     // Scrollable font list with remove buttons
-    const float list_height = ImGui::GetTextLineHeightWithSpacing() * 4.5f;
+    std::vector<std::string>& fonts       = g_config->File.fonts;
+    const float               list_height = ImGui::GetTextLineHeightWithSpacing() * 4.5f;
     ImGui::BeginChild("##font_list", ImVec2(0, list_height), true);
-    for (size_t i = 0; i < g_config->File.fonts.size(); ++i)
+    for (size_t i = 0; i < fonts.size(); ++i)
     {
-        ImGui::PushID(i);
+        ImGui::PushID(static_cast<int>(i));
         if (ImGui::SmallButton("x"))
         {
-            g_config->File.fonts.erase(g_config->File.fonts.begin() + i);
+            fonts.erase(fonts.begin() + i);
+            rebuild_font_cache();  // invalidate
             ImGui::PopID();
-            break;  // iterator invalidated; re-render next frame
+            break;
         }
         ImGui::SameLine();
-        ImGui::TextUnformatted(g_config->File.fonts[i].c_str());
+        ImGui::TextUnformatted(fonts[i].c_str());
+        ImGui::SameLine();
+        const fs::path& fp = (i < resolved_font_paths.size()) ? resolved_font_paths[i] : fs::path{};
+        if (fp.empty())
+            ImGui::TextColored(ImVec4(1.f, 0.4f, 0.4f, 1.f), "Font not found");
+        else if (!fs::path(fonts[i]).is_absolute())
+            ImGui::TextDisabled("Found in %s", fp.string().c_str());
         ImGui::PopID();
     }
 
-    if (g_config->File.fonts.empty())
+    if (fonts.empty())
         ImGui::TextDisabled("(no fonts configured - application default will be used)");
 
     ImGui::EndChild();
 
     ImGui::Spacing();
-    ImGui::Text("Add font: ");
+    ImGui::TextUnformatted("Font path: ");
     ImGui::SameLine(0, 0);
-    if (ImGui::InputText("##add_font", &new_font, ImGuiInputTextFlags_ElideLeft | ImGuiInputTextFlags_EnterReturnsTrue))
+    if (should_refocus)
     {
-        if (!new_font.empty())
-            g_config->File.fonts.push_back(new_font);
+        ImGui::SetKeyboardFocusHere(0);
+        should_refocus = false;
+    }
+    draw_input_text_file("", "##font_path", font_filters, 5, [&] {}, new_font, ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::SameLine();
+    if (ImGui::Button("Add font"))
+    {
+        if (!new_font.empty() && std::find(fonts.begin(), fonts.end(), new_font) == fonts.end())
+        {
+            fonts.push_back(new_font);
+            rebuild_font_cache();  // invalidate
+        }
         new_font.clear();
-        ImGui::SetKeyboardFocusHere(-1);  // keep focus on the input
+        should_refocus = true;
     }
 }
 

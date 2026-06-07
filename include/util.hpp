@@ -196,6 +196,7 @@ constexpr E toe(T n) noexcept
 // Forward declaration
 struct capture_result_t;
 struct ImVec4;
+struct ImGuiIO;
 
 // taken from "fmt/color.h" with the addition of alpha.
 // useful in contexts where ImVec4 is not used.
@@ -303,8 +304,8 @@ void extern_glfwTerminate();          // Defined on main_tool_*
 void extern_glfwSwapInterval(int v);  // Defined on main_tool_*
 void fit_to_screen(capture_result_t& img);
 void rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int height);
-
-int get_screen_dpi();
+void build_font_atlas(ImGuiIO& io);
+int  get_screen_dpi();
 
 bool parse_hex_rgba(const std::string_view hex, rgba_t& out);
 
