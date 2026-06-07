@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+#  include <fcntl.h>
+
 #include "clipboard.hpp"
 #include "config.hpp"
 #include "dotenv.hpp"
@@ -43,11 +45,9 @@ extern "C" {
 #    define NTDDI_VERSION NTDDI_WINBLUE
 #    define _WIN32_WINNT  _WIN32_WINNT_WINBLUE
 #  endif
-#  include <fcntl.h>
 #  include <io.h>
 #  include <shellscalingapi.h>  // GetDpiForMonitor
 #  include <shlobj.h>
-#  include <winsock2.h>
 #  include <ws2tcpip.h>
 #  include <windows.h>
 #  pragma comment(lib, "Shcore.lib")
@@ -60,7 +60,6 @@ extern "C" {
 #  include <arpa/inet.h>
 #  include <netdb.h>
 #  include <pwd.h>
-#  include <fcntl.h>
 #  include <sys/select.h>
 #  include <sys/socket.h>
 #  include <sys/file.h>
