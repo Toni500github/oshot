@@ -128,6 +128,7 @@ if(UNIX AND NOT APPLE)
         ${PROJECT_NAME}
         PRIVATE ${APPINDICATOR_INCLUDE_DIRS}
     )
+    target_compile_options(${PROJECT_NAME} PRIVATE ${APPINDICATOR_CFLAGS_OTHER})
 endif()
 
 target_compile_options(
@@ -268,12 +269,24 @@ else()
             target_compile_definitions(tray PRIVATE TRAY_APPKIT=1)
             target_link_libraries(tray PRIVATE ${COCOA})
         else()
-            target_compile_options(tray PRIVATE ${GTK_CFLAGS})
-            target_link_directories(tray PRIVATE ${GTK_LIBRARY_DIRS})
+            target_compile_options(
+                tray
+                PRIVATE ${GTK_CFLAGS} ${GTK_CFLAGS_OTHER}
+            )
+            target_include_directories(
+                tray
+                PRIVATE ${GTK_INCLUDE_DIRS} ${APPINDICATOR_INCLUDE_DIRS}
+            )
+            target_link_directories(
+                tray
+                PRIVATE ${GTK_LIBRARY_DIRS} ${APPINDICATOR_LIBRARY_DIRS}
+            )
             target_link_libraries(tray PRIVATE ${GTK_LIBRARIES})
 
-            target_compile_options(tray PRIVATE ${APPINDICATOR_CFLAGS})
-            target_link_directories(tray PRIVATE ${APPINDICATOR_LIBRARY_DIRS})
+            target_compile_options(
+                tray
+                PRIVATE ${APPINDICATOR_CFLAGS} ${APPINDICATOR_CFLAGS_OTHER}
+            )
             target_compile_definitions(tray PRIVATE TRAY_APPINDICATOR=1)
             target_link_libraries(tray PRIVATE ${APPINDICATOR_LIBRARIES})
         endif()
@@ -374,9 +387,19 @@ elseif(APPLE)
             "-framework UserNotifications"
     )
 else()
-    target_compile_options(nvdialog PRIVATE ${GTK_CFLAGS} ${GTK_CFLAGS_OTHER} ${DBUS_CFLAGS} ${DBUS_CFLAGS_OTHER})
+    target_compile_options(
+        nvdialog
+        PRIVATE
+            ${GTK_CFLAGS}
+            ${GTK_CFLAGS_OTHER}
+            ${DBUS_CFLAGS}
+            ${DBUS_CFLAGS_OTHER}
+    )
     target_include_directories(nvdialog PRIVATE ${DBUS_INCLUDE_DIRS})
-    target_link_directories(nvdialog PRIVATE ${GTK_LIBRARY_DIRS} ${DBUS_LIBRARY_DIRS})
+    target_link_directories(
+        nvdialog
+        PRIVATE ${GTK_LIBRARY_DIRS} ${DBUS_LIBRARY_DIRS}
+    )
     target_link_libraries(nvdialog PRIVATE ${GTK_LIBRARIES} ${DBUS_LIBRARIES})
 endif()
 

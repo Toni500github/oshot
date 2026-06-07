@@ -573,10 +573,6 @@ fs::path get_home_config_dir()
     if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
         return fs::path(dir);
 
-    const auto& dirs = get_xdg_user_dirs();
-    if (dirs.find(xdg) != dirs.end())
-        return dirs.at(xdg);
-
     return get_home_dir() / ".config";
 #else
     PWSTR widePath = nullptr;
