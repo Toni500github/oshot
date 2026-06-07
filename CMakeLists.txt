@@ -374,8 +374,9 @@ elseif(APPLE)
             "-framework UserNotifications"
     )
 else()
-    target_compile_options(nvdialog PRIVATE ${GTK_CFLAGS} ${GTK_CFLAGS_OTHER})
-    target_link_directories(nvdialog PRIVATE ${GTK_LIBRARY_DIRS})
+    target_compile_options(nvdialog PRIVATE ${GTK_CFLAGS} ${GTK_CFLAGS_OTHER} ${DBUS_CFLAGS} ${DBUS_CFLAGS_OTHER})
+    target_include_directories(nvdialog PRIVATE ${DBUS_INCLUDE_DIRS})
+    target_link_directories(nvdialog PRIVATE ${GTK_LIBRARY_DIRS} ${DBUS_LIBRARY_DIRS})
     target_link_libraries(nvdialog PRIVATE ${GTK_LIBRARIES} ${DBUS_LIBRARIES})
 endif()
 

@@ -1,5 +1,7 @@
 #include "util.hpp"
 
+#include <fcntl.h>
+
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -8,8 +10,6 @@
 #include <filesystem>
 #include <utility>
 #include <vector>
-
-#  include <fcntl.h>
 
 #include "clipboard.hpp"
 #include "config.hpp"
