@@ -10,7 +10,6 @@
 #include <functional>
 #include <map>
 #include <mutex>
-#include <unordered_map>
 #include <utility>
 
 #include "cache.hpp"
@@ -202,7 +201,7 @@ public:
                     {},
                     "",
                     "" },
-          m_current_color(rgba_t(Cache::GetValue(g_cache->GetEntries()[CacheFilesEnum::Colors], 0xFF0000FF)))
+          m_current_color(rgba_t(g_cache->GetValue(CacheEntry::AnnColor, 0xFF0000FF)))
     {}
 
     Result<>          Start();

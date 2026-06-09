@@ -8,18 +8,11 @@
 #include "toml++/toml.hpp"
 #include "util.hpp"
 
-enum class CacheFilesEnum
+enum class CacheEntry
 {
-    Colors,
-    Filesystem,
+    AnnColor,
+    ImgSavePath,
     COUNT
-};
-
-struct cache_entry_t
-{
-    const std::string file_path;
-    const std::string toml_path;
-    toml::table       tbl;
 };
 
 class Cache
@@ -28,8 +21,7 @@ public:
     Cache(const std::string& cache_dir);
     ~Cache();
 
-    Result<> LoadCacheFile(cache_entry_t& entry);
-    void     GenerateCacheFile(const cache_entry_t& entry);
+    Result<> LoadCacheFile();
 
     const std::string& GetCacheDirPath() const { return m_cache_dir_path; }
 
@@ -39,9 +31,10 @@ public:
      * @param fallback Default value if couldn't retrive value
      */
     template <typename T>
-    static T GetValue(const cache_entry_t& entry, const T& fallback, bool dont_expand_var = false)
+    T GetValue(CacheEntry e, const T& fallback, bool dont_expand_var = false)
     {
-        const std::optional<T>& ret = entry.tbl.at_path(entry.toml_path).value<T>();
+        const std::string&      key = m_cache_entries.at(e);
+        const std::optional<T>& ret = m_tbl["cache"][key].value<T>();
         if constexpr (toml::is_string<T>)
             if (!dont_expand_var)
                 return ret ? expand_var(ret.value()) : expand_var(fallback);
@@ -56,41 +49,27 @@ public:
      * @param path The cache variable "path" (e.g "cache.source-path")
      */
     template <typename T>
-    static void SetValue(cache_entry_t& entry, const T& value)
+    void SetValue(CacheEntry e, const T& value)
     {
-        std::string  path = entry.toml_path;
-        toml::table* tbl  = &entry.tbl;
-
-        while (true)
+        const std::string& key     = m_cache_entries.at(e);
+        auto*              section = m_tbl["cache"].as_table();
+        if (!section)
         {
-            const auto& dot = path.find('.');
-            if (dot == std::string_view::npos)
-            {
-                tbl->insert_or_assign(std::string(path), value);
-                break;
-            }
-
-            const std::string& segment = path.substr(0, dot);
-            path                       = path.substr(dot + 1);
-
-            auto* node = tbl->get(segment);
-            if (!node || !node->is_table())
-            {
-                tbl->insert_or_assign(segment, toml::table{});
-                node = tbl->get(segment);
-            }
-            tbl = node->as_table();
+            m_tbl.insert_or_assign("cache", toml::table{});
+            section = m_tbl["cache"].as_table();
         }
+        section->insert_or_assign(key, value);
     }
 
-    std::unordered_map<CacheFilesEnum, cache_entry_t>& GetEntries() { return m_cache_entries; }
-
 private:
-    std::string m_cache_dir_path;
+    static constexpr const char* mk_file_path = "cache.toml";
 
-    std::unordered_map<CacheFilesEnum, cache_entry_t> m_cache_entries = {
-        { CacheFilesEnum::Colors, { "colors.toml", "cache.default-color-picker-color", {} } },
-        { CacheFilesEnum::Filesystem, { "fs.toml", "cache.last-saved-dir", {} } },
+    std::string m_cache_dir_path;
+    toml::table m_tbl;
+
+    std::unordered_map<CacheEntry, std::string> m_cache_entries = {
+        { CacheEntry::AnnColor, "default-color-picker-color" },
+        { CacheEntry::ImgSavePath, "last-saved-dir" },
     };
 };
 

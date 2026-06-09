@@ -354,8 +354,7 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
         return fmt.error();
 
     minimize_window();
-    cache_entry_t&  cache          = g_cache->GetEntries()[CacheFilesEnum::Filesystem];
-    const fs::path& saved_path_dir = Cache::GetValue(cache, get_home_pictures_dir().string());
+    const fs::path& saved_path_dir = g_cache->GetValue(CacheEntry::ImgSavePath, get_home_pictures_dir().string());
 
     const char* filter[]  = { "*.png" };
     const char* save_path = tinyfd_saveFileDialog("Save File",
@@ -385,7 +384,7 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
     notif.reset(nvd_notification_new("Saved!", "Screenshot saved successfully", NVD_NOTIFICATION_SIMPLE));
 
     fs::path path(save_path);
-    Cache::SetValue(cache, path.parent_path().string());
+    g_cache->SetValue(CacheEntry::ImgSavePath, path.parent_path().string());
 
     return Ok();
 }

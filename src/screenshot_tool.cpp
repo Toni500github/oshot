@@ -1435,7 +1435,6 @@ void ScreenshotTool::DrawBarDecodeTools()
 
 void ScreenshotTool::DrawAnnotationToolbar()
 {
-    cache_entry_t&               cache_entry      = g_cache->GetEntries()[CacheFilesEnum::Colors];
     static int                   item_picker      = 0;
     static constexpr const char* color_pickers[2] = { "Bar - Square", "Wheel - Triangle" };
 
@@ -1550,7 +1549,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
             ImGui::ColorPicker4("Color", reinterpret_cast<float*>(&picker), color_picker_flags);
 
             m_current_color = rgba_t(picker);
-            Cache::SetValue(cache_entry, m_current_color.to_rgba());
+            g_cache->SetValue(CacheEntry::AnnColor, m_current_color.to_rgba());
             ImGui::EndPopup();
         }
 
