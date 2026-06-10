@@ -105,7 +105,7 @@ int run_main_tool()
     // we can capture at the exact moment we launch
     ScreenshotTool ss_tool;
     ss_tool.SetOnCancel([&]() {
-        fmt::println(stderr, "Cancelled screenshot");
+        fmt::println(stderr, "Canceled screenshot");
         glfwSwapInterval(0);  // Disable vsync
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
@@ -118,22 +118,13 @@ int run_main_tool()
             return;
         }
 
-        const Result<>& res = save_png(op, result.get());
-        if (!res.ok())
-            error("Failed to save as PNG: {}", res.error());
+        MUST_OK(save_png(op, result.get()), error, "Failed to save as PNG: {}");
 
         glfwSwapInterval(0);  // Disable vsync
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
 
-    {
-        const Result<>& res = ss_tool.Start();
-        if (!res.ok())
-        {
-            error("Failed to start capture: {}", res.error());
-            return EXIT_FAILURE;
-        }
-    }
+    TRY_OR(ss_tool.Start(), EXIT_FAILURE, error, "Failed to start capture: {}");
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())

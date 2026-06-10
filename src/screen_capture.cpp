@@ -152,7 +152,7 @@ Result<capture_result_t> capture_full_screen_x11()
     Display* display = XOpenDisplay(nullptr);
     if (!display)
     {
-        warn("Failed to open X display");
+        spdlog::warn("Failed to open X display");
         return capture_full_screen_portal();
     }
 
@@ -164,7 +164,7 @@ Result<capture_result_t> capture_full_screen_x11()
     if (!get_cursor_monitor_xrandr(display, capture_x, capture_y, capture_w, capture_h))
     {
         // Fall back to root window dimensions (old single-monitor behavior)
-        warn("XRandR returned no monitors, falling back to root window size");
+        spdlog::warn("XRandR returned no monitors, falling back to root window size");
         XWindowAttributes attrs;
         XGetWindowAttributes(display, root, &attrs);
         capture_w = attrs.width;
@@ -181,7 +181,7 @@ Result<capture_result_t> capture_full_screen_x11()
                               ZPixmap);
     if (!image)
     {
-        warn("Failed to capture screen image");
+        spdlog::warn("Failed to capture screen image with X11");
         XCloseDisplay(display);
         return capture_full_screen_portal();
     }
@@ -218,7 +218,7 @@ Result<capture_result_t> capture_full_screen_spectacle()
     if (exit_code != 0)
     {
         unlink(tmppath);
-        ::warn("spectacle exited with code {}. Trying wayland capture...", exit_code);
+        spdlog::warn("spectacle exited with code {}. Trying wayland capture...", exit_code);
         return capture_full_screen_wayland();
     }
 
@@ -227,10 +227,7 @@ Result<capture_result_t> capture_full_screen_spectacle()
     unlink(tmppath);
 
     if (!rgba)
-    {
-        const char* reason = stbi_failure_reason();
-        return Err("Failed to decode PNG: " + std::string(reason ? reason : "unknown"));
-    }
+        return Err("Failed to decode PNG: " + STBI_ERROR);
 
     result.w = w;
     result.h = h;
@@ -270,10 +267,7 @@ Result<capture_result_t> capture_full_screen_wayland()
     uint8_t* rgba = stbi_load_from_memory(buf.data(), int(buf.size()), &w, &h, &comp, STBI_rgb_alpha);
 
     if (!rgba)
-    {
-        const char* reason = stbi_failure_reason();
-        return Err("Failed to read PPM data: " + std::string(reason ? reason : "Unknown"));
-    }
+        return Err("Failed to read PPM data: " + STBI_ERROR);
 
     result.w = w;
     result.h = h;
@@ -339,9 +333,9 @@ static void on_response(GDBusConnection* conn,
     g_variant_get(parameters, "(u@a{sv})", &response, &results);
 
     if (response != 0)
-        st->error_msg = fmt::format("Cancelled or failed (response={})", (unsigned)response);
+        st->error_msg = fmt::format("Canceled or failed (response={})", (unsigned)response);
     else if (!(g_variant_lookup(results, "uri", "&s", &uri) && uri))
-        st->error_msg = "Success, but portal returned no uri";
+        st->error_msg = "Screenshot portal succeeded but returned no file path";
 
     if (results)
         g_variant_unref(results);
@@ -370,7 +364,7 @@ static void on_response(GDBusConnection* conn,
 Result<capture_result_t> capture_full_screen_portal()
 {
     portal_state_t st{};
-    warn("Fallback to portal capture");
+    spdlog::warn("Fallback to portal capture");
 
     GError*          error = nullptr;
     GDBusConnection* bus   = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
@@ -454,7 +448,7 @@ Result<capture_result_t> capture_full_screen_portal()
     if (st.png_path.empty())
     {
         if (st.error_msg.empty())
-            return Err("Failed to retrieve uri path to screenshot PNG");
+            return Err("Failed to retrieve URI path to screenshot PNG");
         return Err(st.error_msg);
     }
 
@@ -463,9 +457,8 @@ Result<capture_result_t> capture_full_screen_portal()
 
     if (!rgba)
     {
-        const char* reason = stbi_failure_reason();
         unlink(st.png_path.c_str());
-        return Err("Failed to read PNG data: " + std::string(reason ? reason : "Unknown"));
+        return Err("Failed to read PNG data: " + STBI_ERROR);
     }
 
     st.cap.w = w;
@@ -597,10 +590,7 @@ Result<capture_result_t> capture_full_screen_macos()
     unlink(tmppath);  // clean up regardless
 
     if (!rgba)
-    {
-        const char* reason = stbi_failure_reason();
-        return Err("Failed to decode screenshot PNG: " + std::string(reason ? reason : "unknown"));
-    }
+        return Err("Failed to decode screenshot PNG: " + STBI_ERROR);
 
     result.w = w;
     result.h = h;

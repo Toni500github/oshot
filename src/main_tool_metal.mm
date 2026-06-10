@@ -70,7 +70,7 @@ int run_main_tool()
 
     // vsync is controlled via the CAMetalLayer's displaySyncEnabled property instead.
     ss_tool.SetOnCancel([&]() {
-        fmt::println(stderr, "Cancelled screenshot");
+        fmt::println(stderr, "Canceled screenshot");
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
     ss_tool.SetOnComplete([&](SavingOp op, const Result<capture_result_t>& result) {
@@ -81,9 +81,7 @@ int run_main_tool()
             return;
         }
 
-        const Result<>& res = save_png(op, result.get());
-        if (!res.ok())
-            error("Failed to save as PNG: {}", res.error());
+        MUST_OK(save_png(op, result.get()), error, "Failed to save as PNG: {}");
 
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
@@ -97,14 +95,7 @@ int run_main_tool()
     // Setup Screenshot Tool
     // Calling it before starting the window so that
     // we can capture at the exact moment we launch
-    {
-        const Result<>& res = ss_tool.Start();
-        if (!res.ok())
-        {
-            error("Failed to start capture: {}", res.error());
-            return EXIT_FAILURE;
-        }
-    }
+    TRY_OR(ss_tool.Start(), EXIT_FAILURE, error, "Failed to start capture: {}");
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())

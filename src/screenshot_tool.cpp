@@ -413,7 +413,7 @@ void ScreenshotTool::RenderOverlay()
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
         ImGui::Begin("##select_area", nullptr, minimal_win_flags);
         ImGui::TextColored(ImVec4(0, 1, 0, 1), "Select an area");
-        ImGui::TextColored(ImVec4(0, 1, 1, 1), "Save/Copy for whole screenshot");
+        ImGui::TextColored(ImVec4(0, 1, 1, 1), "Press Save/Copy for the full screenshot");
         ImGui::TextColored(ImVec4(0, 1, 0.5f, 1), "CTRL+A for whole image selection");
         ImGui::End();
     }
@@ -1156,8 +1156,8 @@ void ScreenshotTool::DrawMenuItems()
                     g_config->Runtime.preferred_psm = 0;
                 ImGui::RadioButton("Single Word", &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_WORD);
                 ImGui::RadioButton("Single Line", &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_LINE);
-                ImGui::RadioButton("Block", &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_BLOCK);
-                ImGui::RadioButton("Big Region", &g_config->Runtime.preferred_psm, tesseract::PSM_AUTO);
+                ImGui::RadioButton("Paragraph", &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_BLOCK);
+                ImGui::RadioButton("Automatic (Layout)", &g_config->Runtime.preferred_psm, tesseract::PSM_AUTO);
                 ImGui::EndMenu();
             }
 
@@ -1354,7 +1354,8 @@ void ScreenshotTool::DrawOcrTools()
         if (HasError(ectx, OcrError::FailedToScan))
         {
             ImGui::SameLine();
-            ImGui::TextColored(error_color, "Failed to scan: %s", GetError(ectx, OcrError::FailedToScan).c_str());
+            ImGui::TextColored(
+                error_color, "Failed to initialize OCR: %s", GetError(ectx, OcrError::FailedToScan).c_str());
         }
         else
         {
@@ -2004,6 +2005,11 @@ void ScreenshotTool::DrawPreferencesWindow()
                     g_config->LoadThemeFile(g_config->File.theme_file_path);
                     color_name_map().clear();
                 }
+                else
+                {
+                    ImGui::OpenPopup("Theme file path is empty##theme_filepath_empty");
+                }
+
                 apply_imgui_theme();
                 theme_snapshot = g_config->theme_overrides;
                 break;
@@ -2107,6 +2113,18 @@ void ScreenshotTool::DrawPreferencesWindow()
                 ImGui::CloseCurrentPopup();
             }
 
+            ImGui::EndPopup();
+        }
+
+        if (ImGui::BeginPopupModal(
+                "Theme file path is empty##theme_filepath_empty", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::TextUnformatted(
+                "Please set a theme file path like 'theme.toml' before saving theme changes.\n"
+                "Changes will be set temporarily for the current session.");
+            ImGui::Spacing();
+            if (ImGui::Button("OK", ImVec2(100, 0)))
+                ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
     }
@@ -2281,7 +2299,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
             else if (HasError(ectx, OcrDownloadError::InvalidPath))
                 ImGui::Text("Fix the destination path error first");
             else
-                ImGui::Text("Edit the fields above to retry");
+                ImGui::Text("A download error occurred — see error below");
             ImGui::EndTooltip();
         }
 
@@ -2532,7 +2550,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
 #endif
 
     // Reset interactions.
-    // somes are already reseted from previous calls
+    // some are already reset from previous calls
     m_state           = ToolState::Selecting;
     m_current_tool    = ToolType::kNone;
     m_handle_hover    = HandleHovered::kNone;
@@ -3003,7 +3021,7 @@ void ScreenshotTool::RefreshOcrModels()
     m_ocr_models_list = get_training_data_list(m_inputs.ocr_path);
     if (m_ocr_models_list.empty())
     {
-        SetError(ectx, OcrError::InvalidPath);
+        SetError(ectx, OcrError::InvalidPath, "Doesn't exist or is empty");
     }
     else
     {

@@ -251,9 +251,11 @@ void fit_to_screen(capture_result_t& img)
     std::vector<uint8_t> resized(new_w * new_h * 4);
 
     bool ok = stbir_resize_uint8_linear(img.data.data(), img_w, img_h, 0, resized.data(), new_w, new_h, 0, STBIR_RGBA);
-
     if (!ok)
+    {
+        warn("Failed to resize image: {}", STBI_ERROR);
         return;
+    }
 
     img.data = std::move(resized);
     img.w    = new_w;
@@ -298,14 +300,13 @@ Result<capture_result_t> load_image_rgba(const std::string& path)
 
         const std::vector<uint8_t>& input = read_stdin_binary();
         if (input.empty())
-            return Err("stdin reported data but was empty");
+            return Err("No image data received from stdin");
 
         pixels = stbi_load_from_memory(input.data(), int(input.size()), &width, &height, &channels, STBI_rgb_alpha);
     }
 
     if (!pixels)
-        return Err("Failed to load image: " +
-                   (stbi_failure_reason() ? std::string(stbi_failure_reason()) : "Unknown Error"));
+        return Err("Failed to load image: " + STBI_ERROR);
 
     result.w = width;
     result.h = height;
@@ -368,7 +369,7 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
 
     if (!save_path)
     {
-        notif.reset(nvd_notification_new("Cancelled", "Save cancelled", NVD_NOTIFICATION_WARNING));
+        notif.reset(nvd_notification_new("Canceled", "Save canceled by user", NVD_NOTIFICATION_WARNING));
         return Ok();  // Not really an error, maybe the user cancelled
     }
 

@@ -29,6 +29,7 @@
 #include "fmt/base.h"
 #include "fmt/compile.h"
 #include "getopt_port/getopt.h"
+#include "nvdialog/nvdialog_error.h"
 #include "oshot_png.h"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
@@ -240,7 +241,7 @@ void capture_worker()
             do_copy_image        = false;
             capture_result_t img = std::move(pending_image);
             lk.unlock();
-            g_clipboard.CopyImage(img);
+            MUST_OK(g_clipboard.CopyImage(img), error, "{}", _r.error_v());
             continue;
         }
 
@@ -370,7 +371,11 @@ int main(int argc, char* argv[])
 #endif
 
     if (nvd_init() != 0)
+    {
+        fprintf(
+            stderr, "Failed to initialize nvdialog: %s\n", nvd_string_to_cstr(nvd_stringify_error(nvd_get_error())));
         return -67;
+    }
 
     auto           console = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     spdlog::logger logger("oshot_logger", { console, file });

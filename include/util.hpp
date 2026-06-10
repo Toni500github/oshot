@@ -39,6 +39,37 @@ enum class SavingOp;
 #  define OSHOT_TOOL_ON_MAIN_THREAD false
 #endif
 
+#define STBI_ERROR std::string(stbi_failure_reason() ? stbi_failure_reason() : "Unknown Error")
+
+// These macros are just for conviniences, nothing else
+// They kinda suck ngl
+#define TRY_MSG(expr, fmt, ...)                                                    \
+    do                                                                             \
+    {                                                                              \
+        auto&& _r = (expr);                                                        \
+        if (!_r.ok())                                                              \
+            return Err(fmt::format(fmt __VA_OPT__(, ) __VA_ARGS__, _r.error_v())); \
+    } while (0)
+
+#define TRY_OR(expr, retval, func, fmt, ...)                    \
+    do                                                          \
+    {                                                           \
+        auto&& _r = (expr);                                     \
+        if (!_r.ok())                                           \
+        {                                                       \
+            func(fmt __VA_OPT__(, ) __VA_ARGS__, _r.error_v()); \
+            return retval;                                      \
+        }                                                       \
+    } while (0)
+
+#define MUST_OK(expr, func, fmt, ...)                           \
+    do                                                          \
+    {                                                           \
+        auto&& _r = (expr);                                     \
+        if (!_r.ok())                                           \
+            func(fmt __VA_OPT__(, ) __VA_ARGS__, _r.error_v()); \
+    } while (0)
+
 // shotout to the better c++ server for these helper structs
 template <typename T>
 struct Ok

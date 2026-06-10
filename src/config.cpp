@@ -15,14 +15,14 @@ Config::Config(const fs::path& configFile, const fs::path& configDir)
 {
     if (!fs::exists(configDir))
     {
-        warn("oshot config folder was not found, Creating folders at {}!", configDir.string());
+        warn("Oshot config folder was not found, creating folders at {}!", configDir.string());
         fs::create_directories(configDir);
         fs::create_directories(configDir / "models");
     }
 
     if (!fs::exists(configFile))
     {
-        warn("config file {} not found, generating new one", configFile.string());
+        warn("Config file {} not found, generating new one", configFile.string());
         GenerateConfig(configFile.string());
     }
 }
@@ -114,8 +114,8 @@ void Config::OverrideOption(const std::string& opt)
 {
     const size_t pos = opt.find('=');
     if (pos == std::string::npos)
-        die("option to override '{}' does NOT have an equal sign '=' for separating name and value\n"
-            "For more check with --help",
+        die("Option to override '{}' doesn't have an equal sign '=' for separating name and value\n"
+            "See --help for more information",
             opt);
 
     std::string        name{ opt.substr(0, pos) };
