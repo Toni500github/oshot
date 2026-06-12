@@ -468,3 +468,9 @@ install(
     DESTINATION share/licenses/${PROJECT_NAME}
     COMPONENT documentation
 )
+
+install(
+    FILES oshot.desktop
+    DESTINATION share/applications
+    COMPONENT documentation
+)
