@@ -290,6 +290,7 @@ void apply_imgui_theme();
 // default config
 inline constexpr std::string_view AUTOCONFIG = R"#([default]
 # Default Path to where we'll use all the '.traineddata' models.
+# The TESSDATA_PREFIX environment variable supersedes this.
 ocr-path = "{}"
 
 # Default OCR model.

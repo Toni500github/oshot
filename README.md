@@ -74,6 +74,31 @@ If when starting oshot, it starts to flick a screen black (or it won't launch), 
 
 If still errors, please open an [Issue](https://github.com/Toni500github/oshot/issues) and take a screenshot/paste the text of the error appearing in the console when executing oshot
 
+### NixOS
+On NixOS, TESSDATA_PREFIX will need to be set for oshot to find the languages.
+You have two ways to do this, depending on how you installed tesseract.
+
+If you installed tesseract in `environment.systemPackages`, set the following variable:
+```nix
+environment.sessionVariables = {
+    # Change tesseract to tesseract5 if that's the package you used.
+    "TESSDATA_PREFIX" = "${pkgs.tesseract}/share/tessdata";
+};
+```
+
+If you installed tesseract in `users.users.<user>.packages`, you could use the above method, but it's better you use home-manager.
+If you have home-manager, add this in your home.nix:
+```nix
+systemd.user.sessionVariables = {
+    # Change tesseract to tesseract5 if that's the package you used.
+    "TESSDATA_PREFIX" = "${pkgs.tesseract}/share/tessdata";
+};
+```
+
+> **__Notice:__** If you're not using systemd, the home-manager solution won't work. We assume you'll be able to find a replacement yourself if you're not using systemd.
+
+If this doesn't work, while `echo $TESSDATA_PREFIX` returns a valid result, check your config file.
+
 ## Usage
 https://github.com/user-attachments/assets/8367490a-f7b0-4320-86e9-8ef8764a56b5
 <!--https://github.com/user-attachments/assets/ac505de6-0818-4d67-bb51-064d86f1f970-->
