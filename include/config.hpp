@@ -47,7 +47,7 @@ public:
         // just for out-of-box experience sake, let's use the relative
         // ./models directory for the OCR models.
 #ifdef __linux__
-        std::string ocr_path = getenv("TESSDATA_PREFIX");
+        std::string ocr_path = "/usr/share/tessdata";
 #else
         std::string ocr_path = "./models";
 #endif
