@@ -20,12 +20,6 @@ Config::Config(const fs::path& configFile, const fs::path& configDir)
         fs::create_directories(configDir / "models");
     }
 
-#ifdef __linux__
-    // on Linux, if ocr_path isn't defined, set it to /usr/share/tessdata.
-    if (File.ocr_path.empty())
-        File.ocr_path = "/usr/share/tessdata";
-#endif
-
     if (!fs::exists(configFile))
     {
         warn("Config file {} not found, generating new one", configFile.string());
@@ -67,6 +61,13 @@ void Config::LoadConfigFile(const std::string& filename)
 
     File.allow_out_edit = GetValue<bool>("default.allow-edit-ocr", false);  // deprecated
     File.allow_out_edit = GetValue<bool>("default.allow-text-edit", File.allow_out_edit);
+
+#ifdef __linux__
+    const char *tessdata_prefix;
+    if ((tessdata_prefix = getenv("TESSDATA_PREFIX"))) {
+        File.ocr_path = tessdata_prefix;
+    }
+#endif
 }
 
 void Config::LoadThemeFile(const std::string& filename)
