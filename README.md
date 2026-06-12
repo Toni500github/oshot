@@ -2,6 +2,7 @@
 
 A simple and lightweight tool for extracting text from a screenshot/image (on the fly)
 
+<!--
 ## Optimization
 
 - **Screen capture uses the fastest available hardware path (X11, Windows)**: DXGI Desktop Duplication on Windows acquires frames directly from the GPU's front buffer via a staging texture mapped for CPU read, avoiding any GDI software rasterization; XGetImage on X11 takes a direct 32bpp packed-pixel fast path (a single `memcpy`-equivalent row scan), falling back to the `XGetPixel` generic path only when the pixel format does not match the expected mask layout. The screen is then kept as a single RGBA buffer in memory for the entire session; all cropping, annotation rendering, and encoding operate on that buffer without re-capturing.
@@ -25,6 +26,7 @@ A simple and lightweight tool for extracting text from a screenshot/image (on th
 - VSync is **user-configurable**, allowing the overlay to drop to uncapped rendering on systems where the compositor introduces latency.
 
 - External dependencies are kept minimal: image loading, resizing, and writing use single-header **stb libraries** compiled only into the translation units that need them, with no transitive system library requirements beyond what the platform already provides.
+-->
 
 ## Dependencies
 ### Linux
