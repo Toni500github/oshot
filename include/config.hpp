@@ -1,6 +1,7 @@
 #ifndef _CONFIG_HPP_
 #define _CONFIG_HPP_
 
+#include <cstdlib>
 #include <filesystem>
 #include <memory>
 #include <type_traits>
@@ -46,7 +47,7 @@ public:
         // just for out-of-box experience sake, let's use the relative
         // ./models directory for the OCR models.
 #ifdef __linux__
-        std::string ocr_path = "/usr/share/tessdata/";
+        std::string ocr_path = getenv("TESSDATA_PREFIX");
 #else
         std::string ocr_path = "./models";
 #endif
@@ -289,8 +290,9 @@ void apply_imgui_theme();
 
 // default config
 inline constexpr std::string_view AUTOCONFIG = R"#([default]
-# Default Path to where we'll use all the '.traineddata' models.
-ocr-path = "{}"
+# Path to where we'll use all the '.traineddata' models.
+# Takes from the TESSDATA_PREFIX environment variable by default, or `/usr/share/tessdata` on the lack thereof.
+# ocr-path = "/usr/share/tessdata"
 
 # Default OCR model.
 ocr-model = "{}"

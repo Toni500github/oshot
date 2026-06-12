@@ -20,6 +20,12 @@ Config::Config(const fs::path& configFile, const fs::path& configDir)
         fs::create_directories(configDir / "models");
     }
 
+#ifdef __linux__
+    // on Linux, if ocr_path isn't defined, set it to /usr/share/tessdata.
+    if (File.ocr_path.empty())
+        File.ocr_path = "/usr/share/tessdata";
+#endif
+
     if (!fs::exists(configFile))
     {
         warn("Config file {} not found, generating new one", configFile.string());
@@ -156,7 +162,6 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
     }
 
     f.print(AUTOCONFIG,
-            File.ocr_path,
             File.ocr_model,
             File.ocr_get_repo,
             File.delay,
