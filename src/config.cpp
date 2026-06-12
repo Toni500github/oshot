@@ -62,12 +62,10 @@ void Config::LoadConfigFile(const std::string& filename)
     File.allow_out_edit = GetValue<bool>("default.allow-edit-ocr", false);  // deprecated
     File.allow_out_edit = GetValue<bool>("default.allow-text-edit", File.allow_out_edit);
 
-#ifdef __linux__
     const char *tessdata_prefix;
     if ((tessdata_prefix = getenv("TESSDATA_PREFIX"))) {
         File.ocr_path = tessdata_prefix;
     }
-#endif
 }
 
 void Config::LoadThemeFile(const std::string& filename)
