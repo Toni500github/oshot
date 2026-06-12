@@ -12,7 +12,7 @@
         name = "oshot";
         src = self;
         nativeBuildInputs = [ cmake gnumake pkg-config git ];
-        buildInputs = [ glfw3 zenity leptonica libx11.dev tesseract zbar.dev libappindicator-gtk3.dev dbus.dev systemd.dev libsysprof-capture pcre2.dev libxdmcp.dev libuuid.dev libselinux.dev libsepol.dev libthai.dev libdatrie.dev libdeflate lerc.dev xz.dev zstd.dev libwebp libxkbcommon.dev libepoxy.dev libxtst giflib ];
+        buildInputs = [ glfw3 leptonica libx11.dev tesseract zbar.dev libappindicator-gtk3.dev dbus.dev systemd.dev libsysprof-capture pcre2.dev libxdmcp.dev libuuid.dev libselinux.dev libsepol.dev libthai.dev libdatrie.dev libdeflate lerc.dev xz.dev zstd.dev libwebp libxkbcommon.dev libepoxy.dev libxtst giflib ];
         configurePhase = ''
           cmake -DCMAKE_BUILD_PREFIX=/usr -DDEBUG=0 -G "Unix Makefiles" -B build -S .
         '';
