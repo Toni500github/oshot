@@ -69,16 +69,16 @@ inline rgba_t blend(rgba_t src, rgba_t dst)
                    uint8_t(src.a + dst.a * ia) };
 }
 
-static std::vector<std::string> get_training_data_list(const std::string& path)
+static void get_training_data_list(const std::string& datadir, std::vector<std::string>& langs)
 {
-    if (!fs::exists(path))
-        return {};
+    langs.clear();
 
-    std::vector<std::string> list;
-    for (auto const& dir_entry : fs::directory_iterator{ path })
-        if (dir_entry.path().extension() == ".traineddata")
-            list.push_back(dir_entry.path().stem().string());
-    return list;
+    for (const auto& entry : fs::recursive_directory_iterator(
+             datadir, fs::directory_options::follow_directory_symlink | fs::directory_options::skip_permission_denied))
+    {
+        if (entry.path().extension() == ".traineddata")
+            langs.push_back(entry.path().stem().string());
+    }
 }
 
 // https://github.com/pthom/imgui/blob/808272622f52d2f36124629c29994d2a5a7eb2f2/imgui_demo.cpp#L273
@@ -2709,7 +2709,7 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
             if (!baked)
                 continue;
 
-            ImTextureData* tex     = font->OwnerAtlas->TexData;
+            ImTextureData* tex = font->OwnerAtlas->TexData;
             // from obsolete GetTexDataAsFormat()
             if (!font->OwnerAtlas->TexIsBuilt || tex == NULL || tex->Pixels == NULL)
             {
@@ -3034,7 +3034,7 @@ void ScreenshotTool::RefreshOcrModels()
 {
     ErrorContext<OcrError>& ectx = m_ocr_errors;
 
-    m_ocr_models_list = get_training_data_list(m_inputs.ocr_path);
+    get_training_data_list(m_inputs.ocr_path, m_ocr_models_list);
     if (m_ocr_models_list.empty())
     {
         SetError(ectx, OcrError::InvalidPath, "Doesn't exist or is empty");

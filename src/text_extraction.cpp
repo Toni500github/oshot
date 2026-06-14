@@ -28,6 +28,7 @@ static std::string psm_to_str(tesseract::PageSegMode psm)
         case PSM_SINGLE_BLOCK_VERT_TEXT: return "Vertical block";
         case PSM_SPARSE_TEXT:            return "Sparsed text - big region";
         case PSM_SINGLE_BLOCK:           return "Mid-size block";
+        case PSM_AUTO:
         case PSM_AUTO_OSD:               return "Auto detection";
         default:                         return "Unknown";
     }
@@ -221,7 +222,8 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
 
     const size_t required = size_t(cap.w) * cap.h * 4;
     if (cap.view().size() < required)
-        return Err("Image size is larger than required");
+        return Err(fmt::format(
+            "Image buffer too small: got {} bytes, need {} ({}x{} × 4)", cap.view().size(), required, cap.w, cap.h));
 
     PixPtr raw_pix(rgba_to_pix(cap.view(), cap.w, cap.h));
     if (!raw_pix)
@@ -258,7 +260,8 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
     std::string data(text.get());
     trim(data);
     if (data.empty())
-        return Err("String is empty");
+        return Err(fmt::format(
+            "No text recognized (PSM: {}, {}x{} px, DPI: {})", psm_to_str(psm), proc_w, proc_h, effective_dpi));
 
     ret.data    = std::move(data);
     ret.psm_str = psm_to_str(psm);
@@ -295,7 +298,6 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
 ZbarAPI::ZbarAPI()
 {
     SetConfig(zbar::ZBAR_NONE, true);  // enable all
-    SetConfig(zbar::ZBAR_I25, false);  // except this
 }
 
 Result<zbar_result_t> ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
