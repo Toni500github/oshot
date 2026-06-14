@@ -68,7 +68,7 @@ SRC          = $(wildcard src/*.cpp)
 OBJ          = $(patsubst src/%.cpp,$(BUILDDIR)/%.o,$(SRC))
 LDFLAGS     += -L$(BUILDDIR) $(LTO_FLAGS)
 LDLIBS      += $(LIBS) `pkg-config --static --libs glfw3 tesseract zbar`
-CXXFLAGS    += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
+CXXFLAGS    += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\" -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS
 
 LIBS := \
   $(BUILDDIR)/libimgui.a \

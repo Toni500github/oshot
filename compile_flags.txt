@@ -10,6 +10,7 @@
 -DENABLE_PORTALS=1
 -DCLIP_ENABLE_IMAGE=1
 -DHAVE_PNG_H=1
+-DIMGUI_DISABLE_OBSOLETE_FUNCTIONS
 -I/usr/include/libappindicator3-0.1
 -I/usr/include/libdbusmenu-glib-0.4
 -I/usr/include/gtk-3.0

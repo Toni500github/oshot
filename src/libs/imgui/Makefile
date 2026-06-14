@@ -1,6 +1,6 @@
 CXX		?= g++
 CXXSTD		?= c++20
-CXXFLAGS 	 = -std=$(CXXSTD) $(LTO_FLAGS) -I../../../include/libs/imgui -fvisibility=hidden -fvisibility-inlines-hidden -fPIC
+CXXFLAGS 	 = -std=$(CXXSTD) $(LTO_FLAGS) -I../../../include/libs/imgui -fvisibility=hidden -fvisibility-inlines-hidden -fPIC -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS
 
 SRC		:= $(wildcard *.cpp)
 OBJ		:= $(SRC:.cpp=.o)

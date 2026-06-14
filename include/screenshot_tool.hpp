@@ -204,14 +204,17 @@ public:
           m_current_color(rgba_t(g_cache->GetValue(CacheEntry::AnnColor, 0xFF0000FF)))
     {}
 
-    Result<>          Start();
-    Result<>          StartWindow();
-    Result<void*>     CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h);
-    bool              OpenImage(const std::string& path);
-    bool              IsActive() const { return m_state != ToolState::Idle; }
-    capture_result_t& GetRawScreenshot() { return m_screenshot; }
-    void              SetBackendTexture(void* tex) { m_texture_id = tex; }
-    void              SetToolTexture(ToolType type, void* tex) { m_tool_textures[idx(type)] = tex; }
+    Result<>             Start();
+    Result<>             StartWindow();
+    Result<ImTextureRef> CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h);
+    bool                 OpenImage(const std::string& path);
+    bool                 IsActive() const { return m_state != ToolState::Idle; }
+    capture_result_t&    GetRawScreenshot() { return m_screenshot; }
+    void                 SetBackendTexture(void* tex) { m_texture_id._TexID = static_cast<ImTextureID>(size_t(tex)); }
+    void                 SetToolTexture(ToolType type, void* tex)
+    {
+        m_tool_textures[idx(type)]._TexID = static_cast<ImTextureID>(size_t(tex));
+    }
 
     void SetOnImageReload(std::function<void(const capture_result_t&)> fn) { m_on_image_reload = std::move(fn); }
 
@@ -287,7 +290,7 @@ private:
     ZbarAPI          m_zbar_api;
     capture_result_t m_screenshot;
 
-    void*         m_texture_id      = nullptr;
+    ImTextureRef  m_texture_id;
     ToolState     m_state           = ToolState::Idle;
     HandleHovered m_handle_hover    = HandleHovered::kNone;
     HandleHovered m_dragging_handle = HandleHovered::kNone;
@@ -315,15 +318,15 @@ private:
     std::function<void(const capture_result_t&)>                   m_on_image_reload;
     std::function<void(SavingOp, const Result<capture_result_t>&)> m_on_complete;
 
-    std::array<void*, idx(ToolType::Count)> m_tool_textures{};
-    ToolType                                m_current_tool = ToolType::kNone;
-    std::vector<annotation_t>               m_annotations;
-    annotation_t                            m_current_annotation;
-    rgba_t                                  m_current_color;
-    std::array<float, idx(ToolType::Count)> m_tool_thickness;
-    bool                                    m_is_drawing       = false;
-    bool                                    m_is_color_picking = false;
-    bool                                    m_is_text_placing  = false;
+    std::array<ImTextureRef, idx(ToolType::Count)> m_tool_textures{};
+    ToolType                                       m_current_tool = ToolType::kNone;
+    std::vector<annotation_t>                      m_annotations;
+    annotation_t                                   m_current_annotation;
+    rgba_t                                         m_current_color;
+    std::array<float, idx(ToolType::Count)>        m_tool_thickness;
+    bool                                           m_is_drawing       = false;
+    bool                                           m_is_color_picking = false;
+    bool                                           m_is_text_placing  = false;
 
     void CreateCopyTextButton(const std::string& text);
     void RefreshOcrModels();

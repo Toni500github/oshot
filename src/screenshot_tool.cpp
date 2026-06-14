@@ -42,7 +42,7 @@ using namespace std::chrono_literals;
 
 static constexpr ImVec4 error_color(1.0f, 0.0f, 0.0f, 1.0f);
 static constexpr ImVec2 origin(0, 0);
-static void*            logo_texture            = nullptr;
+static ImTextureRef     logo_texture;
 static bool             show_preferences_window = false;
 static bool             show_toosl_window       = false;
 
@@ -346,9 +346,9 @@ Result<> ScreenshotTool::StartWindow()
     SyncRuntimeFromConfig();
 
 #ifdef __APPLE__
-    m_texture_id = nullptr;  // will be set by backend
+    m_texture_id = ImTextureRef{};  // will be set by backend
 #else
-    const Result<void*>& res = CreateTexture(m_texture_id, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
+    const Result<ImTextureRef>& res = CreateTexture(nullptr, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
     if (!res.ok())
         return Err("Failed to create openGL texture: " + res.error_v());
 
@@ -678,7 +678,7 @@ void ScreenshotTool::HandleAnnotationInput()
                 ImGui::SetKeyboardFocusHere();
 
             ImFont* ann_font = CacheAndGetFont(m_inputs.resolved_ann_font_path, m_current_annotation.thickness);
-            ImGui::PushFont(ann_font);
+            ImGui::PushFont(ann_font, ann_font->LegacySize);
 
             ImGui::PushStyleColor(ImGuiCol_Text, m_current_annotation.color.to_abgr());
             if (ImGui::InputText(
@@ -875,10 +875,7 @@ void ScreenshotTool::HandleColorPickerInput()
                     1.5f);
 
         ImGui::Spacing();
-        ImGui::ColorButton("##loupe_swatch",
-                           c.to_imvec4(),
-                           ImGuiColorEditFlags_NoPicker | ImGuiColorEditFlags_AlphaPreview,
-                           ImVec2(32, 32));
+        ImGui::ColorButton("##loupe_swatch", c.to_imvec4(), ImGuiColorEditFlags_NoPicker, ImVec2(32, 32));
         ImGui::SameLine();
         ImGui::BeginGroup();
         ImGui::Text("#%02X%02X%02X", c.r, c.g, c.b);
@@ -1474,14 +1471,13 @@ void ScreenshotTool::DrawAnnotationToolbar()
                      ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize);
 
     // Tool selection buttons
-    auto draw_and_set_button = [&](ToolType tool, const char* id, void* texture) {
-        const bool  selected   = (m_current_tool == tool);
-        ImTextureID texture_id = (ImTextureID)(intptr_t)texture;
+    auto draw_and_set_button = [&](ToolType tool, const char* id, ImTextureRef texture) {
+        const bool selected = (m_current_tool == tool);
 
         if (selected)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.6f, 1.0f, 1.0f));
 
-        if (ImGui::ImageButton(id, texture_id, ImVec2(24, 24)))
+        if (ImGui::ImageButton(id, texture.GetTexID(), ImVec2(24, 24)))
             m_current_tool = selected ? ToolType::kNone : tool;
 
         if (selected)
@@ -1692,10 +1688,13 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
 
     ImGui::Checkbox("Show text tools at startup##config_show_text_tools", &g_config->File.show_text_tools);
 
-    ImGui::Checkbox("Prefer config variables over environment variables##config_pref_conf_to_env", &g_config->File.pref_conf_to_env);
+    ImGui::Checkbox("Prefer config variables over environment variables##config_pref_conf_to_env",
+                    &g_config->File.pref_conf_to_env);
     ImGui::SameLine();
-    HelpMarker("In some OSes such as NixOS, in order to get the OCR models installed through the package manager, we need to rely on environment variables such as $TESSDATA_PREFIX."
-               "Enabling this option overrides those environment variables with the paths set in the config file.");
+    HelpMarker(
+        "In some OSes such as NixOS, in order to get the OCR models installed through the package manager, we need to "
+        "rely on environment variables such as $TESSDATA_PREFIX."
+        "Enabling this option overrides those environment variables with the paths set in the config file.");
 
     ImGui::Checkbox("Consider annotations when scanning##config_render_anns", &g_config->File.render_anns);
     ImGui::SameLine();
@@ -1703,8 +1702,9 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
 
     ImGui::Checkbox("Use CTRL+C to copy image##config_ctrl_c_copy_img", &g_config->File.ctrl_c_copy_img);
     ImGui::SameLine();
-    HelpMarker("Shortcut to use when copying the image selection.\n"
-               "If disabled, the shortcut will be CTRL+SHIFT+C.");
+    HelpMarker(
+        "Shortcut to use when copying the image selection.\n"
+        "If disabled, the shortcut will be CTRL+SHIFT+C.");
 
     // --- Image output format section ---
     ImGui::Dummy(ImVec2(0, 8));
@@ -2502,22 +2502,22 @@ void ScreenshotTool::Cancel()
 {
     m_state = ToolState::Idle;
 
-    auto delete_texture = [](void*& tex) {
+    auto delete_texture = [](ImTextureRef& tex) {
 #ifdef __APPLE__
-        tex = nullptr;
+        tex = ImTextureRef{};
 #else
-        if (tex)
+        if (tex._TexID)
         {
-            GLuint texture = (GLuint)(intptr_t)tex;
+            GLuint texture = (GLuint)(intptr_t)tex._TexID;
             glDeleteTextures(1, &texture);
-            tex = nullptr;
+            tex = ImTextureRef{};
         }
 #endif
     };
 
     delete_texture(m_texture_id);
     delete_texture(logo_texture);
-    for (void*& tex : m_tool_textures)
+    for (auto& tex : m_tool_textures)
         delete_texture(tex);
 
     // (just clears our references, not the actual ImGui fonts)
@@ -2546,7 +2546,10 @@ bool ScreenshotTool::OpenImage(const std::string& path)
 #else
 
     // Recreate texture (CreateTexture() already deletes the old ones)
-    const Result<void*>& r = CreateTexture(m_texture_id, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
+    const Result<ImTextureRef>& r = CreateTexture(reinterpret_cast<void*>(static_cast<size_t>(m_texture_id._TexID)),
+                                                  m_screenshot.view(),
+                                                  m_screenshot.w,
+                                                  m_screenshot.h);
     if (!r.ok())
     {
         error("Failed to create openGL texture: {}", r.error());
@@ -2682,7 +2685,7 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
 
         int radius = int(std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)));
 
-        // Previous switch case has been moved to an if/else if long branch for keeping away duplicated code because of the counter bubble being
+        // Previous switch case has been moved to an if/elseif long branch for keeping away duplicated code because of the counter bubble being
         // a combination of a circle and text inside it.
         // Please stfu, the compiler will make ts into a switch case automatically. Stop fighting the machine
         if (ann.type == ToolType::Text || ann.type == ToolType::CounterBubble)
@@ -2706,9 +2709,15 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
             if (!baked)
                 continue;
 
-            unsigned char* pixels  = nullptr;
-            int            atlas_w = 0, atlas_h = 0;
-            font->OwnerAtlas->GetTexDataAsRGBA32(&pixels, &atlas_w, &atlas_h);
+            ImTextureData* tex     = font->OwnerAtlas->TexData;
+            // from obsolete GetTexDataAsFormat()
+            if (!font->OwnerAtlas->TexIsBuilt || tex == NULL || tex->Pixels == NULL)
+            {
+                ImFontAtlasBuildMain(font->OwnerAtlas);
+                tex = font->OwnerAtlas->TexData;
+            }
+            unsigned char* pixels  = tex->Pixels;
+            int            atlas_w = tex->Width, atlas_h = tex->Height;
             if (!pixels || atlas_w == 0 || atlas_h == 0)
                 continue;
 
@@ -2976,7 +2985,7 @@ ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const floa
 
     m_font_cache[key] = { font_path, font, true };
     if (font)
-        ImGui::GetIO().Fonts->Build();
+        ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
 
     return font;
 }
@@ -3041,11 +3050,11 @@ void ScreenshotTool::RefreshOcrModels()
     }
 }
 
-Result<void*> ScreenshotTool::CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h)
+Result<ImTextureRef> ScreenshotTool::CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h)
 {
 #ifdef __APPLE__
     // Metal backend handles textures separately
-    return Ok(nullptr);
+    return Ok(ImTextureRef{});
 #else
     // Existing OpenGL implementation
     if (tex)
@@ -3065,7 +3074,8 @@ Result<void*> ScreenshotTool::CreateTexture(void* tex, std::span<const uint8_t> 
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data.data());
 
-    tex = (void*)(intptr_t)texture;
-    return Ok(tex);
+    ImTextureRef ref;
+    ref._TexID = static_cast<ImTextureID>(texture);
+    return Ok(ref);
 #endif
 }
