@@ -11,10 +11,8 @@
 
 #include "fmt/base.h"
 #include "fmt/color.h"
-extern "C" {
 #include "nvdialog/nvdialog_core.h"
 #include "nvdialog/nvdialog_dialog.h"
-}
 #include "spdlog/spdlog.h"
 #include "version.h"
 

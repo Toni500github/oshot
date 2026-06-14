@@ -41,7 +41,7 @@ public:
     // They can be overwritten from CLI arguments
     struct config_file_t
     {
-        // Since we package the eng.traineddata file on Windows/MacOS
+        // Since we package the eng.traineddata file on Windows/MacOS,
         // because the user may not know how to download one or doesn't want to,
         // just for out-of-box experience sake, let's use the relative
         // ./models directory for the OCR models.
@@ -61,6 +61,7 @@ public:
         bool                     show_text_tools  = true;
         bool                     enable_vsync     = true;
         bool                     render_anns      = true;
+        bool                     pref_conf_to_env = false;
         bool                     ctrl_c_copy_img  = true;
         std::vector<std::string> fonts;
 
@@ -319,8 +320,11 @@ vsync = {}
 # Allow the extracted output to be editable.
 allow-text-edit = {}
 
-# Display the text tools (OCR, Bar/QR code scan) by default.
+# Display the text tools (OCR, Bar/QR code scan) at startup.
 show-text-tools = {}
+
+# Prefer using config variables over environment variable.
+config-over-env = {}
 
 # Consider annotations when scanning (true)
 # or only when saving the selection (false).

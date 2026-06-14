@@ -54,6 +54,7 @@ void Config::LoadConfigFile(const std::string& filename)
     File.show_text_tools  = GetValue<bool>("default.show-text-tools", true);
     File.enable_vsync     = GetValue<bool>("default.vsync", true);
     File.real_full_screen = GetValue<bool>("default.real-full-screen", false);
+    File.pref_conf_to_env = GetValue<bool>("default.config-over-env", false);
     File.render_anns      = GetValue<bool>("default.annotations-in-text-tools", true);
     File.ctrl_c_copy_img  = GetValue<bool>("default.ctrl-c-copy-img", false);
 
@@ -63,10 +64,8 @@ void Config::LoadConfigFile(const std::string& filename)
     File.allow_out_edit = GetValue<bool>("default.allow-text-edit", File.allow_out_edit);
 
     const char* tessdata_prefix;
-    if ((tessdata_prefix = getenv("TESSDATA_PREFIX")))
-    {
+    if (!File.pref_conf_to_env && (tessdata_prefix = getenv("TESSDATA_PREFIX")))
         File.ocr_path = tessdata_prefix;
-    }
 }
 
 void Config::LoadThemeFile(const std::string& filename)
@@ -170,6 +169,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.enable_vsync,
             File.allow_out_edit,
             File.show_text_tools,
+            File.pref_conf_to_env,
             File.render_anns,
             File.ctrl_c_copy_img,
             fonts_str,

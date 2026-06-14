@@ -16,9 +16,7 @@
 #include "dotenv.hpp"
 #include "fmt/chrono.h"
 #include "fmt/format.h"
-extern "C" {
 #include "nvdialog/nvdialog_notification.h"
-}
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "tinyfiledialogs.h"

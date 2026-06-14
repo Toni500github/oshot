@@ -251,6 +251,7 @@ static std::unordered_map<std::string, int>& color_name_map()
     if (map.empty())
         for (int i = 0; i < ImGuiCol_COUNT; ++i)
             map[ImGui::GetStyleColorName(i)] = i;
+
     return map;
 }
 
@@ -1691,13 +1692,19 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
 
     ImGui::Checkbox("Show text tools at startup##config_show_text_tools", &g_config->File.show_text_tools);
 
+    ImGui::Checkbox("Prefer config variables over environment variables##config_pref_conf_to_env", &g_config->File.pref_conf_to_env);
+    ImGui::SameLine();
+    HelpMarker("In some OSes such as NixOS, in order to get the OCR models installed through the package manager, we need to rely on environment variables such as $TESSDATA_PREFIX."
+               "Enabling this option overrides those environment variables with the paths set in the config file.");
+
     ImGui::Checkbox("Consider annotations when scanning##config_render_anns", &g_config->File.render_anns);
     ImGui::SameLine();
     HelpMarker("When enabled, annotations are included in the region passed to the text extractor.");
 
     ImGui::Checkbox("Use CTRL+C to copy image##config_ctrl_c_copy_img", &g_config->File.ctrl_c_copy_img);
     ImGui::SameLine();
-    HelpMarker("Shortcut to use when copying the image selection.\nIf disabled, the shortcut will be CTRL+SHIFT+C.");
+    HelpMarker("Shortcut to use when copying the image selection.\n"
+               "If disabled, the shortcut will be CTRL+SHIFT+C.");
 
     // --- Image output format section ---
     ImGui::Dummy(ImVec2(0, 8));
