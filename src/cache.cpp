@@ -31,7 +31,7 @@ Cache::Cache(const std::string& cache_dir) : m_cache_dir_path(cache_dir)
         fs::create_directories(cache_dir);
     }
 
-    MUST_OK(LoadCacheFile(), die, "{}");
+    MUST_OK(LoadCacheFile(), die("{}", _r.error_v()));
 }
 
 Cache::~Cache()

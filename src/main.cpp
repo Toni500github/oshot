@@ -241,7 +241,7 @@ void capture_worker()
             do_copy_image        = false;
             capture_result_t img = std::move(pending_image);
             lk.unlock();
-            MUST_OK(g_clipboard.CopyImage(img), error, "{}", _r.error_v());
+            MUST_OK(g_clipboard.CopyImage(img), error("{}", _r.error_v()));
             continue;
         }
 

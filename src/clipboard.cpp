@@ -75,8 +75,7 @@ Result<> Clipboard::CopyText(const std::string& text)
     if (m_session == SessionType::Wayland || m_session == SessionType::X11)
     {
         const Result<int>& res = start_linux_copy(m_session);
-        if (!res.ok())
-            return res.error();
+        TRY(res);
 
         const int fd = res.get();
 
@@ -103,8 +102,7 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap)
     if (m_session == SessionType::Wayland || m_session == SessionType::X11)
     {
         const Result<int>& res = start_linux_copy(m_session, "image/png");
-        if (!res.ok())
-            return res.error();
+        TRY(res);
 
         const std::vector<uint8_t>& png = encode_to_png(cap);
 

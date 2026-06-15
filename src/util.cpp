@@ -349,8 +349,7 @@ Result<> save_png(SavingOp op, const capture_result_t& img)
     }
 
     const Result<std::string>& fmt = get_config_image_out_fmt();
-    if (!fmt.ok())
-        return fmt.error();
+    TRY(fmt);
 
     minimize_window();
     const fs::path& saved_path_dir = g_cache->GetValue(CacheEntry::ImgSavePath, get_home_pictures_dir().string());

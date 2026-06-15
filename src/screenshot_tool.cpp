@@ -327,8 +327,7 @@ Result<> ScreenshotTool::Start()
         }
     }
 
-    if (!result.ok())
-        return Err("Failed to load image: " + result.error_v());
+    TRY_MSG(result, "Failed to load image: {}");
 
     m_screenshot = std::move(result.get());
     m_tool_thickness.fill(3.0f);
@@ -349,8 +348,7 @@ Result<> ScreenshotTool::StartWindow()
     m_texture_id = ImTextureRef{};  // will be set by backend
 #else
     const Result<ImTextureRef>& res = CreateTexture(nullptr, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
-    if (!res.ok())
-        return Err("Failed to create openGL texture: " + res.error_v());
+    TRY_MSG(res, "Failed to create openGL texture: {}");
 
     m_texture_id = res.get();
 
@@ -2530,11 +2528,10 @@ void ScreenshotTool::Cancel()
 bool ScreenshotTool::OpenImage(const std::string& path)
 {
     const Result<capture_result_t>& cap = load_image_rgba(path);
-    if (!cap.ok())
-    {
-        error("Failed to load image: {}", cap.error());
+    MUST_OK(cap, {
+        error("Failed to load image: {}", cap.error_v());
         return false;
-    }
+    });
 
     m_screenshot = std::move(cap.get());
     fit_to_screen(m_screenshot);
@@ -2550,11 +2547,10 @@ bool ScreenshotTool::OpenImage(const std::string& path)
                                                   m_screenshot.view(),
                                                   m_screenshot.w,
                                                   m_screenshot.h);
-    if (!r.ok())
-    {
-        error("Failed to create openGL texture: {}", r.error());
+    MUST_OK(r, {
+        error("Failed to create openGL texture: {}", r.error_v());
         return false;
-    }
+    });
 
     m_texture_id = r.get();
 #endif

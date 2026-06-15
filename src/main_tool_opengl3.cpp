@@ -110,21 +110,23 @@ int run_main_tool()
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
     ss_tool.SetOnComplete([&](SavingOp op, const Result<capture_result_t>& result) {
-        if (!result.ok())
-        {
-            error("Screenshot failed: {}", result.error());
+        MUST_OK(result, {
+            error("Screenshot failed: {}", result.error_v());
             glfwSwapInterval(0);  // Disable vsync
             glfwSetWindowShouldClose(window, GLFW_TRUE);
             return;
-        }
+        });
 
-        MUST_OK(save_png(op, result.get()), error, "Failed to save as PNG: {}");
+        MUST_OK(save_png(op, result.get()), error("Failed to save as PNG: {}", result.error_v()));
 
         glfwSwapInterval(0);  // Disable vsync
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
 
-    TRY_OR(ss_tool.Start(), EXIT_FAILURE, error, "Failed to start capture: {}");
+    MUST_OK(ss_tool.Start(), {
+        error("Failed to start capture: {}", _r.error_v());
+        return EXIT_FAILURE;
+    });
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -211,13 +213,12 @@ int run_main_tool()
     // Start the overlay window
     {
         const Result<>& res = ss_tool.StartWindow();
-        if (!res.ok())
-        {
-            error("Failed to start tool window: {}", res.error());
+        MUST_OK(res, {
+            error("Failed to start tool window: {}", res.error_v());
             if (!g_is_systray)
                 glfwTerminate();
             return EXIT_FAILURE;
-        }
+        });
     }
 
     while (!glfwWindowShouldClose(window) && ss_tool.IsActive())

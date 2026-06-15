@@ -41,31 +41,28 @@ enum class SavingOp;
 
 // These macros are just for conviniences, nothing else
 // They kinda suck ngl
-#define TRY_MSG(expr, fmt, ...)                                                    \
-    do                                                                             \
-    {                                                                              \
-        auto&& _r = (expr);                                                        \
-        if (!_r.ok())                                                              \
-            return Err(fmt::format(fmt __VA_OPT__(, ) __VA_ARGS__, _r.error_v())); \
+#define TRY(expr)                     \
+    do                                \
+    {                                 \
+        auto&& _r = (expr);           \
+        if (!_r.ok())                 \
+            return Err(_r.error_v()); \
     } while (0)
 
-#define TRY_OR(expr, retval, func, fmt, ...)                    \
-    do                                                          \
-    {                                                           \
-        auto&& _r = (expr);                                     \
-        if (!_r.ok())                                           \
-        {                                                       \
-            func(fmt __VA_OPT__(, ) __VA_ARGS__, _r.error_v()); \
-            return retval;                                      \
-        }                                                       \
+#define TRY_MSG(expr, fmtstr, ...)                                                    \
+    do                                                                                \
+    {                                                                                 \
+        auto&& _r = (expr);                                                           \
+        if (!_r.ok())                                                                 \
+            return Err(fmt::format(fmtstr __VA_OPT__(, ) __VA_ARGS__, _r.error_v())); \
     } while (0)
 
-#define MUST_OK(expr, func, fmt, ...)                           \
-    do                                                          \
-    {                                                           \
-        auto&& _r = (expr);                                     \
-        if (!_r.ok())                                           \
-            func(fmt __VA_OPT__(, ) __VA_ARGS__, _r.error_v()); \
+#define MUST_OK(expr, on_err) \
+    do                        \
+    {                         \
+        auto&& _r = (expr);   \
+        if (!_r.ok())         \
+            on_err;           \
     } while (0)
 
 // shotout to the better c++ server for these helper structs
@@ -182,31 +179,6 @@ public:
 private:
     bool m_ok;
     E    m_err;
-};
-
-// custom structs for fmt::format
-template <typename T>
-struct fmt::formatter<Ok<T>>
-{
-    constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
-
-    template <typename FormatContext>
-    auto format(const Ok<T>& p, FormatContext& ctx) const
-    {
-        return fmt::format_to(ctx.out(), "{}", p.value);
-    }
-};
-
-template <typename E>
-struct fmt::formatter<Err<E>>
-{
-    constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
-
-    template <typename FormatContext>
-    auto format(const Err<E>& p, FormatContext& ctx) const
-    {
-        return fmt::format_to(ctx.out(), "{}", p.value);
-    }
 };
 
 template <typename E>
