@@ -458,9 +458,39 @@ bool hexstr_to_col(const std::string_view hex, uint32_t& out)
     return true;
 }
 
+#ifdef _WIN32
+static std::optional<fs::path> get_known_dir(REFKNOWNFOLDERID rfid, const char* backup_env)
+{
+    PWSTR widePath = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(rfid, 0, NULL, &widePath)))
+    {
+        // Get required buffer size
+        int         size = WideCharToMultiByte(CP_UTF8, 0, widePath, -1, NULL, 0, NULL, NULL);
+        std::string narrowPath(size, 0);
+        WideCharToMultiByte(CP_UTF8, 0, widePath, -1, &narrowPath[0], size, NULL, NULL);
+        CoTaskMemFree(widePath);
+
+        // Remove null terminator from string
+        narrowPath.pop_back();
+        return narrowPath;
+    }
+
+    const char* dir = std::getenv(backup_env);
+    if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
+        return fs::path(dir);
+
+    return nullopt;
+}
+
+static bool is_hidden_directory(const fs::directory_entry& e)
+{
+    const std::wstring& wpath = e.path().wstring();
+    DWORD               attrs = GetFileAttributesW(wpath.c_str());
+    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_HIDDEN);
+}
+
 bool is_system_dark_mode()
 {
-#if defined(_WIN32)
     DWORD value = 1;
     DWORD size  = sizeof(value);
     // AppsUseLightTheme == 0  -> dark mode
@@ -472,8 +502,83 @@ bool is_system_dark_mode()
                  &value,
                  &size);
     return value == 0;
+}
 
-#elif defined(__APPLE__)
+fs::path get_home_dir()
+{
+    if (const char* h = std::getenv("USERPROFILE"))
+        return h;
+
+    const char* d = std::getenv("HOMEDRIVE");
+    const char* p = std::getenv("HOMEPATH");
+    if (d && p)
+        return std::string(d) + p;
+
+    char buf[MAX_PATH];
+    if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_PROFILE, NULL, 0, buf)))
+        return buf;
+
+    die("Cannot determine home directory");
+}
+
+fs::path get_home_config_dir()
+{
+    auto p(get_known_dir(FOLDERID_AppData, "APPDATA"));
+    if (p)
+        return *p;
+    die("Failed to get %APPDATA% path");
+}
+
+fs::path get_home_cache_dir()
+{
+    auto p(get_known_dir(FOLDERID_LocalAppData, "LOCALAPPDATA"));
+    if (p)
+        return *p;
+    die("Failed to get %LOCALAPPDATA% path");
+}
+
+fs::path get_home_pictures_dir()
+{
+    auto p(get_known_dir(FOLDERID_Pictures, "_1"));
+    if (p)
+        return *p;
+
+    const char* dir = std::getenv("USERPROFILE");
+    if (dir != NULL && dir[0] != '\0')
+    {
+        fs::path pictures = fs::path(dir) / "Pictures";
+        if (fs::exists(pictures))
+            return pictures;
+    }
+
+    die("Failed to get Pictures directory path");
+}
+#else
+static fs::path get_known_dir(const char* xdg, const char* backup, bool search_xdg_user_dirs = true)
+{
+    const char* dir = std::getenv(xdg);
+    if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
+        return fs::path(dir);
+
+    if (search_xdg_user_dirs)
+    {
+        const auto& dirs = get_xdg_user_dirs();
+        if (dirs.find(xdg) != dirs.end())
+            return dirs.at(xdg);
+    }
+
+    return get_home_dir() / backup;
+}
+
+static bool is_hidden_directory(const fs::directory_entry& e)
+{
+    const std::string& name = e.path().filename().string();
+    return !name.empty() && name.front() == '.';
+}
+
+bool is_system_dark_mode()
+{
+#  ifdef __APPLE__
     // CFPreferencesCopyAppValue returns nullptr when no preference is set (= light)
     CFStringRef style =
         (CFStringRef)CFPreferencesCopyAppValue(CFSTR("AppleInterfaceStyle"), kCFPreferencesAnyApplication);
@@ -483,7 +588,7 @@ bool is_system_dark_mode()
     CFRelease(style);
     return dark;
 
-#elif defined(__linux__)
+#  else
     // 1. GSettings (GNOME / most DEs)
     if (FILE* f = popen("gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null", "r"))
     {
@@ -509,34 +614,16 @@ bool is_system_dark_mode()
 
     // 3. ~/.config/gtk-3.0/settings.ini
     // gtk-application-prefer-dark-theme=1
-    if (const char* home = std::getenv("HOME"))
-    {
-        std::ifstream ini(std::string(home) + "/.config/gtk-3.0/settings.ini");
-        for (std::string line; std::getline(ini, line);)
-            if (line.find("gtk-application-prefer-dark-theme") != std::string::npos &&
-                line.find('1') != std::string::npos)
-                return true;
-    }
-#endif
-
+    std::ifstream ini((get_home_dir() / ".config/gtk-3.0/settings.ini").string());
+    for (std::string line; std::getline(ini, line);)
+        if (line.find("gtk-application-prefer-dark-theme") != std::string::npos && line.find('1') != std::string::npos)
+            return true;
+#  endif
     return true;
 }
 
 fs::path get_home_dir()
 {
-#ifdef _WIN32
-    if (const char* h = std::getenv("USERPROFILE"))
-        return h;
-
-    const char* d = std::getenv("HOMEDRIVE");
-    const char* p = std::getenv("HOMEPATH");
-    if (d && p)
-        return std::string(d) + p;
-
-    char buf[MAX_PATH];
-    if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_PROFILE, NULL, 0, buf)))
-        return buf;
-#else
     if (const char* h = std::getenv("HOME"))
         return h;
 
@@ -544,9 +631,24 @@ fs::path get_home_dir()
     if (pw && pw->pw_dir)
         return pw->pw_dir;
 
-#endif
     die("Cannot determine home directory");
 }
+
+fs::path get_home_config_dir()
+{
+    return get_known_dir("XDG_CONFIG_HOME", ".config", false);
+}
+
+fs::path get_home_cache_dir()
+{
+    return get_known_dir("XDG_CACHE_HOME", ".cache");
+}
+
+fs::path get_home_pictures_dir()
+{
+    return get_known_dir("XDG_PICTURES_DIR", "Pictures");
+}
+#endif
 
 std::string expand_var(std::string ret)
 {
@@ -562,114 +664,6 @@ std::string expand_var(std::string ret)
     return ret;
 }
 
-fs::path get_home_config_dir()
-{
-#ifndef _WIN32
-    constexpr const char* xdg = "XDG_CONFIG_HOME";
-    const char*           dir = std::getenv(xdg);
-    if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
-        return fs::path(dir);
-
-    return get_home_dir() / ".config";
-#else
-    PWSTR widePath = nullptr;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &widePath)))
-    {
-        // Get required buffer size
-        int         size = WideCharToMultiByte(CP_UTF8, 0, widePath, -1, NULL, 0, NULL, NULL);
-        std::string narrowPath(size, 0);
-        WideCharToMultiByte(CP_UTF8, 0, widePath, -1, &narrowPath[0], size, NULL, NULL);
-        CoTaskMemFree(widePath);
-
-        // Remove null terminator from string
-        narrowPath.pop_back();
-        return narrowPath;
-    }
-    const char* dir = std::getenv("APPDATA");
-    if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
-        return fs::path(dir);
-    else
-        die("Failed to get %APPDATA% path");
-#endif
-}
-
-fs::path get_home_cache_dir()
-{
-#ifndef _WIN32
-    constexpr const char* xdg = "XDG_CACHE_HOME";
-    const char*           dir = std::getenv(xdg);
-    if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
-        return fs::path(dir);
-
-    const auto& dirs = get_xdg_user_dirs();
-    if (dirs.find(xdg) != dirs.end())
-        return dirs.at(xdg);
-
-    return get_home_dir() / ".cache";
-#else
-    PWSTR widePath = nullptr;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, NULL, &widePath)))
-    {
-        int         size = WideCharToMultiByte(CP_UTF8, 0, widePath, -1, NULL, 0, NULL, NULL);
-        std::string narrowPath(size, 0);
-        WideCharToMultiByte(CP_UTF8, 0, widePath, -1, &narrowPath[0], size, NULL, NULL);
-        CoTaskMemFree(widePath);
-
-        narrowPath.pop_back();  // remove null terminator
-        return narrowPath;
-    }
-
-    const char* dir = std::getenv("LOCALAPPDATA");
-    if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
-        return fs::path(dir);
-    else
-        die("Failed to get %LOCALAPPDATA% path");
-#endif
-}
-
-fs::path get_home_pictures_dir()
-{
-#ifndef _WIN32
-    constexpr const char* xdg = "XDG_PICTURES_DIR";
-    const char*           dir = std::getenv(xdg);
-    if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
-        return fs::path(dir);
-
-    const auto& dirs = get_xdg_user_dirs();
-    if (dirs.find(xdg) != dirs.end())
-        return dirs.at(xdg);
-
-    return get_home_dir() / "Pictures";
-#else
-    PWSTR widePath = nullptr;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Pictures, 0, NULL, &widePath)))
-    {
-        // Get required buffer size
-        int size = WideCharToMultiByte(CP_UTF8, 0, widePath, -1, NULL, 0, NULL, NULL);
-
-        std::string narrowPath(size, 0);
-        WideCharToMultiByte(CP_UTF8, 0, widePath, -1, &narrowPath[0], size, NULL, NULL);
-
-        CoTaskMemFree(widePath);
-
-        // Remove null terminator from string
-        narrowPath.pop_back();
-
-        return narrowPath;
-    }
-
-    const char* dir = std::getenv("USERPROFILE");
-    if (dir != NULL && dir[0] != '\0')
-    {
-        fs::path pictures = fs::path(dir) / "Pictures";
-        if (fs::exists(pictures))
-            return pictures;
-    }
-
-    die("Failed to get Pictures directory path");
-#endif
-}
-
 fs::path get_config_dir()
 {
     return get_home_config_dir() / "oshot";
@@ -679,21 +673,6 @@ fs::path get_cache_dir()
 {
     return get_home_cache_dir() / "oshot";
 }
-
-#ifdef _WIN32
-static bool is_hidden_directory(const fs::directory_entry& e)
-{
-    const std::wstring& wpath = e.path().wstring();
-    DWORD               attrs = GetFileAttributesW(wpath.c_str());
-    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_HIDDEN);
-}
-#else
-static bool is_hidden_directory(const fs::directory_entry& e)
-{
-    const std::string& name = e.path().filename().string();
-    return !name.empty() && name.front() == '.';
-}
-#endif
 
 fs::path get_font_path(const std::string& font)
 {
