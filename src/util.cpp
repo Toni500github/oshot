@@ -479,7 +479,7 @@ static std::optional<fs::path> get_known_dir(REFKNOWNFOLDERID rfid, const char* 
     if (dir != NULL && dir[0] != '\0' && fs::exists(dir))
         return fs::path(dir);
 
-    return nullopt;
+    return std::nullopt;
 }
 
 static bool is_hidden_directory(const fs::directory_entry& e)
