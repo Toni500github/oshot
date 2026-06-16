@@ -1,109 +1,211 @@
-# oshot
+<p align="center">
+  <img src="oshot.png" width="10%" />
+</p>
 
-A simple and lightweight tool for extracting text from a screenshot/image (on the fly)
+<h1 align="center">oshot</h1>
 
-<!--
-## Optimization
+<p align="center">
+Fast, lightweight, cross-platform screenshot text extractor.<br>
+Capture any screen region, extract text, and decode QR/barcodes locally.
+</p>
 
-- **Screen capture uses the fastest available hardware path (X11, Windows)**: DXGI Desktop Duplication on Windows acquires frames directly from the GPU's front buffer via a staging texture mapped for CPU read, avoiding any GDI software rasterization; XGetImage on X11 takes a direct 32bpp packed-pixel fast path (a single `memcpy`-equivalent row scan), falling back to the `XGetPixel` generic path only when the pixel format does not match the expected mask layout. The screen is then kept as a single RGBA buffer in memory for the entire session; all cropping, annotation rendering, and encoding operate on that buffer without re-capturing.
+<p align="center">
+  <img src="https://img.shields.io/github/languages/top/Toni500github/oshot?logo=cplusplusbuilder&label=%20" />
+  <img src="https://img.shields.io/github/actions/workflow/status/Toni500github/oshot/build.yml" />
+</p>
 
-- The fullscreen overlay is a **borderless windowed surface** rather than exclusive fullscreen, avoiding implicit GPU mode switches and the display state corruption they can leave behind on abnormal exit. Can also be changed via configuration file.
+Select a screen region, run OCR or scan a QR/barcode, and copy the result to your clipboard. No uploads, no browser workflow, no bulky image editor. Useful for copying text from apps that block selection, extracting content from VMs or remote desktops, reading text in videos or slides, or decoding QR codes on screen.
 
-- **OCR, barcode scanning, and font loading are all on-demand**: none are initialized at startup; Tesseract and ZBar are only configured when the user triggers an extraction, and the Tesseract engine instance is reused across extractions within a session, re-initializing only when the model or data path changes. Tesseract page segmentation mode is additionally dispatched in **O(1)** via area and aspect ratio heuristics before OCR runs, avoiding full-page layout analysis on small single-word or single-line regions.
+Supports Windows, Linux, and macOS.
 
-- **Annotation geometry is rendered entirely through ImGui draw lists on the GPU**, with CPU-side pixel rasterization only used when baking annotations into the saved image. The rasterizer uses **Bresenham's line algorithm** `O(max(Δx, Δy))` and a **midpoint circle algorithm** `O(radius)` rather than naive scanline fills.
+## Demo
 
-- **Pencil stroke point reduction uses a squared-distance threshold**, comparing `dx²+dy² > 4.0` rather than computing `sqrt`, keeping the per-mouse-move check O(1) with no transcendental function call and keeping the point array small regardless of how long the user draws.
+https://github.com/user-attachments/assets/8367490a-f7b0-4320-86e9-8ef8764a56b5
 
-- **Grayscale conversion for barcode scanning uses integer-only ITU-R BT.601 weights** `(77r + 150g + 29b) >> 8` rather than floating-point luminance coefficients, keeping the O(w×h) pixel walk entirely in the integer pipeline.
+https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 
-- **Monitor detection is O(monitors)**, querying only the list of attached outputs and comparing cursor coordinates against their bounding rectangles, never touching pixel data.
+## Features
 
-- **The font cache is an O(log n) lookup** keyed on `(path, size)`, ensuring repeated renders of the same annotated text at the same size never trigger atlas rebuilds or filesystem access.
+- Region selection with resize handles, full-screen select (`Ctrl+A`), and capture delay
+- OCR via Tesseract with multiple language models and configurable segmentation mode
+- In-app OCR model downloader (specify a GitHub link and model name)
+- QR/barcode decoding via ZBar
+- Editable OCR output before copying
+- Annotation tools: arrow, line, rectangle, circle, filled shapes, numbered counters, text, freehand pencil
+- Color picker with zoom loupe, undo support
+- **Really Customizable** with Preferences window with light/dark/auto/classic or custom themes
+- Font configuration, output filename format, behavior and rendering options
+- Borderless overlay window, always on top
 
-- **Image downscaling for oversized sources uses `stbir_resize_uint8_linear`**, a cache-friendly separable linear filter that processes pixels in a single O(w×h) pass with SIMD-friendly memory access patterns.
+## Keyboard Shortcuts
 
-- VSync is **user-configurable**, allowing the overlay to drop to uncapped rendering on systems where the compositor introduces latency.
+| Shortcut       | Action                  |
+| -------------- | ----------------------- |
+| `Ctrl+C`       | Copy selection as image |
+| `Ctrl+S`       | Save selection as PNG   |
+| `Ctrl+A`       | Select full image       |
+| `Ctrl+Z`       | Undo                    |
+| `Ctrl+G`       | Toggle handles          |
+| `Ctrl+E`       | Toggle text editing     |
+| `Esc`          | Close                   |
 
-- External dependencies are kept minimal: image loading, resizing, and writing use single-header **stb libraries** compiled only into the translation units that need them, with no transitive system library requirements beyond what the platform already provides.
--->
-
-## Dependencies
+## Installation
 ### Linux
-Package names may vary by distribution and package manager.
-If a package is not found, try searching by its base name (e.g., `libglfw3-dev` → `glfw`).
 
-- `libx11-dev`
-- `libxcb-dev`
-- `libpng-dev`
-- `libglfw3-dev`
-- `libtesseract` (including necessary language models, e.g `tesseract-ocr-eng`)
-- `libzbar-dev`
-- `libappindicator3-dev`
-- `grim` (Wayland only)
-- `wl-clipboard` (Wayland only)
+>[!NOTE]
+For wayland platforms, `grim` and `wl-clipboard` are required for screen capture and clipboard support.
+ 
+Download the package that fits your setup from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page:
 
-## Building
-### Make
+| Package | Description |
+| ------- | ----------- |
+| `oshot-appimage-<version>.zip` | Recommended. Self-contained, no system dependencies required |
+| `oshot-debian-package-<version>.deb` | For Debian/Ubuntu and derivatives |
+| `oshot-linux-<version>.zip` | Generic binary, requires dependencies to be installed |
+
+#### Arch Linux (AUR)
+
 ```bash
-$ git clone https://github.com/Toni500github/oshot/
-$ cd oshot/
-$ make
-# You can move it in a custom directory in your $PATH (preferably in the home)
-$ ./build/release/oshot
+yay -S oshot-bin
 ```
-### CMake (ninja)
+
+---
+### Windows
+
+Download `oshot-windows-<version>.zip` from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page. Includes bundled English OCR data. Extract and run `oshot.exe`.
+
+---
+### macOS
+
+Download from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page:
+
+| Package | Description |
+| ------- | ----------- |
+| `oshot-macos-arm64-<version>.zip` | Apple Silicon |
+| `oshot-macos-x86_64-<version>.zip` | Intel |
+
+Both include a `.dmg` bundle and bundled English OCR data.
+
+## Usage
+
+```
+oshot              # captures a screenshot and launches interactive overlay
+oshot --tray       # start minimized to tray
+oshot -f <path>    # open image file
+```
+
+## Build from Source
+
+Requires a C++20 compiler.
+
+### Dependencies
+
+**All platforms:** `glfw3`, `tesseract`, `leptonica`, `zbar`, `OpenGL`, `libpng`
+
+**Linux extras:** `libx11`, `libxcb`, `libxrandr`, `gio-2.0`, `gtk+-3.0`, `libappindicator3` / `ayatana-appindicator3`
+
+**macOS frameworks:** `Cocoa`, `Metal`, `QuartzCore`, `CoreGraphics`, `IOKit`
+
+**Windows:** `d3d11`, `dxgi`, `shcore`, `ws2_32`
+
+#### Ubuntu / Debian
+
 ```bash
-$ git clone https://github.com/Toni500github/oshot/
-$ cd oshot/
-$ mkdir build2 && cd build2
-$ cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release
-$ ninja
-# You can move it in a custom directory in your $PATH (preferably in home)
-$ ./oshot
+sudo apt-get install -y \
+  build-essential pkg-config cmake \
+  libx11-dev libxcb1-dev libxrandr-dev \
+  libglfw3-dev libpng-dev \
+  libtesseract-dev libleptonica-dev \
+  libzbar-dev \
+  libgtk-3-dev libayatana-appindicator3-dev
+```
+
+#### Arch Linux
+
+```bash
+sudo pacman -S --needed \
+  base-devel cmake \
+  libx11 libxcb libxrandr \
+  glfw libpng \
+  tesseract leptonica \
+  zbar \
+  gtk3 libappindicator-gtk3
+```
+
+#### macOS (Homebrew)
+
+```bash
+brew install cmake glfw tesseract leptonica zbar
+```
+
+#### Windows (MSYS2 UCRT64)
+
+```bash
+pacman -S --needed \
+  mingw-w64-ucrt-x86_64-toolchain \
+  mingw-w64-ucrt-x86_64-ninja \
+  mingw-w64-ucrt-x86_64-cmake \
+  mingw-w64-ucrt-x86_64-glfw \
+  mingw-w64-ucrt-x86_64-libpng \
+  mingw-w64-ucrt-x86_64-tesseract-ocr \
+  mingw-w64-ucrt-x86_64-zbar
+```
+
+### Build
+
+```bash
+git clone https://github.com/Toni500github/oshot/
+cd oshot
+make
+./build/release/oshot
+```
+
+Or with CMake + Ninja:
+
+```bash
+mkdir build && cd build
+cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release
+ninja
+./oshot
 ```
 
 ## Troubleshooting
-### Windows
-If when starting oshot, it starts to flick a screen black (or it won't launch), try the following steps:
-1. Download [MesaForWindows-x64-20.1.8.7z](https://downloads.fdossena.com/geth.php?r=mesa64-latest)
-2. Extract the `opengl32.dll` file into the directory where `oshot.exe` is located
-3. Try to launch it again
 
-### Linux
-- If oshot gives linking library errors, when trying to run it, then try to use the AppImage release instead.
-- If you try to copy the text into the clipboard and doesn't work, try to launch `oshot --tray` and then from the system tray you launch oshot
+### Windows: flicker on launch / app fails to start
 
-If still errors, please open an [Issue](https://github.com/Toni500github/oshot/issues) and take a screenshot/paste the text of the error appearing in the console when executing oshot
+Download [MesaForWindows](https://downloads.fdossena.com/geth.php?r=mesa64-latest), extract `opengl32.dll` beside `oshot.exe`, and relaunch.
 
-### NixOS
-On NixOS, TESSDATA_PREFIX will need to be set for oshot to find the languages.
-You have two ways to do this, depending on how you installed tesseract.
+### Linux: missing/mismatch runtime libraries
 
-If you installed tesseract in `environment.systemPackages`, set the following variable:
+Use the AppImage build.
+
+### Linux: clipboard issues
+
+Run `oshot --tray` and launch captures from the tray icon instead.
+
+### NixOS: Tesseract can't find language data
+
+`TESSDATA_PREFIX` must be set explicitly. If tesseract is in `environment.systemPackages`:
+
 ```nix
 environment.sessionVariables = {
-    # Change tesseract to tesseract5 if that's the package you used.
     "TESSDATA_PREFIX" = "${pkgs.tesseract}/share/tessdata";
 };
 ```
 
-If you installed tesseract in `users.users.<user>.packages`, you could use the above method, but it's better you use home-manager.
-If you have home-manager, add this in your home.nix:
+If it is in `users.users.<user>.packages`, use home-manager instead:
+
 ```nix
 systemd.user.sessionVariables = {
-    # Change tesseract to tesseract5 if that's the package you used.
     "TESSDATA_PREFIX" = "${pkgs.tesseract}/share/tessdata";
 };
 ```
+>[!Note]
+>The home-manager solution requires systemd. If `echo $TESSDATA_PREFIX` returns a valid path but OCR still fails, check `ocr-path` in your config file.
 
-> **__Notice:__** If you're not using systemd, the home-manager solution won't work. We assume you'll be able to find a replacement yourself if you're not using systemd.
+### Still broken?
 
-If this doesn't work, while `echo $TESSDATA_PREFIX` returns a valid result, check your config file.
+Open an [issue](https://github.com/Toni500github/oshot/issues) with your OS version, the exact error message, and steps to reproduce.
 
-## Usage
-https://github.com/user-attachments/assets/8367490a-f7b0-4320-86e9-8ef8764a56b5
-<!--https://github.com/user-attachments/assets/ac505de6-0818-4d67-bb51-064d86f1f970-->
-
-### Useful use-case (old footage)
-https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
+## Contributing
+Bug reports, focused pull requests, and feature proposals (open an issue first) are welcome: https://github.com/Toni500github/oshot/issues
