@@ -145,6 +145,46 @@ static bool get_cursor_monitor_xrandr(Display* display, int& out_x, int& out_y, 
     return found;
 }
 
+static std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
+{
+    std::vector<uint8_t> out(size_t(width) * height * 4);
+
+    // 32bpp packed pixels
+    // Faster method than XGetPixel() if possible
+    if (image && image->bits_per_pixel == 32 && image->data && image->bytes_per_line >= width * 4)
+    {
+        if ((image->red_mask == 0x00ff0000ul) && (image->green_mask == 0x0000ff00ul) &&
+            (image->blue_mask == 0x000000fful))
+        {
+            for (int y = 0; y < height; ++y)
+            {
+                const uint32_t* px =
+                    reinterpret_cast<const uint32_t*>(image->data) + size_t(y) * image->bytes_per_line / 4;
+
+                uint8_t* dst = out.data() + size_t(y) * width * 4;
+                for (int x = 0; x < width; ++x)
+                {
+                    rgba_t c = rgba_t::from_argb(px[x]);
+                    c.a      = 0xFF;
+                    store_rgba(dst + x * 4, c);
+                }
+            }
+            return out;
+        }
+    }
+
+    for (int y = 0; y < height; ++y)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            rgba_t c = rgba_t::from_argb(XGetPixel(image, x, y));
+            c.a      = 0xFF;
+            store_rgba(out.data() + (y * width + x) * 4, c);
+        }
+    }
+    return out;
+}
+
 Result<capture_result_t> capture_full_screen_x11()
 {
     capture_result_t result;

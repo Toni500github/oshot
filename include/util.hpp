@@ -1,8 +1,6 @@
 #ifndef _UTIL_HPP_
 #define _UTIL_HPP_
 
-#include <cstdint>
-#include <cstdio>
 #include <filesystem>
 #include <string>
 #include <utility>
@@ -19,10 +17,7 @@
 namespace fs = std::filesystem;
 enum class SavingOp;
 
-#if defined(__linux__)
-#  include <X11/Xlib.h>
-#  include <X11/Xutil.h>
-#elif defined(_WIN32)
+#ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
 #  include <combaseapi.h>
 #  include <knownfolders.h>
@@ -271,9 +266,6 @@ static inline const std::string version_infos = fmt::format(
     GIT_COMMIT_DATE,
     GIT_TAG);
 
-#ifdef __linux__
-std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height);
-#endif
 std::vector<uint8_t> encode_to_png(const capture_result_t& cap);
 
 std::string replace_str(std::string& str, const std::string_view from, const std::string_view to);
