@@ -523,7 +523,7 @@ fs::path get_home_dir()
 
 fs::path get_home_config_dir()
 {
-    auto p(get_known_dir(FOLDERID_AppData, "APPDATA"));
+    auto p(get_known_dir(FOLDERID_RoamingAppData, "APPDATA"));
     if (p)
         return *p;
     die("Failed to get %APPDATA% path");

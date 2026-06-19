@@ -39,15 +39,14 @@ https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 
 ## Keyboard Shortcuts
 
-| Shortcut       | Action                  |
+| Shortcut | Action |
 | -------------- | ----------------------- |
-| `Ctrl+C`       | Copy selection as image |
-| `Ctrl+S`       | Save selection as PNG   |
-| `Ctrl+A`       | Select full image       |
-| `Ctrl+Z`       | Undo                    |
-| `Ctrl+G`       | Toggle handles          |
-| `Ctrl+E`       | Toggle text editing     |
-| `Esc`          | Close                   |
+| `Ctrl+C/S` | Copy/Save selection as image |
+| `Ctrl+A` ` | Select full image |
+| `Ctrl+Z` ` | Undo |
+| `Ctrl+G` ` | Toggle handles |
+| `Ctrl+E` ` | Toggle text editing |
+| `Esc` | Close |
 
 ## Installation
 ### Linux
@@ -72,7 +71,8 @@ yay -S oshot-bin
 ---
 ### Windows
 
-Download `oshot-windows-<version>.zip` from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page. Includes bundled English OCR data. Extract and run `oshot.exe`.
+Download `oshot-windows-<version>.zip` from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page.\
+Includes bundled .dlls and English OCR data. Extract and run `oshot.exe`.
 
 ---
 ### macOS
@@ -173,7 +173,7 @@ ninja
 
 ### Windows: flicker on launch / app fails to start
 
-Download [MesaForWindows](https://downloads.fdossena.com/geth.php?r=mesa64-latest), extract `opengl32.dll` beside `oshot.exe`, and relaunch.
+Download [MesaForWindows.7z](https://downloads.fdossena.com/geth.php?r=mesa64-latest), extract `opengl32.dll` beside `oshot.exe`, and relaunch.
 
 ### Linux: missing/mismatch runtime libraries
 
