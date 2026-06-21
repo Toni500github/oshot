@@ -1,7 +1,7 @@
 /*
   Formatting library for C++
 
-  Copyright (c) 2012 - present, Victor Zverovich
+  Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors
 
   Permission is hereby granted, free of charge, to any person obtaining
   a copy of this software and associated documentation files (the
@@ -325,6 +325,9 @@ class uint128 {
   friend constexpr auto operator&(const uint128& lhs, const uint128& rhs)
       -> uint128 {
     return {lhs.hi_ & rhs.hi_, lhs.lo_ & rhs.lo_};
+  }
+  friend constexpr auto operator~(const uint128& n) -> uint128 {
+    return {~n.hi_, ~n.lo_};
   }
   friend FMT_CONSTEXPR auto operator+(const uint128& lhs, const uint128& rhs)
       -> uint128 {
@@ -3888,7 +3891,7 @@ template <typename OutputIt, typename Char> class generic_context {
 
   constexpr auto out() const -> iterator { return out_; }
 
-  void advance_to(iterator it) {
+  FMT_CONSTEXPR void advance_to(iterator it) {
     if (!detail::is_back_insert_iterator<iterator>()) out_ = it;
   }
 

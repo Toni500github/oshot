@@ -1,6 +1,6 @@
 // Formatting library for C++ - the base API for char/UTF-8
 //
-// Copyright (c) 2012 - present, Victor Zverovich
+// Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors
 // All rights reserved.
 //
 // For the license information refer to format.h.
@@ -21,7 +21,7 @@
 #endif
 
 // The fmt library version in the form major * 10000 + minor * 100 + patch.
-#define FMT_VERSION 120101
+#define FMT_VERSION 120200
 
 // Detect compiler versions.
 #if defined(__clang__) && !defined(__ibmxl__)
@@ -224,9 +224,14 @@
 #  define FMT_PRAGMA_CLANG(x)
 #endif
 
+#ifndef FMT_USE_OPTIMIZE_PRAGMA
+#  define FMT_USE_OPTIMIZE_PRAGMA 1
+#endif
+
 // Enable minimal optimizations for more compact code in debug mode.
 FMT_PRAGMA_GCC(push_options)
-#if !defined(__OPTIMIZE__) && !defined(__CUDACC__) && !defined(FMT_MODULE)
+#if FMT_USE_OPTIMIZE_PRAGMA && !defined(__OPTIMIZE__) && \
+    !defined(__CUDACC__) && !defined(FMT_MODULE)
 FMT_PRAGMA_GCC(optimize("Og"))
 #endif
 
@@ -484,6 +489,14 @@ inline FMT_CONSTEXPR auto get_container(OutputIt it) ->
   };
   return *accessor(it).container;
 }
+
+template <typename T, typename Enable = void>
+struct is_contiguous : std::false_type {};
+template <typename T>
+struct is_contiguous<T, void_t<decltype(std::declval<T&>().data()),
+                               decltype(std::declval<T&>().size()),
+                               decltype(std::declval<T&>()[size_t()])>>
+    : std::true_type {};
 }  // namespace detail
 
 // Parsing-related public API and forward declarations.
@@ -587,9 +600,6 @@ using string_view = basic_string_view<char>;
 template <typename T> class basic_appender;
 using appender = basic_appender<char>;
 
-// Checks whether T is a container with contiguous storage.
-template <typename T> struct is_contiguous : std::false_type {};
-
 class context;
 template <typename OutputIt, typename Char> class generic_context;
 template <typename Char> class parse_context;
@@ -607,6 +617,8 @@ template <typename Char>
 using buffered_context =
     conditional_t<std::is_same<Char, char>::value, context,
                   generic_context<basic_appender<Char>, Char>>;
+
+template <typename T> struct is_contiguous : detail::is_contiguous<T> {};
 
 template <typename Context> class basic_format_arg;
 template <typename Context> class basic_format_args;
@@ -2581,7 +2593,7 @@ template <typename Context> class basic_format_args {
   FMT_CONSTEXPR auto get(int id) const -> format_arg {
     auto arg = format_arg();
     if (!is_packed()) {
-      if (id < max_size()) arg = args_[id];
+      if (unsigned(id) < unsigned(max_size())) arg = args_[id];
       return arg;
     }
     if (unsigned(id) >= detail::max_packed_args) return arg;
