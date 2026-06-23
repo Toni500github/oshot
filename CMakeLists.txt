@@ -171,7 +171,6 @@ elseif(APPLE)
 
     # Add Metal render loop source
     target_sources(${PROJECT_NAME} PRIVATE src/main_tool_metal.mm)
-
     target_link_options(
         ${PROJECT_NAME}
         PRIVATE $<$<CXX_COMPILER_ID:AppleClang>:-stdlib=libc++>
@@ -225,18 +224,28 @@ target_link_libraries(${PROJECT_NAME} PRIVATE fmt)
 
 file(GLOB IMGUI_SOURCES src/libs/imgui/*.cpp)
 if(APPLE)
-    list(APPEND IMGUI_SOURCES src/libs/imgui/imgui_impl_metal.mm)
+    file(GLOB IMGUI_APPLE_SOURCE src/libs/imgui/*.mm)
+    list(APPEND IMGUI_SOURCES IMGUI_APPLE_SOURCE)
 endif()
 
-add_library(imgui STATIC ${IMGUI_SOURCES})
+add_library(imgui SHARED ${IMGUI_SOURCES})
 
 enable_lto(imgui)
 
 target_include_directories(imgui PUBLIC include/libs/imgui)
 target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLAD)
 target_link_libraries(imgui PUBLIC ${GLFW_TARGET})
+set_target_properties(imgui PROPERTIES VERSION 1.92.9 SOVERSION 1)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
+
+# -----------------------------
+# cimgui library (C-ABI plugins only)
+# -----------------------------
+
+add_library(cimgui SHARED src/libs/cimgui/cimgui.cpp)
+target_link_libraries(cimgui PUBLIC imgui)
+set_target_properties(cimgui PROPERTIES VERSION 1 SOVERSION 1)
 
 # -----------------------------
 # Tray library (integrated from its own CMakeLists.txt)

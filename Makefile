@@ -72,6 +72,7 @@ CXXFLAGS    += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iin
 
 LIBS := \
   $(BUILDDIR)/liboshot_imgui.so \
+  $(BUILDDIR)/liboshot_cimgui.so \
   $(BUILDDIR)/libfmt.a \
   $(BUILDDIR)/libclip.a \
   $(BUILDDIR)/libtray.a \
@@ -97,6 +98,9 @@ $(BUILDDIR)/liboshot_imgui.so: | $(BUILDDIR)
 
 $(BUILDDIR)/libfmt.a: | $(BUILDDIR)
 	$(MAKE) -C src/libs/fmt BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
+
+$(BUILDDIR)/liboshot_cimgui.so: $(BUILDDIR)/liboshot_imgui.so | $(BUILDDIR)
+	$(MAKE) -C src/libs/cimgui BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
 
 $(BUILDDIR)/toml.o: | $(BUILDDIR)
 	$(MAKE) -C src/libs/toml++ BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
