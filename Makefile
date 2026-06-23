@@ -68,10 +68,10 @@ SRC          = $(wildcard src/*.cpp)
 OBJ          = $(patsubst src/%.cpp,$(BUILDDIR)/%.o,$(SRC))
 LDFLAGS     += -L$(BUILDDIR) $(LTO_FLAGS)
 LDLIBS      += $(LIBS) `pkg-config --static --libs glfw3 tesseract zbar`
-CXXFLAGS    += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\" -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS
+CXXFLAGS    += $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=hidden -Iinclude -Iinclude/libs -std=$(CXXSTD) $(VARS) -DVERSION=\"$(VERSION)\"
 
 LIBS := \
-  $(BUILDDIR)/libimgui.a \
+  $(BUILDDIR)/liboshot_imgui.so \
   $(BUILDDIR)/libfmt.a \
   $(BUILDDIR)/libclip.a \
   $(BUILDDIR)/libtray.a \
@@ -92,31 +92,31 @@ $(BUILDDIR)/%.o: src/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(BUILDDIR)/libimgui.a: | $(BUILDDIR)
+$(BUILDDIR)/liboshot_imgui.so: | $(BUILDDIR)
 	$(MAKE) -C src/libs/imgui BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
 
 $(BUILDDIR)/libfmt.a: | $(BUILDDIR)
 	$(MAKE) -C src/libs/fmt BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
 
-$(BUILDDIR)/toml.o:
+$(BUILDDIR)/toml.o: | $(BUILDDIR)
 	$(MAKE) -C src/libs/toml++ BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
 
-$(BUILDDIR)/libclip.a:
+$(BUILDDIR)/libclip.a: | $(BUILDDIR)
 	$(MAKE) -C src/libs/clip BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
 
-$(BUILDDIR)/libtray.a:
+$(BUILDDIR)/libtray.a: | $(BUILDDIR)
 	$(MAKE) -C src/libs/tray BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
 
-$(BUILDDIR)/libnvdialog.a:
+$(BUILDDIR)/libnvdialog.a: | $(BUILDDIR)
 	$(MAKE) -C src/libs/nvdialog BUILDDIR=$(BUILDDIR) DEBUG=$(DEBUG)
 
-$(BUILDDIR)/tinyfiledialogs.o:
+$(BUILDDIR)/tinyfiledialogs.o: | $(BUILDDIR)
 	$(MAKE) -C src/libs/tinyfiledialogs BUILDDIR=$(BUILDDIR)
 
-$(BUILDDIR)/libtiny-process-library.a:
+$(BUILDDIR)/libtiny-process-library.a: | $(BUILDDIR)
 	$(MAKE) -C src/libs/tiny-process-library BUILDDIR=$(BUILDDIR) CXXSTD=$(CXXSTD) DEBUG=$(DEBUG)
 
-$(BUILDDIR)/getopt.o:
+$(BUILDDIR)/getopt.o: | $(BUILDDIR)
 	$(MAKE) -C src/libs/getopt_port BUILDDIR=$(BUILDDIR)
 
 genver:
@@ -140,4 +140,4 @@ distclean:
 updatever:
 	sed -i "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml scripts/*) CMakeLists.txt compile_flags.txt
 
-.PHONY: $(TARGET) updatever distclean clean imgui fmt tpl toml getopt-port clip tray dist all
+.PHONY: $(TARGET) updatever distclean clean dist all

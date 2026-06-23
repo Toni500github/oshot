@@ -1,32 +1,33 @@
-CC      ?= gcc
+LIBKIND    := static
+LIBNAME    := libnvdialog
+VISIBILITY := default
+
+CFLAGS += -I../../../include/libs/nvdialog -Iimpl -Ibackend -O3 \
+          -Wall -Wextra -Wconversion -Winline -Wno-sign-conversion \
+          -Werror=format -Werror=format-security -Werror=write-strings \
+          -DNVDIALOG_MAXBUF=4096 -DNVD_EXPORT_SYMBOLS -DNVD_STATIC_LINKAGE=1
+
 PKGCONF ?= pkg-config
 
-CFLAGS  := -std=c11 -Wall -Wextra -Wconversion -Winline -Werror=format -Werror=format-security -Werror=write-strings -Wno-sign-conversion
-CFLAGS  += -I../../../include/libs/nvdialog $(LTO_FLAGS) -Iimpl -Ibackend -O3 -fvisibility=default -DNVDIALOG_MAXBUF=4096 -DNVD_EXPORT_SYMBOLS -DNVD_STATIC_LINKAGE=1
-CFLAGS  += `$(PKGCONF) --cflags gtk+-3.0 dbus-1`
-LDFLAGS := `$(PKGCONF) --libs gtk+-3.0 dbus-1`
+# Sources common to every platform.
+SRC := $(wildcard *.c) $(wildcard src/*.c)
 
-LIBNAME    := libnvdialog.a
-COMMON_SRC := $(wildcard src/*.c)
-SRC        := $(wildcard *.c backend/gtk/*.c)
-OBJ        := $(SRC:%.c=%.o)
-OBJ        := $(OBJ:%.c=%.o)
+UNAME_S := $(shell uname -s)
 
-LIBNAME := libnvdialog.a
+ifeq ($(UNAME_S),Darwin)
+    SRC    += $(wildcard backend/cocoa/*.m)
+    CFLAGS += -DNVD_USE_COCOA=1 -fno-objc-arc
+    # Whatever links libnvdialog.a must additionally add:
+    #   -framework AppKit -framework Cocoa -framework Foundation -framework UserNotifications
+else ifeq ($(findstring NT,$(UNAME_S)),NT)
+    SRC += $(wildcard backend/win32/*.c)
+    # Whatever links libnvdialog.a must additionally add:
+    #   -lcomdlg32 -lshell32 -luser32 -lgdi32 -lole32
+else
+    SRC    += $(wildcard backend/gtk/*.c)
+    CFLAGS += `$(PKGCONF) --cflags gtk+-3.0 dbus-1`
+    # Whatever links libnvdialog.a must additionally add:
+    #   `pkg-config --libs gtk+-3.0 dbus-1`
+endif
 
-all: $(LIBNAME)
-
-$(LIBNAME): $(OBJ)
-	ar rcs $@ $^
-	ranlib $@
-	mv -f $@ ../../../$(BUILDDIR)/$@
-
-# universal compile rule
-$(OBJDIR)/%.o: src/%.c
-	mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-clean:
-	rm -rf $(OBJ) $(LIBNAME)
-
-.PHONY: all clean
+include ../../../mk/common.mk

@@ -1,15 +1,8 @@
-CXX	?= g++
-CXXSTD	?= c++20
-SRC 	 = toml.cpp
-TARGET   = toml.o
-CXXFLAGS = -I../../../include/libs $(LTO_FLAGS) -fvisibility-inlines-hidden -fvisibility=default -fPIC -std=$(CXXSTD)
+LIBKIND    := object
+SRC         = toml.cpp
+TARGET      = toml.o
+VISIBILITY := default
 
-all: $(TARGET)
+CXXFLAGS += -I../../../include/libs
 
-$(TARGET):
-	$(CXX) $(SRC) $(CXXFLAGS) -c -o ../../../$(BUILDDIR)/$@
-
-clean:
-	rm -rf ../../../$(BUILDDIR)/toml++/$(TARGET)
-
-.PHONY: $(TARGET) clean all
+include ../../../mk/common.mk

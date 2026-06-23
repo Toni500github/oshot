@@ -1,15 +1,9 @@
-CC	?= gcc
-CSTD	?= c11
-SRC 	 = tinyfiledialogs.c
-TARGET   = tinyfiledialogs.o
-CFLAGS 	 = -I../../../include/libs $(LTO_FLAGS) -O3 -fvisibility=default -fPIC -std=$(CSTD)
+LIBKIND    := object
+SRC         = tinyfiledialogs.c
+TARGET      = tinyfiledialogs.o
+VISIBILITY := default
+CSTD       ?= c11
 
-all: $(TARGET)
+CFLAGS += -I../../../include/libs -O3
 
-$(TARGET):
-	$(CC) $(SRC) $(CFLAGS) -c -o ../../../$(BUILDDIR)/$@
-
-clean:
-	rm -rf ../../../$(BUILDDIR)/$(TARGET)
-
-.PHONY: $(TARGET) clean all
+include ../../../mk/common.mk
