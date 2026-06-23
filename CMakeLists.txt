@@ -204,6 +204,13 @@ elseif(UNIX)
     )
 endif()
 
+set_target_properties(
+    ${PROJECT_NAME}
+    PROPERTIES
+        BUILD_RPATH "$ORIGIN/../lib;${CMAKE_BINARY_DIR}"
+        INSTALL_RPATH "$ORIGIN/../lib"
+)
+
 # -----------------------------
 # fmt library
 # -----------------------------
@@ -224,8 +231,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE fmt)
 
 file(GLOB IMGUI_SOURCES src/libs/imgui/*.cpp)
 if(APPLE)
-    file(GLOB IMGUI_APPLE_SOURCE src/libs/imgui/*.mm)
-    list(APPEND IMGUI_SOURCES IMGUI_APPLE_SOURCE)
+    list(APPEND IMGUI_SOURCES src/libs/imgui/imgui_impl_metal.mm)
 endif()
 
 add_library(imgui SHARED ${IMGUI_SOURCES})
@@ -235,7 +241,15 @@ enable_lto(imgui)
 target_include_directories(imgui PUBLIC include/libs/imgui)
 target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLAD)
 target_link_libraries(imgui PUBLIC ${GLFW_TARGET})
-set_target_properties(imgui PROPERTIES VERSION 1.92.9 SOVERSION 1)
+
+set_target_properties(
+    imgui
+    PROPERTIES
+        CXX_VISIBILITY_PRESET default
+        VISIBILITY_INLINES_HIDDEN OFF
+        VERSION 1.92.9
+        SOVERSION 1
+)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
 
@@ -244,8 +258,17 @@ target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
 # -----------------------------
 
 add_library(cimgui SHARED src/libs/cimgui/cimgui.cpp)
+
+target_include_directories(imgui PUBLIC include/libs include/libs/cimgui)
 target_link_libraries(cimgui PUBLIC imgui)
-set_target_properties(cimgui PROPERTIES VERSION 1 SOVERSION 1)
+set_target_properties(
+    cimgui
+    PROPERTIES
+        CXX_VISIBILITY_PRESET default
+        VISIBILITY_INLINES_HIDDEN OFF
+        VERSION 1
+        SOVERSION 1
+)
 
 # -----------------------------
 # Tray library (integrated from its own CMakeLists.txt)
@@ -352,6 +375,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE clip)
 # -----------------------------
 # nvdialog (integrated from its own CMakeLists.txt)
 # -----------------------------
+
 file(GLOB NVD_COMMON_SOURCES src/libs/nvdialog/*.c)
 
 if(WIN32)
@@ -470,7 +494,13 @@ target_link_libraries(${PROJECT_NAME} PRIVATE tiny-process-library)
 # Install
 # -----------------------------
 
-install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin COMPONENT runtime)
+add_dependencies(${PROJECT_NAME} cimgui imgui)
+
+install(
+    TARGETS ${PROJECT_NAME} imgui cimgui
+    RUNTIME DESTINATION bin COMPONENT runtime
+    LIBRARY DESTINATION lib COMPONENT runtime
+)
 
 install(
     FILES LICENSE
