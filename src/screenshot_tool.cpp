@@ -869,8 +869,8 @@ void ScreenshotTool::HandleColorPickerInput()
                     ImVec2(loupe_origin.x + k_loupe_px, loupe_origin.y + k_loupe_px),
                     IM_COL32(80, 80, 80, 220),
                     2.0f,
-                    0,
-                    1.5f);
+                    1.5f,
+                    ImDrawFlags_None);
 
         ImGui::Spacing();
         ImGui::ColorButton("##loupe_swatch", c.to_imvec4(), ImGuiColorEditFlags_NoPicker, ImVec2(32, 32));
@@ -1066,7 +1066,7 @@ void ScreenshotTool::DrawSelectionBorder()
 
     // Draw selection border
     draw_list->AddRect(
-        ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h), IM_COL32(0, 150, 255, 255), 0.0f, 0, 1.0f);
+        ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h), IM_COL32(0, 150, 255, 255), 0.0f, 1.0f, ImDrawFlags_None);
 
     if (!g_config->Runtime.enable_handles)
         return;
@@ -1082,7 +1082,7 @@ void ScreenshotTool::DrawSelectionBorder()
             color = IM_COL32(255, 255, 0, 255);  // Yellow
 
         draw_list->AddRectFilled(min, max, color);
-        draw_list->AddRect(min, max, IM_COL32(255, 255, 255, 255), 0.0f, 0, 2.0f);
+        draw_list->AddRect(min, max, IM_COL32(255, 255, 255, 255), 0.0f, 2.0f, ImDrawFlags_None);
     };
 
     // Corner handles
@@ -2393,7 +2393,7 @@ void ScreenshotTool::DrawAnnotations()
             ImVec2 min(std::min(p1.x, p2.x), std::min(p1.y, p2.y));
             ImVec2 max(std::max(p1.x, p2.x), std::max(p1.y, p2.y));
             filled ? draw_list->AddRectFilled(min, max, ann.color.to_abgr(), 0.0f, 0)
-                   : draw_list->AddRect(min, max, ann.color.to_abgr(), 0.0f, 0, t);
+                   : draw_list->AddRect(min, max, ann.color.to_abgr(), t, 0.0f, 0);
         };
 
     auto draw_circle_or_filled =
@@ -2433,8 +2433,8 @@ void ScreenshotTool::DrawAnnotations()
             draw_list->AddPolyline(reinterpret_cast<const ImVec2*>(ann.points.data()),
                                    int(ann.points.size()),
                                    ann.color.to_abgr(),
-                                   ImDrawFlags_None,
-                                   t);
+                                   t,
+                                   ImDrawFlags_None);
         }
     };
 
