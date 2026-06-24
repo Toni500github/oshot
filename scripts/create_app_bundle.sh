@@ -26,7 +26,7 @@ install_dylibbundler() {
 
 main() {
     if [ -z "$1" ]; then
-        echo "Usage: $0 <binary_file> [output_name]"
+        echo "Usage: $0 <binary_file> [output_name] [lib_search_dir]"
         exit 1
     fi
 
@@ -37,6 +37,8 @@ main() {
     # The release binary
     check_file "$1"
     check_file oshot.png
+
+    LIB_SEARCH_DIR="${3:-$(dirname "$1")}"
 
     APP_NAME="oshot"
     APP_DIR="${APP_NAME}.app"
@@ -56,7 +58,8 @@ main() {
     dylibbundler -od -b \
         -x "${MACOS}/${APP_NAME}" \
         -d "${FRAMEWORKS}/" \
-        -p @executable_path/../Frameworks/
+        -p @executable_path/../Frameworks/ \
+        -s "$LIB_SEARCH_DIR"
 
     # Convert oshot.png -> oshot.icns for the Dock icon
     if command -v sips &>/dev/null 2>&1 && command -v iconutil &>/dev/null 2>&1; then

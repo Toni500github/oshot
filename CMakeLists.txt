@@ -204,11 +204,17 @@ elseif(UNIX)
     )
 endif()
 
+if(APPLE)
+    set(_rpath_origin "@loader_path")
+else()
+    set(_rpath_origin "$ORIGIN")
+endif()
+
 set_target_properties(
     ${PROJECT_NAME}
     PROPERTIES
-        BUILD_RPATH "$ORIGIN/../lib;${CMAKE_BINARY_DIR}"
-        INSTALL_RPATH "$ORIGIN/../lib"
+        BUILD_RPATH "${_rpath_origin}/../lib;$<TARGET_FILE_DIR:imgui>"
+        INSTALL_RPATH "${_rpath_origin}/../lib"
 )
 
 # -----------------------------
