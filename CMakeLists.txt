@@ -242,6 +242,17 @@ target_include_directories(imgui PUBLIC include/libs/imgui)
 target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLAD)
 target_link_libraries(imgui PUBLIC ${GLFW_TARGET})
 
+if(APPLE)
+    find_library(METAL_FRAMEWORK Metal REQUIRED)
+    find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
+    find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
+    target_link_libraries(imgui PUBLIC
+        ${METAL_FRAMEWORK}
+        ${FOUNDATION_FRAMEWORK}
+        ${QUARTZCORE_FRAMEWORK}
+    )
+endif()
+
 set_target_properties(
     imgui
     PROPERTIES
@@ -259,7 +270,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
 
 add_library(cimgui SHARED src/libs/cimgui/cimgui.cpp)
 
-target_include_directories(imgui PUBLIC include/libs include/libs/cimgui)
+target_include_directories(cimgui PUBLIC include/libs include/libs/cimgui)
 target_link_libraries(cimgui PUBLIC imgui)
 set_target_properties(
     cimgui
