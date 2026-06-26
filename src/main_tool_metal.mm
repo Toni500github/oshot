@@ -65,15 +65,14 @@ static id<MTLTexture> create_metal_texture(id<MTLDevice> device, const uint8_t* 
 
 int run_main_tool()
 {
-    id<MTLDevice>  device;
-    ScreenshotTool ss_tool;
+    id<MTLDevice> device;
 
     // vsync is controlled via the CAMetalLayer's displaySyncEnabled property instead.
-    ss_tool.SetOnCancel([&]() {
+    g_ss_tool.SetOnCancel([&]() {
         fmt::println(stderr, "Canceled screenshot");
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
-    ss_tool.SetOnComplete([&](SavingOp op, const Result<capture_result_t>& result) {
+    g_ss_tool.SetOnComplete([&](SavingOp op, const Result<capture_result_t>& result) {
         MUST_OK(result, {
             error("Screenshot failed: {}", result.error_v());
             glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -84,17 +83,17 @@ int run_main_tool()
 
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
-    ss_tool.SetOnImageReload([&](const capture_result_t& cap) {
+    g_ss_tool.SetOnImageReload([&](const capture_result_t& cap) {
         // Release old texture automatically via ARC
         id<MTLTexture> newTex = create_metal_texture(device, cap.data.data(), cap.w, cap.h);
 
-        ss_tool.SetBackendTexture((__bridge void*)newTex);
+        g_ss_tool.SetBackendTexture((__bridge void*)newTex);
     });
 
     // Setup Screenshot Tool
     // Calling it before starting the window so that
     // we can capture at the exact moment we launch
-    MUST_OK(ss_tool.Start(), {
+    MUST_OK(g_ss_tool.Start(), {
         error("Failed to start capture: {}", _r.error_v());
         return EXIT_FAILURE;
     });
@@ -171,7 +170,7 @@ int run_main_tool()
 
     // Start the overlay window
     {
-        const Result<>& res = ss_tool.StartWindow();
+        const Result<>& res = g_ss_tool.StartWindow();
         MUST_OK(res, {
             error("Failed to start tool window: {}", res.error_v());
             if (!g_is_systray)
@@ -181,7 +180,7 @@ int run_main_tool()
     }
 
     // Create Metal texture from screenshot buffer
-    capture_result_t& cap = ss_tool.GetRawScreenshot();
+    capture_result_t& cap = g_ss_tool.GetRawScreenshot();
 
     MTLTextureDescriptor* desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
                                                                                     width:cap.w
@@ -195,35 +194,35 @@ int run_main_tool()
     [metalTexture replaceRegion:region mipmapLevel:0 withBytes:cap.data.data() bytesPerRow:cap.w * 4];
 
     // Pass to ImGui
-    ss_tool.SetBackendTexture((__bridge void*)metalTexture);
+    g_ss_tool.SetBackendTexture((__bridge void*)metalTexture);
 
-    ss_tool.SetToolTexture(
+    g_ss_tool.SetToolTexture(
         ToolType::Rectangle,
         (__bridge void*)create_metal_texture(device, ICON_SQUARE_RGBA, ICON_SQUARE_W, ICON_SQUARE_H));
-    ss_tool.SetToolTexture(
+    g_ss_tool.SetToolTexture(
         ToolType::RectangleFilled,
         (__bridge void*)create_metal_texture(device, ICON_RECT_FILLED_RGBA, ICON_RECT_FILLED_W, ICON_RECT_FILLED_H));
-    ss_tool.SetToolTexture(ToolType::CircleFilled,
-                           (__bridge void*)create_metal_texture(
-                               device, ICON_CIRCLE_FILLED_RGBA, ICON_CIRCLE_FILLED_W, ICON_CIRCLE_FILLED_H));
-    ss_tool.SetToolTexture(
+    g_ss_tool.SetToolTexture(ToolType::CircleFilled,
+                             (__bridge void*)create_metal_texture(
+                                 device, ICON_CIRCLE_FILLED_RGBA, ICON_CIRCLE_FILLED_W, ICON_CIRCLE_FILLED_H));
+    g_ss_tool.SetToolTexture(
         ToolType::ToggleTextTools,
         (__bridge void*)create_metal_texture(device, ICON_TEXT_TOOLS_RGBA, ICON_TEXT_TOOLS_W, ICON_TEXT_TOOLS_H));
-    ss_tool.SetToolTexture(ToolType::Line,
-                           (__bridge void*)create_metal_texture(device, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H));
-    ss_tool.SetToolTexture(
+    g_ss_tool.SetToolTexture(ToolType::Line,
+                             (__bridge void*)create_metal_texture(device, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H));
+    g_ss_tool.SetToolTexture(
         ToolType::Circle, (__bridge void*)create_metal_texture(device, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H));
-    ss_tool.SetToolTexture(ToolType::Arrow,
-                           (__bridge void*)create_metal_texture(device, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H));
-    ss_tool.SetToolTexture(
+    g_ss_tool.SetToolTexture(ToolType::Arrow,
+                             (__bridge void*)create_metal_texture(device, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H));
+    g_ss_tool.SetToolTexture(
         ToolType::Pencil, (__bridge void*)create_metal_texture(device, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H));
-    ss_tool.SetToolTexture(ToolType::Text,
-                           (__bridge void*)create_metal_texture(device, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H));
+    g_ss_tool.SetToolTexture(ToolType::Text,
+                             (__bridge void*)create_metal_texture(device, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H));
 
     // Render loop
     MTLRenderPassDescriptor* rpd = [MTLRenderPassDescriptor new];
 
-    while (!glfwWindowShouldClose(window) && ss_tool.IsActive())
+    while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive())
     {
         glfwPollEvents();
 
@@ -252,7 +251,7 @@ int run_main_tool()
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        ss_tool.RenderOverlay();
+        g_ss_tool.RenderOverlay();
 
         ImGui::Render();
 

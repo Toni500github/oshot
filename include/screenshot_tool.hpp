@@ -10,10 +10,9 @@
 #include <functional>
 #include <map>
 #include <mutex>
+#include <unordered_map>
 #include <utility>
 
-#include "cache.hpp"
-#include "config.hpp"
 #include "imgui/imgui.h"
 #include "imgui/imgui_internal.h"
 #include "screen_capture.hpp"
@@ -187,23 +186,6 @@ struct ErrorContext
 class ScreenshotTool
 {
 public:
-    ScreenshotTool()
-        : m_inputs{ g_config->File.ocr_path,
-                    g_config->File.ocr_model,
-                    g_config->File.ocr_get_repo,
-#if defined(__unix__) && !defined(__APPLE__)
-                    get_config_dir() / "models",
-#else
-                    "./models",
-#endif
-                    {},
-                    "",
-                    {},
-                    "",
-                    "" },
-          m_current_color(rgba_t(g_cache->GetValue(CacheEntry::AnnColor, 0xFF0000FF)))
-    {}
-
     Result<>             Start();
     Result<>             StartWindow();
     Result<ImTextureRef> CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h);
@@ -215,6 +197,8 @@ public:
     {
         m_tool_textures[idx(type)]._TexID = static_cast<ImTextureID>(size_t(tex));
     }
+
+    auto& GetImGuiIDTexts() { return m_imgui_id_texts; }
 
     void SetOnImageReload(std::function<void(const capture_result_t&)> fn) { m_on_image_reload = std::move(fn); }
 
@@ -323,6 +307,7 @@ private:
     std::vector<annotation_t>                      m_annotations;
     annotation_t                                   m_current_annotation;
     rgba_t                                         m_current_color;
+    std::unordered_map<std::string, std::string&>  m_imgui_id_texts;
     std::array<float, idx(ToolType::Count)>        m_tool_thickness;
     bool                                           m_is_drawing       = false;
     bool                                           m_is_color_picking = false;
@@ -363,6 +348,8 @@ private:
         return has;
     }
 };
+
+extern ScreenshotTool g_ss_tool;
 
 extern std::deque<std::string> g_dropped_paths;
 

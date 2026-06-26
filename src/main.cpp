@@ -67,6 +67,7 @@ struct GLFWwindow;
 std::deque<std::string> g_dropped_paths;
 std::unique_ptr<Config> g_config;
 std::unique_ptr<Cache>  g_cache;
+ScreenshotTool          g_ss_tool;
 bool                    g_is_systray = false;
 int                     g_scr_w{}, g_scr_h{};
 Clipboard               g_clipboard(SessionType::Unknown);

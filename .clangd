@@ -1,0 +1,14 @@
+CompileFlags:
+  Add: [-Wall, -Wextra]   # flags shared by all files go in the top (unconditional) fragment
+---
+If:
+  PathMatch: .*\.h$
+CompileFlags:
+  Remove: [-std=*]        # strip any -std= picked up from compile_flags.txt
+  Add: [-xc, -std=c11]    # -xc forces C, since a bare .h is ambiguous
+---
+If:
+  PathExclude: .*\.h$
+CompileFlags:
+  Remove: [-std=*]
+  Add: [-std=c++20]

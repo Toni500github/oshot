@@ -28,6 +28,7 @@
 #include "imgui/imgui_impl_opengl3_loader.h"
 #include "imgui/imgui_internal.h"
 #include "imgui/imgui_stdlib.h"
+#include "plugins/oshot_plugin.h"
 #include "screen_capture.hpp"
 #include "tiny-process-library/process.hpp"
 #include "tinyfiledialogs.h"
@@ -380,6 +381,24 @@ Result<> ScreenshotTool::StartWindow()
         SetError(m_download_errors, OcrDownloadError::InvalidPath, "No such directory or path");
     else if (!fs::is_directory(m_inputs.ocr_model_downloaded_path))
         SetError(m_download_errors, OcrDownloadError::InvalidPath, "Not a directory");
+
+    m_inputs = { g_config->File.ocr_path,
+                 g_config->File.ocr_model,
+                 g_config->File.ocr_get_repo,
+#if defined(__unix__) && !defined(__APPLE__)
+                 get_config_dir() / "models",
+#else
+                 "./models",
+#endif
+                 {},
+                 "",
+                 {},
+                 "",
+                 "" };
+    m_current_color = (rgba_t(g_cache->GetValue(CacheEntry::AnnColor, 0xFF0000FF)));
+
+    m_imgui_id_texts.insert_or_assign(OCR_OUTPUT, m_inputs.ocr_results.data);
+    m_imgui_id_texts.insert_or_assign(ZBAR_OUTPUT, m_inputs.barcode_text);
 
     return Ok();
 }
@@ -1065,8 +1084,12 @@ void ScreenshotTool::DrawSelectionBorder()
     UpdateCursor();
 
     // Draw selection border
-    draw_list->AddRect(
-        ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h), IM_COL32(0, 150, 255, 255), 0.0f, 1.0f, ImDrawFlags_None);
+    draw_list->AddRect(ImVec2(sel_x, sel_y),
+                       ImVec2(sel_x + sel_w, sel_y + sel_h),
+                       IM_COL32(0, 150, 255, 255),
+                       0.0f,
+                       1.0f,
+                       ImDrawFlags_None);
 
     if (!g_config->Runtime.enable_handles)
         return;
@@ -1371,7 +1394,7 @@ void ScreenshotTool::DrawOcrTools()
         }
     }
 
-    ImGui::InputTextMultiline("##source",
+    ImGui::InputTextMultiline("##" OCR_OUTPUT,
                               &m_inputs.ocr_results.data,
                               ImVec2(-1, ImGui::GetTextLineHeight() * 8),
                               g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
@@ -1419,7 +1442,7 @@ void ScreenshotTool::DrawBarDecodeTools()
         ImGui::TreePop();
     }
 
-    ImGui::InputTextMultiline("##barcode",
+    ImGui::InputTextMultiline("##" ZBAR_OUTPUT,
                               &m_inputs.barcode_text,
                               ImVec2(-1, ImGui::GetTextLineHeight() * 8),
                               g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);

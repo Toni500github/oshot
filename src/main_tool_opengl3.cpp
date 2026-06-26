@@ -103,13 +103,12 @@ int run_main_tool()
     // Setup Screenshot Tool
     // Calling it before starting the window so that
     // we can capture at the exact moment we launch
-    ScreenshotTool ss_tool;
-    ss_tool.SetOnCancel([&]() {
+    g_ss_tool.SetOnCancel([&]() {
         fmt::println(stderr, "Canceled screenshot");
         glfwSwapInterval(0);  // Disable vsync
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
-    ss_tool.SetOnComplete([&](SavingOp op, const Result<capture_result_t>& result) {
+    g_ss_tool.SetOnComplete([&](SavingOp op, const Result<capture_result_t>& result) {
         MUST_OK(result, {
             error("Screenshot failed: {}", result.error_v());
             glfwSwapInterval(0);  // Disable vsync
@@ -123,7 +122,7 @@ int run_main_tool()
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
 
-    MUST_OK(ss_tool.Start(), {
+    MUST_OK(g_ss_tool.Start(), {
         error("Failed to start capture: {}", _r.error_v());
         return EXIT_FAILURE;
     });
@@ -212,7 +211,7 @@ int run_main_tool()
 
     // Start the overlay window
     {
-        const Result<>& res = ss_tool.StartWindow();
+        const Result<>& res = g_ss_tool.StartWindow();
         MUST_OK(res, {
             error("Failed to start tool window: {}", res.error_v());
             if (!g_is_systray)
@@ -221,7 +220,7 @@ int run_main_tool()
         });
     }
 
-    while (!glfwWindowShouldClose(window) && ss_tool.IsActive())
+    while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive())
     {
         // Poll and handle events (inputs, window resize, etc.)
         // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your
@@ -243,7 +242,7 @@ int run_main_tool()
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        ss_tool.RenderOverlay();
+        g_ss_tool.RenderOverlay();
 
         // Rendering
         ImGui::Render();

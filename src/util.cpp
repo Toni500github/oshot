@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "cache.hpp"
 #include "clipboard.hpp"
 #include "config.hpp"
 #include "dotenv.hpp"
