@@ -8,6 +8,9 @@
 #include "toml++/toml.hpp"
 #include "util.hpp"
 
+// util.hpp
+std::string expand_var(std::string ret);
+
 enum class CacheEntry
 {
     AnnColor,
