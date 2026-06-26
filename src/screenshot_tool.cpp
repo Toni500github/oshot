@@ -338,6 +338,24 @@ Result<> ScreenshotTool::Start()
 
 Result<> ScreenshotTool::StartWindow()
 {
+    m_inputs = { g_config->File.ocr_path,
+                 g_config->File.ocr_model,
+                 g_config->File.ocr_get_repo,
+#if defined(__unix__) && !defined(__APPLE__)
+                 get_config_dir() / "models",
+#else
+                 "./models",
+#endif
+                 {},
+                 "",
+                 {},
+                 "",
+                 "" };
+    m_current_color = (rgba_t(g_cache->GetValue(CacheEntry::AnnColor, 0xFF0000FF)));
+
+    m_imgui_id_texts.insert_or_assign(OCR_OUTPUT, &m_inputs.ocr_results.data);
+    m_imgui_id_texts.insert_or_assign(ZBAR_OUTPUT, &m_inputs.barcode_text);
+
     m_state = ToolState::Selecting;
 
     m_show_text_tools = g_config->File.show_text_tools;
@@ -381,24 +399,6 @@ Result<> ScreenshotTool::StartWindow()
         SetError(m_download_errors, OcrDownloadError::InvalidPath, "No such directory or path");
     else if (!fs::is_directory(m_inputs.ocr_model_downloaded_path))
         SetError(m_download_errors, OcrDownloadError::InvalidPath, "Not a directory");
-
-    m_inputs = { g_config->File.ocr_path,
-                 g_config->File.ocr_model,
-                 g_config->File.ocr_get_repo,
-#if defined(__unix__) && !defined(__APPLE__)
-                 get_config_dir() / "models",
-#else
-                 "./models",
-#endif
-                 {},
-                 "",
-                 {},
-                 "",
-                 "" };
-    m_current_color = (rgba_t(g_cache->GetValue(CacheEntry::AnnColor, 0xFF0000FF)));
-
-    m_imgui_id_texts.insert_or_assign(OCR_OUTPUT, m_inputs.ocr_results.data);
-    m_imgui_id_texts.insert_or_assign(ZBAR_OUTPUT, m_inputs.barcode_text);
 
     return Ok();
 }

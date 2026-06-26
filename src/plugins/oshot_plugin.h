@@ -10,7 +10,7 @@ extern "C" {
 
 #define OSHOT_API_VERSION 1u
 
-#define OCR_OUTPUT "ocr_output"
+#define OCR_OUTPUT  "ocr_output"
 #define ZBAR_OUTPUT "barcode_output"
 
 typedef enum
@@ -34,13 +34,16 @@ typedef struct
     size_t      len;
 } oshot_str_t;
 
+oshot_str_t oshot_str_new(const char* str, size_t n);
+void        oshot_str_free(oshot_str_t* str);
+
 uint32_t oshot_get_abi_version(void);
 bool     oshot_get_plugin_data_dir(oshot_str_t* ret);
 bool     oshot_get_text(const char* imgui_id, oshot_str_t* ret);
-void     oshot_set_text(const char* imgui_id, const oshot_str_t value);
+void     oshot_set_text(const char* imgui_id, oshot_str_t value);
 
-void oshot_display_msg(const OSLogLevel lvl, const oshot_str_t str);
-void oshot_log(const OSLogLevel lvl, const oshot_str_t str);
+void oshot_display_msg(OSLogLevel lvl, oshot_str_t str);
+void oshot_log(OSLogLevel lvl, oshot_str_t str);
 
 typedef struct
 {
@@ -49,6 +52,7 @@ typedef struct
     uint8_t* rgba;
 } oshot_capture_t;
 oshot_capture_t oshot_get_capture(bool render_anns);
+void            oshot_capture_free(oshot_capture_t* cap);
 
 /* ------------------------------------------------------------------
  * Plugin descriptor.
