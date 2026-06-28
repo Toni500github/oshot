@@ -42,10 +42,10 @@ https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 | Shortcut | Action |
 | -------------- | ----------------------- |
 | `Ctrl+C/S` | Copy/Save selection as image |
-| `Ctrl+A` ` | Select full image |
-| `Ctrl+Z` ` | Undo |
-| `Ctrl+G` ` | Toggle handles |
-| `Ctrl+E` ` | Toggle text editing |
+| `Ctrl+A` | Select full image |
+| `Ctrl+Z` | Undo |
+| `Ctrl+G` | Toggle handles |
+| `Ctrl+E` | Toggle text editing |
 | `Esc` | Close |
 
 ## Installation
