@@ -226,6 +226,11 @@ public:
         }
     }
 
+    const toml::array* GetValueArray(const std::string_view value) const
+    {
+        return m_tbl.at_path(value).as_array();
+    }
+
     /**
      * Get the theme style variable and return a rgba type value
      * @param value The value we want

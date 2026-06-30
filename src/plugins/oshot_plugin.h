@@ -28,22 +28,13 @@ typedef enum
     OSHOT_LOG_ERROR,
 } OSLogLevel;
 
-typedef struct
+typedef enum
 {
-    const char* p;
-    size_t      len;
-} oshot_str_t;
-
-oshot_str_t oshot_str_new(const char* str, size_t n);
-void        oshot_str_free(oshot_str_t* str);
-
-uint32_t oshot_get_abi_version(void);
-bool     oshot_get_plugin_data_dir(oshot_str_t* ret);
-bool     oshot_get_text(const char* imgui_id, oshot_str_t* ret);
-void     oshot_set_text(const char* imgui_id, oshot_str_t value);
-
-void oshot_display_msg(OSLogLevel lvl, oshot_str_t str);
-void oshot_log(OSLogLevel lvl, oshot_str_t str);
+    OSHOT_VAL_STRING,
+    OSHOT_VAL_INT64,
+    OSHOT_VAL_BOOL,
+    OSHOT_VAL_DOUBLE
+} OSValueKind;
 
 typedef struct
 {
@@ -51,8 +42,24 @@ typedef struct
     int32_t  h;
     uint8_t* rgba;
 } oshot_capture_t;
-oshot_capture_t oshot_get_capture(bool render_anns);
-void            oshot_capture_free(oshot_capture_t* cap);
+
+typedef struct
+{
+    const char* p;
+    size_t      len;
+} oshot_str_t;
+
+typedef struct
+{
+    OSValueKind kind;
+    union
+    {
+        oshot_str_t s;
+        int64_t     i;
+        bool        b;
+        double      d;
+    };
+} oshot_value_t;
 
 /* ------------------------------------------------------------------
  * Plugin descriptor.
@@ -70,8 +77,55 @@ typedef struct
     void (*on_ocr_done)(void* state);
 } oshot_plugin_t;
 
-/* Must return a pointer to a static, process-lifetime oshot_plugin_t,
- * not something allocated per call. */
+/* ------------------------------------------------------------------
+ * ABI / identity
+ * ------------------------------------------------------------------ */
+uint32_t oshot_get_abi_version(void);
+bool     oshot_get_plugin_data_dir(oshot_str_t* ret);
+
+/* ------------------------------------------------------------------
+ * oshot_str_t lifecycle
+ * ------------------------------------------------------------------ */
+oshot_str_t oshot_str_new(const char* str, size_t n);
+void        oshot_str_free(oshot_str_t* str);
+
+/* ------------------------------------------------------------------
+ * Logging / host messaging
+ * ------------------------------------------------------------------ */
+void oshot_display_msg(OSLogLevel lvl, oshot_str_t str);
+void oshot_log(OSLogLevel lvl, oshot_str_t str);
+void oshot_debug(oshot_str_t str);  // oshot_log(DEBUG, str);
+
+/* ------------------------------------------------------------------
+ * Config (plugin namespace only)
+ * ------------------------------------------------------------------ */
+oshot_str_t oshot_config_get_string(const char* key, oshot_str_t fallback);
+bool        oshot_config_get_bool(const char* key, bool fallback);
+int64_t     oshot_config_get_int64(const char* key, int64_t fallback);
+float       oshot_config_get_float(const char* key, float fallback);
+double      oshot_config_get_double(const char* key, double fallback);
+size_t      oshot_config_get_array(const char* key, oshot_value_t** out, size_t max);
+
+// Only frees OSHOT_VAL_STRING members
+void oshot_value_array_free(oshot_value_t* arr, size_t n);
+
+/* ------------------------------------------------------------------
+ * ImGui-bound text buffers
+ * ------------------------------------------------------------------ */
+bool oshot_get_text(const char* imgui_id, oshot_str_t* ret);
+void oshot_set_text(const char* imgui_id, oshot_str_t value);
+
+/* ------------------------------------------------------------------
+ * Capture acquisition
+ * ------------------------------------------------------------------ */
+oshot_capture_t oshot_get_capture(void);
+void            oshot_capture_free(oshot_capture_t* cap);
+
+/* ------------------------------------------------------------------
+ * Plugin descriptor entry point
+ * Must return a pointer to a static, process-lifetime oshot_plugin_t,
+ * not something allocated per call.
+ * ------------------------------------------------------------------ */
 oshot_plugin_t* oshot_host_get_plugin(void);
 
 #ifdef __cplusplus

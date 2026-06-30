@@ -8,7 +8,7 @@
 
 CMAKE       ?= cmake
 PREFIX      ?= /usr
-DEBUG       ?= 1
+DEBUG       ?= 0
 WINDOWS_CMD ?= 0
 JOBS        := $(shell echo $(MAKEFLAGS) | grep -oP '(?<=-j)\d+')
 JOBS        ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
