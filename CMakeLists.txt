@@ -245,7 +245,7 @@ add_library(imgui SHARED ${IMGUI_SOURCES})
 enable_lto(imgui)
 
 target_include_directories(imgui PUBLIC include/libs/imgui)
-target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLAD)
+target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLAD IMGUI_DISABLE_OBSOLETE_FUNCTIONS)
 target_link_libraries(imgui PUBLIC ${GLFW_TARGET})
 
 if(APPLE)
