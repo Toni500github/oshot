@@ -7,10 +7,7 @@
 #include <unordered_map>
 
 #include "fmt/format.h"
-
-// util.hpp
-std::string expand_var(std::string ret);
-bool        hexstr_to_col(const std::string_view hex, uint32_t& out);
+#include "util.hpp"
 
 #define TOML_HEADER_ONLY 0
 #include "toml++/toml.hpp"
@@ -226,10 +223,7 @@ public:
         }
     }
 
-    const toml::array* GetValueArray(const std::string_view value) const
-    {
-        return m_tbl.at_path(value).as_array();
-    }
+    const toml::array* GetValueArray(const std::string_view value) const { return m_tbl.at_path(value).as_array(); }
 
     /**
      * Get the theme style variable and return a rgba type value

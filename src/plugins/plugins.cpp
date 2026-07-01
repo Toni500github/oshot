@@ -10,8 +10,8 @@
 
 struct oshot_host_api_t
 {
-    uint32_t    abi_version = OSHOT_API_VERSION;
-    oshot_plugin_t plugin = {};
+    uint32_t       abi_version = OSHOT_API_VERSION;
+    oshot_plugin_t plugin      = { "test" };
 } g_api;
 
 /* ------------------------------------------------------------------
@@ -76,6 +76,27 @@ void oshot_log(OSLogLevel lvl, oshot_str_t str)
 void oshot_debug(oshot_str_t str)
 {
     oshot_log(OSLogLevel::OSHOT_LOG_DEBUG, std::move(str));
+}
+
+void oshot_display_msg_s(OSLogLevel lvl, const char* str)
+{
+    oshot_str_t s = oshot_str_new(str, strlen(str));
+    oshot_display_msg(lvl, s);
+    oshot_str_free(&s);
+}
+
+void oshot_log_s(OSLogLevel lvl, const char* str)
+{
+    oshot_str_t s = oshot_str_new(str, strlen(str));
+    oshot_log(lvl, s);
+    oshot_str_free(&s);
+}
+
+void oshot_debug_s(const char* str)
+{
+    oshot_str_t s = oshot_str_new(str, strlen(str));
+    oshot_debug(s);
+    oshot_str_free(&s);
 }
 
 /* ------------------------------------------------------------------
@@ -147,8 +168,7 @@ size_t oshot_config_get_array(const char* key, oshot_value_t** out, size_t max)
                 val.d    = el.as_floating_point()->get();
                 break;
 
-            default:
-                continue;  // unsupported TOML type: skip, don't consume a slot
+            default: continue;  // unsupported TOML type: skip, don't consume a slot
         }
         i++;
     }

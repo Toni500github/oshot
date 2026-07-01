@@ -67,8 +67,8 @@ typedef struct
  * ---------------------------------------------------------------- */
 typedef struct
 {
-    const char* name;
     uint32_t    abi_version;
+    const char* name;
     uint32_t    capabilities; /* OR of oshot_capabilities_t, informational only */
 
     void* (*init)(void);
@@ -95,6 +95,11 @@ void        oshot_str_free(oshot_str_t* str);
 void oshot_display_msg(OSLogLevel lvl, oshot_str_t str);
 void oshot_log(OSLogLevel lvl, oshot_str_t str);
 void oshot_debug(oshot_str_t str);  // oshot_log(DEBUG, str);
+
+// convinience ig
+void oshot_display_msg_s(OSLogLevel lvl, const char* str);
+void oshot_log_s(OSLogLevel lvl, const char* str);
+void oshot_debug_s(const char* str);  // oshot_log(DEBUG, str);
 
 /* ------------------------------------------------------------------
  * Config (plugin namespace only)

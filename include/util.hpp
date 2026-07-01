@@ -270,6 +270,7 @@ std::vector<uint8_t> encode_to_png(const capture_result_t& cap);
 
 std::string replace_str(std::string& str, const std::string_view from, const std::string_view to);
 std::string select_image();
+std::string expand_var(std::string ret);
 std::string col_to_hexstr(const rgba_t& col);
 
 bool acquire_tray_lock();

@@ -213,9 +213,36 @@ endif()
 set_target_properties(
     ${PROJECT_NAME}
     PROPERTIES
+        CXX_VISIBILITY_PRESET default
+        VISIBILITY_INLINES_HIDDEN OFF
         BUILD_RPATH "${_rpath_origin}/../lib;$<TARGET_FILE_DIR:imgui>"
         INSTALL_RPATH "${_rpath_origin}/../lib"
 )
+
+# -----------------------------
+# oshot's plugin library
+# -----------------------------
+add_library(oshot_plugin SHARED src/plugins/plugins.cpp)
+
+enable_lto(oshot_plugin)
+
+target_include_directories(oshot_plugin PUBLIC include/libs)
+target_include_directories(oshot_plugin PUBLIC include/)
+target_compile_definitions(oshot_plugin PRIVATE VERSION="${PROJECT_VERSION}")
+target_compile_features(oshot_plugin PUBLIC cxx_std_20)
+
+target_link_libraries(oshot_plugin PUBLIC fmt)
+set_target_properties(
+    oshot_plugin
+    PROPERTIES
+        CXX_VISIBILITY_PRESET default
+        VISIBILITY_INLINES_HIDDEN OFF
+        VERSION 1
+        SOVERSION 1
+)
+
+
+target_link_libraries(${PROJECT_NAME} PRIVATE oshot_plugin)
 
 # -----------------------------
 # fmt library
@@ -388,6 +415,26 @@ set_target_properties(
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE clip)
+
+# -----------------------------
+# dylib library (integrated from its own CMakeLists.txt)
+# -----------------------------
+
+file(GLOB DYLIB_SOURCES src/libs/dylib/*.cpp)
+add_library(dylib STATIC ${DYLIB_SOURCES})
+
+if(UNIX)
+    target_link_libraries(dylib PRIVATE dl)
+endif()
+
+target_include_directories(dylib PUBLIC include/libs/)
+target_compile_features(dylib PRIVATE cxx_std_20)
+set_target_properties(
+    dylib
+    PROPERTIES CXX_STANDARD 20 CXX_EXTENSIONS OFF CXX_STANDARD_REQUIRED ON
+)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE dylib)
 
 # -----------------------------
 # nvdialog (integrated from its own CMakeLists.txt)

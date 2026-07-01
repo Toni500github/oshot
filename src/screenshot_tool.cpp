@@ -256,6 +256,63 @@ static std::unordered_map<std::string, int>& color_name_map()
     return map;
 }
 
+static void load_plugins()
+{
+    const fs::path pluginDir = get_config_dir() / "plugins";
+    fs::create_directories(pluginDir);
+
+    for (const auto& plugin_dir : fs::directory_iterator(pluginDir, fs::directory_options::skip_permission_denied))
+    {
+        if (!plugin_dir.is_directory())
+            continue;
+
+        const std::string expected = "lib" + plugin_dir.path().filename().string() + dylib::decorations::os_default().suffix;
+
+        for (const auto& entry :
+             fs::directory_iterator(plugin_dir.path(), fs::directory_options::skip_permission_denied))
+        {
+            if (entry.path().filename() != expected)
+                continue;
+
+            try
+            {
+                dylib::library  lib(entry.path().string());
+                auto            oshot_get_plugin = lib.get_function<oshot_plugin_t*(void)>("oshot_host_get_plugin");
+                oshot_plugin_t* plugin           = oshot_get_plugin();
+
+                if (!plugin || plugin->abi_version != OSHOT_API_VERSION)
+                {
+                    error("Plugin '{}' has incompatible ABI version, skipping", entry.path().stem().string());
+                    continue;
+                }
+
+                if (!plugin->init)
+                    continue;
+
+                void* state = plugin->init();
+                if (!state)
+                {
+                    error("Failed to init plugin '{}'", entry.path().stem().string());
+                    continue;
+                }
+
+                g_plugin_entries.emplace_back(
+                    plugin_entry_t{ .lib = std::move(lib), .plugin = plugin, .state = state });
+
+                spdlog::info("loading plugin at {}!", entry.path().string());
+            }
+            catch (const dylib::load_error& e)
+            {
+                error("Failed to load '{}' library: {}", entry.path().stem().string(), e.what());
+            }
+            catch (const dylib::symbol_error& e)
+            {
+                error("Failed to get 'oshot_get_plugin()' symbol: {}", e.what());
+            }
+        }
+    }
+}
+
 void apply_imgui_theme()
 {
     const std::string& base = g_config->File.theme_style;
@@ -338,6 +395,9 @@ Result<> ScreenshotTool::Start()
 
 Result<> ScreenshotTool::StartWindow()
 {
+    static std::once_flag plugins_loaded;
+    std::call_once(plugins_loaded, [] { load_plugins(); });
+
     m_inputs = { g_config->File.ocr_path,
                  g_config->File.ocr_model,
                  g_config->File.ocr_get_repo,
@@ -465,6 +525,25 @@ void ScreenshotTool::RenderOverlay()
         DrawDownloadOCRWindow();
         DrawOcrTools();
         DrawBarDecodeTools();
+        for (plugin_entry_t& entry : g_plugin_entries)
+        {
+            oshot_plugin_t* plugin = entry.plugin;
+            if (!plugin->render || !plugin->name || plugin->name[0] == '\0')
+                continue;
+
+            if (ImGui::CollapsingHeader(plugin->name))
+            {
+                ImGui::PushID(plugin->name);
+
+                ImVec2 child_size(0.0f, 0.0f);  // auto-height, or let plugins set a preferred height
+                ImGui::BeginChild(plugin->name, child_size, ImGuiChildFlags_Borders);
+
+                plugin->render(entry.state);
+
+                ImGui::EndChild();
+                ImGui::PopID();
+            }
+        }
         ImGui::End();
     }
 
@@ -1360,6 +1439,9 @@ void ScreenshotTool::DrawOcrTools()
                 {
                     ClearError(ectx, OcrError::FailedToScan);
                     m_inputs.ocr_results = std::move(result.get());
+                    for (plugin_entry_t& entry : g_plugin_entries)
+                        if (entry.plugin->on_ocr_done)
+                            entry.plugin->on_ocr_done(entry.state);
                 }
                 else
                 {

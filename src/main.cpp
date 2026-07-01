@@ -31,6 +31,7 @@
 #include "getopt_port/getopt.h"
 #include "nvdialog/nvdialog_error.h"
 #include "oshot_png.h"
+#include "plugins/oshot_plugin.h"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "spdlog/sinks/basic_file_sink.h"
@@ -64,13 +65,14 @@ struct GLFWwindow;
 // clang-format on
 
 // Extern variables declariaions
-std::deque<std::string> g_dropped_paths;
-std::unique_ptr<Config> g_config;
-std::unique_ptr<Cache>  g_cache;
-ScreenshotTool          g_ss_tool;
-bool                    g_is_systray = false;
-int                     g_scr_w{}, g_scr_h{};
-Clipboard               g_clipboard(SessionType::Unknown);
+std::deque<std::string>     g_dropped_paths;
+std::unique_ptr<Config>     g_config;
+std::unique_ptr<Cache>      g_cache;
+std::vector<plugin_entry_t> g_plugin_entries;
+ScreenshotTool              g_ss_tool;
+bool                        g_is_systray = false;
+int                         g_scr_w{}, g_scr_h{};
+Clipboard                   g_clipboard(SessionType::Unknown);
 
 std::error_code ec;
 
@@ -199,6 +201,10 @@ static bool                    do_copy_image = false;
 
 void exit_handler(int)
 {
+    static std::atomic_flag ran = ATOMIC_FLAG_INIT;
+    if (ran.test_and_set())
+        return;
+
     quit.store(true);
     cv.notify_all();
 #ifndef _WIN32
@@ -208,6 +214,10 @@ void exit_handler(int)
     extern_glfwTerminate();
     trayMaker.Exit();
     fs::remove(fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid()));
+
+    for (plugin_entry_t& entry : g_plugin_entries)
+        if (entry.plugin->destroy)
+            entry.plugin->destroy(entry.state);
 }
 void exit_handler_nc()
 {
