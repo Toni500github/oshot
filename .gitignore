@@ -54,3 +54,7 @@ AppDir
 .cache
 imgui.ini
 compile_commands.json
+
+# Flake.nix stuff
+result
+result-*

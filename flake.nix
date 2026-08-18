@@ -3,28 +3,83 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
+
+    oshot-src = {
+      url = "github:Toni500github/oshot";
+      flake = false;
+    };
   };
 
-  outputs = { self, nixpkgs }: {
-    packages.x86_64-linux.oshot =
-      with import nixpkgs { system = "x86_64-linux"; };
-      stdenv.mkDerivation {
-        name = "oshot";
-        src = self;
-        nativeBuildInputs = [ cmake gnumake pkg-config git ];
-        buildInputs = [ glfw3 leptonica libx11.dev tesseract zbar.dev libappindicator-gtk3.dev dbus.dev systemd.dev libsysprof-capture pcre2.dev libxdmcp.dev libuuid.dev libselinux.dev libsepol.dev libthai.dev libdatrie.dev libdeflate lerc.dev xz.dev zstd.dev libwebp libxkbcommon.dev libepoxy.dev libxtst giflib ];
-        configurePhase = ''
-          cmake -DCMAKE_BUILD_PREFIX=/usr -DDEBUG=0 -G "Unix Makefiles" -B build -S .
-        '';
-        buildPhase = ''
-          cmake --build build -j$(nproc)
-        '';
-        installPhase = ''
-          install -Dm755 build/oshot $out/bin/oshot
-          install -Dm644 oshot.desktop $out/share/applications/oshot.desktop
-          install -Dm644 LICENSE $out/share/licenses/oshot/LICENSE
-        '';
-      };
-    packages.x86_64-linux.default = self.packages.x86_64-linux.oshot;
-  };
+  outputs = { self, nixpkgs, oshot-src }:
+    let
+      supportedSystems = [ "x86_64-linux" ];
+      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+      nixpkgsFor = forAllSystems (system: import nixpkgs { inherit system; });
+    in
+    {
+      packages = forAllSystems (system:
+        let
+          pkgs = nixpkgsFor.${system};
+        in
+        {
+          oshot = pkgs.stdenv.mkDerivation {
+            pname = "oshot";
+            version = "0.1.0";
+
+            src = oshot-src;
+
+            nativeBuildInputs = with pkgs; [
+              cmake
+              gnumake
+              pkg-config
+              git
+              wrapGAppsHook3
+            ];
+
+            buildInputs = with pkgs; [
+              glfw3
+              leptonica
+              tesseract
+              zbar
+              gtk3
+              libappindicator-gtk3
+              dbus
+              systemd
+              libX11
+              libXtst
+              giflib
+              libwebp
+              libsysprof-capture
+              libXdmcp
+              zenity
+            ];
+
+            # Initialize git AND add a tag so `git describe` works
+            preConfigure = ''
+              git init
+              git config user.name "Nix"
+              git config user.email "nix@localhost"
+              git add .
+              git commit -m "dummy commit for build"
+              git tag -a v0.1.0 -m "v0.1.0"
+            '';
+
+            installPhase = ''
+              runHook preInstall
+
+              install -Dm755 oshot $out/bin/oshot
+              if [ -f oshot.desktop ]; then
+                install -Dm644 oshot.desktop $out/share/applications/oshot.desktop
+              fi
+              if [ -f LICENSE ]; then
+                install -Dm644 LICENSE $out/share/licenses/oshot/LICENSE
+              fi
+
+              runHook postInstall
+            '';
+          };
+
+          default = self.packages.${system}.oshot;
+        });
+    };
 }
