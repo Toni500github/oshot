@@ -16,9 +16,26 @@
         "type": "github"
       }
     },
+    "oshot-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1787001618,
+        "narHash": "sha256-GDe/8Be0h/tEv854//FtmWfMhArc4wAjbKmBFMRlGQE=",
+        "owner": "Toni500github",
+        "repo": "oshot",
+        "rev": "122636db7327078d0759649c4f55c472aa67c6a9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Toni500github",
+        "repo": "oshot",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "oshot-src": "oshot-src"
       }
     }
   },
