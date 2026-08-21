@@ -183,33 +183,26 @@ image-out-fmt = "{}"
 # Size format of the capture in the selected image
 # extension from image-out-ext, shown under the capture size widget.
 # Case Sensitive.
-# Accepts: "off", "auto", "B", "KiB", "MiB", "KB",  "MB", more...
+# Accepts: "off", "auto", "B", "KiB", "MiB", "KB", "MB", more...
 image-out-size-ind = "{}"
 
-# Base UI theme: "auto" (follow OS dark/light), "dark", "light", or "classic".
-# Fine-grained overrides live in theme.toml.
-theme = "{}"
-
 # Path to a theme file. Absolute or relative to this config's directory.
-# Delete or comment out to use only the base theme above.
 theme-file = "{}"
 )#";
 
-inline constexpr std::string_view AUTOTHEME = (R"(
-# Drop this next to config.toml or point theme-file at its path.
-# All sections and keys are optional — omit anything you don't want to override.
+inline constexpr std::string_view AUTOTHEME = (R"([theme]
+smooth-animations = true
 
-[theme]
-smooth-animations = false
+# All sections and keys are optional. Omit anything you don't want to override.
 
 # ---------------------------------------------------------------
 # Rounding (pixels, 0 = sharp corners, max ~12)
 # ---------------------------------------------------------------
 [theme.style]
-window-rounding = 8.0
+window-rounding = 4.0
 frame-rounding  = 4.0
-grab-rounding   = 4.0
-tab-rounding    = 4.0
+grab-rounding   = 1.5
+tab-rounding    = 2.0
 
 # Border width in pixels. 0 = none, 1 = thin line.
 window-border = 1.0
@@ -226,59 +219,59 @@ frame-border  = 0.0
 #   (search for "GetStyleColorName")
 # ---------------------------------------------------------------
 [theme.colors]
-# --- Text ---
-Text         = "#cdd6f4FF"
-TextDisabled = "#6c7086FF"
 
-# --- Backgrounds ---
-WindowBg       = "#1e1e2eFF"
-ChildBg        = "#181825FF"
-PopupBg        = "#1e1e2eFF"
-FrameBg        = "#313244FF"
-FrameBgHovered = "#45475aFF"
-FrameBgActive  = "#585b70FF"
-MenuBarBg      = "#181825FF"
+# Main text
+Text = "#DCDDE1FF"
+TextDisabled = "#666870FF"
 
-# --- Title bar ---
-TitleBg       = "#181825FF"
-TitleBgActive = "#313244FF"
+# Main application backgrounds
+WindowBg = "#0D1015FF"
+ChildBg = "#0D1015FF"
+PopupBg = "#10131AFF"
 
-# --- Borders ---
-Border       = "#585b70FF"
-BorderShadow = "#00000000"
+# Borders
+Border = "#242933FF"
 
-# --- Scrollbar ---
-ScrollbarBg          = "#181825FF"
-ScrollbarGrab        = "#585b70FF"
-ScrollbarGrabHovered = "#6c7086FF"
-ScrollbarGrabActive  = "#7f849cFF"
+# Title bars
+TitleBg = "#090B0FFF"
+TitleBgActive = "#5274F0FF"
 
-# --- Buttons ---
-Button        = "#313244FF"
-ButtonHovered = "#45475aFF"
-ButtonActive  = "#585b70FF"
+# Input fields and other framed widgets
+FrameBg = "#151920FF"
+FrameBgHovered = "#202630FF"
+FrameBgActive = "#29313EFF"
 
-# --- Headers (selectables, tree nodes, collapsing headers) ---
-Header        = "#313244FF"
-HeaderHovered = "#45475aFF"
-HeaderActive  = "#585b70FF"
+# Buttons
+Button = "#294CC7FF"
+ButtonHovered = "#385DE0FF"
+ButtonActive = "#203CA6FF"
 
-# --- Sliders / checkmarks ---
-CheckMark        = "#cba6f7FF"
-SliderGrab       = "#cba6f7FF"
-SliderGrabActive = "#b4befeff"
+# Headers
+Header = "#1A1F28FF"
+HeaderHovered = "#252C38FF"
+HeaderActive = "#303946FF"
 
-# --- Tabs ---
-Tab         = "#313244FF"
-TabHovered  = "#cba6f7FF"
-TabSelected = "#45475aFF"
+# Tabs
+Tab = "#10141BFF"
+TabHovered = "#252E42FF"
+TabSelected = "#294CC7FF"
 
-# --- Misc ---
-Separator         = "#585b70FF"
-ResizeGrip        = "#cba6f7FF"
-ResizeGripHovered = "#cba6f7FF"
-ResizeGripActive  = "#cba6f7FF"
-PlotHistogram     = "#2ba2f0FF"  # original: "#e6b300FF"
+# Sliders
+SliderGrab = "#294CC7FF"
+SliderGrabActive = "#5274F0FF"
+
+# Scrollbars
+ScrollbarBg = "#07090CFF"
+ScrollbarGrab = "#2A303AFF"
+
+# Checkboxes and other selection indicators
+CheckMark = "#5274F0FF"
+
+# Menu bar
+MenuBarBg = "#090B0FFF"
+
+# Graphs / histogram elements
+PlotHistogram = "#5274F0FF"
 )");
 
 inline constexpr std::string_view AUTO_MANIFEST = R"([repository]

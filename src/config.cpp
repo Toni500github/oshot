@@ -60,7 +60,6 @@ void Config::LoadConfigFile(const std::string& filename)
     File.ocr_path         = GetValue<std::string>("default.ocr-path", File.ocr_path);
     File.ocr_get_repo     = GetValue<std::string>("default.ocr-repo-downlaod", "tesseract-ocr/tessdata");
     File.ocr_model        = GetValue<std::string>("default.ocr-model", "eng");
-    File.theme_style      = GetValue<std::string>("default.theme", "auto");
     File.theme_file_path  = GetValue<std::string>("default.theme-file", "");
     File.image_out_fmt    = GetValue<std::string>("default.image-out-fmt", "oshot_{:%F_%H-%M}");
     File.delay            = GetValue<int>("default.delay", -1);
@@ -97,6 +96,9 @@ void Config::LoadConfigFile(const std::string& filename)
     File.image_out_size_fmt = GetValue<std::string>("default.image-out-size-ind", "auto");
     if (std::find(prefixes.begin(), prefixes.end(), File.image_out_size_fmt) == prefixes.end())
         File.image_out_size_fmt = "auto";
+
+    if (fs::path(g_config->File.theme_file_path).is_relative())
+        g_config->File.theme_file_path.insert(0, m_config_dir_path + "/");
 }
 
 void Config::LoadThemeFile(const std::string& filename)
@@ -168,7 +170,6 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.image_out_type.first,
             File.image_out_fmt,
             File.image_out_size_fmt,
-            File.theme_style,
             File.theme_file_path);
 }
 
@@ -188,12 +189,10 @@ void Config::GenerateTheme(const std::string& filename, const bool force)
     }
 
     theme_overrides_t& ov = theme_overrides;
-    f.print(R"(
-# Drop this next to config.toml or point theme-file at its path.
-# All sections and keys are optional — omit anything you don't want to override.
+    f.print(R"([theme]
+smooth-animations = true
 
-[theme]
-smooth-animations = {}
+# All sections and keys are optional. Omit anything you don't want to override.
 
 # ---------------------------------------------------------------
 # Rounding (pixels, 0 = sharp corners, max ~12)

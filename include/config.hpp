@@ -55,7 +55,6 @@ public:
 #endif
         std::string ocr_get_repo       = "tesseract-ocr/tessdata";
         std::string ocr_model          = "eng";
-        std::string theme_style        = "auto";
         std::string theme_file_path    = "theme.toml";
         std::string image_out_fmt      = "oshot_{:%F_%H-%M}";
         std::string image_out_size_fmt = "auto";

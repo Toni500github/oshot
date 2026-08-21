@@ -214,7 +214,6 @@ int run_main_tool()
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGui::StyleColorsDark();
 
     const std::string ini = (get_config_dir() / "imgui.ini").string();
     ImGuiIO&          io  = ImGui::GetIO();

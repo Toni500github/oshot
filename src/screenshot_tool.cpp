@@ -95,18 +95,19 @@ inline rgba_t blend(rgba_t src, rgba_t dst)
                    uint8_t(src.a + dst.a * ia) };
 }
 
-static void get_training_data_list(const std::string& datadir, std::vector<std::string>& langs)
+static void get_filtered_filenames(const std::string&                          dir,
+                                   std::vector<std::string>&                   list,
+                                   std::function<bool(const fs::path&)>        filter,
+                                   std::function<std::string(const fs::path&)> value_push)
 {
-    langs.clear();
-
-    if (!fs::exists(datadir))
+    if (!fs::exists(dir))
         return;
 
     for (const auto& entry : fs::recursive_directory_iterator(
-             datadir, fs::directory_options::follow_directory_symlink | fs::directory_options::skip_permission_denied))
+             dir, fs::directory_options::follow_directory_symlink | fs::directory_options::skip_permission_denied))
     {
-        if (entry.path().extension() == ".traineddata")
-            langs.push_back(entry.path().stem().string());
+        if (filter(entry.path()))
+            list.emplace_back(value_push(entry.path()));
     }
 }
 
@@ -157,9 +158,18 @@ static void draw_input_text_path(const char*                  label,
     {
         minimize_window();
 
-        const char* dialog_path = is_file
-                                      ? tinyfd_openFileDialog("Open file", nullptr, filter_count, filters, nullptr, 0)
-                                      : tinyfd_selectFolderDialog("Open folder", nullptr);
+        const fs::path default_path = path;
+
+        std::string start_path;
+        if (is_file && default_path.has_parent_path())
+        {
+            start_path = default_path.parent_path().string();
+            start_path += '/';  // tinyfd treats a trailing separator as "open here"
+        }
+
+        const char* dialog_path =
+            !is_file ? tinyfd_selectFolderDialog("Open folder", nullptr)
+                     : tinyfd_openFileDialog("Open file", start_path.c_str(), filter_count, filters, nullptr, 0);
 
         maximize_window();
 
@@ -174,7 +184,7 @@ static void draw_input_text_path(const char*                  label,
     ImGui::PopID();
 
     ImGui::SameLine(0, 3);
-    ImGui::Text("%s", label);
+    ImGui::TextUnformatted(label);
 }
 
 static void draw_input_text_file(const char*                  label,
@@ -278,21 +288,7 @@ static std::unordered_map<std::string, int>& color_name_map()
 
 void apply_imgui_theme()
 {
-    const std::string& base = g_config->File.theme_style;
-
-    if (base == "classic")
-    {
-        ImGui::StyleColorsClassic();
-    }
-    else if (base == "light")
-    {
-        ImGui::StyleColorsLight();
-    }
-    else
-    {
-        bool dark = (base == "dark") || (base == "auto" && is_system_dark_mode());
-        dark ? ImGui::StyleColorsDark() : ImGui::StyleColorsLight();
-    }
+    is_system_dark_mode() ? ScreenshotTool::StyleDefaultColor() : ImGui::StyleColorsLight();
 
     ImGuiStyle& style = ImGui::GetStyle();
     const auto& ov    = g_config->theme_overrides;
@@ -1861,13 +1857,11 @@ void ScreenshotTool::DrawAnnotationToolbar()
 static void draw_preference_edit_config(const std::function<void()>& refresh_models_func, bool window_just_opened)
 {
     static const char* image_prev_units[] = { "off", "auto", "B", "KiB", "MiB", "KB", "MB" };
-    static const char* themes_names[]     = { "auto", "light", "dark", "classic" };
     static const char* font_filters[]     = { "*.ttf", "*.otf", "*.ttc", "*.woff", "*.woff2" };
     static const char* toml_filters[]     = { "*.toml" };
 
     static int                   image_ext_sel    = 0;
     static int                   image_preuni_sel = 0;
-    static int                   theme_selected   = 0;
     static std::string           new_font;
     static Result<std::string>   r = get_config_image_out_fmt();
     static std::vector<fs::path> resolved_font_paths;
@@ -1908,29 +1902,22 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     ImGui::Spacing();
 
     // --- Theme settings ---
-    if (window_just_opened)
-    {
-        const std::string& ts = g_config->File.theme_style;
-        if (ts == "light")
-            theme_selected = 1;
-        else if (ts == "dark")
-            theme_selected = 2;
-        else if (ts == "classic")
-            theme_selected = 3;
-        else
-            theme_selected = 0;
-    }
-    ImGui::Text("Default Theme style");
-    if (ImGui::Combo("##config_theme_style", &theme_selected, themes_names, IM_ARRAYSIZE(themes_names)))
-        g_config->File.theme_style = themes_names[theme_selected];
-    ImGui::Spacing();
-
     ImGui::Text("Default Theme file path");
     ImGui::SameLine();
     HelpMarker(
         "Full path to the theme file (aka. theme.toml), or relative to the config directory. Supports drag-and-drop.");
     draw_input_text_file(
-        "", "##config_theme_file_path", toml_filters, 1, [] { /* applied on Save */ }, g_config->File.theme_file_path);
+        "",
+        "##config_theme_file_path",
+        toml_filters,
+        1,
+        [&] {
+            if (fs::path(g_config->File.theme_file_path).is_relative())
+                g_config->File.theme_file_path.insert(0, get_config_dir().string() + "/");
+        },
+        g_config->File.theme_file_path);
+    if (!fs::exists(g_config->File.theme_file_path))
+        ImGui::TextColored(rgba_t(0xff7444FF).to_imvec4(), "File doesn't exist, fallback to default hardcoded theme");
     ImGui::Spacing();
 
     ImGui::Text("Color picker style");
@@ -4128,7 +4115,11 @@ void ScreenshotTool::RefreshOcrModels()
         return;
     }
 
-    get_training_data_list(m_inputs.ocr_path, m_ocr_models_list);
+    get_filtered_filenames(
+        m_inputs.ocr_path,
+        m_ocr_models_list,
+        [](const fs::path& entry) { return entry.extension().string() == ".traineddata"; },
+        [](const fs::path& entry) { return entry.stem().string(); });
     m_last_scanned_ocr_path = m_inputs.ocr_path;
     ClearError(ectx, OcrError::NeedToScanDir);
 
@@ -4145,6 +4136,65 @@ void ScreenshotTool::RefreshOcrModels()
         else
             ClearError(ectx, OcrError::InvalidModel);
     }
+}
+
+void ScreenshotTool::StyleDefaultColor()
+{
+    // clang-format off
+    static const std::unordered_map<ImGuiCol, rgba_t> theme_colors = {
+        { ImGuiCol_Text,          0xDCDDE1FF_rgba },
+        { ImGuiCol_TextDisabled,  0x666870FF_rgba },
+        { ImGuiCol_WindowBg,      0x0D1015FF_rgba },
+        { ImGuiCol_ChildBg,       0x0D1015FF_rgba },
+        { ImGuiCol_PopupBg,       0x10131AFF_rgba },
+
+        { ImGuiCol_Border,        0x242933FF_rgba },
+
+        { ImGuiCol_TitleBg,       0x090B0FFF_rgba },
+        { ImGuiCol_TitleBgActive, 0x5274F0FF_rgba },
+
+        { ImGuiCol_FrameBg,       0x151920FF_rgba },
+        { ImGuiCol_FrameBgHovered,0x202630FF_rgba },
+        { ImGuiCol_FrameBgActive, 0x29313EFF_rgba },
+
+        { ImGuiCol_Button,        0x294CC7FF_rgba },
+        { ImGuiCol_ButtonHovered, 0x385DE0FF_rgba },
+        { ImGuiCol_ButtonActive,  0x203CA6FF_rgba },
+
+        { ImGuiCol_Header,        0x1A1F28FF_rgba },
+        { ImGuiCol_HeaderHovered, 0x252C38FF_rgba },
+        { ImGuiCol_HeaderActive,  0x303946FF_rgba },
+
+        { ImGuiCol_Tab,           0x10141BFF_rgba },
+        { ImGuiCol_TabHovered,    0x252E42FF_rgba },
+        { ImGuiCol_TabSelected,   0x294CC7FF_rgba },
+
+        { ImGuiCol_SliderGrab,    0x294CC7FF_rgba },
+        { ImGuiCol_SliderGrabActive, 0x5274F0FF_rgba },
+
+        { ImGuiCol_ScrollbarBg,   0x07090CFF_rgba },
+        { ImGuiCol_ScrollbarGrab, 0x2A303AFF_rgba },
+
+        { ImGuiCol_CheckMark,     0x5274F0FF_rgba },
+        { ImGuiCol_MenuBarBg,     0x090B0FFF_rgba },
+        { ImGuiCol_PlotHistogram, 0x5274F0FF_rgba },
+    };
+    // clang-format on
+
+    ImGui::StyleColorsDark();
+
+    auto& style = ImGui::GetStyle();
+
+    style.WindowRounding = 4.0f;
+    style.FrameRounding  = 4.0f;
+    style.GrabRounding   = 1.5f;
+    style.TabRounding    = 2.0f;
+
+    style.WindowBorderSize = 1.0f;
+    style.FrameBorderSize  = 0.0f;
+
+    for (const auto& [color, rgba] : theme_colors)
+        style.Colors[color] = rgba.to_imvec4();
 }
 
 Result<ImTextureRef> ScreenshotTool::CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h)

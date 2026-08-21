@@ -299,6 +299,11 @@ inline rgba_t load_rgba(const uint8_t* p)
     return rgba_t(p[0], p[1], p[2], p[3]);
 }
 
+constexpr rgba_t operator""_rgba(unsigned long long v)
+{
+    return rgba_t(static_cast<uint32_t>(v));
+}
+
 inline void store_rgba(uint8_t* p, const rgba_t& c)
 {
     p[0] = c.r;

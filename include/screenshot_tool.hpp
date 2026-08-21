@@ -192,7 +192,7 @@ struct annotation_t
     point_t              start;
     point_t              end;
     std::string          text;                            // For text tool
-    std::uint8_t         count = 0;                       // For CounterBubble tool
+    unsigned int         count = 0;                       // For CounterBubble tool
     std::vector<point_t> points;                          // For pencil tool
     rgba_t               color     = rgba_t(0xFF0000FF);  // RGBA
     float                thickness = 3.0f;
@@ -335,8 +335,9 @@ public:
 
     ImFont* CacheAndGetFont(const std::string& font_name, const float font_size);
 
-    void RenderOverlay();
-    void Cancel();
+    void        RenderOverlay();
+    void        Cancel();
+    static void StyleDefaultColor();
 
     template <typename Enum>
     void SetError(ErrorContext<Enum>& ctx, Enum e, const std::string_view err = "")
