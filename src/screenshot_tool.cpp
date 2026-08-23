@@ -357,6 +357,7 @@ Result<> ScreenshotTool::Start()
     m_tool_thickness.fill(3.0f);
     m_tool_thickness[idx(ToolType::Text)] = 16.0f;
 
+    spdlog::debug("captured screenshots: {}x{}, size: {}", m_screenshot.w, m_screenshot.h, m_screenshot.view().size());
     return Ok();
 }
 
@@ -3597,7 +3598,8 @@ void ScreenshotTool::DrawOutputMenuSelection()
     if (!m_show_window.Has(SubWindow::OutputMenuSelection))
         return;
 
-    static int output_sel = 0;
+    static int  output_sel = 0;
+    static bool do_debug   = true;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 14));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 10));
@@ -3622,19 +3624,21 @@ void ScreenshotTool::DrawOutputMenuSelection()
         if (!mode)
             continue;
 
-        const char* mon_orientation = mode->height > mode->width ? "Vertical" : "Horizontal";
-        layout.push_back(region_t{ mx, my, mode->width, mode->height });
+        region_t r{ mx, my, mode->width, mode->height };
+        if (do_debug)
+            spdlog::debug("monitor {}: {}x{}+{}+{}", mon_name, r.width, r.height, r.x, r.y);
+        layout.emplace_back(std::move(r));
 
         const int idx = static_cast<int>(layout.size()) - 1;
         ImGui::PushID(idx);
         ImGui::RadioButton(
-            fmt::format("{} ({}x{}, {})", mon_name ? mon_name : "Unknown", mode->width, mode->height, mon_orientation)
-                .c_str(),
+            fmt::format("{} ({}x{})", mon_name ? mon_name : "Unknown", mode->width, mode->height).c_str(),
             &output_sel,
             idx);
         ImGui::PopID();
     }
 
+    do_debug   = false;
     output_sel = layout.empty() ? 0 : std::clamp(output_sel, 0, static_cast<int>(layout.size()) - 1);
 
     ImGui::Separator();
