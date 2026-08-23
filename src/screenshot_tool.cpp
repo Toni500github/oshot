@@ -379,7 +379,7 @@ Result<> ScreenshotTool::StartWindow()
                  g_config->File.ocr_model,
                  g_config->File.ocr_get_repo,
 #if defined(__unix__) && !defined(__APPLE__)
-                 get_config_dir() / "models",
+                 g_config->GetConfigDirPath() + "/models",
 #else
                  "./models",
 #endif
@@ -1913,7 +1913,7 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
         1,
         [&] {
             if (fs::path(g_config->File.theme_file_path).is_relative())
-                g_config->File.theme_file_path.insert(0, get_config_dir().string() + "/");
+                g_config->File.theme_file_path.insert(0, g_config->GetConfigDirPath());
         },
         g_config->File.theme_file_path);
     if (!fs::exists(g_config->File.theme_file_path))

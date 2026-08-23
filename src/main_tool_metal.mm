@@ -175,7 +175,7 @@ int run_main_tool()
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
-    const std::string ini = (get_config_dir() / "imgui.ini").string();
+    const std::string ini = g_config->GetConfigDirPath() + "/imgui.ini";
     ImGuiIO&          io  = ImGui::GetIO();
     io.IniFilename        = ini.c_str();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
