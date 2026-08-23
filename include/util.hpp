@@ -252,6 +252,12 @@ struct capture_result_t;
 struct ImVec4;
 struct ImGuiIO;
 enum class ImageExt;
+// I'm not including <gtk/gtk.h> just for a couple of functions
+extern "C" {
+using gboolean = int32_t;
+gboolean gtk_events_pending();
+gboolean gtk_main_iteration();
+}
 
 // taken from "fmt/color.h" with the addition of alpha.
 // useful in contexts where ImVec4 is not used.
@@ -407,6 +413,10 @@ static void create_dialog(const char* title, const NvdDialogType type, const std
     NvdDialogBox* dialog = nvd_dialog_box_new(title, str.c_str(), type);
     nvd_show_dialog(dialog);
     nvd_free_object(dialog);
+#if OSHOT_LINUX
+    while (gtk_events_pending())
+        gtk_main_iteration();
+#endif
 }
 
 template <typename... Args>
