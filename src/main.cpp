@@ -69,6 +69,7 @@
 #include "util.hpp"
 
 using namespace Tray;
+using namespace std::chrono_literals;
 
 // Avoid dragging glfw headers
 struct GLFWwindow;
@@ -436,7 +437,7 @@ int main(int argc, char* argv[])
     logger.info("=== oshot starting ===");
     logger.info("Log file path: {}", file->filename());
     logger.flush();
-    spdlog::flush_every(std::chrono::seconds(1));
+    spdlog::flush_every(1s);
 
     const bool tray_lock_acquired = acquire_tray_lock();
 

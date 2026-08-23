@@ -48,6 +48,7 @@
 
 GLFWwindow* window = nullptr;
 
+void apply_imgui_theme();
 void glfw_error_callback(int i_error, const char* description);
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
 void register_window_callbacks(void (*minimize_fn)(),

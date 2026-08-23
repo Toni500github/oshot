@@ -48,6 +48,7 @@
 #  include "tool_icons.h"
 #  include "util.hpp"
 
+void apply_imgui_theme();
 void glfw_error_callback(int error, const char* description);
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
 void register_window_callbacks(void (*minimize_fn)(),

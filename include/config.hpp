@@ -30,7 +30,6 @@
 #include <memory>
 #include <unordered_map>
 
-#include "fmt/format.h"
 #include "toml_api.hpp"
 #include "util.hpp"
 
@@ -135,28 +134,6 @@ public:
     using TomlAPI::GetValue;
     using TomlAPI::SetValue;
 
-    template <typename T>
-    T GetThemeValue(const std::string_view value, const T& fallback, bool dont_expand_var = true) const
-    {
-        return m_theme.GetValue<T>(fmt::format("theme.{}", value), fallback, dont_expand_var);
-    }
-
-    template <typename T>
-    T GetThemeStyleValue(const std::string_view value, const T& fallback, bool dont_expand_var = true) const
-    {
-        return m_theme.GetValue<T>(fmt::format("theme.style.{}", value), fallback, dont_expand_var);
-    }
-
-    uint32_t GetThemeColorValue(const std::string_view value,
-                                const std::string&     fallback,
-                                bool                   dont_expand_var = true) const
-    {
-        uint32_t out;
-        hexstr_to_col(m_theme.GetValue<std::string>(fmt::format("theme.colors.{}", value), fallback, dont_expand_var),
-                      out);
-        return out;
-    }
-
     const std::string& GetConfigPath() const { return m_config_path; }
     const std::string& GetThemePath() const { return m_theme_path; }
     const std::string& GetConfigDirPath() const { return m_config_dir_path; }
@@ -172,5 +149,4 @@ private:
 
 extern std::unique_ptr<Config> g_config;
 
-void apply_imgui_theme();
 #endif  // !_CONFIG_HPP_

@@ -122,17 +122,16 @@ void Config::LoadThemeFile(const std::string& filename)
     if (const toml::table* colors = m_theme.GetTbl().at_path("theme.colors").as_table())
     {
         colors->for_each(
-            [&](const toml::key& k, const toml::value<std::string>& v) { ov.colors[std::string(k.str())] = v.get(); });
+            [&](const toml::key& k, const toml::value<std::string>& v) { ov.colors[k.str().data()] = v.get(); });
     }
 
-    ov.window_rounding = GetThemeStyleValue("window-rounding", -1.f);
-    ov.frame_rounding  = GetThemeStyleValue("frame-rounding", -1.f);
-    ov.grab_rounding   = GetThemeStyleValue("grab-rounding", -1.f);
-    ov.tab_rounding    = GetThemeStyleValue("tab-rounding", -1.f);
-    ov.window_border   = GetThemeStyleValue("window-border", -1.f);
-    ov.frame_border    = GetThemeStyleValue("frame-border", -1.f);
-
-    ov.smooth_animations = GetThemeValue("smooth-animations", false);
+    ov.smooth_animations = m_theme.GetValue<bool>("smooth-animations", false);
+    ov.window_rounding   = m_theme.GetValue<float>("window-rounding", -1.f);
+    ov.frame_rounding    = m_theme.GetValue<float>("frame-rounding", -1.f);
+    ov.grab_rounding     = m_theme.GetValue<float>("grab-rounding", -1.f);
+    ov.tab_rounding      = m_theme.GetValue<float>("tab-rounding", -1.f);
+    ov.window_border     = m_theme.GetValue<float>("window-border", -1.f);
+    ov.frame_border      = m_theme.GetValue<float>("frame-border", -1.f);
 }
 
 void Config::GenerateConfig(const std::string& filename, const bool force)
