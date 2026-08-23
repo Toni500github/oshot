@@ -94,10 +94,15 @@ int  g_sock = -1;
 // Defined and registered in src/main_tool_* source files
 namespace main_tool
 {
-void (*minimize_fn)()         = nullptr;
-void (*maximize_fn)()         = nullptr;
-void (*terminate_fn)()        = nullptr;
-void (*swap_interval_fn)(int) = nullptr;
+void (*minimize_fn)()                                                = nullptr;
+void (*maximize_fn)()                                                = nullptr;
+void (*_extern_glfwTerminate)()                                      = nullptr;
+void (*_extern_glfwSwapInterval)(int)                                = nullptr;
+GLFWmonitor** (*_extern_glfwGetMonitors)(int*)                       = nullptr;
+void (*_extern_glfwGetMonitorPos)(GLFWmonitor* mon, int* x, int* y)  = nullptr;
+void (*_extern_glfwGetMonitorPhysicalSize)(GLFWmonitor*, int*, int*) = nullptr;
+const GLFWvidmode* (*_extern_glfwGetVideoMode)(GLFWmonitor*)         = nullptr;
+const char* (*_extern_glfwGetMonitorName)(GLFWmonitor*)              = nullptr;
 }  // namespace main_tool
 
 static const std::unordered_map<std::string, std::string>& get_xdg_user_dirs()
@@ -718,13 +723,23 @@ fs::path get_home_pictures_dir()
 
 void register_window_callbacks(void (*minimize_fn)(),
                                void (*maximize_fn)(),
-                               void (*terminate_fn)(),
-                               void (*swap_interval_fn)(int))
+                               void (*_extern_glfwTerminate)(),
+                               void (*_extern_glfwSwapInterval)(int),
+                               GLFWmonitor** (*_extern_glfwGetMonitors)(int*),
+                               void (*_extern_glfwGetMonitorPos)(GLFWmonitor*, int*, int*),
+                               void (*_extern_glfwGetMonitorPhysicalSize)(GLFWmonitor*, int*, int*),
+                               const GLFWvidmode* (*_extern_glfwGetVideoMode)(GLFWmonitor*),
+                               const char* (*_extern_glfwGetMonitorName)(GLFWmonitor*))
 {
-    main_tool::minimize_fn      = minimize_fn;
-    main_tool::maximize_fn      = maximize_fn;
-    main_tool::terminate_fn     = terminate_fn;
-    main_tool::swap_interval_fn = swap_interval_fn;
+    main_tool::minimize_fn                        = minimize_fn;
+    main_tool::maximize_fn                        = maximize_fn;
+    main_tool::_extern_glfwTerminate              = _extern_glfwTerminate;
+    main_tool::_extern_glfwSwapInterval           = _extern_glfwSwapInterval;
+    main_tool::_extern_glfwGetMonitors            = _extern_glfwGetMonitors;
+    main_tool::_extern_glfwGetMonitorPos          = _extern_glfwGetMonitorPos;
+    main_tool::_extern_glfwGetMonitorPhysicalSize = _extern_glfwGetMonitorPhysicalSize;
+    main_tool::_extern_glfwGetVideoMode           = _extern_glfwGetVideoMode;
+    main_tool::_extern_glfwGetMonitorName         = _extern_glfwGetMonitorName;
 }
 
 void minimize_window()
@@ -739,13 +754,41 @@ void maximize_window()
 }
 void extern_glfwTerminate()
 {
-    if (main_tool::terminate_fn)
-        main_tool::terminate_fn();
+    if (main_tool::_extern_glfwTerminate)
+        main_tool::_extern_glfwTerminate();
 }
 void extern_glfwSwapInterval(int v)
 {
-    if (main_tool::swap_interval_fn)
-        main_tool::swap_interval_fn(v);
+    if (main_tool::_extern_glfwSwapInterval)
+        main_tool::_extern_glfwSwapInterval(v);
+}
+GLFWmonitor** extern_glfwGetMonitors(int* count)
+{
+    if (main_tool::_extern_glfwGetMonitors)
+        return main_tool::_extern_glfwGetMonitors(count);
+    return nullptr;
+}
+void extern_glfwGetMonitorPos(GLFWmonitor* mon, int* xpos, int* ypos)
+{
+    if (main_tool::_extern_glfwGetMonitorPos)
+        main_tool::_extern_glfwGetMonitorPos(mon, xpos, ypos);
+}
+void extern_glfwGetMonitorPhysicalSize(GLFWmonitor* mon, int* widthMM, int* heightMM)
+{
+    if (main_tool::_extern_glfwGetMonitorPhysicalSize)
+        main_tool::_extern_glfwGetMonitorPhysicalSize(mon, widthMM, heightMM);
+}
+const GLFWvidmode* extern_glfwGetVideoMode(GLFWmonitor* mon)
+{
+    if (main_tool::_extern_glfwGetVideoMode)
+        return main_tool::_extern_glfwGetVideoMode(mon);
+    return nullptr;
+}
+const char* extern_glfwGetMonitorName(GLFWmonitor* mon)
+{
+    if (main_tool::_extern_glfwGetMonitorName)
+        return main_tool::_extern_glfwGetMonitorName(mon);
+    return nullptr;
 }
 
 std::string expand_var(std::string ret)

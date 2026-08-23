@@ -17,8 +17,6 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 #add_compile_options($<$<CONFIG:Debug>:-fno-omit-frame-pointer>)
 #add_link_options($<$<CONFIG:Debug>:-fsanitize=address>)
 
-# GCC/Clang default Release flags already include -O3; this just makes it
-# explicit.
 if(NOT MSVC AND NOT CMAKE_CXX_FLAGS_RELEASE MATCHES "-O")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 endif()
@@ -57,8 +55,7 @@ endfunction()
 # https://github.com/libcpr/cpr/blob/5f475522597b8f3721e2440daddeced7a969f24c/CMakeLists.txt#L39
 # NOTE: definitions are collected into OSHOT_OPTION_DEFINITIONS instead of
 # using add_definitions(), which is directory-scoped and would otherwise leak
-# into every target declared afterward - including vendored third-party
-# libs (fmt, imgui, tray, clip, dylib, nvdialog, tiny-process-library).
+# into every target declared afterward.
 # They're applied to just ${PROJECT_NAME} once it exists (see below).
 set(OSHOT_OPTION_DEFINITIONS "")
 macro(add_option OPTION_NAME OPTION_TEXT OPTION_DEFAULT DEFINE_OPTION)
@@ -92,6 +89,7 @@ endif()
 find_package(PkgConfig REQUIRED)
 find_package(Threads REQUIRED)
 find_package(glfw3 REQUIRED)
+find_package(OpenGL REQUIRED)
 
 if(TARGET glfw::glfw)
     set(GLFW_TARGET glfw::glfw)
@@ -103,7 +101,6 @@ else()
     message(FATAL_ERROR "GLFW found but no usable CMake target was exported")
 endif()
 
-find_package(OpenGL REQUIRED)
 pkg_check_modules(TESSERACT REQUIRED IMPORTED_TARGET tesseract)
 pkg_check_modules(LEPTONICA REQUIRED IMPORTED_TARGET lept)
 pkg_check_modules(ZBAR REQUIRED IMPORTED_TARGET zbar)
@@ -176,11 +173,6 @@ target_compile_definitions(
     PUBLIC VERSION="${PROJECT_VERSION}" TOML_HEADER_ONLY=0
 )
 
-# oshot's own sources (main.cpp, main_tool_opengl3.cpp) reference
-# globals.cpp's externs directly (g_sock, g_ss_tool, g_config, g_cache, ...),
-# which live in the real oshot_common SHARED library. There's no separate
-# oshot_plugin library anymore (see the note above oshot_common's sources
-# below for why), so linking oshot_common alone is enough.
 target_link_libraries(${PROJECT_NAME} PRIVATE oshot_common)
 
 if(WIN32 AND NOT WINDOWS_CMD)
@@ -273,7 +265,10 @@ if(NOT DISABLE_PLUGINS)
             WINDOWS_EXPORT_ALL_SYMBOLS ON
             POSITION_INDEPENDENT_CODE ON
     )
-    target_include_directories(oshot_common PUBLIC ${CMAKE_SOURCE_DIR}/oshotpm/include)
+    target_include_directories(
+        oshot_common
+        PUBLIC ${CMAKE_SOURCE_DIR}/oshotpm/include
+    )
 endif()
 
 enable_lto(oshot_common)

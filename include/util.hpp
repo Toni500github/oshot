@@ -251,6 +251,8 @@ constexpr E toe(T n) noexcept
 struct capture_result_t;
 struct ImVec4;
 struct ImGuiIO;
+struct GLFWmonitor;
+struct GLFWvidmode;
 enum class ImageExt;
 // I'm not including <gtk/gtk.h> just for a couple of functions
 extern "C" {
@@ -390,10 +392,15 @@ Result<capture_result_t> load_image_rgba(const std::string& path);
 Result<std::string>      get_config_image_out_fmt();
 Result<>                 save_image(SavingOp op, const capture_result_t& img, ImageExt ext);
 
-void minimize_window();
-void maximize_window();
-void extern_glfwTerminate();
-void extern_glfwSwapInterval(int v);
+void               minimize_window();
+void               maximize_window();
+void               extern_glfwTerminate();
+void               extern_glfwSwapInterval(int v);
+GLFWmonitor**      extern_glfwGetMonitors(int* count);
+void               extern_glfwGetMonitorPos(GLFWmonitor* mon, int* x, int* y);
+void               extern_glfwGetMonitorPhysicalSize(GLFWmonitor* monitor, int* widthMM, int* heightMM);
+const GLFWvidmode* extern_glfwGetVideoMode(GLFWmonitor* mon);
+const char*        extern_glfwGetMonitorName(GLFWmonitor* mon);
 
 byte_units_t auto_divide_bytes(const double num, const std::uint16_t base, const std::string_view maxprefix = "");
 byte_units_t divide_bytes(const double num, const std::string_view prefix);

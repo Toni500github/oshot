@@ -53,8 +53,13 @@ void glfw_error_callback(int i_error, const char* description);
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
 void register_window_callbacks(void (*minimize_fn)(),
                                void (*maximize_fn)(),
-                               void (*terminate_fn)(),
-                               void (*swap_interval_fn)(int));
+                               void (*_extern_glfwTerminate)(),
+                               void (*_extern_glfwSwapInterval)(int),
+                               GLFWmonitor** (*_extern_glfwGetMonitors)(int*),
+                               void (*_extern_glfwGetMonitorPos)(GLFWmonitor*, int*, int*),
+                               void (*_extern_glfwGetMonitorPhysicalSize)(GLFWmonitor*, int*, int*),
+                               const GLFWvidmode* (*_extern_glfwGetVideoMode)(GLFWmonitor*),
+                               const char* (*_extern_glfwGetMonitorName)(GLFWmonitor*));
 
 // Returns the GLFW monitor that currently contains the cursor.
 // Falls back to the primary monitor if the cursor position cannot be
@@ -124,7 +129,15 @@ static void maximize_window_()
 
 int run_main_tool()
 {
-    register_window_callbacks(minimize_window_, maximize_window_, glfwTerminate, glfwSwapInterval);
+    register_window_callbacks(minimize_window_,
+                              maximize_window_,
+                              glfwTerminate,
+                              glfwSwapInterval,
+                              glfwGetMonitors,
+                              glfwGetMonitorPos,
+                              glfwGetMonitorPhysicalSize,
+                              glfwGetVideoMode,
+                              glfwGetMonitorName);
 
     // Setup Screenshot Tool
     // Calling it before starting the window so that
@@ -181,7 +194,7 @@ int run_main_tool()
 
 #  if !DEBUG
     // Don't make the window actually fullscreen if debug build
-    // this because on windows it hanged in gdb and everytime had to restart the VM
+    // this because on Windows it hanged in gdb and everytime I had to restart the VM
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);  // Borderless
     glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);    // Always on top
     glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE);

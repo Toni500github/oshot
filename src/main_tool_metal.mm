@@ -53,8 +53,13 @@ void glfw_error_callback(int error, const char* description);
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
 void register_window_callbacks(void (*minimize_fn)(),
                                void (*maximize_fn)(),
-                               void (*terminate_fn)(),
-                               void (*swap_interval_fn)(int));
+                               void (*_extern_glfwTerminate)(),
+                               void (*_extern_glfwSwapInterval)(int),
+                               GLFWmonitor** (*_extern_glfwGetMonitors)(int*),
+                               void (*_extern_glfwGetMonitorPos)(GLFWmonitor*, int*, int*),
+                               void (*_extern_glfwGetMonitorPhysicalSize)(GLFWmonitor*, int*, int*),
+                               const GLFWvidmode* (*_extern_glfwGetVideoMode)(GLFWmonitor*),
+                               const char* (*_extern_glfwGetMonitorName)(GLFWmonitor*));
 
 GLFWwindow* window = nullptr;
 
@@ -88,7 +93,15 @@ static id<MTLTexture> create_metal_texture(id<MTLDevice> device, const uint8_t* 
 
 int run_main_tool()
 {
-    register_window_callbacks(minimize_window_, maximize_window_, glfwTerminate, glfwSwapInterval);
+    register_window_callbacks(minimize_window_,
+                              maximize_window_,
+                              glfwTerminate,
+                              glfwSwapInterval,
+                              glfwGetMonitors,
+                              glfwGetMonitorPos,
+                              glfwGetMonitorPhysicalSize,
+                              glfwGetVideoMode,
+                              glfwGetMonitorName);
     id<MTLDevice> device;
 
     // vsync is controlled via the CAMetalLayer's displaySyncEnabled property instead.

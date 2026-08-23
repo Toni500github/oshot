@@ -27,6 +27,7 @@
 #define _SCREEN_CAPTURE_HPP_
 
 #include <cstdint>
+#include <deque>
 #include <span>
 #include <vector>
 
@@ -66,6 +67,9 @@ Result<capture_result_t> capture_full_screen_spectacle();
 Result<capture_result_t> capture_full_screen_windows();
 Result<capture_result_t> capture_full_screen_macos();
 
-SessionType get_session_type();
+SessionType              get_session_type();
+Result<capture_result_t> crop_to_monitor(const capture_result_t&     full,
+                                         const std::deque<region_t>& monitors,
+                                         const region_t&             target);
 
 #endif  // !_SCREEN_CAPTURE_HPP_

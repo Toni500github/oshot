@@ -66,6 +66,9 @@
 #include "tool_icons.h"
 #include "util.hpp"
 
+#define GL_SILENCE_DEPRECATION
+#include <GLFW/glfw3.h>
+
 #ifndef GL_NO_ERROR
 #  define GL_NO_ERROR 0
 #endif
@@ -323,17 +326,19 @@ void apply_imgui_theme()
 Result<> ScreenshotTool::Start()
 {
     Result<capture_result_t> result{ Err() };
+    m_session = get_session_type();
 
     if (!g_config->Runtime.source_file.empty())
     {
         result = load_image_rgba(g_config->Runtime.source_file);
+        TRY_MSG(result, "Failed to load image: {}");
     }
     else
     {
         if (g_config->File.delay > 0)
             std::this_thread::sleep_for(std::chrono::milliseconds(g_config->File.delay));
 
-        switch (get_session_type())
+        switch (m_session)
         {
             case SessionType::X11:     result = capture_full_screen_x11(); break;
             case SessionType::Wayland: result = capture_full_screen_wayland(); break;
@@ -342,13 +347,16 @@ Result<> ScreenshotTool::Start()
             case SessionType::MacOS:   result = capture_full_screen_macos(); break;
             default:                   return Err("Unknown platform");
         }
-    }
+        TRY_MSG(result, "Failed to capture screenshot: {}");
 
-    TRY_MSG(result, "Failed to load image: {}");
+        if (m_session == SessionType::Wayland)
+            m_show_window.Set(SubWindow::OutputMenuSelection);
+    }
 
     m_screenshot = std::move(result.get());
     m_tool_thickness.fill(3.0f);
     m_tool_thickness[idx(ToolType::Text)] = 16.0f;
+
     return Ok();
 }
 
@@ -481,6 +489,15 @@ void ScreenshotTool::RenderOverlay()
 
     if (ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear)
         ImGui::GetBackgroundDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
+
+    if (m_session == SessionType::Wayland && m_show_window.Has(SubWindow::OutputMenuSelection))
+    {
+        DrawOutputMenuSelection();
+        DrawDarkOverlay();
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !disable_esc)
+            Cancel();
+        return;
+    }
 
     if (m_selection.get_width() == 0 || m_selection.get_height() == 0)
     {
@@ -3575,6 +3592,67 @@ void ScreenshotTool::DrawAnnotations()
         draw_annotation(m_current_annotation);
 }
 
+void ScreenshotTool::DrawOutputMenuSelection()
+{
+    if (!m_show_window.Has(SubWindow::OutputMenuSelection))
+        return;
+
+    static int output_sel = 0;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 14));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 10));
+
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(320, 0), ImVec2(520, 480));
+    ImGui::Begin("Choose an output to capture##select_output_crop",
+                 nullptr,
+                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize);
+
+    int           monitor_count = 0;
+    GLFWmonitor** monitors      = extern_glfwGetMonitors(&monitor_count);
+
+    std::deque<region_t> layout;
+
+    for (int i = 0; i < monitor_count; ++i)
+    {
+        int mx, my;
+        extern_glfwGetMonitorPos(monitors[i], &mx, &my);
+        const char*        mon_name = extern_glfwGetMonitorName(monitors[i]);
+        const GLFWvidmode* mode     = extern_glfwGetVideoMode(monitors[i]);
+        if (!mode)
+            continue;
+
+        const char* mon_orientation = mode->height > mode->width ? "Vertical" : "Horizontal";
+        layout.push_back(region_t{ mx, my, mode->width, mode->height });
+
+        const int idx = static_cast<int>(layout.size()) - 1;
+        ImGui::PushID(idx);
+        ImGui::RadioButton(
+            fmt::format("{} ({}x{}, {})", mon_name ? mon_name : "Unknown", mode->width, mode->height, mon_orientation)
+                .c_str(),
+            &output_sel,
+            idx);
+        ImGui::PopID();
+    }
+
+    output_sel = layout.empty() ? 0 : std::clamp(output_sel, 0, static_cast<int>(layout.size()) - 1);
+
+    ImGui::Separator();
+
+    const float button_width = ImGui::GetContentRegionAvail().x;
+    ImGui::BeginDisabled(layout.empty());
+    if (ImGui::Button("Crop", ImVec2(button_width, 0)))
+    {
+        const region_t target = layout[output_sel];
+        m_show_window.Clear(SubWindow::OutputMenuSelection);
+        MUST_OK(g_ss_tool.CropToOutput(layout, target), error("Crop to focused monitor failed: {}", _r.error_v()));
+    }
+    ImGui::EndDisabled();
+
+    ImGui::End();
+    ImGui::PopStyleVar(2);
+}
+
 void ScreenshotTool::Cancel()
 {
     m_state = ToolState::Idle;
@@ -4041,6 +4119,25 @@ void ScreenshotTool::UpdateWindowBg()
         m_image_origin.y + image_size.y
     );
     // clang-format on
+}
+
+Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const region_t& target)
+{
+    Result<capture_result_t> cropped = crop_to_monitor(m_screenshot, layout, target);
+    TRY_MSG(cropped, "Failed to crop capture to focused monitor: {}");
+
+    m_screenshot = std::move(cropped.get());
+
+    const Result<ImTextureRef>& r = CreateTexture(reinterpret_cast<void*>(static_cast<size_t>(m_texture_id._TexID)),
+                                                  m_screenshot.view(),
+                                                  m_screenshot.w,
+                                                  m_screenshot.h);
+    TRY_MSG(r, "Failed to recreate texture after crop: {}");
+    m_texture_id = r.get();
+
+    UpdateWindowBg();  // re-center image_origin/image_end for the new, smaller size
+
+    return Ok();
 }
 
 ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const float font_size)

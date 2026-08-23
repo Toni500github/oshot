@@ -110,6 +110,53 @@ SessionType get_session_type()
     return SessionType::Unknown;
 }
 
+Result<capture_result_t> crop_to_monitor(const capture_result_t&     full,
+                                         const std::deque<region_t>& monitors,
+                                         const region_t&             target)
+{
+    if (monitors.empty())
+        return Err("No monitor list provided");
+
+    int min_x = monitors[0].x, min_y = monitors[0].y;
+    int max_x = monitors[0].x + monitors[0].width, max_y = monitors[0].y + monitors[0].height;
+    for (const region_t& m : monitors)
+    {
+        min_x = std::min(min_x, m.x);
+        min_y = std::min(min_y, m.y);
+        max_x = std::max(max_x, m.x + m.width);
+        max_y = std::max(max_y, m.y + m.height);
+    }
+    const int layout_w = max_x - min_x;
+    const int layout_h = max_y - min_y;
+    if (layout_w <= 0 || layout_h <= 0)
+        return Err("Degenerate monitor layout");
+
+    const float scale_x = float(full.w) / layout_w;
+    const float scale_y = float(full.h) / layout_h;
+
+    const int crop_x = std::clamp(int(std::lround((target.x - min_x) * scale_x)), 0, full.w);
+    const int crop_y = std::clamp(int(std::lround((target.y - min_y) * scale_y)), 0, full.h);
+    const int crop_w = std::clamp(int(std::lround(target.width * scale_x)), 0, full.w - crop_x);
+    const int crop_h = std::clamp(int(std::lround(target.height * scale_y)), 0, full.h - crop_y);
+
+    if (crop_w <= 0 || crop_h <= 0)
+        return Err("Computed crop rect is empty");
+
+    capture_result_t out;
+    out.w = crop_w;
+    out.h = crop_h;
+    out.data.resize(size_t(crop_w) * crop_h * 4);
+
+    for (int row = 0; row < crop_h; ++row)
+    {
+        const uint8_t* src = full.data.data() + (size_t(crop_y + row) * full.w + crop_x) * 4;
+        uint8_t*       dst = out.data.data() + size_t(row) * crop_w * 4;
+        std::memcpy(dst, src, size_t(crop_w) * 4);
+    }
+
+    return Ok(std::move(out));
+}
+
 #if OSHOT_LINUX
 Result<capture_result_t> capture_full_screen_portal();
 
@@ -292,7 +339,7 @@ Result<capture_result_t> capture_full_screen_spectacle()
     unlink(tmppath);
 
     if (!rgba)
-        return Err("Failed to decode PNG: {}", STBI_ERROR);
+        return Err("Failed to read PNG: {}", STBI_ERROR);
 
     result.w = w;
     result.h = h;
@@ -310,19 +357,22 @@ Result<capture_result_t> capture_full_screen_wayland()
 
     capture_result_t result;
 
+    std::string             err;
     std::vector<uint8_t>    buf;
-    TinyProcessLib::Process proc({ "grim", "-t", "ppm", "-" },
-                                 "",  // cwd
-                                 [&](const char* bytes, size_t n) {
-                                     // stdout (binary)
-                                     const uint8_t* p = reinterpret_cast<const uint8_t*>(bytes);
-                                     buf.insert(buf.end(), p, p + n);
-                                 });
-
-    const int exit_code = proc.get_exit_status();
-
-    if (exit_code != 0)
-        return Err("grim failed with exit code: {}", exit_code);
+    TinyProcessLib::Process proc(
+        { "grim", "-t", "ppm", "-" },
+        "",  // cwd
+        [&](const char* bytes, size_t n) {
+            // stdout (binary)
+            const uint8_t* p = reinterpret_cast<const uint8_t*>(bytes);
+            buf.insert(buf.end(), p, p + n);
+        },
+        [&](const char* p, size_t n) {
+            // stderr
+            err.append(p, n);
+        });
+    if (proc.get_exit_status() != 0)
+        return Err("Capture with grim failed: {}", err);
 
     // stbi_load_from_memory takes an int length
     if (buf.size() > INT_MAX)
@@ -336,7 +386,7 @@ Result<capture_result_t> capture_full_screen_wayland()
 
     result.w = w;
     result.h = h;
-    result.data.assign(rgba, rgba + (size_t(w) * size_t(h) * 4));
+    result.data.assign(rgba, rgba + (size_t(w) * h * 4));
     stbi_image_free(rgba);
 
     return Ok(std::move(result));
@@ -570,7 +620,6 @@ Result<capture_result_t> capture_full_screen_portal()
 
     return Ok(std::move(st.cap));
 }
-
 #else
 Result<capture_result_t> capture_full_screen_x11()
 {
