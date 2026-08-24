@@ -33,10 +33,6 @@
 
 #include "util.hpp"
 
-#if OSHOT_LINUX
-#  include <wayland-client.h>
-#endif
-
 struct region_t
 {
     int x{};
@@ -55,15 +51,13 @@ struct capture_result_t
     std::span<uint8_t>       view() { return data; }
 };
 
-#if OSHOT_LINUX
 struct monitor_t
 {
-    char       name[64];
-    region_t   geo;
-    bool       done;
-    wl_output* handle = nullptr;
+    char     name[64];
+    region_t geo;
+    bool     done;
+    void*    handle = nullptr;  // wl_output*
 };
-#endif
 
 enum class SessionType
 {

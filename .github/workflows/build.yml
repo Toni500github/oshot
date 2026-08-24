@@ -152,7 +152,10 @@ jobs:
             glfw \
             tesseract \
             zbar \
-            libappindicator-gtk3
+            libappindicator-gtk3 \
+            wayland-protocols \
+            wayland-utils \
+            wayland
 
       - name: Install dependencies (AppImage)
         if: matrix.target == 'linux-appimage'
@@ -177,7 +180,9 @@ jobs:
             libtiff-dev \
             libwebp-dev \
             libzbar-dev \
-            libappindicator3-dev
+            libappindicator3-dev \
+            libwayland-dev \
+            wayland-protocols
 
       - name: Install dependencies (debian-package)
         if: matrix.target == 'debian-package'
@@ -195,7 +200,9 @@ jobs:
             libtesseract-dev \
             libpng-dev \
             libzbar-dev \
-            libayatana-appindicator3-dev
+            libayatana-appindicator3-dev \
+            libwayland-dev \
+            wayland-protocols
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'

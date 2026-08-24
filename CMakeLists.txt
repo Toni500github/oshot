@@ -104,15 +104,17 @@ endif()
 pkg_check_modules(TESSERACT REQUIRED IMPORTED_TARGET tesseract)
 pkg_check_modules(LEPTONICA REQUIRED IMPORTED_TARGET lept)
 pkg_check_modules(ZBAR REQUIRED IMPORTED_TARGET zbar)
-pkg_check_modules(
-    WAYLAND
-    REQUIRED
-    IMPORTED_TARGET
-    wayland-client
-    wayland-server
-    wayland-egl
-    wayland-cursor
-)
+if(UNIX AND NOT APPLE)
+    pkg_check_modules(
+        WAYLAND
+        REQUIRED
+        IMPORTED_TARGET
+        wayland-client
+        wayland-server
+        wayland-egl
+        wayland-cursor
+    )
+endif()
 
 # Homebrew's lept.pc points Cflags at .../include/leptonica directly (its
 # own convention is `#include <allheaders.h>`), but our code uses
@@ -266,9 +268,6 @@ if(UNIX AND NOT APPLE)
     set(PROTOCOL_SOURCE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/${PROTOCOL_BASE_NAME}-protocol.c
     )
-    set(XDG_OUTPUT_XML
-        "${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-output/${PROTOCOL_BASE_NAME}.xml"
-    )
     list(APPEND OSHOT_COMMON_SOURCES src/wl_get_monitors.cpp ${PROTOCOL_SOURCE})
     set_source_files_properties(
         src/wl_get_monitors.cpp
@@ -341,7 +340,7 @@ else()
     )
     target_link_libraries(
         oshot_common
-        PRIVATE ${GIO_LIBRARIES} ${XRANDR_LIBRARIES}
+        PRIVATE ${GIO_LIBRARIES} ${XRANDR_LIBRARIES} PkgConfig::WAYLAND
     )
     target_compile_options(
         oshot_common
@@ -353,6 +352,9 @@ else()
 
     pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
     pkg_get_variable(WAYLAND_SCANNER wayland-scanner wayland_scanner)
+    set(XDG_OUTPUT_XML
+        "${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-output/${PROTOCOL_BASE_NAME}.xml"
+    )
 
     add_custom_command(
         OUTPUT ${PROTOCOL_HEADER}
@@ -360,7 +362,7 @@ else()
             ${WAYLAND_SCANNER} client-header ${XDG_OUTPUT_XML}
             ${PROTOCOL_HEADER}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        DEPENDS ${PROTOCOL_HEADER}
+        DEPENDS ${XDG_OUTPUT_XML}
         COMMENT "Generating Wayland ${PROTOCOL_BASE_NAME} header"
     )
     add_custom_command(
@@ -368,7 +370,7 @@ else()
         COMMAND
             ${WAYLAND_SCANNER} private-code ${XDG_OUTPUT_XML} ${PROTOCOL_SOURCE}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        DEPENDS ${PROTOCOL_SOURCE}
+        DEPENDS ${XDG_OUTPUT_XML}
         COMMENT "Generating Wayland ${PROTOCOL_BASE_NAME} private code"
     )
     add_custom_target(
@@ -392,7 +394,6 @@ target_link_libraries(
         PkgConfig::TESSERACT
         PkgConfig::LEPTONICA
         PkgConfig::ZBAR
-        PkgConfig::WAYLAND
         OpenGL::GL
         ${GLFW_TARGET}
     PRIVATE Threads::Threads

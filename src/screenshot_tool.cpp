@@ -73,7 +73,10 @@
 #  define GL_NO_ERROR 0
 #endif
 
+#if OSHOT_LINUX
 std::deque<monitor_t> wl_get_monitors();
+#endif
+
 using namespace std::chrono_literals;
 
 constexpr rgba_t::rgba_t(ImVec4 vec)
@@ -350,11 +353,13 @@ Result<> ScreenshotTool::Start()
         }
         TRY_MSG(result, "Failed to capture screenshot: {}");
 
+#if OSHOT_LINUX
         if (m_session == SessionType::Wayland)
         {
             m_wayland_monitors = wl_get_monitors();
             m_show_window.Set(SubWindow::OutputMenuSelection);
         }
+#endif
     }
 
     m_screenshot = std::move(result.get());

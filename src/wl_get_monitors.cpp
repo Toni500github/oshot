@@ -135,7 +135,8 @@ std::deque<monitor_t> wl_get_monitors()
     {
         for (monitor_t& m : monitors)
         {
-            zxdg_output_v1* xdg_output = zxdg_output_manager_v1_get_xdg_output(s_xdg_output_manager, m.handle);
+            zxdg_output_v1* xdg_output =
+                zxdg_output_manager_v1_get_xdg_output(s_xdg_output_manager, reinterpret_cast<wl_output*>(m.handle));
             zxdg_output_v1_add_listener(xdg_output, &xdg_output_listener, &m);
         }
     }
