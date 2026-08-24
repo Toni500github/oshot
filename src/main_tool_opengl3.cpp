@@ -54,12 +54,7 @@ void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
 void register_window_callbacks(void (*minimize_fn)(),
                                void (*maximize_fn)(),
                                void (*_extern_glfwTerminate)(),
-                               void (*_extern_glfwSwapInterval)(int),
-                               GLFWmonitor** (*_extern_glfwGetMonitors)(int*),
-                               void (*_extern_glfwGetMonitorPos)(GLFWmonitor*, int*, int*),
-                               void (*_extern_glfwGetMonitorPhysicalSize)(GLFWmonitor*, int*, int*),
-                               const GLFWvidmode* (*_extern_glfwGetVideoMode)(GLFWmonitor*),
-                               const char* (*_extern_glfwGetMonitorName)(GLFWmonitor*));
+                               void (*_extern_glfwSwapInterval)(int));
 
 // Returns the GLFW monitor that currently contains the cursor.
 // Falls back to the primary monitor if the cursor position cannot be
@@ -130,15 +125,7 @@ static void maximize_window_()
 
 int run_main_tool()
 {
-    register_window_callbacks(minimize_window_,
-                              maximize_window_,
-                              glfwTerminate,
-                              glfwSwapInterval,
-                              glfwGetMonitors,
-                              glfwGetMonitorPos,
-                              glfwGetMonitorPhysicalSize,
-                              glfwGetVideoMode,
-                              glfwGetMonitorName);
+    register_window_callbacks(minimize_window_, maximize_window_, glfwTerminate, glfwSwapInterval);
 
     // Setup Screenshot Tool
     // Calling it before starting the window so that
