@@ -58,6 +58,7 @@ static void output_geometry(void*       data,
     monitor_t* m = reinterpret_cast<monitor_t*>(data);
     m->geo.x     = x;
     m->geo.y     = y;
+    m->transform = transform;
 }
 
 static void output_mode(void*      data,

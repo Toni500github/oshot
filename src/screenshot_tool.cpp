@@ -3642,7 +3642,7 @@ void ScreenshotTool::DrawOutputMenuSelection()
     ImGui::BeginDisabled(layout.empty());
     if (ImGui::Button("Crop", ImVec2(button_width, 0)))
     {
-        const region_t target = layout[output_sel];
+        const monitor_t& target = m_wayland_monitors[output_sel];
         m_show_window.Clear(SubWindow::OutputMenuSelection);
         MUST_OK(g_ss_tool.CropToOutput(layout, target), error("Crop to focused monitor failed: {}", _r.error_v()));
     }
@@ -4120,12 +4120,44 @@ void ScreenshotTool::UpdateWindowBg()
     // clang-format on
 }
 
-Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const region_t& target)
+Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const monitor_t& target)
 {
-    Result<capture_result_t> cropped = crop_to_monitor(m_screenshot, layout, target);
+    // Taken from /usr/include/wayland-client-protocol.h
+    enum wl_output_transform
+    {
+        /**
+         * no transform
+         */
+        WL_OUTPUT_TRANSFORM_NORMAL = 0,
+        /**
+         * 90 degrees counter-clockwise
+         */
+        WL_OUTPUT_TRANSFORM_90 = 1,
+        /**
+         * 180 degrees counter-clockwise
+         */
+        WL_OUTPUT_TRANSFORM_180 = 2,
+        /**
+         * 270 degrees counter-clockwise
+         */
+        WL_OUTPUT_TRANSFORM_270 = 3
+    };
+
+    Result<capture_result_t> cropped = crop_to_monitor(m_screenshot, layout, target.geo);
     TRY_MSG(cropped, "Failed to crop capture to focused monitor: {}");
 
     m_screenshot = std::move(cropped.get());
+
+    int quarter_turns = 0;
+    switch (target.transform)
+    {
+        case WL_OUTPUT_TRANSFORM_90:  quarter_turns = 1; break;
+        case WL_OUTPUT_TRANSFORM_180: quarter_turns = 2; break;
+        case WL_OUTPUT_TRANSFORM_270: quarter_turns = 3; break;
+        default:                      break;  // normal, or flipped variants, not handled yet
+    }
+    if (quarter_turns != 0)
+        m_screenshot = rotate_rgba(m_screenshot, quarter_turns);
 
     const Result<ImTextureRef>& r = CreateTexture(reinterpret_cast<void*>(static_cast<size_t>(m_texture_id._TexID)),
                                                   m_screenshot.view(),

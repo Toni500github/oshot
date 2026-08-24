@@ -56,7 +56,8 @@ struct monitor_t
     char     name[64];
     region_t geo;
     bool     done;
-    void*    handle = nullptr;  // wl_output*
+    void*    handle    = nullptr;  // struct wl_output*
+    int32_t  transform = 0;        // WL_OUTPUT_TRANSFORM_* value
 };
 
 enum class SessionType
@@ -76,6 +77,7 @@ Result<capture_result_t> capture_full_screen_windows();
 Result<capture_result_t> capture_full_screen_macos();
 
 SessionType              get_session_type();
+capture_result_t         rotate_rgba(const capture_result_t& src, int quarter_turns_cw);
 Result<capture_result_t> crop_to_monitor(const capture_result_t&     full,
                                          const std::deque<region_t>& monitors,
                                          const region_t&             target);

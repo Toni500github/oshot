@@ -157,6 +157,39 @@ Result<capture_result_t> crop_to_monitor(const capture_result_t&     full,
     return Ok(std::move(out));
 }
 
+// Rotates an RGBA buffer by a multiple of 90 degrees clockwise.
+// 90/270 swap width and height; 180 doesn't. Used to correct crop_to_monitor()'s
+// output for outputs with a non-zero wl_output transform (rotated monitors),
+// since the compositor's combined capture buffer doesn't pre-rotate per-output
+// content the way logical geometry implies it should.
+capture_result_t rotate_rgba(const capture_result_t& src, int quarter_turns_cw)
+{
+    quarter_turns_cw = ((quarter_turns_cw % 4) + 4) % 4;
+    if (quarter_turns_cw == 0)
+        return src;
+
+    capture_result_t out;
+    out.w = (quarter_turns_cw % 2 == 0) ? src.w : src.h;
+    out.h = (quarter_turns_cw % 2 == 0) ? src.h : src.w;
+    out.data.resize(size_t(out.w) * out.h * 4);
+
+    for (int y = 0; y < src.h; ++y)
+    {
+        for (int x = 0; x < src.w; ++x)
+        {
+            int dx = 0, dy = 0;
+            switch (quarter_turns_cw)
+            {
+                case 1: dx = src.h - 1 - y; dy = x; break;              // 90 CW
+                case 2: dx = src.w - 1 - x; dy = src.h - 1 - y; break;  // 180
+                case 3: dx = y; dy = src.w - 1 - x; break;              // 270 CW
+            }
+            std::memcpy(&out.data[(size_t(dy) * out.w + dx) * 4], &src.data[(size_t(y) * src.w + x) * 4], 4);
+        }
+    }
+    return out;
+}
+
 #if OSHOT_LINUX
 Result<capture_result_t> capture_full_screen_portal();
 
