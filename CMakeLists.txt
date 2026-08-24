@@ -104,17 +104,6 @@ endif()
 pkg_check_modules(TESSERACT REQUIRED IMPORTED_TARGET tesseract)
 pkg_check_modules(LEPTONICA REQUIRED IMPORTED_TARGET lept)
 pkg_check_modules(ZBAR REQUIRED IMPORTED_TARGET zbar)
-if(UNIX AND NOT APPLE)
-    pkg_check_modules(
-        WAYLAND
-        REQUIRED
-        IMPORTED_TARGET
-        wayland-client
-        wayland-server
-        wayland-egl
-        wayland-cursor
-    )
-endif()
 
 # Homebrew's lept.pc points Cflags at .../include/leptonica directly (its
 # own convention is `#include <allheaders.h>`), but our code uses
@@ -138,6 +127,15 @@ if(UNIX AND NOT APPLE)
     pkg_check_modules(XRANDR REQUIRED xrandr)
     pkg_check_modules(GTK REQUIRED gtk+-3.0)
     pkg_check_modules(DBUS REQUIRED dbus-1)
+    pkg_check_modules(
+        WAYLAND
+        REQUIRED
+        IMPORTED_TARGET
+        wayland-client
+        wayland-server
+        wayland-egl
+        wayland-cursor
+    )
 endif()
 
 # -----------------------------
