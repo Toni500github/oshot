@@ -4122,42 +4122,14 @@ void ScreenshotTool::UpdateWindowBg()
 
 Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const monitor_t& target)
 {
-    // Taken from /usr/include/wayland-client-protocol.h
-    enum wl_output_transform
-    {
-        /**
-         * no transform
-         */
-        WL_OUTPUT_TRANSFORM_NORMAL = 0,
-        /**
-         * 90 degrees counter-clockwise
-         */
-        WL_OUTPUT_TRANSFORM_90 = 1,
-        /**
-         * 180 degrees counter-clockwise
-         */
-        WL_OUTPUT_TRANSFORM_180 = 2,
-        /**
-         * 270 degrees counter-clockwise
-         */
-        WL_OUTPUT_TRANSFORM_270 = 3
-    };
-
     Result<capture_result_t> cropped = crop_to_monitor(m_screenshot, layout, target.geo);
     TRY_MSG(cropped, "Failed to crop capture to focused monitor: {}");
 
     m_screenshot = std::move(cropped.get());
 
-    int quarter_turns = 0;
-    switch (target.transform)
-    {
-        case WL_OUTPUT_TRANSFORM_90:  quarter_turns = 1; break;
-        case WL_OUTPUT_TRANSFORM_180: quarter_turns = 2; break;
-        case WL_OUTPUT_TRANSFORM_270: quarter_turns = 3; break;
-        default:                      break;  // normal, or flipped variants, not handled yet
-    }
-    if (quarter_turns != 0)
-        m_screenshot = rotate_rgba(m_screenshot, quarter_turns);
+    // WL_OUTPUT_TRANSFORM_90/180/270
+    if (target.transform >= 1 && target.transform <= 3)
+        m_screenshot = rotate_rgba(m_screenshot, target.transform);
 
     const Result<ImTextureRef>& r = CreateTexture(reinterpret_cast<void*>(static_cast<size_t>(m_texture_id._TexID)),
                                                   m_screenshot.view(),
