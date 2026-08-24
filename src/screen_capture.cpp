@@ -165,6 +165,7 @@ Result<capture_result_t> capture_full_screen_portal();
 // Returns false if X is unavailable (pure Wayland without XWayland).
 static bool get_cursor_monitor_xrandr(Display* display, int& out_x, int& out_y, int& out_w, int& out_h)
 {
+    return false;
     const char* disp_env = std::getenv("DISPLAY");
     if (!disp_env || disp_env[0] == '\0')
         return false;

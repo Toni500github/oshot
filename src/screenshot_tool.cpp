@@ -73,6 +73,7 @@
 #  define GL_NO_ERROR 0
 #endif
 
+std::deque<monitor_t> wl_get_monitors();
 using namespace std::chrono_literals;
 
 constexpr rgba_t::rgba_t(ImVec4 vec)
@@ -350,7 +351,10 @@ Result<> ScreenshotTool::Start()
         TRY_MSG(result, "Failed to capture screenshot: {}");
 
         if (m_session == SessionType::Wayland)
+        {
+            m_wayland_monitors = wl_get_monitors();
             m_show_window.Set(SubWindow::OutputMenuSelection);
+        }
     }
 
     m_screenshot = std::move(result.get());
@@ -497,6 +501,8 @@ void ScreenshotTool::RenderOverlay()
         DrawDarkOverlay();
         if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !disable_esc)
             Cancel();
+        ImGui::End();
+        ImGui::PopStyleVar();
         return;
     }
 
@@ -3598,8 +3604,7 @@ void ScreenshotTool::DrawOutputMenuSelection()
     if (!m_show_window.Has(SubWindow::OutputMenuSelection))
         return;
 
-    static int  output_sel = 0;
-    static bool do_debug   = true;
+    static int output_sel = 0;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 14));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 10));
@@ -3610,35 +3615,20 @@ void ScreenshotTool::DrawOutputMenuSelection()
                  nullptr,
                  ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize);
 
-    int           monitor_count = 0;
-    GLFWmonitor** monitors      = extern_glfwGetMonitors(&monitor_count);
-
     std::deque<region_t> layout;
 
-    for (int i = 0; i < monitor_count; ++i)
+    for (size_t i = 0; i < m_wayland_monitors.size(); ++i)
     {
-        int mx, my;
-        extern_glfwGetMonitorPos(monitors[i], &mx, &my);
-        const char*        mon_name = extern_glfwGetMonitorName(monitors[i]);
-        const GLFWvidmode* mode     = extern_glfwGetVideoMode(monitors[i]);
-        if (!mode)
-            continue;
+        const monitor_t& m = m_wayland_monitors[i];
+        layout.push_back(m.geo);
 
-        region_t r{ mx, my, mode->width, mode->height };
-        if (do_debug)
-            spdlog::debug("monitor {}: {}x{}+{}+{}", mon_name, r.width, r.height, r.x, r.y);
-        layout.emplace_back(std::move(r));
-
-        const int idx = static_cast<int>(layout.size()) - 1;
-        ImGui::PushID(idx);
-        ImGui::RadioButton(
-            fmt::format("{} ({}x{})", mon_name ? mon_name : "Unknown", mode->width, mode->height).c_str(),
-            &output_sel,
-            idx);
+        ImGui::PushID(int(i));
+        ImGui::RadioButton(fmt::format("{} ({}x{})", m.name[0] ? m.name : "Unknown", m.geo.width, m.geo.height).c_str(),
+                           &output_sel,
+                           int(i));
         ImGui::PopID();
     }
 
-    do_debug   = false;
     output_sel = layout.empty() ? 0 : std::clamp(output_sel, 0, static_cast<int>(layout.size()) - 1);
 
     ImGui::Separator();

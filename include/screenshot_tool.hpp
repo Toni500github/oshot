@@ -433,6 +433,7 @@ private:
 
     std::function<void(SavingOp, const capture_result_t&, ImageExt)> m_on_complete;
 
+    std::deque<monitor_t>                          m_wayland_monitors;
     SessionType                                    m_session;
     std::string                                    m_last_scanned_ocr_path;
     GeneralContext<SubWindow>                      m_show_window;

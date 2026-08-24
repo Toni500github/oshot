@@ -104,6 +104,15 @@ endif()
 pkg_check_modules(TESSERACT REQUIRED IMPORTED_TARGET tesseract)
 pkg_check_modules(LEPTONICA REQUIRED IMPORTED_TARGET lept)
 pkg_check_modules(ZBAR REQUIRED IMPORTED_TARGET zbar)
+pkg_check_modules(
+    WAYLAND
+    REQUIRED
+    IMPORTED_TARGET
+    wayland-client
+    wayland-server
+    wayland-egl
+    wayland-cursor
+)
 
 # Homebrew's lept.pc points Cflags at .../include/leptonica directly (its
 # own convention is `#include <allheaders.h>`), but our code uses
@@ -142,13 +151,12 @@ add_executable(
 enable_lto(${PROJECT_NAME})
 
 set(VERSION_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/version.h)
+set(VERSION_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generateVersion.sh)
 add_custom_command(
     OUTPUT ${VERSION_HEADER}
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generateVersion.sh
+    COMMAND ${VERSION_SCRIPT}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/version.h.in
-        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generateVersion.sh
+    DEPENDS ${VERSION_HEADER}.in ${VERSION_SCRIPT}
     COMMENT "Generating version header"
 )
 add_custom_target(generate_version DEPENDS ${VERSION_HEADER})
@@ -250,6 +258,25 @@ if(NOT DISABLE_PLUGINS)
     )
 endif()
 
+if(UNIX AND NOT APPLE)
+    set(PROTOCOL_BASE_NAME xdg-output-unstable-v1)
+    set(PROTOCOL_HEADER
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/${PROTOCOL_BASE_NAME}-client-protocol.h
+    )
+    set(PROTOCOL_SOURCE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/${PROTOCOL_BASE_NAME}-protocol.c
+    )
+    set(XDG_OUTPUT_XML
+        "${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-output/${PROTOCOL_BASE_NAME}.xml"
+    )
+    list(APPEND OSHOT_COMMON_SOURCES src/wl_get_monitors.cpp ${PROTOCOL_SOURCE})
+    set_source_files_properties(
+        src/wl_get_monitors.cpp
+        ${PROTOCOL_SOURCE}
+        PROPERTIES COMPILE_FLAGS "-Wno-unused-parameter"
+    )
+endif()
+
 add_library(oshot_common ${OSHOT_COMMON_LIB_TYPE} ${OSHOT_COMMON_SOURCES})
 
 if(OSHOT_OPTION_DEFINITIONS)
@@ -300,7 +327,7 @@ elseif(APPLE)
 else()
     target_include_directories(
         oshot_common
-        PRIVATE ${APPINDICATOR_INCLUDE_DIRS}
+        PRIVATE ${APPINDICATOR_INCLUDE_DIRS} ${WAYLAND_INCLUDE_DIRS}
     )
     target_compile_options(oshot_common PRIVATE ${APPINDICATOR_CFLAGS_OTHER})
 
@@ -318,8 +345,37 @@ else()
     )
     target_compile_options(
         oshot_common
-        PRIVATE ${GIO_CFLAGS_OTHER} ${XRANDR_CFLAGS_OTHER}
+        PRIVATE
+            ${GIO_CFLAGS_OTHER}
+            ${XRANDR_CFLAGS_OTHER}
+            ${WAYLAND_CFLAGS_OTHER}
     )
+
+    pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
+    pkg_get_variable(WAYLAND_SCANNER wayland-scanner wayland_scanner)
+
+    add_custom_command(
+        OUTPUT ${PROTOCOL_HEADER}
+        COMMAND
+            ${WAYLAND_SCANNER} client-header ${XDG_OUTPUT_XML}
+            ${PROTOCOL_HEADER}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        DEPENDS ${PROTOCOL_HEADER}
+        COMMENT "Generating Wayland ${PROTOCOL_BASE_NAME} header"
+    )
+    add_custom_command(
+        OUTPUT ${PROTOCOL_SOURCE}
+        COMMAND
+            ${WAYLAND_SCANNER} private-code ${XDG_OUTPUT_XML} ${PROTOCOL_SOURCE}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        DEPENDS ${PROTOCOL_SOURCE}
+        COMMENT "Generating Wayland ${PROTOCOL_BASE_NAME} private code"
+    )
+    add_custom_target(
+        generate_protocol
+        DEPENDS ${PROTOCOL_HEADER} ${PROTOCOL_SOURCE}
+    )
+    add_dependencies(oshot_common generate_protocol)
 endif()
 
 target_link_libraries(
@@ -336,6 +392,7 @@ target_link_libraries(
         PkgConfig::TESSERACT
         PkgConfig::LEPTONICA
         PkgConfig::ZBAR
+        PkgConfig::WAYLAND
         OpenGL::GL
         ${GLFW_TARGET}
     PRIVATE Threads::Threads

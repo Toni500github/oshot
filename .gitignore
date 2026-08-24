@@ -54,3 +54,5 @@ AppDir
 .cache
 imgui.ini
 compile_commands.json
+include/xdg-output-unstable-v1-client-protocol.h
+src/xdg-output-unstable-v1-protocol.c
