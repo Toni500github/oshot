@@ -87,7 +87,6 @@ static GLFWmonitor* get_monitor_at_cursor()
     }
 #  endif
 
-    cursor_ok = false;
     if (!cursor_ok)
         return glfwGetPrimaryMonitor();
 

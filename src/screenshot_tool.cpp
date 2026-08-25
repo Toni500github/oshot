@@ -52,7 +52,6 @@
 #include "imgui/imgui_impl_opengl3_loader.h"
 #include "imgui/imgui_internal.h"
 #include "imgui/imgui_stdlib.h"
-#include "spdlog/spdlog.h"
 #ifndef DISABLE_PLUGINS
 #  include "plugin.hpp"
 #  include "plugins/oshot_plugin.h"
@@ -67,16 +66,11 @@
 #include "tool_icons.h"
 #include "util.hpp"
 
-#define GL_SILENCE_DEPRECATION
-#include <GLFW/glfw3.h>
-
 #ifndef GL_NO_ERROR
 #  define GL_NO_ERROR 0
 #endif
 
-#if OSHOT_LINUX
 std::deque<monitor_t> wl_get_monitors();
-#endif
 
 using namespace std::chrono_literals;
 

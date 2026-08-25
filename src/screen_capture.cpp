@@ -58,9 +58,6 @@
 #  include <dxgi1_2.h>
 #  include <stdio.h>
 #  include <windows.h>
-
-#  pragma comment(lib, "d3d11")
-#  pragma comment(lib, "dxgi")
 #endif
 
 using namespace spdlog;
@@ -162,15 +159,15 @@ Result<capture_result_t> crop_to_monitor(const capture_result_t&     full,
 // output for outputs with a non-zero wl_output transform (rotated monitors),
 // since the compositor's combined capture buffer doesn't pre-rotate per-output
 // content the way logical geometry implies it should.
-capture_result_t rotate_rgba(const capture_result_t& src, int quarter_turns_cw)
+capture_result_t rotate_rgba(const capture_result_t& src, int turns_cw)
 {
-    quarter_turns_cw = ((quarter_turns_cw % 4) + 4) % 4;
-    if (quarter_turns_cw == 0)
+    turns_cw = ((turns_cw % 4) + 4) % 4;
+    if (turns_cw == 0)
         return src;
 
     capture_result_t out;
-    out.w = (quarter_turns_cw % 2 == 0) ? src.w : src.h;
-    out.h = (quarter_turns_cw % 2 == 0) ? src.h : src.w;
+    out.w = (turns_cw % 2 == 0) ? src.w : src.h;
+    out.h = (turns_cw % 2 == 0) ? src.h : src.w;
     out.data.resize(size_t(out.w) * out.h * 4);
 
     for (int y = 0; y < src.h; ++y)
@@ -178,13 +175,24 @@ capture_result_t rotate_rgba(const capture_result_t& src, int quarter_turns_cw)
         for (int x = 0; x < src.w; ++x)
         {
             int dx = 0, dy = 0;
-            switch (quarter_turns_cw)
+            switch (turns_cw)
             {
-                case 1: dx = src.h - 1 - y; dy = x; break;              // 90 CW
-                case 2: dx = src.w - 1 - x; dy = src.h - 1 - y; break;  // 180
-                case 3: dx = y; dy = src.w - 1 - x; break;              // 270 CW
+                case 1:  // 90 CW
+                    dx = src.h - 1 - y;
+                    dy = x;
+                    break;
+                case 2:  // 180
+                    dx = src.w - 1 - x;
+                    dy = src.h - 1 - y;
+                    break;
+                case 3:  // 270 CW
+                    dx = y;
+                    dy = src.w - 1 - x;
+                    break;
             }
-            std::memcpy(&out.data[(size_t(dy) * out.w + dx) * 4], &src.data[(size_t(y) * src.w + x) * 4], 4);
+            const uint8_t* psrc = src.data.data() + (size_t(y) * src.w + x) * 4;
+            uint8_t*       pdst = out.data.data() + (size_t(dy) * out.w + dx) * 4;
+            std::memcpy(pdst, psrc, 4);
         }
     }
     return out;
@@ -385,7 +393,7 @@ Result<capture_result_t> capture_full_screen_spectacle()
 
 Result<capture_result_t> capture_full_screen_wayland()
 {
-    const Result<capture_result_t> res = capture_full_screen_portal();
+    Result<capture_result_t> res = capture_full_screen_portal();
     if (res.ok())
         return res;
 
