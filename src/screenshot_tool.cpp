@@ -352,7 +352,8 @@ Result<> ScreenshotTool::Start()
         if (m_session == SessionType::Wayland)
         {
             m_wayland_monitors = wl_get_monitors();
-            m_show_window.Set(SubWindow::OutputMenuSelection);
+            if (m_wayland_monitors.size() > 1)
+                m_show_window.Set(SubWindow::OutputMenuSelection);
         }
 #endif
     }
@@ -3601,6 +3602,7 @@ void ScreenshotTool::DrawAnnotations()
 
 void ScreenshotTool::DrawOutputMenuSelection()
 {
+#if OSHOT_LINUX
     if (!m_show_window.Has(SubWindow::OutputMenuSelection))
         return;
 
@@ -3644,6 +3646,7 @@ void ScreenshotTool::DrawOutputMenuSelection()
 
     ImGui::End();
     ImGui::PopStyleVar(2);
+#endif
 }
 
 void ScreenshotTool::Cancel()
