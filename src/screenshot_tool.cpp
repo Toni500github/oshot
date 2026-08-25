@@ -52,6 +52,7 @@
 #include "imgui/imgui_impl_opengl3_loader.h"
 #include "imgui/imgui_internal.h"
 #include "imgui/imgui_stdlib.h"
+#include "spdlog/spdlog.h"
 #ifndef DISABLE_PLUGINS
 #  include "plugin.hpp"
 #  include "plugins/oshot_plugin.h"
@@ -4127,9 +4128,10 @@ Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const 
 
     m_screenshot = std::move(cropped.get());
 
+    spdlog::debug("target.transform = {}", target.transform);
     // WL_OUTPUT_TRANSFORM_90/180/270
     if (target.transform >= 1 && target.transform <= 3)
-        m_screenshot = rotate_rgba(m_screenshot, target.transform);
+        m_screenshot = rotate_rgba(m_screenshot, 4 - target.transform);  // swap 1 (90) and 3 (270)
 
     const Result<ImTextureRef>& r = CreateTexture(reinterpret_cast<void*>(static_cast<size_t>(m_texture_id._TexID)),
                                                   m_screenshot.view(),
