@@ -31,6 +31,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -115,13 +116,13 @@ Result<capture_result_t> crop_to_monitor(const capture_result_t&     full,
         return Err("No monitor list provided");
 
     int min_x = monitors[0].x, min_y = monitors[0].y;
-    int max_x = monitors[0].x + monitors[0].width, max_y = monitors[0].y + monitors[0].height;
+    int max_x = monitors[0].x + monitors[0].w, max_y = monitors[0].y + monitors[0].h;
     for (const region_t& m : monitors)
     {
         min_x = std::min(min_x, m.x);
         min_y = std::min(min_y, m.y);
-        max_x = std::max(max_x, m.x + m.width);
-        max_y = std::max(max_y, m.y + m.height);
+        max_x = std::max(max_x, m.x + m.w);
+        max_y = std::max(max_y, m.y + m.h);
     }
     const int layout_w = max_x - min_x;
     const int layout_h = max_y - min_y;
@@ -133,8 +134,8 @@ Result<capture_result_t> crop_to_monitor(const capture_result_t&     full,
 
     const int crop_x = std::clamp(int(std::lround((target.x - min_x) * scale_x)), 0, full.w);
     const int crop_y = std::clamp(int(std::lround((target.y - min_y) * scale_y)), 0, full.h);
-    const int crop_w = std::clamp(int(std::lround(target.width * scale_x)), 0, full.w - crop_x);
-    const int crop_h = std::clamp(int(std::lround(target.height * scale_y)), 0, full.h - crop_y);
+    const int crop_w = std::clamp(int(std::lround(target.w * scale_x)), 0, full.w - crop_x);
+    const int crop_h = std::clamp(int(std::lround(target.h * scale_y)), 0, full.h - crop_y);
 
     if (crop_w <= 0 || crop_h <= 0)
         return Err("Computed crop rect is empty");
@@ -204,16 +205,15 @@ Result<capture_result_t> capture_full_screen_portal();
 // Query the geometry of the monitor under the cursor via Xlib + XRandR.
 // Works on native X11 and on any Wayland compositor that runs XWayland.
 // Returns false if X is unavailable (pure Wayland without XWayland).
-static bool get_cursor_monitor_xrandr(Display* display, int& out_x, int& out_y, int& out_w, int& out_h)
+static std::optional<region_t> get_cursor_monitor_xrandr(Display* display)
 {
-    return false;
     const char* disp_env = std::getenv("DISPLAY");
     if (!disp_env || disp_env[0] == '\0')
-        return false;
+        return std::nullopt;
 
     Display* dpy = display ? display : XOpenDisplay(disp_env);
     if (!dpy)
-        return false;
+        return std::nullopt;
 
     // Query the cursor position so we know which monitor the user is on
     Window       root = DefaultRootWindow(dpy);
@@ -225,15 +225,16 @@ static bool get_cursor_monitor_xrandr(Display* display, int& out_x, int& out_y, 
     int             nmon     = 0;
     XRRMonitorInfo* monitors = XRRGetMonitors(dpy, root, True, &nmon);
 
-    bool found = false;
+    region_t mon_size;
+    bool     found = false;
     if (monitors && nmon > 0)
     {
         // Default to first monitor in case the cursor position is ambiguous
-        out_x = monitors[0].x;
-        out_y = monitors[0].y;
-        out_w = monitors[0].width;
-        out_h = monitors[0].height;
-        found = true;
+        mon_size.x = monitors[0].x;
+        mon_size.y = monitors[0].y;
+        mon_size.w = monitors[0].width;
+        mon_size.h = monitors[0].height;
+        found      = true;
 
         debug("Found {} monitor{}", nmon, nmon > 1 ? "s" : "");
         for (int i = 0; i < nmon; ++i)
@@ -243,10 +244,10 @@ static bool get_cursor_monitor_xrandr(Display* display, int& out_x, int& out_y, 
             const int mw = monitors[i].width, mh = monitors[i].height;
             if (root_x >= mx && root_x < mx + mw && root_y >= my && root_y < my + mh)
             {
-                out_x = mx;
-                out_y = my;
-                out_w = mw;
-                out_h = mh;
+                mon_size.x = mx;
+                mon_size.y = my;
+                mon_size.w = mw;
+                mon_size.h = mh;
                 debug("XRandR capturing: monitor {}x{}+{}+{} (cursor at {},{}) ", mw, mh, mx, my, root_x, root_y);
                 break;
             }
@@ -256,7 +257,10 @@ static bool get_cursor_monitor_xrandr(Display* display, int& out_x, int& out_y, 
 
     if (!display)
         XCloseDisplay(dpy);
-    return found;
+
+    if (found)
+        return mon_size;
+    return std::nullopt;
 }
 
 static std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
@@ -312,25 +316,27 @@ Result<capture_result_t> capture_full_screen_x11()
 
     Window root = DefaultRootWindow(display);
 
-    int capture_x = 0, capture_y = 0;
-    int capture_w = 0, capture_h = 0;
-
-    if (!get_cursor_monitor_xrandr(display, capture_x, capture_y, capture_w, capture_h))
+    region_t capture{ 0 };
+    if (std::optional<region_t> op_capture = get_cursor_monitor_xrandr(display))
+    {
+        capture = std::move(*op_capture);
+    }
+    else
     {
         // Fall back to root window dimensions (old single-monitor behavior)
         spdlog::warn("XRandR returned no monitors, falling back to root window size");
         XWindowAttributes attrs;
         XGetWindowAttributes(display, root, &attrs);
-        capture_w = attrs.width;
-        capture_h = attrs.height;
+        capture.w = attrs.width;
+        capture.h = attrs.height;
     }
 
     XImage* image = XGetImage(display,
                               root,
-                              capture_x,
-                              capture_y,
-                              static_cast<unsigned int>(capture_w),
-                              static_cast<unsigned int>(capture_h),
+                              capture.x,
+                              capture.y,
+                              static_cast<unsigned int>(capture.w),
+                              static_cast<unsigned int>(capture.h),
                               AllPlanes,
                               ZPixmap);
     if (!image)
@@ -340,9 +346,9 @@ Result<capture_result_t> capture_full_screen_x11()
         return capture_full_screen_portal();
     }
 
-    result.data = ximage_to_rgba(image, capture_w, capture_h);
-    result.w    = capture_w;
-    result.h    = capture_h;
+    result.data = ximage_to_rgba(image, capture.w, capture.h);
+    result.w    = capture.w;
+    result.h    = capture.h;
 
     XDestroyImage(image);
     XCloseDisplay(display);
@@ -630,33 +636,33 @@ Result<capture_result_t> capture_full_screen_portal()
     // The portal always captures the full virtual desktop on multi-monitor
     // setups. Crop down to the monitor that contains the cursor.
     // XRandR works on native X11 and on KDE/GNOME Wayland via XWayland.
+    std::optional<region_t> op_mon = get_cursor_monitor_xrandr(nullptr);
+    if (op_mon && (st.cap.w > op_mon->w || st.cap.h > op_mon->h))
     {
-        int mx = 0, my = 0, mw = 0, mh = 0;
-        if (get_cursor_monitor_xrandr(nullptr, mx, my, mw, mh) && (st.cap.w > mw || st.cap.h > mh))
+        region_t m = std::move(*op_mon);
+        debug("Portal: got monitor with xrandr at cursor position");
+        debug("Portal: cropping {}x{} capture to monitor {}x{}+{}+{}", st.cap.w, st.cap.h, m.w, m.h, m.x, m.y);
+
+        const int x0    = std::max(0, m.x);
+        const int y0    = std::max(0, m.y);
+        const int x1    = std::min(st.cap.w, m.x + m.w);
+        const int y1    = std::min(st.cap.h, m.y + m.h);
+        const int new_w = x1 - x0;
+        const int new_h = y1 - y0;
+
+        if (new_w > 0 && new_h > 0)
         {
-            debug("Portal: cropping {}x{} capture to monitor {}x{}+{}+{}", st.cap.w, st.cap.h, mw, mh, mx, my);
-
-            const int x0    = std::max(0, mx);
-            const int y0    = std::max(0, my);
-            const int x1    = std::min(st.cap.w, mx + mw);
-            const int y1    = std::min(st.cap.h, my + mh);
-            const int new_w = x1 - x0;
-            const int new_h = y1 - y0;
-
-            if (new_w > 0 && new_h > 0)
+            const int            src_stride = st.cap.w;
+            std::vector<uint8_t> cropped(size_t(new_w) * new_h * 4);
+            for (int row = 0; row < new_h; ++row)
             {
-                const int            src_stride = st.cap.w;
-                std::vector<uint8_t> cropped(size_t(new_w) * new_h * 4);
-                for (int row = 0; row < new_h; ++row)
-                {
-                    const uint8_t* src = st.cap.data.data() + (size_t(y0 + row) * src_stride + x0) * 4;
-                    uint8_t*       dst = cropped.data() + size_t(row) * new_w * 4;
-                    std::memcpy(dst, src, size_t(new_w) * 4);
-                }
-                st.cap.data = std::move(cropped);
-                st.cap.w    = new_w;
-                st.cap.h    = new_h;
+                const uint8_t* src = st.cap.data.data() + (size_t(y0 + row) * src_stride + x0) * 4;
+                uint8_t*       dst = cropped.data() + size_t(row) * new_w * 4;
+                std::memcpy(dst, src, size_t(new_w) * 4);
             }
+            st.cap.data = std::move(cropped);
+            st.cap.w    = new_w;
+            st.cap.h    = new_h;
         }
     }
 

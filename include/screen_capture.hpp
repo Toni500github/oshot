@@ -37,8 +37,8 @@ struct region_t
 {
     int x{};
     int y{};
-    int width{};
-    int height{};
+    int w{};
+    int h{};
 };
 
 struct capture_result_t

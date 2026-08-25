@@ -24,11 +24,11 @@ static void xdg_output_logical_position(void* data, zxdg_output_v1*, int32_t x, 
     m->geo.y     = y;
 }
 
-static void xdg_output_logical_size(void* data, zxdg_output_v1*, int32_t width, int32_t height)
+static void xdg_output_logical_size(void* data, zxdg_output_v1*, int32_t w, int32_t h)
 {
-    monitor_t* m  = reinterpret_cast<monitor_t*>(data);
-    m->geo.width  = width;
-    m->geo.height = height;
+    monitor_t* m = reinterpret_cast<monitor_t*>(data);
+    m->geo.w     = w;
+    m->geo.h     = h;
 }
 
 static void xdg_output_done(void*, zxdg_output_v1*)
@@ -61,18 +61,13 @@ static void output_geometry(void*       data,
     m->transform = transform;
 }
 
-static void output_mode(void*      data,
-                        wl_output* wl_output,
-                        uint32_t   flags,
-                        int32_t    width,
-                        int32_t    height,
-                        int32_t    refresh)
+static void output_mode(void* data, wl_output* wl_output, uint32_t flags, int32_t w, int32_t h, int32_t refresh)
 {
     if (flags & WL_OUTPUT_MODE_CURRENT)
     {
-        monitor_t* m  = reinterpret_cast<monitor_t*>(data);
-        m->geo.width  = width;
-        m->geo.height = height;
+        monitor_t* m = reinterpret_cast<monitor_t*>(data);
+        m->geo.w     = w;
+        m->geo.h     = h;
     }
 }
 

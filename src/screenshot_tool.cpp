@@ -3623,9 +3623,8 @@ void ScreenshotTool::DrawOutputMenuSelection()
         layout.push_back(m.geo);
 
         ImGui::PushID(int(i));
-        ImGui::RadioButton(fmt::format("{} ({}x{})", m.name[0] ? m.name : "Unknown", m.geo.width, m.geo.height).c_str(),
-                           &output_sel,
-                           int(i));
+        ImGui::RadioButton(
+            fmt::format("{} ({}x{})", m.name[0] ? m.name : "Unknown", m.geo.w, m.geo.h).c_str(), &output_sel, int(i));
         ImGui::PopID();
     }
 
@@ -3729,21 +3728,21 @@ capture_result_t ScreenshotTool::GetFinalImage(bool is_text_tools)
     const region_t& region = GetActiveRegion();
 
     capture_result_t result;
-    result.w = region.width;
-    result.h = region.height;
-    result.data.resize(size_t(region.width) * region.height * 4);
+    result.w = region.w;
+    result.h = region.h;
+    result.data.resize(size_t(region.w) * region.h * 4);
 
     std::span<const uint8_t> src(m_screenshot.view());
     std::span<uint8_t>       dst(result.data);
 
     const int src_width = m_screenshot.w;
-    const int dst_width = region.width;
+    const int dst_width = region.w;
 
     // Calculate bounds
     const int start_y = std::max(0, -region.y);
-    const int end_y   = std::min(region.height, m_screenshot.h - region.y);
+    const int end_y   = std::min(region.h, m_screenshot.h - region.y);
     const int start_x = std::max(0, -region.x);
-    const int end_x   = std::min(region.width, m_screenshot.w - region.x);
+    const int end_x   = std::min(region.w, m_screenshot.w - region.x);
 
     int width = end_x - start_x;
 
