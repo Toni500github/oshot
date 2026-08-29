@@ -319,7 +319,7 @@ public:
     Result<>             StartWindow();
     Result<ImTextureRef> CreateTexture(void* tex, std::span<const uint8_t> data, int w, int h);
     bool                 OpenImage(const std::string& path);
-    Result<>             CropToOutput(const std::deque<region_t>& layout, const monitor_t& target);
+    Result<>             CropToOutput(const std::deque<region_t>& layout, const monitor_t& target, int transform = 0);
     bool                 IsActive() const { return m_state != ToolState::Idle; }
     capture_result_t&    GetRawScreenshot() { return m_screenshot; }
     void                 SetBackendTexture(void* tex) { m_texture_id._TexID = static_cast<ImTextureID>(size_t(tex)); }

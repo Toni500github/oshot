@@ -352,7 +352,7 @@ Result<> ScreenshotTool::Start()
         if (m_session == SessionType::Wayland)
         {
             m_wayland_monitors = wl_get_monitors();
-            if (m_wayland_monitors.size() > 1)
+            if (m_wayland_monitors.size() > 0)
                 m_show_window.Set(SubWindow::OutputMenuSelection);
         }
 #endif
@@ -3607,6 +3607,7 @@ void ScreenshotTool::DrawOutputMenuSelection()
         return;
 
     static int output_sel = 0;
+    static int trans_sel  = 0;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 14));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 10));
@@ -3616,6 +3617,8 @@ void ScreenshotTool::DrawOutputMenuSelection()
     ImGui::Begin("Choose an output to capture##select_output_crop",
                  nullptr,
                  ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize);
+
+    ImGui::SeparatorText("Output");
 
     std::deque<region_t> layout;
 
@@ -3630,17 +3633,28 @@ void ScreenshotTool::DrawOutputMenuSelection()
         ImGui::PopID();
     }
 
-    output_sel = layout.empty() ? 0 : std::clamp(output_sel, 0, static_cast<int>(layout.size()) - 1);
+    output_sel              = layout.empty() ? 0 : std::clamp(output_sel, 0, static_cast<int>(layout.size()) - 1);
+    const monitor_t& target = m_wayland_monitors[output_sel];
 
+    ImGui::SeparatorText("Debug");
+    ImGui::TextDisabled("Detected transform: %d", target.transform);
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::Combo("##rotate_combo", &trans_sel, "No Rotation\0Left Rotation\0Down Rotation\0Right Rotation\0\0");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip(
+            "Overrides the auto-detected output rotation for this crop.\nShould normally stay \"No Rotation\".");
+
+    ImGui::Spacing();
     ImGui::Separator();
+    ImGui::Spacing();
 
     const float button_width = ImGui::GetContentRegionAvail().x;
     ImGui::BeginDisabled(layout.empty());
     if (ImGui::Button("Crop", ImVec2(button_width, 0)))
     {
-        const monitor_t& target = m_wayland_monitors[output_sel];
         m_show_window.Clear(SubWindow::OutputMenuSelection);
-        MUST_OK(g_ss_tool.CropToOutput(layout, target), error("Crop to focused monitor failed: {}", _r.error_v()));
+        MUST_OK(g_ss_tool.CropToOutput(layout, target, trans_sel),
+                error("Crop to focused monitor failed: {}", _r.error_v()));
     }
     ImGui::EndDisabled();
 
@@ -4117,7 +4131,7 @@ void ScreenshotTool::UpdateWindowBg()
     // clang-format on
 }
 
-Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const monitor_t& target)
+Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const monitor_t& target, int transform)
 {
     Result<capture_result_t> cropped = crop_to_monitor(m_screenshot, layout, target.geo);
     TRY_MSG(cropped, "Failed to crop capture to focused monitor: {}");
@@ -4125,9 +4139,8 @@ Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const 
     m_screenshot = std::move(cropped.get());
 
     spdlog::debug("target.transform = {}", target.transform);
-    // WL_OUTPUT_TRANSFORM_90/180/270
-    if (target.transform >= 1 && target.transform <= 3)
-        m_screenshot = rotate_rgba(m_screenshot, 4 - target.transform);  // swap 1 (90) and 3 (270)
+    if (transform >= 1 && transform <= 3)
+        m_screenshot = rotate_rgba(m_screenshot, 4 - transform);  // swap 1 (90) and 3 (270)
 
     const Result<ImTextureRef>& r = CreateTexture(reinterpret_cast<void*>(static_cast<size_t>(m_texture_id._TexID)),
                                                   m_screenshot.view(),
