@@ -368,6 +368,8 @@ Result<> ScreenshotTool::Start()
 
 Result<> ScreenshotTool::StartWindow()
 {
+    fit_to_screen(m_screenshot);
+
     // Do not load anything about the text tools window,
     // just the screenshot one
     if (g_config->Runtime.instant_copy_save != SavingOp::kNone)
@@ -411,7 +413,6 @@ Result<> ScreenshotTool::StartWindow()
 
     m_show_window.Set(SubWindow::MainTextTools, g_config->File.show_text_tools);
 
-    fit_to_screen(m_screenshot);
     SyncRuntimeFromConfig();
 
 #if OSHOT_MACOS
