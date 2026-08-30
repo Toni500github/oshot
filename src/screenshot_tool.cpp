@@ -3618,8 +3618,6 @@ void ScreenshotTool::DrawOutputMenuSelection()
                  nullptr,
                  ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize);
 
-    ImGui::SeparatorText("Output");
-
     std::deque<region_t> layout;
 
     for (size_t i = 0; i < m_wayland_monitors.size(); ++i)
@@ -3636,7 +3634,7 @@ void ScreenshotTool::DrawOutputMenuSelection()
     output_sel              = layout.empty() ? 0 : std::clamp(output_sel, 0, static_cast<int>(layout.size()) - 1);
     const monitor_t& target = m_wayland_monitors[output_sel];
 
-    ImGui::SeparatorText("Debug");
+    ImGui::Spacing();
     ImGui::TextDisabled("Detected transform: %d", target.transform);
     ImGui::SetNextItemWidth(-FLT_MIN);
     ImGui::Combo("##rotate_combo", &trans_sel, "No Rotation\0Left Rotation\0Down Rotation\0Right Rotation\0\0");
