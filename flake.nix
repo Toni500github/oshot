@@ -3,14 +3,9 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
-
-    oshot-src = {
-      url = "github:Toni500github/oshot";
-      flake = false;
-    };
   };
 
-  outputs = { self, nixpkgs, oshot-src }:
+  outputs = { self, nixpkgs }:
     let
       supportedSystems = [ "x86_64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
@@ -26,7 +21,7 @@
             pname = "oshot";
             version = "0.5.0-rc1";
 
-            src = oshot-src;
+            src = ./.;
 
             nativeBuildInputs = with pkgs; [
               cmake
@@ -34,6 +29,7 @@
               pkg-config
               git
               wrapGAppsHook3
+              wayland-scanner
             ];
 
             buildInputs = with pkgs; [
@@ -52,11 +48,16 @@
               libsysprof-capture
               libXdmcp
               zenity
+              pcre2
             ];
 
             # Initialize git AND add a tag so `git describe` works
             preConfigure = ''
-              git init
+              export SOURCE_DATE_EPOCH=1
+              export GIT_AUTHOR_DATE="1970-01-01T00:00:01Z"
+              export GIT_COMMENTOR_DATE="1970-01-01T00:00:01Z"
+
+              git init -b nix-build
               git config user.name "Nix"
               git config user.email "nix@localhost"
               git add .
@@ -81,5 +82,15 @@
 
           default = self.packages.${system}.oshot;
         });
+
+      nixosModules.default = { config, lib, pkgs, ... }: {
+        options.programs.oshot.enable = lib.mkEnableOption "oshot text extraction and screenshot tool";
+
+        config = lib.mkIf config.programs.oshot.enable {
+          environment.systemPackages = [ 
+            self.packages.${pkgs.system}.oshot
+          ];  
+        };
+      };
     };
 }
