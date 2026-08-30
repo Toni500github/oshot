@@ -46,6 +46,8 @@
 #    include <X11/Xlib.h>
 #  endif
 
+using namespace std::chrono_literals;
+
 GLFWwindow* window = nullptr;
 
 void apply_imgui_theme();
@@ -208,6 +210,19 @@ int run_main_tool()
     glfwMakeContextCurrent(window);
     glfwSetDropCallback(window, glfw_drop_callback);
     glfwSwapInterval(1);  // Enable vsync
+
+    // Wayland compositors negotiate final toplevel size via configure events
+    // after creation (window rules, panel/exclusive-zone avoidance, etc.).
+    // Instant mode's near-immediate first frame can render before that lands,
+    // using a stale framebuffer size. Give it a few polls to settle.
+    if (get_session_type() == SessionType::Wayland)
+    {
+        for (int i = 0; i < 5; ++i)
+        {
+            glfwPollEvents();
+            std::this_thread::sleep_for(20ms);
+        }
+    }
 
     g_scr_w = mode->width;
     g_scr_h = mode->height;
