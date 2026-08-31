@@ -41,6 +41,8 @@ bool                    g_is_systray = false;
 int                     g_scr_w{}, g_scr_h{};
 Clipboard               g_clipboard(SessionType::Unknown);
 
+std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_imgui_log_sink;
+
 #ifndef DISABLE_PLUGINS
 static StateManager _s;
 ScreenshotTool      g_ss_tool(std::move(_s));

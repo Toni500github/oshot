@@ -39,6 +39,7 @@
 #include "nvdialog/nvdialog_dialog.h"
 #include "nvdialog/nvdialog_error.h"
 #include "platform.hpp"
+#include "spdlog/sinks/ringbuffer_sink.h"
 #include "spdlog/spdlog.h"
 #include "version.h"
 
@@ -52,6 +53,11 @@ enum class SavingOp;
 #  include <shellapi.h>
 #  include <shlobj.h>
 #  include <windows.h>
+#  define DIR_SEP_STR "\\"
+#  define DIR_SEP     '\\'
+#else
+#  define DIR_SEP_STR "/"
+#  define DIR_SEP     '/'
 #endif
 
 #if OSHOT_WINDOWS || OSHOT_MACOS
@@ -345,6 +351,8 @@ extern bool g_is_systray;  // old g_is_clipboard_server;
 extern int  g_sock;
 extern char g_sock_path[100];
 extern int  g_scr_w, g_scr_h;
+
+extern std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_imgui_log_sink;
 
 static inline const std::string version_infos = fmt::format(
     "oshot v{} built from branch '{}' at {} commit '{}' ({}).\n"

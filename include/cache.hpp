@@ -72,6 +72,7 @@ protected:
     std::string BuildKey(const std::string_view key) const override { return fmt::format("cache.{}", key); }
 
 private:
+    void                         CreateFile();
     static constexpr const char* mk_file_path = "cache.toml";
 
     std::string m_cache_dir_path;

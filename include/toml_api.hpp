@@ -134,6 +134,30 @@ public:
         return fs::copy_file(temp_state, to, fs::copy_options::overwrite_existing);
     }
 
+    static std::string EscapeString(const std::string& s)
+    {
+        std::ostringstream oss;
+        oss << toml::value<std::string>(s);  // includes surrounding quotes, fully escaped
+
+        // remove quotes
+        std::string str(oss.str());
+        str.pop_back();
+        str.erase(0, 1);
+
+        // escape Windows path separators
+        // aka. fucking backslashes because they need to be
+        // backward compatible ofc
+        for (size_t i = 0; i < str.size(); ++i)
+        {
+            if (str[i] == '\\')
+            {
+                str.insert(i + 1, 1, '\\');
+                ++i;  // skip the backslash we just inserted
+            }
+        }
+        return str;
+    }
+
     // Ensures a sub-table exists for a given key. Returns a reference to the sub-table.
     static toml::table& EnsureTable(toml::table& parent, const std::string_view key)
     {

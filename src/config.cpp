@@ -60,7 +60,7 @@ void Config::LoadConfigFile(const std::string& filename)
     File.ocr_path         = GetValue<std::string>("default.ocr-path", File.ocr_path);
     File.ocr_get_repo     = GetValue<std::string>("default.ocr-repo-downlaod", "tesseract-ocr/tessdata");
     File.ocr_model        = GetValue<std::string>("default.ocr-model", "eng");
-    File.theme_file_path  = GetValue<std::string>("default.theme-file", "");
+    File.theme_file_path  = GetValue<std::string>("default.theme-file", "theme.toml");
     File.image_out_fmt    = GetValue<std::string>("default.image-out-fmt", "oshot_{:%F_%H-%M}");
     File.delay            = GetValue<int>("default.delay", -1);
     File.show_text_tools  = GetValue<bool>("default.show-text-tools", true);
@@ -97,8 +97,12 @@ void Config::LoadConfigFile(const std::string& filename)
     if (std::find(prefixes.begin(), prefixes.end(), File.image_out_size_fmt) == prefixes.end())
         File.image_out_size_fmt = "auto";
 
-    if (fs::path(g_config->File.theme_file_path).is_relative())
-        g_config->File.theme_file_path.insert(0, m_config_dir_path + "/");
+    {
+        std::string& s = g_config->File.theme_file_path;
+        fs::path     p(s);
+        if (p.has_filename() && p.is_relative())
+            s.insert(0, m_config_dir_path + DIR_SEP_STR);
+    }
 }
 
 void Config::LoadThemeFile(const std::string& filename)
@@ -152,9 +156,9 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
     }
 
     f.print(AUTOCONFIG,
-            File.ocr_path,
-            File.ocr_model,
-            File.ocr_get_repo,
+            EscapeString(File.ocr_path),
+            EscapeString(File.ocr_model),
+            EscapeString(File.ocr_get_repo),
             File.delay,
             File.color_picker,
             File.cpa_mode,
@@ -165,11 +169,11 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.pref_conf_to_env,
             File.render_anns,
             File.ctrl_c_copy_img,
-            fonts_str,
-            File.image_out_type.first,
-            File.image_out_fmt,
-            File.image_out_size_fmt,
-            File.theme_file_path);
+            EscapeString(fonts_str),
+            EscapeString(File.image_out_type.first),
+            EscapeString(File.image_out_fmt),
+            EscapeString(File.image_out_size_fmt),
+            EscapeString(File.theme_file_path));
 }
 
 void Config::GenerateTheme(const std::string& filename, const bool force)

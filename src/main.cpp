@@ -411,6 +411,7 @@ int main(int argc, char* argv[])
     auto           imgui   = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(500);  // keep last 500 lines
     spdlog::logger logger("oshot_logger", { console, file, imgui });
     spdlog::set_default_logger(std::make_shared<spdlog::logger>(logger));
+    g_imgui_log_sink = imgui;
 
     // [2026-03-10 17:24:07.593] [DEBUG] <col>message</col>
     logger.set_pattern("[%Y-%m-%d %T.%e] [%l] %^%v%$");
@@ -421,7 +422,7 @@ int main(int argc, char* argv[])
     const std::string& configDir      = get_config_dir().string();
     const std::string& cacheDir       = get_cache_dir().string();
     const std::string& configFile     = parse_config_path(argc, argv, configDir).string();
-    const std::string& imgui_ini_path = configDir + "/imgui.ini";
+    const std::string& imgui_ini_path = configDir + DIR_SEP_STR "imgui.ini";
 
     g_cache  = std::make_unique<Cache>(cacheDir);
     g_config = std::make_unique<Config>(configFile, configDir);
@@ -429,8 +430,11 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
 
     g_config->LoadConfigFile(configFile);
-    if (!g_config->File.theme_file_path.empty())
-        g_config->LoadThemeFile(g_config->File.theme_file_path);
+    {
+        fs::path p(g_config->File.theme_file_path);
+        if (fs::exists(p) && p.has_filename())
+            g_config->LoadThemeFile(p.string());
+    }
 
     spdlog::set_level(spdlog::level::debug);
 

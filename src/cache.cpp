@@ -36,12 +36,18 @@ Cache::Cache(const std::string& cache_dir) : m_cache_dir_path(cache_dir)
     {
         spdlog::warn("Oshot cache folder was not found. Creating folders at {}!", cache_dir);
         fs::create_directories(cache_dir);
+        CreateFile();
     }
 
     MUST_OK(LoadCacheFile(), spdlog::error("{}", _r.error_v()));
 }
 
 Cache::~Cache()
+{
+    CreateFile();
+}
+
+void Cache::CreateFile()
 {
     CdGuard guard(m_cache_dir_path);
 

@@ -166,7 +166,7 @@ static void draw_input_text_path(const char*                  label,
         if (is_file && default_path.has_parent_path())
         {
             start_path = default_path.parent_path().string();
-            start_path += '/';  // tinyfd treats a trailing separator as "open here"
+            start_path += DIR_SEP;  // tinyfd treats a trailing separator as "open here"
         }
 
         const char* dialog_path =
@@ -395,7 +395,7 @@ Result<> ScreenshotTool::StartWindow()
                  g_config->File.ocr_model,
                  g_config->File.ocr_get_repo,
 #if defined(__unix__) && !defined(__APPLE__)
-                 g_config->GetConfigDirPath() + "/models",
+                 g_config->GetConfigDirPath() + DIR_SEP_STR "models",
 #else
                  "./models",
 #endif
@@ -1938,8 +1938,9 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
         toml_filters,
         1,
         [&] {
-            if (fs::path(g_config->File.theme_file_path).is_relative())
-                g_config->File.theme_file_path.insert(0, g_config->GetConfigDirPath());
+            std::string& s = g_config->File.theme_file_path;
+            if (fs::path(s).is_relative())
+                s.insert(0, g_config->GetConfigDirPath());
         },
         g_config->File.theme_file_path);
     if (!fs::exists(g_config->File.theme_file_path))
@@ -3115,13 +3116,8 @@ void ScreenshotTool::DrawPluginInstallStatus()
 
 void ScreenshotTool::DrawLogsWindow()
 {
-    static std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> imgui_ring;
-    if (!imgui_ring)
-        if (auto logger = spdlog::default_logger())
-            imgui_ring = std::dynamic_pointer_cast<spdlog::sinks::ringbuffer_sink_mt>(logger->sinks()[2]);
-
     bool open = m_show_window.Has(SubWindow::Logs);
-    if (!open || !imgui_ring)
+    if (!open || !g_imgui_log_sink)
         return;
 
     auto level_color = [](spdlog::level::level_enum lvl) -> rgba_t {
@@ -3189,7 +3185,7 @@ void ScreenshotTool::DrawLogsWindow()
         ImGui::Separator();
 
         // --- Build filtered view ---
-        const std::vector<spdlog::details::log_msg_buffer>& all = imgui_ring->last_raw();
+        const std::vector<spdlog::details::log_msg_buffer>& all = g_imgui_log_sink->last_raw();
         std::vector<const spdlog::details::log_msg_buffer*> shown;
         shown.reserve(all.size());
         for (const auto& msg : all)
