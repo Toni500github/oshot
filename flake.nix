@@ -1,30 +1,106 @@
 {
-  description = "Nix flake for oshot; a simple and lightweight tool for extracting text from a screenshot/image (on the fly)";
+  description = "oshot; a program to screenshot and get text from images";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
   };
 
-  outputs = { self, nixpkgs }: {
-    packages.x86_64-linux.oshot =
-      with import nixpkgs { system = "x86_64-linux"; };
-      stdenv.mkDerivation {
-        name = "oshot";
-        src = self;
-        nativeBuildInputs = [ cmake gnumake pkg-config git ];
-        buildInputs = [ glfw3 leptonica libx11.dev tesseract zbar.dev libappindicator-gtk3.dev dbus.dev systemd.dev libsysprof-capture pcre2.dev libxdmcp.dev libuuid.dev libselinux.dev libsepol.dev libthai.dev libdatrie.dev libdeflate lerc.dev xz.dev zstd.dev libwebp libxkbcommon.dev libepoxy.dev libxtst giflib ];
-        configurePhase = ''
-          cmake -DCMAKE_BUILD_PREFIX=/usr -DDEBUG=0 -G "Unix Makefiles" -B build -S .
-        '';
-        buildPhase = ''
-          cmake --build build -j$(nproc)
-        '';
-        installPhase = ''
-          install -Dm755 build/oshot $out/bin/oshot
-          install -Dm644 oshot.desktop $out/share/applications/oshot.desktop
-          install -Dm644 LICENSE $out/share/licenses/oshot/LICENSE
-        '';
+  outputs = { self, nixpkgs, ... }:
+    let 
+      system = "x86_64-linux";
+      pkgs = import nixpkgs { inherit system; };
+      version = "0.5.0-rc1";
+
+      mkOshot = { disablePlugins ? false }:
+        pkgs.stdenv.mkDerivation {
+          pname = if disablePlugins then "oshot" else "oshot-plugins";
+          inherit version;
+
+          src = ./.;
+
+          nativeBuildInputs = with pkgs; [
+            cmake
+            ninja
+            pkg-config
+            wrapGAppsHook3
+            wayland-scanner
+          ];
+
+          buildInputs = with pkgs; [
+            glfw3
+            tesseract
+            leptonica
+            zbar
+            libGL
+            libpng
+
+            libx11
+            libxcb
+            libxrandr
+            glib
+            gtk3
+            libappindicator-gtk3
+            
+            systemd
+            libarchive
+            curl
+            sysprof
+          ];
+
+          cmakeFlags = [
+            "-DCMAKE_BUILD_TYPE=Release"
+            "-DDISABLE_PLUGINS=${if disablePlugins then "ON" else "OFF"}"
+          ];
+
+          installPhase = ''
+            cmake --install . --prefix "$out"
+
+            # Write tesseract path to file
+            printf 'ocr-path = "${pkgs.tesseract}/bin/tesseract"' > "$out/oshot-config.toml"
+          '';
+        };
+    in {
+      packages.${system} = {
+        oshot-plugins = mkOshot {
+          disablePlugins = false;
+        };
+
+        oshot = mkOshot {
+          disablePlugins = true;
+        };
+
+        default = self.packages.${system}.oshot;
       };
-    packages.x86_64-linux.default = self.packages.x86_64-linux.oshot;
-  };
+      devShells.${system}.default = pkgs.mkShell {
+        nativeBuildInputs = with pkgs; [
+          cmake
+          ninja
+          pkg-config
+          wrapGAppsHook3
+          wayland-scanner
+          gdb
+        ];
+
+        buildInputs = with pkgs; [
+          glfw3
+          tesseract
+          leptonica
+          zbar
+          libGL
+          libpng
+
+          libx11
+          libxcb
+          libxrandr
+          glib
+          gtk3
+          libappindicator-gtk3
+
+          systemd
+          libarchive
+          curl
+          sysprof
+        ];
+      };
+    };
 }
