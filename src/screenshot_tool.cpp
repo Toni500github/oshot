@@ -1741,11 +1741,8 @@ void ScreenshotTool::DrawAboutWindow()
         if (ImGui::TreeNode(text_display))
         {
             ImGui::BeginChild("##scrollable_region", ImVec2(0, 100), false, ImGuiWindowFlags_HorizontalScrollbar);
-
             ImGui::TextUnformatted(version_infos.c_str());
-
-            if (ImGui::Button("Copy text"))
-                MUST_OK(g_clipboard.CopyText(version_infos), error("Failed to copy text: {}", _r.error_v()));
+            CreateCopyTextButton(version_infos);
             ImGui::EndChild();
             ImGui::TreePop();
         }
@@ -3439,7 +3436,7 @@ void ScreenshotTool::DrawLogsWindow()
             cleared_before = spdlog::log_clock::now();
 
         ImGui::SameLine();
-        bool copy_all = ImGui::Button("Copy");
+        bool copy_all = ImGui::Button("Copy All");
         ImGui::SameLine();
         ImGui::Checkbox("Auto-scroll", &autoscroll);
         ImGui::SameLine();
@@ -3497,7 +3494,7 @@ void ScreenshotTool::DrawLogsWindow()
                 if (ImGui::BeginPopupContextItem(fmt::format("ctx##{}", i).c_str()))
                 {
                     if (ImGui::MenuItem("Copy line"))
-                        MUST_OK(g_clipboard.CopyText(msg.payload.data()),
+                        MUST_OK(g_clipboard.CopyText(std::string(msg.payload.data(), msg.payload.size())),
                                 error("Failed to copy line log: {}", _r.error_v()));
                     ImGui::EndPopup();
                 }
