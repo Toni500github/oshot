@@ -1099,19 +1099,10 @@ void ScreenshotTool::HandleAnnotationInput()
     {
         m_current_actions.Clear(CurrentAction::IsDrawing);
 
-        // Only add annotation if it has meaningful size or points
-        bool should_add = false;
-        if (m_current_tool == ToolType::Pencil)
-        {
-            should_add = (m_current_annotation.points.size() > 1);
-        }
-        else
-        {
-            float dx   = m_current_annotation.end.x - m_current_annotation.start.x;
-            float dy   = m_current_annotation.end.y - m_current_annotation.start.y;
-            should_add = (dx * dx + dy * dy) > 25.0f;  // Minimum 5px distance
-        }
-
+        float dx         = m_current_annotation.end.x - m_current_annotation.start.x;
+        float dy         = m_current_annotation.end.y - m_current_annotation.start.y;
+        bool  should_add = (m_current_tool == ToolType::Pencil ||
+                            (dx * dx + dy * dy) > 25.0f);  // Either we are using a pencil or Minimum 5px distance
         if (should_add)
             m_annotations.push_back(m_current_annotation);
 
@@ -3802,14 +3793,43 @@ void ScreenshotTool::DrawAnnotations()
     };
 
     auto draw_pencil = [&](const annotation_t& ann, const float t) {
-        if (ann.points.size() > 1)
+        if (ann.points.empty())
+            return;
+
+        const ImU32 col     = ann.color.to_abgr();
+        const float r       = std::max(t * 0.5f, 0.5f);
+        const float step    = std::max(r * 0.6f, 1.0f);  // spacing between stamps
+        const float step_sq = step * step;
+        const int   segs    = r < 4.0f ? 8 : 0;  // 0 = ImGui picks based on radius
+
+        ImVec2 last(ann.points[0].x, ann.points[0].y);
+        draw_list->AddCircleFilled(last, r, col, segs);
+
+        for (size_t i = 1; i < ann.points.size(); ++i)
         {
-            draw_list->AddPolyline(reinterpret_cast<const ImVec2*>(ann.points.data()),
-                                   int(ann.points.size()),
-                                   ann.color.to_abgr(),
-                                   t,
-                                   ImDrawFlags_None);
+            const float dx   = ann.points[i].x - last.x;
+            const float dy   = ann.points[i].y - last.y;
+            const float d_sq = dx * dx + dy * dy;
+            if (d_sq < step_sq)
+                continue;  // too close to the last stamp, skip
+
+            const float d  = std::sqrt(d_sq);
+            const int   n  = static_cast<int>(d / step);
+            const float sx = dx / d * step;
+            const float sy = dy / d * step;
+
+            for (int k = 0; k < n; ++k)
+            {
+                last.x += sx;
+                last.y += sy;
+                draw_list->AddCircleFilled(last, r, col, segs);
+            }
         }
+
+        // make sure the stroke ends exactly where the mouse ended
+        const ImVec2 end(ann.points.back().x, ann.points.back().y);
+        if (end.x != last.x || end.y != last.y)
+            draw_list->AddCircleFilled(end, r, col, segs);
     };
 
     auto draw_arrow = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
