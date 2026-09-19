@@ -42,7 +42,7 @@
 
 // Starts wlcopy/xclip in the background, forgetting it.
 // Sets wlcopy_pid/xclip_pid, and returns an stdin pipe on success.
-Result<int> start_linux_copy(SessionType session, const std::string_view mime_type = "text/plain;charset=utf-8")
+Result<int> start_linux_copy(SessionType session, const std::string_view mime_type)
 {
 #if OSHOT_LINUX
     static pid_t clip_pid = -1;
@@ -108,7 +108,8 @@ Result<> Clipboard::CopyText(const std::string& text)
 {
     if (m_session == SessionType::Wayland || m_session == SessionType::X11)
     {
-        const Result<int>& res = start_linux_copy(m_session);
+        const char*        mime = (m_session == SessionType::X11) ? "UTF8_STRING" : "text/plain;charset=utf-8";
+        const Result<int>& res  = start_linux_copy(m_session, mime);
         TRY(res);
 
         const int fd = res.get();
