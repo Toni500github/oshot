@@ -502,6 +502,17 @@ void ScreenshotTool::RenderOverlay()
     if (ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear)
         ImGui::GetBackgroundDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
 
+    // If we requested a save/copy image in the previous frame,
+    // do nothing else than rendering annotations
+    if (IsCompleted())
+    {
+        DrawAnnotations();
+        ImGui::End();
+        ImGui::PopStyleVar();
+        m_state = ToolState::Idle;
+        return;
+    }
+
     if (m_session == SessionType::Wayland && m_show_window.Has(SubWindow::OutputMenuSelection))
     {
         DrawOutputMenuSelection();
@@ -1396,11 +1407,6 @@ void ScreenshotTool::UpdateCursor(const selection_info_t& sel)
 
 void ScreenshotTool::DrawDarkOverlay()
 {
-    // Don't render if user requested a save
-    // of the selection current frame
-    if (IsCompleted())
-        return;
-
     ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
 
     const float sel_x = m_main_sel.selection.get_x();
@@ -1455,11 +1461,6 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
                                           const float       sel_w,
                                           const float       sel_h)
 {
-    // Don't render if user requested a save
-    // of the selection current frame
-    if (IsCompleted())
-        return;
-
     ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
 
     // Draw selection border

@@ -303,11 +303,12 @@ int run_main_tool()
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-        // Run just another frame so that ScreenshotTool::DrawDarkOverlay() and
-        // ScreenshotTool::DrawASelectionBorder() are not being rendered into
+        // Run just another frame so that only the annotations are not being rendered into
         // the image because of glReadPixels() reading raw pixels from the screen
         if (force_fire_frame)
+        {
             g_ss_tool.FireOnComplete();
+        }
         else if (g_ss_tool.IsCompleted())
         {
             force_fire_frame = true;
