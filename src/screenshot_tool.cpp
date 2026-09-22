@@ -754,11 +754,10 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
             ImRect bbox = GetAnnotationBBox(lann);
             bbox.Expand(15.0f);
 
-            if (bbox.Contains(mouse_pos))
+            if (bbox.Contains(mouse_pos) && m_current_tool == ToolType::kNone)
             {
-                m_state        = ToolState::AnnResizing;
-                m_current_tool = ToolType::kNone;
-                ann            = &lann;
+                m_state = ToolState::AnnResizing;
+                ann     = &lann;
 
                 switch (ann->type)
                 {
