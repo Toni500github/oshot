@@ -69,7 +69,7 @@ using namespace spdlog;
 #if !OSHOT_WINDOWS
 static const char* create_temp_png()
 {
-    char tmppath[] = "/tmp/oshot_XXXXXX.png";
+    char tmppath[] = "/tmp/oshot_XXXXXX.png";  // NOLINT
     int  fd        = mkstemps(tmppath, 4);
     if (fd < 0)
         return nullptr;

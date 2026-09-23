@@ -325,6 +325,7 @@ public:
     Result<>             CropToOutput(const std::deque<region_t>& layout, const monitor_t& target, int transform = 0);
     [[nodiscard]] bool   IsActive() const { return m_state != ToolState::Idle; }
     capture_result_t&    GetRawScreenshot() { return m_screenshot; }
+    const point_t        GetImageOrigin() const { return { .x = m_image_origin.x, .y = m_image_origin.y }; }
     void                 SetBackendTexture(void* tex) { m_texture_id._TexID = static_cast<ImTextureID>(size_t(tex)); }
     void                 SetToolTexture(ToolType type, void* tex)
     {

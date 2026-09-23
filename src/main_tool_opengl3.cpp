@@ -132,8 +132,7 @@ static void maximize_window_()
 
 int run_main_tool()
 {
-    static GLuint fbo_id = 0;
-    int           display_w, display_h;
+    int display_w, display_h;
 
     register_window_callbacks(minimize_window_, maximize_window_, glfwTerminate, glfwSwapInterval);
 
@@ -146,17 +145,36 @@ int run_main_tool()
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
     g_ss_tool.SetOnComplete([&](SavingOp op, const region_t& region, ImageExt ext) {
+        const point_t o = g_ss_tool.GetImageOrigin();
+
         int fb_w = 0, fb_h = 0;
         glfwGetFramebufferSize(window, &fb_w, &fb_h);
-        const int gl_y = fb_h - region.y - region.h;  // top-left region -> bottom-left GL origin
+        const int rx = region.x + int(o.x);
+        const int ry = fb_h - (region.y + int(o.y)) - region.h;
+
+        spdlog::debug("o={},{} fb={}x{} region={},{} {}x{} read={},{}",
+                      o.x,
+                      o.y,
+                      fb_w,
+                      fb_h,
+                      region.x,
+                      region.y,
+                      region.w,
+                      region.h,
+                      rx,
+                      ry);
 
         std::vector<unsigned char> pixels(size_t(region.w) * region.h * 4);
-        glReadPixels(region.x, gl_y, region.w, region.h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        glReadPixels(rx, ry, region.w, region.h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
+        // glReadPixels() gives from end to top screeen, instead of swapping
+        // the pixels and costing more CPU power, just tell STBI to read from
+        // bottom to top, thus flip the pixels to write. No overhead.
         stbi_flip_vertically_on_write(1);
         capture_result_t res{ .data = std::move(pixels), .w = region.w, .h = region.h };
         MUST_OK(save_image(op, res, ext),
                 error("Failed to save as {}: {}", g_config->File.image_out_type.first, _r.error_v()));
+        stbi_flip_vertically_on_write(0);
 
         glfwSwapInterval(0);  // Disable vsync
         glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -266,10 +284,6 @@ int run_main_tool()
         return EXIT_FAILURE;
     });
 
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo_id);
-    glGenFramebuffers(1, &fbo_id);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_ss_tool.GetImageTexture()._TexID, 0);
-
     bool force_fire_frame = false;
     while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive())
     {
@@ -322,8 +336,6 @@ int run_main_tool()
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glDeleteFramebuffers(1, &fbo_id);
 
     glfwDestroyWindow(window);
     window = nullptr;

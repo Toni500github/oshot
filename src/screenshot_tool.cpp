@@ -4079,19 +4079,16 @@ region_t ScreenshotTool::GetActiveRegion() const
         return region_t{ .x = 0, .y = 0, .w = m_screenshot.w, .h = m_screenshot.h };
     }
 
-    // Convert from screen space -> image space
-    float x = m_main_sel.selection.get_x() - m_image_origin.x;
-    float y = m_main_sel.selection.get_y() - m_image_origin.y;
-    float w = m_main_sel.selection.get_width();
-    float h = m_main_sel.selection.get_height();
+    const auto  img_w = float(m_screenshot.w);
+    const auto  img_h = float(m_screenshot.h);
+    const auto& s     = m_main_sel.selection;
 
-    // Clamp to image bounds (important if user drags outside)
-    x = std::clamp(x, 0.0f, float(m_screenshot.w));
-    y = std::clamp(y, 0.0f, float(m_screenshot.h));
-    w = std::clamp(w, 0.0f, float(m_screenshot.w) - x);
-    h = std::clamp(h, 0.0f, float(m_screenshot.h) - y);
+    const int x0 = int(std::round(std::clamp(s.get_x() - m_image_origin.x, 0.0f, img_w)));
+    const int y0 = int(std::round(std::clamp(s.get_y() - m_image_origin.y, 0.0f, img_h)));
+    const int x1 = int(std::round(std::clamp(s.get_x() + s.get_width() - m_image_origin.x, 0.0f, img_w)));
+    const int y1 = int(std::round(std::clamp(s.get_y() + s.get_height() - m_image_origin.y, 0.0f, img_h)));
 
-    return region_t{ .x = int(x), .y = int(y), .w = int(w), .h = int(h) };
+    return region_t{ .x = x0, .y = y0, .w = x1 - x0, .h = y1 - y0 };
 }
 
 void ScreenshotTool::UpdateWindowBg()
@@ -4105,8 +4102,8 @@ void ScreenshotTool::UpdateWindowBg()
     );
 
     m_image_origin = ImVec2(
-        vp->Pos.x + (vp->Size.x - image_size.x) * 0.5f,
-        vp->Pos.y + (vp->Size.y - image_size.y) * 0.5f
+        vp->Pos.x + std::floor((vp->Size.x - image_size.x) * 0.5f),
+        vp->Pos.y + std::floor((vp->Size.y - image_size.y) * 0.5f)
     );
 
     m_image_end = ImVec2(

@@ -99,6 +99,7 @@ int run_main_tool()
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
     g_ss_tool.SetOnComplete([&](SavingOp op, const region_t& region, ImageExt ext) {
+        const point_t    o             = g_ss_tool.GetImageOrigin();
         const NSUInteger bytes_per_row = NSUInteger(region.w) * 4;
         const NSUInteger buffer_size   = bytes_per_row * NSUInteger(region.h);
 
@@ -109,7 +110,7 @@ int run_main_tool()
         [blit copyFromTexture:current_frame_texture
                          sourceSlice:0
                          sourceLevel:0
-                        sourceOrigin:MTLOriginMake(NSUInteger(region.x), NSUInteger(region.y), 0)
+                        sourceOrigin:MTLOriginMake(region.x + int(o.x), region.y + int(o.y), 0)
                           sourceSize:MTLSizeMake(NSUInteger(region.w), NSUInteger(region.h), 1)
                             toBuffer:readback
                    destinationOffset:0
@@ -322,8 +323,8 @@ int run_main_tool()
         // frame's drawable texture once it's actually been drawn.
         if (force_fire_frame)
         {
-            [cb presentDrawable:drawable];
             [cb commit];
+            [cb waitUntilCompleted];
             g_ss_tool.FireOnComplete();
         }
         else if (g_ss_tool.IsCompleted())
