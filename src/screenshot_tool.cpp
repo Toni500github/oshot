@@ -134,6 +134,15 @@ static void HelpMarker(const char* desc)
     }
 }
 
+// How many buttons of size `btn` separated by `spacing` fit in `length` px:
+// n * btn + (n - 1) * spacing <= length
+static size_t fit_count(float length, float btn, float spacing)
+{
+    if (length < btn)
+        return 0;
+    return static_cast<size_t>((length + spacing) / (btn + spacing));
+}
+
 template <size_t N>
 static void draw_input_text_path(const char*                      label,
                                  const char*                      input_id,
@@ -732,6 +741,9 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
 
         if (!sel.preserve_direction)
             NormalizeSelection(sel);
+
+        if (!sel.is_ann)
+            UpdateAnnsToolbarPos();
     }
 }
 
@@ -2003,51 +2015,33 @@ void ScreenshotTool::DrawBarDecodeTools()
 
 void ScreenshotTool::DrawAnnotationToolbar()
 {
-    const float sel_x = m_main_sel.selection.get_x();
-    const float sel_y = m_main_sel.selection.get_y();
-    const float sel_h = m_main_sel.selection.get_height();
-
-    constexpr float k_toolbar_offset   = 10.0f;
-    constexpr float k_approx_toolbar_h = 40.0f;
-
-    const float display_h = ImGui::GetIO().DisplaySize.y;
-
-    const float below_y = sel_y + sel_h + k_toolbar_offset;
-    const float above_y = sel_y - k_toolbar_offset - k_approx_toolbar_h;
-
-    float toolbar_y = below_y;
-
-    // Prefer below
-    if (below_y + k_approx_toolbar_h > display_h)
-    {
-        // Try above
-        toolbar_y = above_y;
-
-        // If above also invalid, clamp
-        if (toolbar_y < 0.0f)
-            toolbar_y = std::clamp(below_y, 0.0f, display_h - k_approx_toolbar_h);
-    }
-
-    const ImVec2 toolbar_pos(sel_x, toolbar_y);
-    ImGui::SetNextWindowPos(toolbar_pos);
-
-    ImGui::Begin("##annotation_toolbar",
-                 nullptr,
-                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                     ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize);
-
     // Tool selection buttons
-    auto draw_and_set_button = [&](ToolType tool, const char* id, ImTextureRef texture) {
+    auto draw_and_set_button = [&](ToolType tool, const char* id, ImTextureRef texture) -> bool {
+        bool       clicked  = false;
         const bool selected = (m_current_tool == tool);
 
         if (selected)
             ImGui::PushStyleColor(ImGuiCol_Button, (0x6699FFFF_rgba));
 
-        if (ImGui::ImageButton(id, texture.GetTexID(), ImVec2(24, 24)))
+        if (ImGui::ImageButton(id, texture.GetTexID(), TOOL_BUTTON_SIZE2))
+        {
             m_current_tool = selected ? ToolType::kNone : tool;
+            clicked        = true;
+        }
 
         if (selected)
             ImGui::PopStyleColor();
+
+        switch (tool)
+        {
+            case ToolType::kNone:
+            case ToolType::COUNT:
+            case ToolType::CopyImage:
+            case ToolType::SaveImage:
+            case ToolType::ToggleTextTools:
+            case ToolType::Logo:            return clicked;
+            default:                        break;
+        }
 
         // Right-click popup on this item
         if (selected && ImGui::BeginPopupContextItem())
@@ -2107,45 +2101,105 @@ void ScreenshotTool::DrawAnnotationToolbar()
             ImGui::EndPopup();
         }
 
-        ImGui::SameLine();
+        return clicked;
     };
 
-    draw_and_set_button(ToolType::Arrow, "##Arrow", m_tool_textures[idx(ToolType::Arrow)]);
-    draw_and_set_button(ToolType::Line, "##Line", m_tool_textures[idx(ToolType::Line)]);
-    draw_and_set_button(ToolType::Rectangle, "##Rectangle", m_tool_textures[idx(ToolType::Rectangle)]);
-    draw_and_set_button(
-        ToolType::RectangleFilled, "##Rectangle_filled", m_tool_textures[idx(ToolType::RectangleFilled)]);
-    draw_and_set_button(ToolType::Circle, "##Circle", m_tool_textures[idx(ToolType::Circle)]);
-    draw_and_set_button(ToolType::CircleFilled, "##Circle_filled", m_tool_textures[idx(ToolType::CircleFilled)]);
-    draw_and_set_button(ToolType::CounterBubble, "##Counter_bubble", m_tool_textures[idx(ToolType::CounterBubble)]);
-    draw_and_set_button(ToolType::Text, "##icon_Text", m_tool_textures[idx(ToolType::Text)]);
-    draw_and_set_button(ToolType::Pencil, "##Pencil", m_tool_textures[idx(ToolType::Pencil)]);
+    auto set_tool_button = [&](ToolType tool, bool same_line) {
+        ImGui::PushID(int(tool));
+        switch (tool)
+        {
+            case ToolType::kNone:
+            case ToolType::COUNT:
+            case ToolType::Logo:  break;
 
-    ImGui::SameLine(0, 16.0f);
+            case ToolType::ToggleTextTools:
+                if (!m_show_window.Has(SubWindow::MainTextTools))
+                    if (draw_and_set_button(tool, "##btn", m_tool_textures[idx(tool)]))
+                        m_show_window.Set(SubWindow::MainTextTools);
+                break;
 
-    if (!m_show_window.Has(SubWindow::MainTextTools))
+            case ToolType::CopyImage:
+            case ToolType::SaveImage:
+                if (draw_and_set_button(tool, "##btn", m_tool_textures[idx(tool)]))
+                    RequestComplete(tool == ToolType::SaveImage ? SavingOp::File : SavingOp::Clipboard);
+                break;
+
+            default: draw_and_set_button(tool, "##btn", m_tool_textures[idx(tool)]);
+        }
+        ImGui::PopID();
+
+        if (same_line)
+            ImGui::SameLine();
+    };
+
+    const float sel_x = m_main_sel.selection.get_x();
+    const float sel_y = m_main_sel.selection.get_y();
+    const float sel_w = m_main_sel.selection.get_width();
+    const float sel_h = m_main_sel.selection.get_height();
+
+    constexpr float k_toolbar_offset   = 10.0f;  // gap between selection border and first button
+    constexpr float k_approx_toolbar_h = 40.0f;
+
+    if (m_fill_tools_complete)
     {
-        if (ImGui::ImageButton("##ShowTextTools", m_tool_textures[idx(ToolType::ToggleTextTools)], ImVec2(24, 24)))
-            m_show_window.Set(SubWindow::MainTextTools);
-        ImGui::SameLine();
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const ImVec2      btn   = GetToolButtonSize();
+
+        std::array<ImVec2, idx(SelectionBorder::COUNT)> first_btn_pos{};
+        first_btn_pos[idx(SelectionBorder::Bottom)] = ImVec2(sel_x, sel_y + sel_h + k_toolbar_offset);
+        first_btn_pos[idx(SelectionBorder::Right)]  = ImVec2(sel_x + sel_w + k_toolbar_offset, sel_y);
+        first_btn_pos[idx(SelectionBorder::Top)]    = ImVec2(sel_x, sel_y - k_toolbar_offset - btn.y);
+        first_btn_pos[idx(SelectionBorder::Left)]   = ImVec2(sel_x - k_toolbar_offset - btn.x, sel_y);
+
+        for (size_t i = 0; i < m_tools_borders.size(); ++i)
+        {
+            if (m_tools_borders[i].empty())
+                continue;
+
+            ImGui::SetNextWindowPos(
+                ImVec2(first_btn_pos[i].x - style.WindowPadding.x, first_btn_pos[i].y - style.WindowPadding.y));
+            ImGui::Begin(fmt::format("##annotation_toolbar_n{}", i).c_str(),
+                         nullptr,
+                         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                             ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize);
+
+            for (const ToolType tool : m_tools_borders[i])
+                set_tool_button(tool, i % 2 == 0);
+
+            ImGui::End();
+        }
     }
+    else
+    {
+        const float display_h = ImGui::GetIO().DisplaySize.y;
 
-    if (ImGui::ImageButton("##CopyImageButton", m_tool_textures[idx(ToolType::CopyImage)], ImVec2(24, 24)))
-        RequestComplete(SavingOp::Clipboard);
+        const float below_y = sel_y + sel_h + k_toolbar_offset;
+        const float above_y = sel_y - k_toolbar_offset - k_approx_toolbar_h;
 
-    ImGui::SameLine();
+        float toolbar_y = below_y;
 
-    if (ImGui::ImageButton("##SaveImageButton", m_tool_textures[idx(ToolType::SaveImage)], ImVec2(24, 24)))
-        RequestComplete(SavingOp::File);
+        // Prefer below
+        if (below_y + k_approx_toolbar_h > display_h)
+        {
+            // Try above
+            toolbar_y = above_y;
 
-    ImGui::SameLine();
-    ImGui::Separator();
+            // If above also invalid, clamp
+            if (toolbar_y < 0.0f)
+                toolbar_y = std::clamp(below_y, 0.0f, display_h - k_approx_toolbar_h);
+        }
 
-    ImGui::SameLine();
-    if (ImGui::Button("Undo") && !m_annotations.empty())
-        m_annotations.pop_back();
+        ImGui::SetNextWindowPos({ sel_x, toolbar_y });
+        ImGui::Begin("##annotation_toolbar",
+                     nullptr,
+                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                         ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize);
 
-    ImGui::End();
+        for (size_t i = 1; i < idx(ToolType::COUNT); ++i)
+            set_tool_button(toe<ToolType>(i), true);
+
+        ImGui::End();
+    }
 }
 
 static void draw_preference_edit_config(const std::function<void()>& refresh_models_func, bool window_just_opened)
@@ -4108,6 +4162,50 @@ void ScreenshotTool::UpdateWindowBg()
         m_image_origin.y + image_size.y
     );
     // clang-format on
+}
+
+ImVec2 ScreenshotTool::GetToolButtonSize()
+{
+    const ImGuiStyle& style = ImGui::GetStyle();
+    return { TOOL_BUTTON_SIZE + style.FramePadding.x * 2.0f, TOOL_BUTTON_SIZE + style.FramePadding.y * 2.0f };
+}
+
+void ScreenshotTool::UpdateAnnsToolbarPos()
+{
+    m_fill_tools_complete = false;
+
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const ImVec2      btn   = GetToolButtonSize();
+
+    const float sel_w = m_main_sel.selection.get_width();
+    const float sel_h = m_main_sel.selection.get_height();
+
+    // Tools that never draw a button must not take a slot
+    auto has_button = [](ToolType t) { return t != ToolType::kNone && t != ToolType::COUNT && t != ToolType::Logo; };
+
+    const size_t end  = idx(ToolType::COUNT) - 1;  // same upper bound as before
+    size_t       next = idx(ToolType::kNone) + 1;
+
+    ToolType last_tool;
+    for (size_t i = 0; i < m_tools_borders.size(); ++i)
+    {
+        std::vector<ToolType>& tools = m_tools_borders[i];
+        tools.clear();
+
+        const bool   is_side = i % 2 != 0;  // Bottom/Top = horizontal, Right/Left = vertical
+        const size_t capacity =
+            is_side ? fit_count(sel_h, btn.y, style.ItemSpacing.y) : fit_count(sel_w, btn.x, style.ItemSpacing.x);
+
+        for (; next < end && tools.size() < capacity; ++next)
+        {
+            last_tool = toe<ToolType>(next);
+            if (has_button(last_tool))
+                tools.emplace_back(last_tool);
+        }
+    }
+
+    if (last_tool == ToolType::SaveImage)  // NOTE: Update if modifying enum class ToolType
+        m_fill_tools_complete = true;
 }
 
 Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const monitor_t& target, int transform)

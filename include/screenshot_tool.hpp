@@ -56,12 +56,12 @@ enum class ToolType : std::uint8_t
 {
     kNone,
     Arrow,
+    Line,
     Rectangle,
     RectangleFilled,
     Circle,
     CircleFilled,
     CounterBubble,
-    Line,
     Text,
     Pencil,
     ToggleTextTools,
@@ -93,6 +93,17 @@ enum class HandleHovered : std::uint8_t
     BottomLeft,
     BottomRight,
     Move
+};
+
+// Clock-wise order of where we place the
+// annotations buttons
+enum class SelectionBorder : std::uint8_t
+{
+    Bottom,
+    Right,
+    Top,
+    Left,
+    COUNT
 };
 
 enum class InputOwner : std::uint8_t
@@ -389,6 +400,9 @@ public:
     void SetOnCancel(const std::function<void()>& cb) { m_on_cancel = cb; }
 
 private:
+    static constexpr int    TOOL_BUTTON_SIZE = 24;
+    static constexpr ImVec2 TOOL_BUTTON_SIZE2{ TOOL_BUTTON_SIZE, TOOL_BUTTON_SIZE };
+
     struct font_cache_t
     {
         std::string font_path;
@@ -460,12 +474,14 @@ private:
     ImVec2 m_image_origin;
     ImVec2 m_image_end;
 
-    std::shared_ptr<ocr_download_t>                       m_ocr_download;
-    std::vector<std::string>                              m_ocr_models_list;
-    std::map<std::pair<std::string, float>, font_cache_t> m_font_cache;
-    std::function<void()>                                 m_on_cancel;
-    std::function<void(const capture_result_t&)>          m_on_image_reload;
-    SavingOp                                              m_completed_op = SavingOp::kNone;
+    std::shared_ptr<ocr_download_t>                                m_ocr_download;
+    std::vector<std::string>                                       m_ocr_models_list;
+    std::map<std::pair<std::string, float>, font_cache_t>          m_font_cache;
+    std::function<void()>                                          m_on_cancel;
+    std::function<void(const capture_result_t&)>                   m_on_image_reload;
+    std::array<std::vector<ToolType>, idx(SelectionBorder::COUNT)> m_tools_borders;
+    bool                                                           m_fill_tools_complete{};
+    SavingOp                                                       m_completed_op = SavingOp::kNone;
 
     std::function<void(SavingOp, const region_t&, ImageExt)> m_on_complete;
 
@@ -549,8 +565,10 @@ private:
     void UpdateHandleHoverState(selection_info_t& sel);
     void UpdateCursor(const selection_info_t& sel);
     void UpdateWindowBg();
+    void UpdateAnnsToolbarPos();
 
     [[nodiscard]] ImRect GetAnnotationBBox(const annotation_t& ann) const;
+    ImVec2               GetToolButtonSize();
 
     // GetAnnotationBBox() expanded by the same border padding DrawAnnotationResizeBorder()
     // draws with, so the resize handles you see and the ones you can actually
