@@ -156,6 +156,9 @@ config-over-env = {}
 # or only when saving the selection (false).
 annotations-in-text-tools = {}
 
+# Disable dynamic tools position for legacy placement (same line)
+legacy-toolbar-pos = {}
+
 # Copy image shortcut to use.
 # true: CTRL+C
 # false: CTRL+SHIFT+C

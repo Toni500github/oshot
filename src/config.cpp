@@ -68,6 +68,7 @@ void Config::LoadConfigFile(const std::string& filename)
     File.show_text_tools  = GetValue<bool>("default.show-text-tools", true);
     File.enable_vsync     = GetValue<bool>("default.vsync", true);
     File.real_full_screen = GetValue<bool>("default.real-full-screen", false);
+    File.old_toolbar_pos  = GetValue<bool>("default.legacy-toolbar-pos", false);
     File.pref_conf_to_env = GetValue<bool>("default.config-over-env", false);
     File.render_anns      = GetValue<bool>("default.annotations-in-text-tools", true);
     File.ctrl_c_copy_img  = GetValue<bool>("default.ctrl-c-copy-img", false);
@@ -170,6 +171,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.show_text_tools,
             File.pref_conf_to_env,
             File.render_anns,
+            File.old_toolbar_pos,
             File.ctrl_c_copy_img,
             EscapeString(fonts_str),
             EscapeString(File.image_out_type.first),

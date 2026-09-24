@@ -101,6 +101,11 @@ inline rgba_t blend(rgba_t src, rgba_t dst)
                    uint8_t(float(src.a + dst.a) * ia) };
 }
 
+static constexpr bool is_annotation_tool(ToolType t)
+{
+    return idx(t) > idx(ToolType::kNone) && idx(t) <= idx(ToolType::Pencil);
+};
+
 static bool get_filtered_filenames(const std::string&                                 dir,
                                    std::vector<std::string>&                          list,
                                    const std::function<bool(const fs::path&)>&        filter,
@@ -2018,30 +2023,24 @@ void ScreenshotTool::DrawAnnotationToolbar()
     // Tool selection buttons
     auto draw_and_set_button = [&](ToolType tool, const char* id, ImTextureRef texture) -> bool {
         bool       clicked  = false;
-        const bool selected = (m_current_tool == tool);
+        const bool is_tool  = is_annotation_tool(tool);
+        const bool selected = is_tool && (m_current_tool == tool);
 
         if (selected)
             ImGui::PushStyleColor(ImGuiCol_Button, (0x6699FFFF_rgba));
 
         if (ImGui::ImageButton(id, texture.GetTexID(), TOOL_BUTTON_SIZE2))
         {
-            m_current_tool = selected ? ToolType::kNone : tool;
-            clicked        = true;
+            if (is_tool)
+                m_current_tool = selected ? ToolType::kNone : tool;
+            clicked = true;
         }
 
         if (selected)
             ImGui::PopStyleColor();
 
-        switch (tool)
-        {
-            case ToolType::kNone:
-            case ToolType::COUNT:
-            case ToolType::CopyImage:
-            case ToolType::SaveImage:
-            case ToolType::ToggleTextTools:
-            case ToolType::Logo:            return clicked;
-            default:                        break;
-        }
+        if (!is_tool)
+            return clicked;
 
         // Right-click popup on this item
         if (selected && ImGui::BeginPopupContextItem())
@@ -2140,7 +2139,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
     constexpr float k_toolbar_offset   = 10.0f;  // gap between selection border and first button
     constexpr float k_approx_toolbar_h = 40.0f;
 
-    if (m_fill_tools_complete)
+    if (m_fill_tools_complete && !g_config->File.old_toolbar_pos)
     {
         const ImGuiStyle& style = ImGui::GetStyle();
         const ImVec2      btn   = GetToolButtonSize();
@@ -2308,6 +2307,10 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     ImGui::Checkbox("Consider annotations when scanning##config_render_anns", &g_config->File.render_anns);
     ImGui::SameLine();
     HelpMarker("When enabled, annotations are included in the region passed to the text extractor.");
+
+    ImGui::Checkbox("Legacy toolbar placement", &g_config->File.old_toolbar_pos);
+    ImGui::SameLine();
+    HelpMarker("Put all tools buttons at the bottom of the main selection border in the same line");
 
     ImGui::Checkbox("Use CTRL+C to copy image##config_ctrl_c_copy_img", &g_config->File.ctrl_c_copy_img);
     ImGui::SameLine();

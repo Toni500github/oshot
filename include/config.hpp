@@ -64,6 +64,7 @@ public:
         bool        real_full_screen   = false;
         bool        show_text_tools    = true;
         bool        enable_vsync       = true;
+        bool        old_toolbar_pos    = false;
         bool        render_anns        = true;
         bool        pref_conf_to_env   = false;
         bool        ctrl_c_copy_img    = true;
