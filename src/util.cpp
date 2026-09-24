@@ -259,7 +259,6 @@ std::vector<uint8_t> encode_to_image(const capture_result_t& cap, ImageExt ext)
         default: break;
     }
 
-    spdlog::debug("out size = {}", out.size());
     return out;
 }
 

@@ -4037,9 +4037,6 @@ capture_result_t ScreenshotTool::GetFinalImage(bool)
     result.h = region.h;
     result.data.resize(size_t(region.w) * region.h * 4);
 
-    std::span<const uint8_t> src(m_screenshot.view());
-    std::span<uint8_t>       dst(result.data);
-
     const int src_width = m_screenshot.w;
     const int dst_width = region.w;
 
@@ -4062,7 +4059,7 @@ capture_result_t ScreenshotTool::GetFinalImage(bool)
             const size_t src_row_start = (size_t(src_y) * src_width + (region.x + start_x)) * 4;
             const size_t dst_row_start = (size_t(y) * dst_width + start_x) * 4;
 
-            std::memcpy(dst.data() + dst_row_start, src.data() + src_row_start, bytes_to_copy);
+            std::memcpy(result.data.data() + dst_row_start, m_screenshot.view().data() + src_row_start, bytes_to_copy);
         }
     }
 

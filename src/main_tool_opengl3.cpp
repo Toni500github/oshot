@@ -152,18 +152,6 @@ int run_main_tool()
         const int rx = region.x + int(o.x);
         const int ry = fb_h - (region.y + int(o.y)) - region.h;
 
-        spdlog::debug("o={},{} fb={}x{} region={},{} {}x{} read={},{}",
-                      o.x,
-                      o.y,
-                      fb_w,
-                      fb_h,
-                      region.x,
-                      region.y,
-                      region.w,
-                      region.h,
-                      rx,
-                      ry);
-
         std::vector<unsigned char> pixels(size_t(region.w) * region.h * 4);
         glReadPixels(rx, ry, region.w, region.h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
