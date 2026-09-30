@@ -551,10 +551,18 @@ void ScreenshotTool::RenderOverlay()
     if (m_state == ToolState::Selecting || m_state == ToolState::Selected || m_state == ToolState::Resizing ||
         m_state == ToolState::AnnResizing)
     {
-        ImGui::SetNextWindowPos(ImVec2(0, 0));
-        ImGui::Begin("##framte_rate", nullptr, minimal_win_flags);
-        ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-        ImGui::End();
+        if (m_main_sel.selection.get_x() > 30 && m_main_sel.selection.get_y() > 30)
+        {
+            ImGui::SetNextWindowPos(ImVec2(0, 0));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(3, 2));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(0, 0));
+            ImGui::Begin("##frame_rate",
+                         nullptr,
+                         minimal_win_flags & ~(ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize));
+            ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+            ImGui::End();
+            ImGui::PopStyleVar(2);
+        }
 
         DrawAnnotations();
         DrawDarkOverlay();
