@@ -551,6 +551,11 @@ void ScreenshotTool::RenderOverlay()
     if (m_state == ToolState::Selecting || m_state == ToolState::Selected || m_state == ToolState::Resizing ||
         m_state == ToolState::AnnResizing)
     {
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::Begin("##framte_rate", nullptr, minimal_win_flags);
+        ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+        ImGui::End();
+
         DrawAnnotations();
         DrawDarkOverlay();
         DrawAnnotationResizeBorder();
