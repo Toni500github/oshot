@@ -12,7 +12,9 @@ Build-Depends:
  libglfw3-dev,
  libtesseract-dev,
  libzbar-dev,
- libayatana-appindicator3-dev
+ libayatana-appindicator3-dev,
+ libwayland-dev,
+ wayland-protocols
 Standards-Version: 4.6.2
 Homepage: https://github.com/Toni500github/oshot
 
@@ -24,7 +26,8 @@ Depends:
  tesseract-ocr-eng
 Recommends:
  grim,
- wl-clipboard
+ wl-clipboard,
+ libdecor-0-plugin-1-cairo | libdecor-0-plugin-1-gtk
 Description: Fast and lightweight screenshot tool for extracting text on the fly
  oshot is a cross-platform screenshot and annotation tool with built-in OCR
  (via tesseract), barcode/QR scanning (via ZBar), and clipboard integration.
