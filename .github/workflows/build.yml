@@ -153,7 +153,6 @@ jobs:
             libxcb \
             libpng \
             glfw \
-            glew \
             tesseract \
             zbar \
             libappindicator-gtk3 \
@@ -176,7 +175,6 @@ jobs:
             libx11-dev \
             libxcb1-dev \
             libglfw3-dev \
-            libglew-dev \
             libtesseract-dev \
             libcurl4-openssl-dev \
             libpng-dev \
@@ -202,7 +200,6 @@ jobs:
             libx11-dev \
             libxcb1-dev \
             libglfw3-dev \
-            libglew-dev \
             libtesseract-dev \
             libpng-dev \
             libzbar-dev \
@@ -216,7 +213,6 @@ jobs:
           brew install --formula --force-bottle \
             cmake \
             glfw \
-            glew \
             tesseract \
             leptonica \
             zbar \
@@ -242,7 +238,6 @@ jobs:
             mingw-w64-x86_64-make
             mingw-w64-x86_64-tesseract-ocr
             mingw-w64-x86_64-glfw
-            mingw-w64-x86_64-glew
             mingw-w64-x86_64-libpng
             mingw-w64-x86_64-libjpeg-turbo
             mingw-w64-x86_64-openjpeg2

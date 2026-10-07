@@ -40,7 +40,6 @@
 #  endif
 
 // clang-format off
-#  include <GL/glew.h>
 #  include <GL/gl.h>
 #  include <GLFW/glfw3.h>  // Will drag system OpenGL headers
 // clang-format on
@@ -234,16 +233,6 @@ int run_main_tool()
     glfwMakeContextCurrent(window);
     glfwSetDropCallback(window, glfw_drop_callback);
     glfwSwapInterval(1);  // Enable vsync
-
-    glewExperimental = GL_TRUE;  // needed for core profiles on some GLEW builds
-    GLenum glew_err  = glewInit();
-    if (glew_err != GLEW_OK)
-    {
-        error("Failed to initialize GLEW: {}", reinterpret_cast<const char*>(glewGetErrorString(glew_err)));
-        if (!g_is_systray)
-            glfwTerminate();
-        return EXIT_FAILURE;
-    }
 
     g_scr_w = mode->width;
     g_scr_h = mode->height;
