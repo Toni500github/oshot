@@ -40,6 +40,11 @@ namespace Tray
 	};
 
 	static TrayMaker trayMaker;
+
+	// oshot addition (Windows only): the tray window handle, used to register
+	// global hotkeys whose WM_HOTKEY then arrives in the tray message loop
+	void* GetNativeHandle();
+	void SetHotkeyCallback(std::function<void(int)> cb);
 }
 
 

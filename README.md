@@ -77,6 +77,8 @@ Download `oshot-windows-setup-<version>.exe` from the [latest release](https://g
 - Optional: start oshot in the system tray when you sign in.
 - English OCR data is included. Downloaded models go to `%APPDATA%\oshot\models`.
 
+Press **Alt+Shift+S** anywhere to capture (while oshot is in the tray). Change it in Preferences.
+
 Prefer a portable copy? Download `oshot-windows-<version>.zip`, extract it anywhere and run `oshot.exe`.
 
 >[!NOTE]
@@ -95,6 +97,8 @@ Download the `.dmg` that matches your Mac from the [latest release](https://gith
 1. Open the `.dmg` and drag **oshot** onto **Applications**.
 2. The app isn't notarized yet, so on first launch run `xattr -dr com.apple.quarantine /Applications/oshot.app` (or right-click → **Open**).
 3. Grant **Screen Recording** permission when asked (System Settings → Privacy & Security).
+
+Press **Cmd+Shift+2** anywhere to capture (while oshot is in the menu bar). Change it in Preferences.
 
 English OCR data is included. Downloaded models go to `~/.config/oshot/models`.
 In the `-plugins` builds, the plugin manager is at `/Applications/oshot.app/Contents/MacOS/oshotpm`.

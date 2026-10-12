@@ -48,6 +48,7 @@
 #include "fmt/chrono.h"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
+#include "hotkey.hpp"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3_loader.h"
 #include "imgui/imgui_internal.h"
@@ -138,6 +139,79 @@ static void HelpMarker(const char* desc)
         ImGui::EndTooltip();
     }
 }
+
+#if OSHOT_HAS_GLOBAL_HOTKEY
+// Button that records the next key combination into `hotkey_str`
+static void draw_hotkey_recorder(std::string& hotkey_str, bool window_just_opened)
+{
+    static bool recording = false;
+    if (window_just_opened)
+        recording = false;
+
+    const ImGuiIO& io = ImGui::GetIO();
+
+    ImGui::Text("Global capture hotkey");
+    ImGui::SameLine();
+    HelpMarker(
+        "System-wide shortcut that starts a capture while oshot is running in the tray.\n"
+        "Click the button, then press the key combination. Click it again to cancel.");
+
+    const std::string& label = recording ? "Press keys..." : (hotkey_str.empty() ? "Not set" : hotkey_str);
+    if (ImGui::Button(fmt::format("{}##config_hotkey", label).c_str(), ImVec2(ImGui::GetFontSize() * 12, 0)))
+        recording = !recording;
+    ImGui::SameLine();
+    ImGui::BeginDisabled(hotkey_str.empty());
+    if (ImGui::Button("Clear##config_hotkey_clear"))
+    {
+        hotkey_str.clear();
+        recording = false;
+    }
+    ImGui::EndDisabled();
+
+    bool missing_mod = false;
+    if (recording)
+    {
+        for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; ++k)
+        {
+            const ImGuiKey key = ImGuiKey(k);
+            if (!hotkey::is_supported_key(key) || !ImGui::IsKeyDown(key))
+                continue;
+
+            // ImGui swaps Cmd and Ctrl on macOS, undo it to get the physical keys
+            const bool       swapped = io.ConfigMacOSXBehaviors;
+            hotkey::hotkey_t hk{ .mods = hotkey::Mod::kNone, .key = key };
+            if (swapped ? io.KeySuper : io.KeyCtrl)
+                hk.mods |= hotkey::Mod::Ctrl;
+            if (swapped ? io.KeyCtrl : io.KeySuper)
+                hk.mods |= hotkey::Mod::Super;
+            if (io.KeyShift)
+                hk.mods |= hotkey::Mod::Shift;
+            if (io.KeyAlt)
+                hk.mods |= hotkey::Mod::Alt;
+
+            // A bare letter/digit/etc. would swallow normal typing system-wide
+            const bool standalone_ok = (key >= ImGuiKey_F1 && key <= ImGuiKey_F12) || key == ImGuiKey_PrintScreen ||
+                                       key == ImGuiKey_Pause || key == ImGuiKey_Insert;
+            if (hk.mods == hotkey::Mod::kNone && !standalone_ok)
+            {
+                missing_mod = true;
+                continue;
+            }
+
+            hotkey_str = hotkey::to_string(hk);
+            recording  = false;
+            break;
+        }
+    }
+
+    if (missing_mod)
+        ImGui::TextDisabled("Hold Ctrl, Shift, Alt or %s too", OSHOT_MACOS ? "Cmd" : "Win");
+    else if (!hotkey::status().empty())
+        ImGui::TextDisabled("%s", hotkey::status().c_str());
+    else
+        ImGui::TextDisabled("Applied by the tray instance (oshot --tray, or started at sign-in)");
+}
+#endif
 
 // How many buttons of size `btn` separated by `spacing` fit in `length` px:
 // n * btn + (n - 1) * spacing <= length
@@ -413,15 +487,15 @@ Result<> ScreenshotTool::StartWindow()
     std::call_once(plugins_loaded, [&] { load_plugins(m_plugin_manager.GetStateManager().GetAllRepos()); });
 #endif
 
-    m_inputs = { .ocr_path          = g_config->File.ocr_path,
-                 .ocr_model         = g_config->File.ocr_model,
-                 .ocr_download_repo = g_config->File.ocr_get_repo,
-                 .ocr_model_downloaded_path = g_config->GetConfigDirPath() + DIR_SEP_STR "models",
-                 .ocr_results            = {},
-                 .barcode_text           = "",
-                 .zbar_scan_result       = {},
-                 .ann_font               = "",
-                 .resolved_ann_font_path = "" };
+    m_inputs        = { .ocr_path                  = g_config->File.ocr_path,
+                        .ocr_model                 = g_config->File.ocr_model,
+                        .ocr_download_repo         = g_config->File.ocr_get_repo,
+                        .ocr_model_downloaded_path = g_config->GetConfigDirPath() + DIR_SEP_STR "models",
+                        .ocr_results               = {},
+                        .barcode_text              = "",
+                        .zbar_scan_result          = {},
+                        .ann_font                  = "",
+                        .resolved_ann_font_path    = "" };
     m_current_color = (rgba_t(g_cache->GetValue(CacheEntry::AnnColor, Colors::RED.to_rgba())));
 
     m_imgui_id_texts.insert_or_assign(OCR_OUTPUT, &m_inputs.ocr_results.data);
@@ -2326,6 +2400,11 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     HelpMarker(
         "Shortcut to use when copying the image selection.\n"
         "If disabled, the shortcut will be CTRL+SHIFT+C.");
+
+#if OSHOT_HAS_GLOBAL_HOTKEY
+    ImGui::Spacing();
+    draw_hotkey_recorder(g_config->File.hotkey, window_just_opened);
+#endif
 
     // --- Image filename output format section ---
     ImGui::Dummy(ImVec2(0, 8));

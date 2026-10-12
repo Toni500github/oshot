@@ -245,6 +245,7 @@ set(OSHOT_COMMON_SOURCES
     src/clipboard.cpp
     src/config.cpp
     src/globals.cpp
+    src/hotkey.cpp
     src/screen_capture.cpp
     src/screenshot_tool.cpp
     src/text_extraction.cpp
@@ -331,6 +332,7 @@ elseif(APPLE)
             "-framework QuartzCore"
             "-framework CoreGraphics"
             "-framework Cocoa"
+            "-framework Carbon"
             "-framework IOKit"
             "-framework OpenGL"
     )

@@ -35,6 +35,7 @@
 #include <ios>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <system_error>
 #include <thread>
 #include <utility>
@@ -55,7 +56,9 @@
 #include "fmt/compile.h"
 #include "fmt/format.h"
 #include "getopt_port/getopt.h"
+#include "hotkey.hpp"
 #include "nvdialog/nvdialog_error.h"
+#include "nvdialog/nvdialog_notification.h"
 #include "oshot_png.h"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
@@ -283,6 +286,59 @@ void capture_worker()
     }
 }
 
+#if OSHOT_TOOL_ON_MAIN_THREAD
+static void sync_hotkey();
+
+// Start a capture from the tray (menu or global hotkey). The GLFW event pump
+// inside run_main_tool() also dispatches the tray's messages, so without the
+// guard a second capture could start nested inside the first one.
+static void capture_from_tray()
+{
+    static bool running = false;
+    if (running)
+        return;
+
+    running = true;
+    run_main_tool();
+    running = false;
+
+    // The hotkey may have been changed from Preferences
+    sync_hotkey();
+}
+
+// (Re-)register the global hotkey from the config if it changed
+static void sync_hotkey()
+{
+#  if OSHOT_HAS_GLOBAL_HOTKEY
+    static std::optional<std::string> applied;
+    if (applied == g_config->File.hotkey)
+        return;
+    applied = g_config->File.hotkey;
+
+    const Result<hotkey::hotkey_t>& hk  = hotkey::parse(*applied);
+    const Result<>&                 res = [&]() -> Result<> {
+        TRY(hk);
+        return hotkey::enable(hk.get(), [] { capture_from_tray(); });
+    }();
+    if (res.ok())
+    {
+        spdlog::info("Global hotkey: {}", hotkey::status());
+        return;
+    }
+
+    spdlog::warn("Global hotkey: {}", res.error_v());
+    const std::string& body =
+        fmt::format("{}\nPick another shortcut in Preferences, or set 'hotkey' in the config.", res.error_v());
+    NvdNotification* notif = nvd_notification_new("oshot: hotkey not set", body.c_str(), NVD_NOTIFICATION_WARNING);
+    if (notif)
+    {
+        nvd_send_notification(notif);
+        nvd_delete_notification(notif);
+    }
+#  endif
+}
+#endif
+
 #if OSHOT_WINDOWS && !defined(WINDOWS_CMD)
 static std::string wide_to_utf8(const wchar_t* w)
 {
@@ -503,7 +559,7 @@ int main(int argc, char* argv[])
                                       .onClicked =
                                           [&](TrayMenu*) {
 #if OSHOT_TOOL_ON_MAIN_THREAD
-                                              run_main_tool();
+                                              capture_from_tray();
 #else
                                               std::lock_guard lk(mtx);
                                               // only queue if not already queued
@@ -557,6 +613,9 @@ int main(int argc, char* argv[])
 
     if (trayMaker.Initialize(&tray))
     {
+#if OSHOT_TOOL_ON_MAIN_THREAD
+        sync_hotkey();
+#endif
         while (trayMaker.Loop(true))
         {
         }
