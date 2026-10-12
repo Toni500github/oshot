@@ -71,20 +71,33 @@ yay -S oshot-bin
 ---
 ### Windows
 
-Download `oshot-windows-<version>.zip` from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page.\
-Includes bundled .dlls and English OCR data. Extract and run `oshot.exe`.
+Download `oshot-windows-setup-<version>.exe` from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page and run it.
+
+- Installs per-user by default (no admin prompt), with a Start Menu entry and an uninstaller.
+- Optional: start oshot in the system tray when you sign in.
+- English OCR data is included. Downloaded models go to `%APPDATA%\oshot\models`.
+
+Prefer a portable copy? Download `oshot-windows-<version>.zip`, extract it anywhere and run `oshot.exe`.
+
+>[!NOTE]
+>The installer is not code-signed yet, so SmartScreen may warn on first run: click **More info → Run anyway**.
 
 ---
 ### macOS
 
-Download from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page:
+Download the `.dmg` that matches your Mac from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page:
 
 | Package | Description |
 | ------- | ----------- |
-| `oshot-macos-arm64-<version>.zip` | Apple Silicon |
-| `oshot-macos-x86_64-<version>.zip` | Intel |
+| `oshot-macos-arm64-<version>.dmg` | Apple Silicon |
+| `oshot-macos-x86_64-<version>.dmg` | Intel |
 
-Both include a `.dmg` bundle and bundled English OCR data.
+1. Open the `.dmg` and drag **oshot** onto **Applications**.
+2. The app isn't notarized yet, so on first launch run `xattr -dr com.apple.quarantine /Applications/oshot.app` (or right-click → **Open**).
+3. Grant **Screen Recording** permission when asked (System Settings → Privacy & Security).
+
+English OCR data is included. Downloaded models go to `~/.config/oshot/models`.
+In the `-plugins` builds, the plugin manager is at `/Applications/oshot.app/Contents/MacOS/oshotpm`.
 
 ## Usage
 

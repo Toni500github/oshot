@@ -48,10 +48,42 @@ Config::Config(const fs::path& configFile, const fs::path& configDir)
         fs::create_directories(configDir / "plugins");
     }
 
+#if !OSHOT_LINUX
+    // The install location (Program Files, a signed .app) isn't writable and the
+    // working directory is arbitrary when launched from Explorer/Finder, so keep
+    // every OCR model in the config dir and seed it with the bundled ones.
+    File.ocr_path = (configDir / "models").string();
+    SeedBundledModels(configDir / "models");
+#endif
+
     if (!fs::exists(configFile))
     {
         spdlog::warn("Config file {} not found, generating new one", configFile.string());
         GenerateConfig(configFile.string());
+    }
+}
+
+void Config::SeedBundledModels(const fs::path& models_dir)
+{
+    const fs::path& bundled = get_bundled_models_dir();
+    if (bundled.empty())
+        return;
+
+    std::error_code ec;
+    fs::create_directories(models_dir, ec);
+    for (const fs::directory_entry& entry : fs::directory_iterator(bundled, ec))
+    {
+        if (entry.path().extension() != ".traineddata")
+            continue;
+
+        const fs::path& dst = models_dir / entry.path().filename();
+        if (fs::exists(dst, ec))
+            continue;
+
+        if (fs::copy_file(entry.path(), dst, ec))
+            spdlog::info("Copied bundled OCR model {} to {}", entry.path().filename().string(), models_dir.string());
+        else
+            spdlog::warn("Failed to copy bundled OCR model {}: {}", entry.path().string(), ec.message());
     }
 }
 
@@ -77,6 +109,12 @@ void Config::LoadConfigFile(const std::string& filename)
 
     File.allow_out_edit = GetValue<bool>("default.allow-edit-ocr", false);  // deprecated
     File.allow_out_edit = GetValue<bool>("default.allow-text-edit", File.allow_out_edit);
+
+#if !OSHOT_LINUX
+    // Pre-0.5 default, which resolved against the working directory
+    if (File.ocr_path == "./models" || File.ocr_path == "models")
+        File.ocr_path = (fs::path(m_config_dir_path) / "models").string();
+#endif
 
     const char* t = getenv("TESSDATA_PREFIX");
     if (!File.pref_conf_to_env && t)
