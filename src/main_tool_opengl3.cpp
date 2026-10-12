@@ -129,6 +129,8 @@ static void maximize_window_()
     glfwFocusWindow(window);
 }
 
+bool app_quitting();  // main.cpp
+
 int run_main_tool()
 {
     int display_w, display_h;
@@ -262,7 +264,8 @@ int run_main_tool()
     });
 
     bool force_fire_frame = false;
-    while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive())
+    // app_quitting(): tray Quit or a signal while capturing
+    while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive() && !app_quitting())
     {
         // Poll and handle events (inputs, window resize, etc.)
         // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your

@@ -86,6 +86,8 @@ static id<MTLTexture> create_metal_texture(id<MTLDevice> device, const uint8_t* 
     return tex;
 }
 
+bool app_quitting();  // main.cpp
+
 int run_main_tool()
 {
     register_window_callbacks(minimize_window_, maximize_window_, glfwTerminate, glfwSwapInterval);
@@ -275,7 +277,8 @@ int run_main_tool()
     // Render loop
     MTLRenderPassDescriptor* rpd              = [MTLRenderPassDescriptor new];
     bool                     force_fire_frame = false;
-    while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive())
+    // app_quitting(): tray Quit or a signal while capturing
+    while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive() && !app_quitting())
     {
         glfwPollEvents();
         if (glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0)
