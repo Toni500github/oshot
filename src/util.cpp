@@ -166,10 +166,19 @@ fs::path get_runtime_dir()
 
 bool acquire_tray_lock()
 {
-    std::string lock_path = (get_runtime_dir() / "oshot.lock").string();
-    int         fd        = open(lock_path.c_str(), O_CREAT | O_RDWR, 0600);
+    // Without XDG_RUNTIME_DIR this is the shared /tmp, where another user's
+    // 0600 lock file would make open() fail and look like "already running"
+    const char*       xdg       = ::getenv("XDG_RUNTIME_DIR");
+    const std::string lock_name = xdg ? "oshot.lock" : fmt::format("oshot-{}.lock", getuid());
+    const std::string lock_path = (get_runtime_dir() / lock_name).string();
+
+    // O_CLOEXEC: don't leak the fd into grim/wl-copy/zenity children
+    int fd = open(lock_path.c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0600);
     if (fd < 0)
+    {
+        spdlog::warn("Failed to open tray lock {}: {}", lock_path, strerror(errno));
         return false;
+    }
 
     struct flock fl{};
     fl.l_type   = F_WRLCK;

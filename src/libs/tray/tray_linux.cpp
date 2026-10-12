@@ -1,5 +1,7 @@
 #ifdef __linux__
 #include <gtk/gtk.h>
+#include <glib-unix.h>
+#include <csignal>
 
 #if __has_include(<libayatana-appindicator/app-indicator.h>)
 #  include <libayatana-appindicator/app-indicator.h>
@@ -9,10 +11,12 @@
 
 #include "tray.hpp"
 
-#define TRAY_APPINDICATOR_ID "tray-id"
+// StatusNotifierItem id, must be unique per app or hosts may merge/hide icons
+#define TRAY_APPINDICATOR_ID "oshot"
 
 static AppIndicator *indicator = NULL;
 static bool loop_result = true;
+static std::function<void()> quitSignalCallback;
 
 using namespace Tray;
 
@@ -94,5 +98,38 @@ void TrayMaker::Update()
 void TrayMaker::Exit()
 {
 	loop_result = false;
+	Wake();
 }
+
+void* Tray::GetNativeHandle()
+{
+	return nullptr;
+}
+
+void Tray::SetHotkeyCallback(std::function<void(int)>) {}
+
+void Tray::Wake()
+{
+	// Thread-safe; makes a blocking gtk_main_iteration_do() return
+	g_main_context_wakeup(NULL);
+}
+
+static gboolean _tray_on_signal(gpointer)
+{
+	if (quitSignalCallback)
+		quitSignalCallback();
+	return G_SOURCE_CONTINUE;
+}
+
+void Tray::SetQuitSignalCallback(std::function<void()> cb)
+{
+	quitSignalCallback = std::move(cb);
+	// Dispatched from the GTK main loop, so the callback isn't limited to
+	// async-signal-safe functions and the blocking loop wakes up for it
+	g_unix_signal_add(SIGINT, _tray_on_signal, NULL);
+	g_unix_signal_add(SIGTERM, _tray_on_signal, NULL);
+	g_unix_signal_add(SIGHUP, _tray_on_signal, NULL);
+}
+
+void Tray::SetReopenCallback(std::function<void()>) {}
 #endif

@@ -226,29 +226,67 @@ static bool                    do_capture = false;
 static std::string             pending_source;  // image to open instead of capturing, empty for a screenshot
 static capture_result_t        pending_image;
 static bool                    do_copy_image = false;
+static std::atomic<bool>       capture_active{ false };  // a run_main_tool() is in progress, on any thread
 
-void exit_handler(int)
+bool app_quitting()
+{
+    return quit.load();
+}
+
+// Async-signal-safe: only raise the flag, the capture and tray loops act on
+// it. Once the tray is up, Tray::SetQuitSignalCallback() takes over.
+static void on_quit_signal(int)
+{
+    quit.store(true);
+}
+
+// Crash: restore the display mode, then re-raise so the OS still generates a core dump
+static void on_crash_signal(int sig)
+{
+    extern_glfwTerminate();
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+// Quit from the tray menu or a signal (tray thread). A capture in progress
+// sees app_quitting() and closes itself.
+static void request_quit()
+{
+    {
+        std::lock_guard lk(mtx);
+        quit.store(true);
+    }
+    cv.notify_all();
+    trayMaker.Exit();
+}
+
+static void exit_handler_nc()
 {
     static std::atomic_flag ran = ATOMIC_FLAG_INIT;
     if (ran.test_and_set())
         return;
 
-    quit.store(true);
-    cv.notify_all();
+    request_quit();
 #if !OSHOT_WINDOWS
     if (g_sock > 0)
         shutdown(g_sock, SHUT_RDWR);
 #endif
-    extern_glfwTerminate();
-    trayMaker.Exit();
+    // Terminating GLFW under a running capture (e.g. die() from the worker
+    // thread) would crash it instead of exiting
+    if (!capture_active.load())
+        extern_glfwTerminate();
     fs::remove(fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid()));
-}
-void exit_handler_nc()
-{
-    exit_handler(0);
 }
 
 int run_main_tool();
+
+static int run_capture()
+{
+    capture_active.store(true);
+    const int ret = run_main_tool();
+    capture_active.store(false);
+    return ret;
+}
 
 void glfw_error_callback(int i_error, const char* description)
 {
@@ -284,8 +322,15 @@ void capture_worker()
         do_capture                    = false;
         g_config->Runtime.source_file = std::move(pending_source);
         pending_source.clear();
+        // Set under the lock so capture_from_tray() can't queue another one in between
+        capture_active.store(true);
         lk.unlock();
         run_main_tool();
+
+        lk.lock();
+        capture_active.store(false);
+        lk.unlock();
+        cv.notify_all();
     }
 }
 
@@ -302,21 +347,22 @@ static void capture_from_tray(const std::string& source = {})
     // The GLFW event pump inside run_main_tool() also dispatches the tray's
     // messages, so without the guard a second capture could start nested
     // inside the first one.
-    static bool running = false;
-    if (running)
+    if (capture_active.load() || app_quitting())
         return;
 
     g_config->Runtime.source_file = source;
-    running                       = true;
-    run_main_tool();
-    running = false;
+    run_capture();
 
     // The hotkey may have been changed from Preferences
     sync_hotkey();
+#  if OSHOT_MACOS
+    // glfwInit() finishing the app launch replaces the reopen handler
+    Tray::SetReopenCallback([] { capture_from_tray(); });
+#  endif
 #else
     std::lock_guard lk(mtx);
-    // only queue if not already queued
-    if (do_capture)
+    // Ignore requests while one is queued or running, like on Windows/macOS
+    if (do_capture || capture_active.load() || quit.load())
         return;
 
     pending_source = source;
@@ -465,18 +511,11 @@ int main(int argc, char* argv[])
 #endif
 
     atexit(exit_handler_nc);
-    signal(SIGINT, exit_handler);
-    signal(SIGTERM, exit_handler);
-    signal(SIGABRT, exit_handler);
-
+    signal(SIGINT, on_quit_signal);
+    signal(SIGTERM, on_quit_signal);
+    signal(SIGABRT, on_crash_signal);
 #if !OSHOT_WINDOWS
-    // Restore display then re-raise so the OS
-    // still generates a core dump.
-    signal(SIGSEGV, [](int sig) {
-        extern_glfwTerminate();  // restore display mode
-        signal(sig, SIG_DFL);    // reset to default
-        raise(sig);              // re-raise for core dump
-    });
+    signal(SIGSEGV, on_crash_signal);
 #endif
 
     if (nvd_init() != 0)
@@ -525,32 +564,34 @@ int main(int argc, char* argv[])
     const bool tray_lock_acquired = acquire_tray_lock();
 
     if (g_config->Runtime.only_launch_gui)
-        return run_main_tool();
+        return run_capture();
 
     if (g_config->Runtime.only_launch_tray)
     {
         if (!tray_lock_acquired)
-            return EXIT_FAILURE;
+        {
+            logger.info("oshot is already running in the system tray");
+            return EXIT_SUCCESS;
+        }
 
         g_is_systray = true;
     }
-    else
+    else if (!tray_lock_acquired)
     {
-        if (!tray_lock_acquired)
-            return run_main_tool();
-
-#if OSHOT_TOOL_ON_MAIN_THREAD
-        run_main_tool();
-#else
-        std::thread([&] { run_main_tool(); }).detach();
-#endif
+        // Another instance owns the tray, just capture
+        return run_capture();
     }
 
-#if !OSHOT_TOOL_ON_MAIN_THREAD
-    // On macOS the tray loop polls do_capture on the main thread (required by
-    // AppKit), so capture_worker must not run, because it would call run_main_tool
-    // from a background thread and crash with NSInternalInconsistencyException.
+#if OSHOT_TOOL_ON_MAIN_THREAD
+    // AppKit (macOS) needs the UI on the main thread, so the first capture runs
+    // before the tray exists and later ones from the tray loop itself
+    if (!g_config->Runtime.only_launch_tray)
+        run_capture();
+#else
+    // Every capture runs on this one worker thread, so they can never overlap
     std::thread worker(capture_worker);
+    if (!g_config->Runtime.only_launch_tray)
+        capture_from_tray(g_config->Runtime.source_file);
 #endif
 
     std::vector<TrayMenu*> menu;
@@ -563,10 +604,11 @@ int main(int argc, char* argv[])
         tray_ico = get_exe_dir() / "oshot.exe";
     TrayIcon tray = { "oshot.png", tray_ico.string(), "oshot", menu };
 #else
-    // Basically create the icon.png in a temp directory and use
-    // that for the systray icon. idfc, it works
-    const fs::path& png_path = fs::temp_directory_path(ec) / "oshot.png";
-    std::ofstream   out(png_path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
+    // The tray APIs want an icon file, so write the embedded one. Per-user
+    // cache dir: a shared /tmp/oshot.png can be owned by another user
+    const fs::path& png_path = get_cache_dir() / "tray-icon.png";
+    fs::create_directories(png_path.parent_path(), ec);
+    std::ofstream out(png_path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
 
     out.write(reinterpret_cast<const char*>(oshot_png), std::streamsize(oshot_png_len));
     out.close();
@@ -580,55 +622,78 @@ int main(int argc, char* argv[])
                                       .onClicked   = [&](TrayMenu*) { capture_from_tray(); },
                                       .subMenu     = {} });
 
-    tray.menu.push_back(new TrayMenu{
-        .text        = "Open Image",
-        .isEnabled   = true,
-        .isChecked   = false,
-        .hasCheckbox = false,
-        .onClicked =
-            [&](TrayMenu*) {
-                const std::array<const char*, 4> filters = { "*.png", "*.jpeg", "*.jpg", "*.bmp" };
-                const char* open_path = tinyfd_openFileDialog("Open Image",
-                                                              "",              // default path
-                                                              filters.size(),  // number of filter patterns
-                                                              filters.data(),  // file filters
-                                                              "Images",        // filter description
-                                                              false            // allow multiple selections
-                );
+    tray.menu.push_back(new TrayMenu{ .text        = "Open Image",
+                                      .isEnabled   = true,
+                                      .isChecked   = false,
+                                      .hasCheckbox = false,
+                                      .onClicked =
+                                          [&](TrayMenu*) {
+                                              // The request would be dropped anyway, don't ask for a file first
+                                              if (capture_active.load())
+                                                  return;
 
-                // Canceled the dialog
-                if (!open_path)
-                    return;
+                                              // Patterns are case-sensitive with zenity/kdialog
+                                              const std::array<const char*, 8> filters = { "*.png", "*.jpeg", "*.jpg",
+                                                                                           "*.bmp", "*.PNG",  "*.JPEG",
+                                                                                           "*.JPG", "*.BMP" };
+                                              const char*                      open_path =
+                                                  tinyfd_openFileDialog("Open Image",
+                                                                        "",              // default path
+                                                                        filters.size(),  // number of filter patterns
+                                                                        filters.data(),  // file filters
+                                                                        "Images",        // filter description
+                                                                        false            // allow multiple selections
+                                                  );
 
-                capture_from_tray(open_path);
-            },
-        .subMenu = {} });
+                                              // Canceled the dialog
+                                              if (!open_path)
+                                                  return;
+
+                                              capture_from_tray(open_path);
+                                          },
+                                      .subMenu = {} });
 
     tray.menu.push_back(new TrayMenu{ .text        = "Quit",
                                       .isEnabled   = true,
                                       .isChecked   = false,
                                       .hasCheckbox = false,
-                                      .onClicked   = [&](TrayMenu*) { exit_handler(0); },
+                                      .onClicked   = [&](TrayMenu*) { request_quit(); },
                                       .subMenu     = {} });
 
     if (trayMaker.Initialize(&tray))
     {
+        Tray::SetQuitSignalCallback(request_quit);
 #if OSHOT_TOOL_ON_MAIN_THREAD
         sync_hotkey();
 #endif
-        while (trayMaker.Loop(true))
+#if OSHOT_MACOS
+        Tray::SetReopenCallback([] { capture_from_tray(); });
+#endif
+        while (!app_quitting() && trayMaker.Loop(true))
         {
         }
     }
-    else
+    else if (g_config->Runtime.only_launch_tray)
     {
         die("Systray initialization failed");
     }
+    else
+    {
+        // e.g. no StatusNotifier host: still finish the capture the user asked for
+        warn("Systray initialization failed, exiting after the current capture");
+#if !OSHOT_TOOL_ON_MAIN_THREAD
+        std::unique_lock lk(mtx);
+        cv.wait(lk, [] { return quit.load() || (!do_capture && !capture_active.load()); });
+#endif
+    }
 
     // Quitted the tray
+    request_quit();
 #if !OSHOT_TOOL_ON_MAIN_THREAD
     worker.join();
 #endif
+    // Not in exit_handler_nc(): GLFW must be terminated on the main thread, with no capture running
+    extern_glfwTerminate();
 
     return EXIT_SUCCESS;
 }

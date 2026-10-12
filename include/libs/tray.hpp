@@ -41,10 +41,25 @@ namespace Tray
 
 	static TrayMaker trayMaker;
 
-	// oshot addition (Windows only): the tray window handle, used to register
-	// global hotkeys whose WM_HOTKEY then arrives in the tray message loop
+	// oshot additions:
+
+	// Windows only: the tray window handle, used to register global hotkeys
+	// whose WM_HOTKEY then arrives in the tray message loop
 	void* GetNativeHandle();
 	void SetHotkeyCallback(std::function<void(int)> cb);
+
+	// Make a blocking Loop() return so the caller can re-check its state.
+	// Callable from any thread (on macOS: main thread only).
+	void Wake();
+
+	// Run `cb` on the tray thread when SIGINT/SIGTERM (and SIGHUP on unix) arrive,
+	// instead of inside the signal handler. Call after Initialize().
+	void SetQuitSignalCallback(std::function<void()> cb);
+
+	// macOS only: run `cb` when the app is opened again while already running
+	// (Finder, Launchpad, Spotlight, `open -a`). Other code (GLFW's init) can
+	// replace the handler, so call this again after such code runs.
+	void SetReopenCallback(std::function<void()> cb);
 }
 
 
