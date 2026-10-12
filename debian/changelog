@@ -1,3 +1,112 @@
+oshot (0.5.0~rc2-1) unstable; urgency=medium
+
+  * misc: add/update copyright notice to all source files
+  * misc: rename oshot own libraries from .hpp/cpp to .hh/.cc
+  * misc: start guarding platform-specific code with platform.hpp
+  * config: add option to save/copy image in different image types
+  * tool: add image output size in the selection size widget
+  * args: add --instant-save/copy
+  * tool: fix blurry color picker loupe and screenshot preview
+  * config: follow only the 'theme-file' + change the default look of oshot
+  * config: remove redundant functions
+  * util: flush GTK events after nvdialog close
+  * capture(linux): fix multi monitor capture on wayland
+  * tool: show output menu if more than 1 monitor
+  * windows: some fixes
+  * tool: show suggestions on invalid OCR path + fix refresh of OCR models
+  * clipboard: ignore SIGPIPE, report EPIPE as missing clipboard tool
+  * clipboard: just check if wl-copy/xclip is installed else do nothing
+  * annotations: add baked annotations manipulation
+  * annotations/tool: replace manual screen to image baking with raw screen pixel read
+  * refactor: clang-tidy + modernization of the code
+  * flake: refactor configuration + fix generateVersion.sh (#11)
+  * clipboard: copy log lines correctly on Linux
+  * annotation(pencil): improve pencil drawing
+  * tool: save images only with annotations
+  * tool: allow annotations being drawn overlayed
+  * main: fix image baking offsets and out-of-bounds crops
+  * toolbar: make its placement dynamic
+  * config: make toolbar dynamic placement optional
+  * misc: add small fps window
+  * dependencies: remove glew
+  * debian: add missing Build-Deps and a new Recommends
+
+ -- Toni500 <tonino512@linuxmail.org>  Mon, 12 Oct 2026 18:42:36 +0200
+
+oshot (0.5.0~rc1-1) unstable; urgency=medium
+
+  * libs: update fmt, toml++, spdlog, imgui, stb
+  * libs: add cimgui - C-ABI wrapper for imgui
+  * misc: fix compilation from obsolete functions
+  * macos: fix spam of libimgui.1.dylib not being found when bundling the app
+  * build: replace hand-rolled Makefile with a thin CMake wrapper
+  * build: separate oshot common code into its own liboshot_common
+  * build: add option to disable plugins at compile time
+  * build: disable plugins by default
+  * build: fix incremental rebuilds from generated version header
+  * build: disable -flto on windows
+  * plugins: add first code of the plugins API
+  * plugins: add config getter API
+  * plugins: first working end-to-end plugin load path
+  * plugins: replace global g_api singleton with per-plugin runtime map
+  * plugins: add cache getter/setter and config setter API
+  * plugins: add preference tab support
+  * plugins: manifest: changed from libraries to single library
+  * plugins(tool): add managing window with enable/disable button
+  * plugins: add GUI plugin installer with archive/local support
+  * plugins(tool): add uninstalling window
+  * oshotpm: introduce a CLI plugin manager for oshot
+  * config: unify Config/Cache/plugin config behind shared TomlAPI base
+  * tool: ditch boolean states for GeneralContext+enums
+  * tool: add logs window
+  * misc: suppress some dialogs to just logs
+  * annotation(menu): separate color picker settings into preferences
+  * misc: remove --debug and set default log level to debug
+  * tool: don't scan OCR path while editing
+  * tool: improve the scan error UX
+  * tool: fix regression about OCR model selection
+  * tool: add tiny selection size widget
+  * workflow: add releases for plugins support
+
+ -- Toni500 <tonino512@linuxmail.org>  Sat, 08 Aug 2026 15:19:17 +0200
+
+oshot (0.4.6-1) unstable; urgency=medium
+
+  * tray: add 'Open Image' + add new hint in tool beginning
+  * toolbar: add save image button + change copy icon
+  * misc: general QoL improvements for fonts
+  * cmake: fix nvdialog not finding dbus
+  * util: fix regression of recursive calling between get_xdg_user_dirs() and get_home_config_dir()
+  * cache: rewrite API to put all entries in a single file
+  * general: fix silent/disregarded errors and warns + fix grammar in texts
+  * libs: nvdialog: wrap all headers (except in `dialogs/`) in a C++ guard
+  * nix: add Nix flakes (#7)
+  * config: add 'config-over-env' option
+  * core: migrate from imgui obsolete functions
+  * tool: improve gathering OCR language models
+  * util: separate windows and unix specific functions more appropriately
+  * docs: refactor readme
+
+ -- Toni500 <tonino512@linuxmail.org>  Fri, 19 Jun 2026 20:08:16 +0200
+
+oshot (0.4.5-1) unstable; urgency=medium
+
+  * selection: fix inverse dragging when creating the selection
+  * tools: rework error system for more context-based errors
+  * tools: add OCR model downloader with a smooth animation
+  * theme: make smooth animation optional
+  * theme: add PlotHistogram theme override
+  * tools: make downloaded model destination folder selectable + fix theme saving
+  * libs: integrate nvdialog
+  * misc: add notifications when saving png
+  * cache: add filesystem cache (last-saved-dir)
+  * toolbar: add copy image button
+  * util: improve Result<> class
+  * config: create a 'models/' directory in config directory
+  * tool: skip header in curl error and show it
+
+ -- Toni500 <tonino512@linuxmail.org>  Sun, 24 May 2026 00:20:01 +0200
+
 oshot (0.4.4-1) unstable; urgency=medium
 
   * Initial Debian packaging.
