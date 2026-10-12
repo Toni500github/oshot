@@ -223,6 +223,7 @@ static std::mutex              mtx;
 static std::condition_variable cv;
 static std::atomic<bool>       quit{ false };
 static bool                    do_capture = false;
+static std::string             pending_source;  // image to open instead of capturing, empty for a screenshot
 static capture_result_t        pending_image;
 static bool                    do_copy_image = false;
 
@@ -280,7 +281,9 @@ void capture_worker()
             continue;
         }
 
-        do_capture = false;
+        do_capture                    = false;
+        g_config->Runtime.source_file = std::move(pending_source);
+        pending_source.clear();
         lk.unlock();
         run_main_tool();
     }
@@ -288,23 +291,41 @@ void capture_worker()
 
 #if OSHOT_TOOL_ON_MAIN_THREAD
 static void sync_hotkey();
+#endif
 
-// Start a capture from the tray (menu or global hotkey). The GLFW event pump
-// inside run_main_tool() also dispatches the tray's messages, so without the
-// guard a second capture could start nested inside the first one.
-static void capture_from_tray()
+// Start a capture from the tray (menu or global hotkey): a fresh screenshot,
+// or the `source` image if not empty. Always sets the source, otherwise an
+// image opened once would be reopened by every later capture.
+static void capture_from_tray(const std::string& source = {})
 {
+#if OSHOT_TOOL_ON_MAIN_THREAD
+    // The GLFW event pump inside run_main_tool() also dispatches the tray's
+    // messages, so without the guard a second capture could start nested
+    // inside the first one.
     static bool running = false;
     if (running)
         return;
 
-    running = true;
+    g_config->Runtime.source_file = source;
+    running                       = true;
     run_main_tool();
     running = false;
 
     // The hotkey may have been changed from Preferences
     sync_hotkey();
+#else
+    std::lock_guard lk(mtx);
+    // only queue if not already queued
+    if (do_capture)
+        return;
+
+    pending_source = source;
+    do_capture     = true;
+    cv.notify_all();
+#endif
 }
+
+#if OSHOT_TOOL_ON_MAIN_THREAD
 
 // (Re-)register the global hotkey from the config if it changed
 static void sync_hotkey()
@@ -556,21 +577,8 @@ int main(int argc, char* argv[])
                                       .isEnabled   = true,
                                       .isChecked   = false,
                                       .hasCheckbox = false,
-                                      .onClicked =
-                                          [&](TrayMenu*) {
-#if OSHOT_TOOL_ON_MAIN_THREAD
-                                              capture_from_tray();
-#else
-                                              std::lock_guard lk(mtx);
-                                              // only queue if not already queued
-                                              if (!do_capture)
-                                              {
-                                                  do_capture = true;
-                                                  cv.notify_all();
-                                              }
-#endif
-                                          },
-                                      .subMenu = {} });
+                                      .onClicked   = [&](TrayMenu*) { capture_from_tray(); },
+                                      .subMenu     = {} });
 
     tray.menu.push_back(new TrayMenu{
         .text        = "Open Image",
@@ -588,19 +596,11 @@ int main(int argc, char* argv[])
                                                               false            // allow multiple selections
                 );
 
-#if OSHOT_TOOL_ON_MAIN_THREAD
-                run_main_tool();
-#else
-                std::lock_guard lk(mtx);
-                // only queue if not already queued
-                if (!do_capture)
-                {
-                    do_capture = true;
-                    cv.notify_all();
-                }
-#endif
-                if (open_path)
-                    g_config->Runtime.source_file = open_path;
+                // Canceled the dialog
+                if (!open_path)
+                    return;
+
+                capture_from_tray(open_path);
             },
         .subMenu = {} });
 
