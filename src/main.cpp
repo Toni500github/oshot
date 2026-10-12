@@ -479,7 +479,12 @@ int main(int argc, char* argv[])
     std::vector<TrayMenu*> menu;
 
 #if OSHOT_WINDOWS
-    TrayIcon tray = { "oshot.png", "oshot.ico", "oshot", menu };
+    // Absolute path: when started at sign-in the working directory is System32.
+    // Fall back to the icon embedded in oshot.exe (see oshot.rc.in).
+    fs::path tray_ico = get_exe_dir() / "oshot.ico";
+    if (!fs::exists(tray_ico, ec))
+        tray_ico = get_exe_dir() / "oshot.exe";
+    TrayIcon tray = { "oshot.png", tray_ico.string(), "oshot", menu };
 #else
     // Basically create the icon.png in a temp directory and use
     // that for the systray icon. idfc, it works

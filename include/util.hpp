@@ -419,6 +419,9 @@ fs::path get_home_pictures_dir();
 fs::path get_home_dir();
 fs::path get_config_dir();
 fs::path get_cache_dir();
+fs::path get_exe_dir();
+// OCR models shipped next to the executable (Windows zip/installer, macOS .app), empty if none
+fs::path get_bundled_models_dir();
 
 Result<capture_result_t> load_image_rgba(const std::string& path);
 Result<std::string>      get_config_image_out_fmt();

@@ -39,6 +39,7 @@ jobs:
   build:
     timeout-minutes: 30
     name: Build (${{ matrix.artifact-name }})
+    needs: get-version
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
     permissions:
@@ -97,39 +98,43 @@ jobs:
             target: macos-arm64
             plugins: false
             artifact-name: macos-arm64
-            package-file: package/oshot-macos-arm64.zip
+            package-file: package/oshot-macos-arm64.dmg
 
           - os: macos-latest
             target: macos-arm64
             plugins: true
             artifact-name: macos-arm64-plugins
-            package-file: package/oshot-macos-arm64-plugins.zip
+            package-file: package/oshot-macos-arm64-plugins.dmg
 
           # macOS x86_64 (Intel) package
           - os: macos-15-intel
             target: macos-x86_64
             plugins: false
             artifact-name: macos-x86_64
-            package-file: package/oshot-macos-x86_64.zip
+            package-file: package/oshot-macos-x86_64.dmg
 
           - os: macos-15-intel
             target: macos-x86_64
             plugins: true
             artifact-name: macos-x86_64-plugins
-            package-file: package/oshot-macos-x86_64-plugins.zip
+            package-file: package/oshot-macos-x86_64-plugins.dmg
 
           # Windows package
           - os: windows-latest
             target: windows
             plugins: false
             artifact-name: windows
-            package-file: package/oshot-windows.zip
+            package-file: |
+              package/oshot-windows.zip
+              package/oshot-windows-setup.exe
 
           - os: windows-latest
             target: windows
             plugins: true
             artifact-name: windows-plugins
-            package-file: package/oshot-windows-plugins.zip
+            package-file: |
+              package/oshot-windows-plugins.zip
+              package/oshot-windows-plugins-setup.exe
 
     steps:
       - name: Checkout repository
@@ -313,16 +318,20 @@ jobs:
 
       - name: Package macOS bundle
         if: runner.os == 'macOS'
+        env:
+          OSHOT_VERSION: ${{ needs.get-version.outputs.version }}
         run: |
-          mkdir -p package/oshot/models
+          mkdir -p package models
           ARCH=$(uname -m)
           SUFFIX=$([ "${{ matrix.plugins }}" == "true" ] && echo "-plugins" || echo "")
-          ./scripts/create_app_bundle.sh ./build/oshot oshot-macos-${ARCH}.dmg
-          mv oshot-macos-${ARCH}.dmg package/oshot/
-          cmake --install build --prefix package/oshot/oshotpm
-          rm -f package/oshot/oshotpm/bin/oshot
-          curl -L $MODELS_URL_RAW/eng.traineddata -o package/oshot/models/eng.traineddata
-          cd package && zip -ry oshot-macos-${ARCH}${SUFFIX}.zip oshot/
+          curl -fL $MODELS_URL_RAW/eng.traineddata -o models/eng.traineddata
+          # Tagged builds get the tag; branch builds keep the script's default version
+          case "$OSHOT_VERSION" in v*) ;; *) unset OSHOT_VERSION ;; esac
+          export OSHOT_MODELS_DIR="$PWD/models"
+          if [ "${{ matrix.plugins }}" == "true" ]; then
+            export OSHOT_EXTRA_BINS="$PWD/build/oshotpm"
+          fi
+          ./scripts/create_app_bundle.sh ./build/oshot package/oshot-macos-${ARCH}${SUFFIX}.dmg ./build
 
       - name: Package Windows binary
         if: runner.os == 'Windows'
@@ -336,8 +345,31 @@ jobs:
           cp package/oshot_install/bin/*.exe package/oshot_install/bin/*.dll package/oshot/ 2>/dev/null || true
           cp ./oshot.ico package/oshot/
           ldd ./build/oshot.exe | grep -i mingw | awk '{print $3}' | xargs -I {} cp {} package/oshot/ || true
-          curl -L $MODELS_URL_RAW/eng.traineddata -o package/oshot/models/eng.traineddata
+          curl -fL $MODELS_URL_RAW/eng.traineddata -o package/oshot/models/eng.traineddata
           cd package && zip -ry oshot-windows${SUFFIX}.zip oshot/
+
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          OSHOT_VERSION: ${{ needs.get-version.outputs.version }}
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          # Tagged builds get the tag, branch builds the version from CMakeLists.txt
+          if ($env:OSHOT_VERSION -like 'v*') {
+            $version = $env:OSHOT_VERSION.TrimStart('v')
+          } else {
+            $m = Select-String -Path CMakeLists.txt -Pattern 'project\(oshot VERSION ([0-9.]+)'
+            $version = $m.Matches[0].Groups[1].Value + '-dev'
+          }
+          $numVersion = ($version -split '-')[0]
+          $suffix = if ('${{ matrix.plugins }}' -eq 'true') { '-plugins' } else { '' }
+          & $iscc /Qp "/DAppVersion=$version" "/DAppNumVersion=$numVersion" `
+            "/DSourceDir=..\package\oshot" "/DOutputName=oshot-windows$suffix-setup" scripts\oshot.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # Upload artifact
       - name: Upload build artifact
@@ -367,7 +399,8 @@ jobs:
         env:
           VERSION: ${{ needs.get-version.outputs.version }}
         run: |
-          for f in artifacts/**/*.zip artifacts/**/*.deb; do
+          shopt -s globstar nullglob
+          for f in artifacts/**/*.zip artifacts/**/*.deb artifacts/**/*.dmg artifacts/**/*.exe; do
             [ -f "$f" ] || continue
             ext="${f##*.}"
             base=$(basename "$f" ".$ext")
@@ -387,5 +420,7 @@ jobs:
           files: |
             artifacts/**/*.zip
             artifacts/**/*.deb
+            artifacts/**/*.dmg
+            artifacts/**/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -77,6 +77,7 @@
 #  if OSHOT_MACOS
 #    include <CoreFoundation/CoreFoundation.h>
 #    include <CoreGraphics/CoreGraphics.h>
+#    include <mach-o/dyld.h>
 #  endif
 #  include <arpa/inet.h>
 #  include <netdb.h>
@@ -823,6 +824,52 @@ fs::path get_config_dir()
 fs::path get_cache_dir()
 {
     return get_home_cache_dir() / "oshot";
+}
+
+fs::path get_exe_dir()
+{
+    std::error_code ec;
+#if OSHOT_WINDOWS
+    std::wstring buf(MAX_PATH, L'\0');
+    DWORD        len = GetModuleFileNameW(nullptr, buf.data(), DWORD(buf.size()));
+    while (len == buf.size())
+    {
+        buf.resize(buf.size() * 2);
+        len = GetModuleFileNameW(nullptr, buf.data(), DWORD(buf.size()));
+    }
+    if (len == 0)
+        return {};
+    buf.resize(len);
+    return fs::path(buf).parent_path();
+#elif OSHOT_MACOS
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::string buf(size, '\0');
+    if (_NSGetExecutablePath(buf.data(), &size) != 0)
+        return {};
+    return fs::canonical(buf.c_str(), ec).parent_path();
+#else
+    return fs::canonical("/proc/self/exe", ec).parent_path();
+#endif
+}
+
+fs::path get_bundled_models_dir()
+{
+    const fs::path& exe_dir = get_exe_dir();
+    if (exe_dir.empty())
+        return {};
+
+    std::error_code ec;
+#if OSHOT_MACOS
+    // oshot.app/Contents/MacOS/oshot -> oshot.app/Contents/Resources/tessdata
+    const fs::path& resources = exe_dir.parent_path() / "Resources" / "tessdata";
+    if (fs::is_directory(resources, ec))
+        return resources;
+#endif
+    const fs::path& models = exe_dir / "models";
+    if (fs::is_directory(models, ec))
+        return models;
+    return {};
 }
 
 fs::path get_font_path(const std::string& font)

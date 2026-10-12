@@ -113,6 +113,12 @@ public:
     void LoadConfigFile(const std::string& filename);
 
     /**
+     * Copy the OCR models shipped with the app into models_dir, skipping existing ones
+     * @param models_dir The writable models directory
+     */
+    void SeedBundledModels(const std::filesystem::path& models_dir);
+
+    /**
      * Parse the theme file (aka "theme.toml")
      *  @param filename The directory of the theme file
      */

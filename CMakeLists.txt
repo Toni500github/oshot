@@ -187,6 +187,15 @@ if(WIN32 AND NOT WINDOWS_CMD)
     set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 
+# Embed the icon and version info so Explorer, the taskbar and the installer
+# show them, instead of the generic .exe icon
+if(WIN32)
+    enable_language(RC)
+    set(OSHOT_ICO_PATH ${CMAKE_CURRENT_SOURCE_DIR}/oshot.ico)
+    configure_file(oshot.rc.in ${CMAKE_CURRENT_BINARY_DIR}/oshot.rc @ONLY)
+    target_sources(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/oshot.rc)
+endif()
+
 if(UNIX AND NOT APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
 endif()

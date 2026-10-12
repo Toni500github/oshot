@@ -416,11 +416,7 @@ Result<> ScreenshotTool::StartWindow()
     m_inputs = { .ocr_path          = g_config->File.ocr_path,
                  .ocr_model         = g_config->File.ocr_model,
                  .ocr_download_repo = g_config->File.ocr_get_repo,
-#if defined(__unix__) && !defined(__APPLE__)
                  .ocr_model_downloaded_path = g_config->GetConfigDirPath() + DIR_SEP_STR "models",
-#else
-                 .ocr_model_downloaded_path = "./models",
-#endif
                  .ocr_results            = {},
                  .barcode_text           = "",
                  .zbar_scan_result       = {},
