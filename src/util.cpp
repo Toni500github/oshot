@@ -835,7 +835,7 @@ fs::path get_cache_dir()
     return get_home_cache_dir() / "oshot";
 }
 
-fs::path get_exe_dir()
+fs::path get_exe_path()
 {
     std::error_code ec;
 #if OSHOT_WINDOWS
@@ -849,17 +849,22 @@ fs::path get_exe_dir()
     if (len == 0)
         return {};
     buf.resize(len);
-    return fs::path(buf).parent_path();
+    return fs::path(buf);
 #elif OSHOT_MACOS
     uint32_t size = 0;
     _NSGetExecutablePath(nullptr, &size);
     std::string buf(size, '\0');
     if (_NSGetExecutablePath(buf.data(), &size) != 0)
         return {};
-    return fs::canonical(buf.c_str(), ec).parent_path();
+    return fs::canonical(buf.c_str(), ec);
 #else
-    return fs::canonical("/proc/self/exe", ec).parent_path();
+    return fs::canonical("/proc/self/exe", ec);
 #endif
+}
+
+fs::path get_exe_dir()
+{
+    return get_exe_path().parent_path();
 }
 
 fs::path get_bundled_models_dir()

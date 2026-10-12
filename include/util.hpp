@@ -419,6 +419,7 @@ fs::path get_home_pictures_dir();
 fs::path get_home_dir();
 fs::path get_config_dir();
 fs::path get_cache_dir();
+fs::path get_exe_path();
 fs::path get_exe_dir();
 // OCR models shipped next to the executable (Windows zip/installer, macOS .app), empty if none
 fs::path get_bundled_models_dir();
