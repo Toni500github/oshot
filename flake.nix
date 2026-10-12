@@ -9,7 +9,7 @@
     let 
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
-      version = "0.5.0-rc1";
+      version = "0.5.0-rc2";
 
       mkOshot = { disablePlugins ? false }:
         pkgs.stdenv.mkDerivation {

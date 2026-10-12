@@ -94,9 +94,9 @@ main() {
   <key>CFBundleDisplayName</key>
   <string>oshot</string>
   <key>CFBundleVersion</key>
-  <string>0.5.0-rc1</string>
+  <string>0.5.0-rc2</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.5.0-rc1</string>
+  <string>0.5.0-rc2</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleSignature</key>

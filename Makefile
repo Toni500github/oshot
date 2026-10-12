@@ -11,8 +11,8 @@ PREFIX      ?= /usr
 JOBS        := $(shell echo $(MAKEFLAGS) | grep -oP '(?<=-j)\d+' || nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
 NAME       := oshot
-VERSION    := 0.5.0-rc1
-OLDVERSION := 0.4.6
+OLDVERSION := 0.5.0-rc1
+VERSION    := 0.5.0-rc2
 TARGET     ?= $(NAME)
 
 DEBUG           ?= 0
@@ -73,4 +73,4 @@ install: build
 	$(CMAKE) --install $(BUILDDIR) --prefix $(PREFIX)
 
 updatever:
-	sed -i "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml scripts/*) CMakeLists.txt compile_flags.txt
+	sed -i "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml scripts/*) flake.nix CMakeLists.txt compile_flags.txt
