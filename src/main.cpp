@@ -67,6 +67,7 @@
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "switch_fnv1a.hpp"
 #include "texts.hpp"
+#include "tiny-process-library/process.hpp"
 #include "tinyfiledialogs.h"
 #include "tray.hpp"
 #include "util.hpp"
@@ -338,17 +339,83 @@ void capture_worker()
 static void sync_hotkey();
 #endif
 
+// Open another overlay in a separate `oshot --gui` process, on top of the one
+// already showing. This process has a single overlay (one GLFW window, ImGui
+// context and g_ss_tool), and a new process also takes its screenshot with
+// the current overlay in it, e.g. to report a visual bug in oshot itself.
+static void spawn_gui_instance(const std::string& source)
+{
+    // Holding or mashing the hotkey shouldn't fork-bomb overlays
+    static std::chrono::steady_clock::time_point last_spawn;
+    const auto                                   now = std::chrono::steady_clock::now();
+    if (now - last_spawn < 500ms)
+        return;
+    last_spawn = now;
+
+    using string_type = TinyProcessLib::Process::string_type;
+    // Same condition tiny-process uses for its string_type
+    const auto to_proc_str = [](const fs::path& p) -> string_type {
+#if defined(_WIN32) && defined(UNICODE)
+        return p.wstring();
+#else
+        return p.string();
+#endif
+    };
+
+    fs::path exe = get_exe_path();
+#if OSHOT_LINUX
+    // Inside an AppImage /proc/self/exe is the inner binary, which can't find
+    // the bundled libs without AppRun's environment
+    if (const char* appimage = std::getenv("APPIMAGE"))
+        exe = appimage;
+#endif
+    if (exe.empty())
+    {
+        spdlog::error("Can't open another overlay: failed to get the oshot executable path");
+        return;
+    }
+
+    std::vector<string_type> args = {
+        to_proc_str(exe), to_proc_str("--gui"), to_proc_str("-C"), to_proc_str(g_config->GetConfigPath())
+    };
+    if (!source.empty())
+    {
+        args.push_back(to_proc_str("-f"));
+        args.push_back(to_proc_str(source));
+    }
+
+    spdlog::info("A capture is already open, starting another overlay: {} --gui", exe.string());
+#if OSHOT_WINDOWS
+    // We got the hotkey/tray click, so we may take the foreground: pass that on,
+    // otherwise the new overlay can open behind the current one
+    AllowSetForegroundWindow(ASFW_ANY);
+#endif
+    // Waited on from its own thread so it doesn't stay a zombie on unix
+    auto proc = std::make_shared<TinyProcessLib::Process>(args, string_type{});
+    std::thread([proc] {
+        const int code = proc->get_exit_status();
+        if (code != 0)
+            spdlog::warn("Overlay process exited with code {}", code);
+    }).detach();
+}
+
 // Start a capture from the tray (menu or global hotkey): a fresh screenshot,
 // or the `source` image if not empty. Always sets the source, otherwise an
 // image opened once would be reopened by every later capture.
 static void capture_from_tray(const std::string& source = {})
 {
 #if OSHOT_TOOL_ON_MAIN_THREAD
-    // The GLFW event pump inside run_main_tool() also dispatches the tray's
-    // messages, so without the guard a second capture could start nested
-    // inside the first one.
-    if (capture_active.load() || app_quitting())
+    if (app_quitting())
         return;
+
+    // The GLFW event pump inside run_main_tool() also dispatches the tray's
+    // messages, so a second capture can't run in here: it would be nested
+    // inside the first one. Stack another overlay process on top instead.
+    if (capture_active.load())
+    {
+        spawn_gui_instance(source);
+        return;
+    }
 
     g_config->Runtime.source_file = source;
     run_capture();
@@ -360,14 +427,22 @@ static void capture_from_tray(const std::string& source = {})
     Tray::SetReopenCallback([] { capture_from_tray(); });
 #  endif
 #else
-    std::lock_guard lk(mtx);
-    // Ignore requests while one is queued or running, like on Windows/macOS
-    if (do_capture || capture_active.load() || quit.load())
-        return;
+    {
+        std::lock_guard lk(mtx);
+        // Already queued, about to start
+        if (do_capture || quit.load())
+            return;
 
-    pending_source = source;
-    do_capture     = true;
-    cv.notify_all();
+        if (!capture_active.load())
+        {
+            pending_source = source;
+            do_capture     = true;
+            cv.notify_all();
+            return;
+        }
+    }
+    // Same as on Windows/macOS: stack another overlay process on top
+    spawn_gui_instance(source);
 #endif
 }
 
@@ -561,10 +636,12 @@ int main(int argc, char* argv[])
     logger.flush();
     spdlog::flush_every(1s);
 
-    const bool tray_lock_acquired = acquire_tray_lock();
-
+    // Before taking the tray lock: any number of --gui overlays can run at
+    // once, and one shouldn't keep a tray from starting while it's open
     if (g_config->Runtime.only_launch_gui)
         return run_capture();
+
+    const bool tray_lock_acquired = acquire_tray_lock();
 
     if (g_config->Runtime.only_launch_tray)
     {
@@ -601,7 +678,7 @@ int main(int argc, char* argv[])
     // Fall back to the icon embedded in oshot.exe (see oshot.rc.in).
     fs::path tray_ico = get_exe_dir() / "oshot.ico";
     if (!fs::exists(tray_ico, ec))
-        tray_ico = get_exe_dir() / "oshot.exe";
+        tray_ico = get_exe_path();
     TrayIcon tray = { "oshot.png", tray_ico.string(), "oshot", menu };
 #else
     // The tray APIs want an icon file, so write the embedded one. Per-user
@@ -628,10 +705,6 @@ int main(int argc, char* argv[])
                                       .hasCheckbox = false,
                                       .onClicked =
                                           [&](TrayMenu*) {
-                                              // The request would be dropped anyway, don't ask for a file first
-                                              if (capture_active.load())
-                                                  return;
-
                                               // Patterns are case-sensitive with zenity/kdialog
                                               const std::array<const char*, 8> filters = { "*.png", "*.jpeg", "*.jpg",
                                                                                            "*.bmp", "*.PNG",  "*.JPEG",
