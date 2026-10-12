@@ -69,6 +69,16 @@ public:
         bool        pref_conf_to_env   = false;
         bool        ctrl_c_copy_img    = true;
 
+        // Global capture hotkey, registered by the tray instance (Windows/macOS only).
+        // Win+Shift+S and Cmd+Shift+3/4/5 are taken by the OS screenshot tools.
+#if OSHOT_WINDOWS
+        std::string hotkey = "Alt+Shift+S";
+#elif OSHOT_MACOS
+        std::string hotkey = "Cmd+Shift+2";
+#else
+        std::string hotkey;
+#endif
+
         std::pair<std::string, ImageExt> image_out_type = { "png", ImageExt::PNG };
         std::vector<std::string>         fonts;
 

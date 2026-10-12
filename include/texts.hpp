@@ -164,6 +164,13 @@ legacy-toolbar-pos = {}
 # false: CTRL+SHIFT+C
 ctrl-c-copy-img = {}
 
+# System-wide shortcut that starts a capture, e.g. "Alt+Shift+S" or "Cmd+Shift+2".
+# Modifiers: Ctrl, Shift, Alt (Option), Win/Cmd/Super. Keys: A-Z, 0-9, F1-F12,
+# Space, PrintScreen, Insert, Delete, Home, End, PageUp, PageDown, Pause, Tab.
+# Registered by the tray instance on Windows and macOS. Set to "" to disable.
+# On Linux, bind `oshot --gui` in your window manager/desktop settings instead.
+hotkey = "{}"
+
 # Fonts to use for the application. Can be an absolute path, or just a name.
 # You can combine multiple fonts for multiple language support.
 # for example, using "Roboto-Regular.ttf" and "RobotoCJK-Regular.ttc" for Chinese, Japanese, and Korean support alongside English support.

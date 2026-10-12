@@ -104,6 +104,7 @@ void Config::LoadConfigFile(const std::string& filename)
     File.pref_conf_to_env = GetValue<bool>("default.config-over-env", false);
     File.render_anns      = GetValue<bool>("default.annotations-in-text-tools", true);
     File.ctrl_c_copy_img  = GetValue<bool>("default.ctrl-c-copy-img", false);
+    File.hotkey           = GetValue<std::string>("default.hotkey", File.hotkey);
 
     File.fonts = GetValueArrayStr("default.fonts", { GetValue<std::string>("default.font", "") });
 
@@ -211,6 +212,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.render_anns,
             File.old_toolbar_pos,
             File.ctrl_c_copy_img,
+            EscapeString(File.hotkey),
             EscapeString(fonts_str),
             EscapeString(File.image_out_type.first),
             EscapeString(File.image_out_fmt),

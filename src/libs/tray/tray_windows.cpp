@@ -14,6 +14,7 @@ static NOTIFYICONDATA nid;
 static HWND hwnd;
 static HMENU hmenu = NULL;
 static UINT id = ID_TRAY_FIRST;
+static std::function<void(int)> hotkeyCallback;
 
 static LRESULT CALLBACK _tray_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
@@ -24,6 +25,10 @@ static LRESULT CALLBACK _tray_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARA
 		return 0;
 	case WM_DESTROY:
 		PostQuitMessage(0);
+		return 0;
+	case WM_HOTKEY:
+		if (hotkeyCallback)
+			hotkeyCallback((int)wparam);
 		return 0;
 	case WM_TRAY_CALLBACK_MESSAGE:
 		if (lparam == WM_LBUTTONUP || lparam == WM_RBUTTONUP)
@@ -166,6 +171,16 @@ void TrayMaker::Update()
 
 	if (prevmenu != NULL)
 		DestroyMenu(prevmenu);
+}
+
+void* Tray::GetNativeHandle()
+{
+	return hwnd;
+}
+
+void Tray::SetHotkeyCallback(std::function<void(int)> cb)
+{
+	hotkeyCallback = std::move(cb);
 }
 
 void TrayMaker::Exit()
