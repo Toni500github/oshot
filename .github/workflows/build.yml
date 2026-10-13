@@ -290,7 +290,7 @@ jobs:
         run: |
           ./scripts/generateVersion.sh
           mkdir -p build
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DWINDOWS_CMD=OFF -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }}
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }}
           ninja -C build
 
       # Package

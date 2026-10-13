@@ -23,6 +23,7 @@
  *
  */
 
+#include <array>
 #include <atomic>
 #include <condition_variable>
 #include <csignal>
@@ -35,6 +36,7 @@
 #include <ios>
 #include <memory>
 #include <mutex>
+#include <string_view>
 #include <system_error>
 #include <thread>
 #include <utility>
@@ -42,7 +44,9 @@
 #include "cache.hpp"
 #include "platform.hpp"
 
-#if !OSHOT_WINDOWS
+#if OSHOT_WINDOWS
+#  include "dylib.hpp"
+#else
 #  include <netdb.h>
 #  include <netinet/in.h>
 #  include <sys/socket.h>
@@ -50,7 +54,9 @@
 #endif
 
 #if OSHOT_TOOL_ON_MAIN_THREAD
+#  include <algorithm>
 #  include <optional>
+#  include <ranges>
 
 #  include "hotkey.hpp"
 #  include "nvdialog/nvdialog_notification.h"
@@ -102,19 +108,30 @@ struct GLFWwindow;
 
 std::error_code ec;
 
-// Print the version and some other infos, then exit successfully
+// Show the version and some other infos, then exit successfully
 static void version()
 {
+#if OSHOT_WINDOWS
+    create_dialog("oshot version", NVD_DIALOG_SIMPLE, version_infos);
+#else
     fmt::print(FMT_COMPILE("{}"), version_infos);
     fmt::print("\n");
+#endif
     std::exit(EXIT_SUCCESS);
 }
 
-// Print the args help menu, then exit with code depending if it's from invalid or -h arg
-static void help(bool invalid_opt = false)
+// Show the args help menu, then exit with code depending if it's from invalid or -h arg
+static void help(bool invalid_opt = false, std::string_view bad_opt = {})
 {
+#if OSHOT_WINDOWS
+    if (invalid_opt)
+        create_dialog("oshot", NVD_DIALOG_WARNING, fmt::format("Invalid option '{}'\n\n{}", bad_opt, oshot_help));
+    else
+        create_dialog("oshot help", NVD_DIALOG_SIMPLE, std::string(oshot_help));
+#else
     fmt::print(FMT_COMPILE("{}"), oshot_help);
     fmt::print("\n");
+#endif
     std::exit(invalid_opt);
 }
 
@@ -185,7 +202,7 @@ static bool parseargs(int argc, char* argv[], const fs::path& configFile)
             case 'C':
                 break;
             case '?':
-                help(EXIT_FAILURE); break;
+                help(true, argv[optind - 1]); break;
 
             case 'V':
                 version(); break;
@@ -339,9 +356,37 @@ void capture_worker()
     }
 }
 
-#if OSHOT_TOOL_ON_MAIN_THREAD
-static void sync_hotkey();
+// (Re-)register the global hotkey from the config if it changed
+static void sync_hotkey()
+{
+#if OSHOT_HAS_GLOBAL_HOTKEY
+    static std::optional<std::string> applied;
+    if (applied == g_config->File.hotkey)
+        return;
+    applied = g_config->File.hotkey;
+
+    const Result<hotkey::hotkey_t>& hk  = hotkey::parse(*applied);
+    const Result<>&                 res = [&]() -> Result<> {
+        TRY(hk);
+        return hotkey::enable(hk.get(), [] { capture_from_tray(); });
+    }();
+    if (res.ok())
+    {
+        spdlog::info("Global hotkey: {}", hotkey::status());
+        return;
+    }
+
+    spdlog::warn("Global hotkey: {}", res.error_v());
+    const std::string& body =
+        fmt::format("{}\nPick another shortcut in Preferences, or set 'hotkey' in the config.", res.error_v());
+    NvdNotification* notif = nvd_notification_new("oshot: hotkey not set", body.c_str(), NVD_NOTIFICATION_WARNING);
+    if (notif)
+    {
+        nvd_send_notification(notif);
+        nvd_delete_notification(notif);
+    }
 #endif
+}
 
 // Open another overlay in a separate `oshot --gui` process, on top of the one
 // already showing. This process has a single overlay (one GLFW window, ImGui
@@ -373,6 +418,7 @@ static void spawn_gui_instance(const std::string& source)
     if (const char* appimage = std::getenv("APPIMAGE"))
         exe = appimage;
 #endif
+
     if (exe.empty())
     {
         spdlog::error("Can't open another overlay: failed to get the oshot executable path");
@@ -389,11 +435,13 @@ static void spawn_gui_instance(const std::string& source)
     }
 
     spdlog::info("A capture is already open, starting another overlay: {} --gui", exe.string());
+
 #if OSHOT_WINDOWS
     // We got the hotkey/tray click, so we may take the foreground: pass that on,
     // otherwise the new overlay can open behind the current one
     AllowSetForegroundWindow(ASFW_ANY);
 #endif
+
     // Waited on from its own thread so it doesn't stay a zombie on unix
     auto proc = std::make_shared<TinyProcessLib::Process>(args, string_type{});
     std::thread([proc] {
@@ -450,133 +498,69 @@ static void capture_from_tray(const std::string& source = {})
 #endif
 }
 
-#if OSHOT_TOOL_ON_MAIN_THREAD
+static int oshot_main(int argc, char* argv[]);  // NOLINT
 
-// (Re-)register the global hotkey from the config if it changed
-static void sync_hotkey()
-{
-#  if OSHOT_HAS_GLOBAL_HOTKEY
-    static std::optional<std::string> applied;
-    if (applied == g_config->File.hotkey)
-        return;
-    applied = g_config->File.hotkey;
-
-    const Result<hotkey::hotkey_t>& hk  = hotkey::parse(*applied);
-    const Result<>&                 res = [&]() -> Result<> {
-        TRY(hk);
-        return hotkey::enable(hk.get(), [] { capture_from_tray(); });
-    }();
-    if (res.ok())
-    {
-        spdlog::info("Global hotkey: {}", hotkey::status());
-        return;
-    }
-
-    spdlog::warn("Global hotkey: {}", res.error_v());
-    const std::string& body =
-        fmt::format("{}\nPick another shortcut in Preferences, or set 'hotkey' in the config.", res.error_v());
-    NvdNotification* notif = nvd_notification_new("oshot: hotkey not set", body.c_str(), NVD_NOTIFICATION_WARNING);
-    if (notif)
-    {
-        nvd_send_notification(notif);
-        nvd_delete_notification(notif);
-    }
-#  endif
-}
-#endif
-
-#if OSHOT_WINDOWS && !defined(WINDOWS_CMD)
-static std::string wide_to_utf8(const wchar_t* w)
-{
-    if (!w)
-        return {};
-    int needed = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
-    if (needed <= 0)
-        return {};
-    std::string out;
-    out.resize(size_t(needed) - 1);
-    WideCharToMultiByte(CP_UTF8, 0, w, -1, out.data(), needed, nullptr, nullptr);
-    return out;
-}
-
-static bool wants_cli_output(int argc, char** argv)
-{
-    for (int i = 1; i < argc; ++i)
-    {
-        const char* a = argv[i];
-        if (!a)
-            continue;
-
-        if (std::strcmp(a, "-h") == 0 || std::strcmp(a, "--help") == 0 || std::strcmp(a, "-V") == 0 ||
-            std::strcmp(a, "--version") == 0 || std::strcmp(a, "-l") == 0 || std::strcmp(a, "--list") == 0)
-            return true;
-    }
-    return false;
-}
-
+#if OSHOT_WINDOWS
+// GUI-subsystem app: no console, help/version/errors are shown as dialogs
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
-    int       argc  = 0;
-    wchar_t** wargv = CommandLineToArgvW(GetCommandLineW(), &argc);
-
-    std::vector<std::string> argv_storage;
-    std::vector<char*>       argv_ptrs;
-
-    if (wargv && argc > 0)
+    // Per-monitor DPI awareness before the first capture: GLFW only sets it in
+    // glfwInit(), so the first screenshot would otherwise see scaled monitor sizes
+    wchar_t system_dir[MAX_PATH]{};
+    GetSystemDirectoryW(system_dir, MAX_PATH);
+    try
     {
-        argv_storage.reserve(argc);
-        argv_ptrs.reserve(argc + 1);
+        // Windows 10 1703+, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+        dylib::library user32(fs::path(system_dir) / "user32.dll");
+        user32.get_function<BOOL(HANDLE)>("SetProcessDpiAwarenessContext")(reinterpret_cast<HANDLE>(intptr_t(-4)));
+    }
+    catch (const std::exception&)
+    {
+        try
+        {
+            // Windows 8.1+, PROCESS_PER_MONITOR_DPI_AWARE
+            dylib::library shcore(fs::path(system_dir) / "shcore.dll");
+            shcore.get_function<HRESULT(int)>("SetProcessDpiAwareness")(2);
+        }
+        catch (const std::exception&)
+        {
+            SetProcessDPIAware();
+        }
+    }
 
-        for (int i = 0; i < argc; ++i)
-            argv_storage.push_back(wide_to_utf8(wargv[i]));
+    // Writing to the missing stdout/stderr fails and fmt::print() throws
+    FILE* dummy = nullptr;
+    freopen_s(&dummy, "NUL", "w", stdout);
+    freopen_s(&dummy, "NUL", "w", stderr);
 
-        for (auto& s : argv_storage)
-            argv_ptrs.push_back(s.data());
-
-        argv_ptrs.push_back(nullptr);
-
+    // UTF-8 argv instead of the ANSI code page one
+    std::vector<std::string> args;
+    int                      wargc = 0;
+    if (wchar_t** wargv = CommandLineToArgvW(GetCommandLineW(), &wargc))
+    {
+        for (int i = 0; i < wargc; ++i)
+            args.push_back(wide_to_utf8(wargv[i]));
         LocalFree(wargv);
     }
-    else
-    {
-        static char argv0[] = "oshot";
-        argv_ptrs           = { argv0, nullptr };
-        argc                = 1;
-    }
+    if (args.empty())
+        args.emplace_back("oshot");
 
-    char** argv = argv_ptrs.data();
+    std::vector<char*> argv;
+    for (std::string& a : args)
+        argv.push_back(a.data());
+    argv.push_back(nullptr);
 
-    // If we need to show CLI output, try to attach to parent console first.
-    // This works when started from cmd.exe / powershell.
-    if (wants_cli_output(argc, argv))
-    {
-        if (!AttachConsole(ATTACH_PARENT_PROCESS))
-        {
-            // MSYS2/mintty often isn't a real Windows console -> attach fails.
-            // Allocate a console so stdout/stderr have somewhere to go.
-            AllocConsole();
-        }
-
-        FILE* dummy = nullptr;
-        freopen_s(&dummy, "CONOUT$", "w", stdout);
-        freopen_s(&dummy, "CONOUT$", "w", stderr);
-        freopen_s(&dummy, "CONIN$", "r", stdin);
-
-        // Line-buffer so help/version prints immediately
-        setvbuf(stdout, nullptr, _IOLBF, 0);
-        setvbuf(stderr, nullptr, _IOLBF, 0);
-    }
-    else
-    {
-        // Without a console, writing to stdout/stderr fails and fmt::print() throws
-        FILE* dummy = nullptr;
-        freopen_s(&dummy, "NUL", "w", stdout);
-        freopen_s(&dummy, "NUL", "w", stderr);
-    }
+    return oshot_main(int(args.size()), argv.data());
+}
 #else
 int main(int argc, char* argv[])
 {
+    return oshot_main(argc, argv);
+}
 #endif
+
+static int oshot_main(int argc, char* argv[])  // NOLINT
+{
     // Not relative to the working directory: when started at sign-in on Windows it's System32
     const fs::path& log_path = fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid());
     fs::create_directories(log_path.parent_path(), ec);

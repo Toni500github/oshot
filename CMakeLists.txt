@@ -71,7 +71,6 @@ macro(add_option OPTION_NAME OPTION_TEXT OPTION_DEFAULT DEFINE_OPTION)
 endmacro()
 
 # Options
-add_option(WINDOWS_CMD "Enable terminal support on Windows" OFF ON)
 add_option(DISABLE_PLUGINS "Disable plugins support" ON ON)
 
 # When plugins are enabled, oshot_common becomes a SHARED library (see
@@ -183,8 +182,10 @@ target_compile_definitions(
 
 target_link_libraries(${PROJECT_NAME} PRIVATE oshot_common)
 
-if(WIN32 AND NOT WINDOWS_CMD)
+if(WIN32)
     set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
+    # WinMain() loads the DPI awareness functions at runtime
+    target_link_libraries(${PROJECT_NAME} PRIVATE dylib)
 endif()
 
 # Embed the icon and version info so Explorer, the taskbar and the installer
@@ -639,7 +640,7 @@ target_compile_definitions(clip PUBLIC CLIP_ENABLE_IMAGE=1)
 # dylib library (integrated from its own CMakeLists.txt)
 # -----------------------------
 
-if(NOT DISABLE_PLUGINS)
+if(NOT DISABLE_PLUGINS OR WIN32)
     file(GLOB DYLIB_SOURCES src/libs/dylib/*.cpp)
     add_library(dylib STATIC ${DYLIB_SOURCES})
 
