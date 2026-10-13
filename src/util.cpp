@@ -34,6 +34,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <utility>
 #include <vector>
@@ -385,7 +386,15 @@ Result<capture_result_t> load_image_rgba(const std::string& path)
 
 Result<std::string> get_config_image_out_fmt()
 {
-    auto        now = std::chrono::system_clock::now();
+    // fmt formats a system_clock time_point as UTC, so convert to local time first
+    const std::time_t now_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm           now{};
+#if OSHOT_WINDOWS
+    localtime_s(&now, &now_t);
+#else
+    localtime_r(&now_t, &now);
+#endif
+
     std::string out_path;
     try
     {
