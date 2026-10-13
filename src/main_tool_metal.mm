@@ -97,7 +97,7 @@ int run_main_tool()
 
     // vsync is controlled via the CAMetalLayer's displaySyncEnabled property instead.
     g_ss_tool.SetOnCancel([&]() {
-        fmt::println(stderr, "Canceled screenshot");
+        spdlog::info("Canceled screenshot");
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
     g_ss_tool.SetOnComplete([&](SavingOp op, const region_t& region, ImageExt ext) {

@@ -562,15 +562,29 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
         setvbuf(stdout, nullptr, _IOLBF, 0);
         setvbuf(stderr, nullptr, _IOLBF, 0);
     }
-
-    auto file = std::make_shared<spdlog::sinks::basic_file_sink_mt>("oshot.log", true);
+    else
+    {
+        // Without a console, writing to stdout/stderr fails and fmt::print() throws
+        FILE* dummy = nullptr;
+        freopen_s(&dummy, "NUL", "w", stdout);
+        freopen_s(&dummy, "NUL", "w", stderr);
+    }
 #else
 int main(int argc, char* argv[])
 {
+#endif
+    // Not relative to the working directory: when started at sign-in on Windows it's System32
     const fs::path& log_path = fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid());
     fs::create_directories(log_path.parent_path(), ec);
-    auto file = std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_path.string(), true);
-#endif
+    std::shared_ptr<spdlog::sinks::basic_file_sink_mt> file;
+    try
+    {
+        file = std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_path.string(), true);
+    }
+    catch (const std::exception& e)
+    {
+        fmt::println(stderr, "Failed to open log file {}: {}", log_path.string(), e.what());
+    }
 
 #if OSHOT_LINUX
     // AppRun prepends bundled libs to LD_LIBRARY_PATH so the AppImage is self-contained.
@@ -600,9 +614,12 @@ int main(int argc, char* argv[])
         return -67;
     }
 
-    auto           console = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    auto           imgui   = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(500);  // keep last 500 lines
-    spdlog::logger logger("oshot_logger", { console, file, imgui });
+    auto console = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    auto imgui   = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(500);  // keep last 500 lines
+    std::vector<spdlog::sink_ptr> sinks = { console, imgui };
+    if (file)
+        sinks.push_back(file);
+    spdlog::logger logger("oshot_logger", sinks.begin(), sinks.end());
     spdlog::set_default_logger(std::make_shared<spdlog::logger>(logger));
     g_imgui_log_sink = imgui;
 
@@ -632,7 +649,8 @@ int main(int argc, char* argv[])
     spdlog::set_level(spdlog::level::debug);
 
     logger.info("=== oshot starting ===");
-    logger.info("Log file path: {}", file->filename());
+    if (file)
+        logger.info("Log file path: {}", file->filename());
     logger.flush();
     spdlog::flush_every(1s);
 
