@@ -698,7 +698,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
 
 #if OSHOT_WINDOWS
     // Absolute path: when started at sign-in the working directory is System32.
-    // Fall back to the icon embedded in oshot.exe (see oshot.rc.in).
+    // Fall back to the icon embedded in oshot.exe (see assets/windows/oshot.rc.in).
     fs::path tray_ico = get_exe_dir() / "oshot.ico";
     if (!fs::exists(tray_ico, ec))
         tray_ico = get_exe_path();

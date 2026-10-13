@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="oshot.png" width="10%" />
+  <img src="assets/oshot.png" width="10%" />
 </p>
 
 <h1 align="center">oshot</h1>
