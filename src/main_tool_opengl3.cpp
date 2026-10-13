@@ -141,7 +141,7 @@ int run_main_tool()
     // Calling it before starting the window so that
     // we can capture at the exact moment we launch
     g_ss_tool.SetOnCancel([&]() {
-        fmt::println(stderr, "Canceled screenshot");
+        spdlog::info("Canceled screenshot");
         glfwSwapInterval(0);  // Disable vsync
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
