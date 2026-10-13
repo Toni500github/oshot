@@ -104,18 +104,9 @@ void Config::LoadConfigFile(const std::string& filename)
     File.pref_conf_to_env = GetValue<bool>("default.config-over-env", false);
     File.render_anns      = GetValue<bool>("default.annotations-in-text-tools", true);
     File.ctrl_c_copy_img  = GetValue<bool>("default.ctrl-c-copy-img", false);
+    File.allow_out_edit   = GetValue<bool>("default.allow-text-edit", false);
     File.hotkey           = GetValue<std::string>("default.hotkey", File.hotkey);
-
-    File.fonts = GetValueArrayStr("default.fonts", { GetValue<std::string>("default.font", "") });
-
-    File.allow_out_edit = GetValue<bool>("default.allow-edit-ocr", false);  // deprecated
-    File.allow_out_edit = GetValue<bool>("default.allow-text-edit", File.allow_out_edit);
-
-#if !OSHOT_LINUX
-    // Pre-0.5 default, which resolved against the working directory
-    if (File.ocr_path == "./models" || File.ocr_path == "models")
-        File.ocr_path = (fs::path(m_config_dir_path) / "models").string();
-#endif
+    File.fonts            = GetValueArrayStr("default.fonts", {});
 
     const char* t = getenv("TESSDATA_PREFIX");
     if (!File.pref_conf_to_env && t)
