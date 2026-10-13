@@ -356,10 +356,13 @@ void capture_worker()
     }
 }
 
+static void capture_from_tray(const std::string& source = {});
+
+#if OSHOT_TOOL_ON_MAIN_THREAD
 // (Re-)register the global hotkey from the config if it changed
 static void sync_hotkey()
 {
-#if OSHOT_HAS_GLOBAL_HOTKEY
+#  if OSHOT_HAS_GLOBAL_HOTKEY
     static std::optional<std::string> applied;
     if (applied == g_config->File.hotkey)
         return;
@@ -385,8 +388,9 @@ static void sync_hotkey()
         nvd_send_notification(notif);
         nvd_delete_notification(notif);
     }
-#endif
+#  endif
 }
+#endif
 
 // Open another overlay in a separate `oshot --gui` process, on top of the one
 // already showing. This process has a single overlay (one GLFW window, ImGui
@@ -454,7 +458,7 @@ static void spawn_gui_instance(const std::string& source)
 // Start a capture from the tray (menu or global hotkey): a fresh screenshot,
 // or the `source` image if not empty. Always sets the source, otherwise an
 // image opened once would be reopened by every later capture.
-static void capture_from_tray(const std::string& source = {})
+static void capture_from_tray(const std::string& source)
 {
 #if OSHOT_TOOL_ON_MAIN_THREAD
     if (app_quitting())
@@ -501,6 +505,19 @@ static void capture_from_tray(const std::string& source = {})
 static int oshot_main(int argc, char* argv[]);  // NOLINT
 
 #if OSHOT_WINDOWS
+static std::string wide_to_utf8(const wchar_t* w)
+{
+    if (!w)
+        return {};
+    int needed = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+    if (needed <= 0)
+        return {};
+    std::string out;
+    out.resize(size_t(needed) - 1);
+    WideCharToMultiByte(CP_UTF8, 0, w, -1, out.data(), needed, nullptr, nullptr);
+    return out;
+}
+
 // GUI-subsystem app: no console, help/version/errors are shown as dialogs
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {

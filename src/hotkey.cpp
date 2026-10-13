@@ -32,6 +32,7 @@
 // clang-format off
 #if OSHOT_WINDOWS
 #  include <windows.h>
+#  include "tray.hpp"
 #elif OSHOT_MACOS
 // AssertMacros.h (pulled in by Carbon) defines check()/verify()/require() otherwise
 #  define __ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES 0
