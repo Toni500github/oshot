@@ -142,6 +142,21 @@ main() {
         rm -rf "$TMP_ICON_DIR"
     fi
 
+    # The newest minimum macOS among everything bundled. Homebrew's libraries
+    # are built for the CI runner's macOS, so they usually decide it. With it
+    # in Info.plist, Finder says "requires macOS X" instead of failing to launch.
+    MIN_MACOS="$(for f in "$MACOS"/* "$FRAMEWORKS"/*.dylib; do
+        if [ -f "$f" ] && [ ! -L "$f" ]; then
+            otool -l "$f" | awk '/LC_BUILD_VERSION/ {b = 1} /LC_VERSION_MIN_MACOSX/ {m = 1}
+                (b && $1 == "minos" || m && $1 == "version") && !done {print $2; done = 1}'
+        fi
+    done | sort -V | tail -n 1)"
+    echo "Minimum macOS: ${MIN_MACOS:-unknown}"
+    MIN_MACOS_KEY=""
+    if [ -n "$MIN_MACOS" ]; then
+        MIN_MACOS_KEY="<key>LSMinimumSystemVersion</key><string>${MIN_MACOS}</string>"
+    fi
+
     # Write Info.plist
     cat > "${CONTENTS}/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -176,6 +191,7 @@ main() {
   <key>NSScreenCaptureUsageDescription</key>
   <string>oshot needs screen recording permission to take screenshots.</string>
   ${ICON_KEY}
+  ${MIN_MACOS_KEY}
 </dict>
 </plist>
 EOF

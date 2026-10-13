@@ -74,10 +74,12 @@ Prefer a portable copy? Download `oshot-windows-<version>.zip`, extract it anywh
 
 Download the `.dmg` that matches your Mac:
 
-| Package | Description |
-| ------- | ----------- |
-| `oshot-macos-arm64-<version>.dmg` | Apple Silicon (M1 and newer) |
-| `oshot-macos-x86_64-<version>.dmg` | Intel |
+| Package | Mac | Requires |
+| ------- | --- | -------- |
+| `oshot-macos-arm64-<version>.dmg` | Apple Silicon (M1 and newer) | macOS 26.4 (Tahoe) or later |
+| `oshot-macos-x86_64-<version>.dmg` | Intel | macOS 15 (Sequoia) or later |
+
+Older macOS versions aren't supported yet: the bundled libraries come from Homebrew, which builds them for the macOS of our build machines.
 
 1. Open the `.dmg` and drag **oshot** onto **Applications**.
 2. The app isn't notarized yet, so macOS blocks the first launch. Run this once in Terminal:
