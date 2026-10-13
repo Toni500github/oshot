@@ -1,0 +1,5 @@
+// Replaces MinGW's default manifest: same execution level and supportedOS
+// entries, plus the UTF-8 code page so narrow-string APIs (fopen, tesseract,
+// stb_image, ...) accept non-ASCII paths (Windows 10 1903+)
+LANGUAGE 0, 0
+1 24 "@OSHOT_MANIFEST_PATH@"

@@ -55,8 +55,8 @@ main() {
     check_file "$1"
 
     mkdir -p AppDir/usr/bin/
-    check_file oshot.png
-    check_file oshot.desktop
+    check_file assets/oshot.png
+    check_file assets/linux/oshot.desktop
 
     cat > AppDir/AppRun << 'EOF'
 #!/bin/sh
@@ -68,8 +68,8 @@ EOF
     chmod +x AppDir/AppRun
 
     cp -f "$1" AppDir/usr/bin/
-    cp -f oshot.png AppDir/
-    cp -f oshot.desktop AppDir/
+    cp -f assets/oshot.png AppDir/
+    cp -f assets/linux/oshot.desktop AppDir/
 
     ./linuxdeploy-x86_64.AppImage \
         --appdir AppDir \

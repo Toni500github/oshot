@@ -55,7 +55,7 @@ main() {
     install_dylibbundler
 
     check_file "$BINARY"
-    check_file oshot.png
+    check_file assets/oshot.png
 
     VERSION="${OSHOT_VERSION:-0.5.0-rc2}"
     # CFBundle*Version must be numeric (no "-rc2")
@@ -134,8 +134,8 @@ main() {
         ICONSET="${TMP_ICON_DIR}/oshot.iconset"
         mkdir -p "$ICONSET"
         for SIZE in 16 32 64 128 256 512; do
-            sips -z $SIZE $SIZE oshot.png --out "${ICONSET}/icon_${SIZE}x${SIZE}.png" &>/dev/null
-            sips -z $((SIZE*2)) $((SIZE*2)) oshot.png --out "${ICONSET}/icon_${SIZE}x${SIZE}@2x.png" &>/dev/null
+            sips -z $SIZE $SIZE assets/oshot.png --out "${ICONSET}/icon_${SIZE}x${SIZE}.png" &>/dev/null
+            sips -z $((SIZE*2)) $((SIZE*2)) assets/oshot.png --out "${ICONSET}/icon_${SIZE}x${SIZE}@2x.png" &>/dev/null
         done
         iconutil -c icns "$ICONSET" -o "${RESOURCES}/oshot.icns"
         ICON_KEY="<key>CFBundleIconFile</key><string>oshot</string>"

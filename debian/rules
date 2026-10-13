@@ -16,5 +16,5 @@ override_dh_auto_build:
 
 override_dh_auto_install:
 	dh_auto_install --buildsystem=cmake
-	install -Dm644 oshot.desktop \
+	install -Dm644 assets/linux/oshot.desktop \
 		$(CURDIR)/debian/oshot/usr/share/applications/oshot.desktop

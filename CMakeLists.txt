@@ -192,9 +192,16 @@ endif()
 # show them, instead of the generic .exe icon
 if(WIN32)
     enable_language(RC)
-    set(OSHOT_ICO_PATH ${CMAKE_CURRENT_SOURCE_DIR}/oshot.ico)
-    configure_file(oshot.rc.in ${CMAKE_CURRENT_BINARY_DIR}/oshot.rc @ONLY)
-    target_sources(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/oshot.rc)
+    set(OSHOT_ICO_PATH ${CMAKE_CURRENT_SOURCE_DIR}/assets/windows/oshot.ico)
+    set(OSHOT_MANIFEST_PATH ${CMAKE_CURRENT_SOURCE_DIR}/assets/windows/oshot.manifest)
+    configure_file(assets/windows/oshot.rc.in ${CMAKE_CURRENT_BINARY_DIR}/oshot.rc @ONLY)
+    configure_file(assets/windows/manifest.rc.in ${CMAKE_CURRENT_BINARY_DIR}/manifest.rc @ONLY)
+    target_sources(
+        ${PROJECT_NAME}
+        PRIVATE
+            ${CMAKE_CURRENT_BINARY_DIR}/oshot.rc
+            ${CMAKE_CURRENT_BINARY_DIR}/manifest.rc
+    )
 endif()
 
 if(UNIX AND NOT APPLE)
@@ -449,6 +456,9 @@ if(NOT DISABLE_PLUGINS)
             INSTALL_RPATH "${_rpath_origin}/../lib"
     )
     target_link_libraries(oshotpm PRIVATE oshot_common)
+    if(WIN32)
+        target_sources(oshotpm PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/manifest.rc)
+    endif()
 endif()
 
 # -----------------------------
@@ -794,6 +804,6 @@ install(
 )
 
 install(
-    FILES oshot.desktop
+    FILES assets/linux/oshot.desktop
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
 )

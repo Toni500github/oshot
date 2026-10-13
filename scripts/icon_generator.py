@@ -245,7 +245,7 @@ def main():
     #    ("ICON_PENCIL", "/tmp/image.png"),
     #    ("ICON_ARROW", "/tmp/image2.png"),
     #    ("ICON_TEXT", "/tmp/text.png")
-    #    ("OSHOT_LOGO", "./oshot.png", True)
+    #    ("OSHOT_LOGO", "./assets/oshot.png", True)
          ("ICON_COPY", "/tmp/copy.png", False),
          ("ICON_SAVE", "/tmp/save2.png", False),
     ]
