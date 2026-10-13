@@ -28,7 +28,6 @@
 
           buildInputs = with pkgs; [
             glfw3
-            glew
             tesseract
             leptonica
             zbar
