@@ -29,8 +29,6 @@
 #include <array>
 #include <utility>
 
-#include "tray.hpp"
-
 // clang-format off
 #if OSHOT_WINDOWS
 #  include <windows.h>
@@ -53,16 +51,16 @@ struct named_key_t
 
 // Keys that aren't a single letter, digit or F-key
 constexpr std::array<named_key_t, 10> named_keys = { {
-    { "Space", ImGuiKey_Space },
-    { "PrintScreen", ImGuiKey_PrintScreen },
-    { "Insert", ImGuiKey_Insert },
-    { "Delete", ImGuiKey_Delete },
-    { "Home", ImGuiKey_Home },
-    { "End", ImGuiKey_End },
-    { "PageUp", ImGuiKey_PageUp },
-    { "PageDown", ImGuiKey_PageDown },
-    { "Pause", ImGuiKey_Pause },
-    { "Tab", ImGuiKey_Tab },
+    { .name = "Space", .key = ImGuiKey_Space },
+    { .name = "PrintScreen", .key = ImGuiKey_PrintScreen },
+    { .name = "Insert", .key = ImGuiKey_Insert },
+    { .name = "Delete", .key = ImGuiKey_Delete },
+    { .name = "Home", .key = ImGuiKey_Home },
+    { .name = "End", .key = ImGuiKey_End },
+    { .name = "PageUp", .key = ImGuiKey_PageUp },
+    { .name = "PageDown", .key = ImGuiKey_PageDown },
+    { .name = "Pause", .key = ImGuiKey_Pause },
+    { .name = "Tab", .key = ImGuiKey_Tab },
 } };
 
 constexpr std::array<std::pair<std::string_view, Mod>, 11> mod_names = { {
@@ -95,14 +93,18 @@ bool is_fkey(ImGuiKey k)
 std::string key_name(ImGuiKey k)
 {
     if (is_letter(k))
-        return std::string(1, char('A' + (k - ImGuiKey_A)));
+        return { 1, char('A' + (k - ImGuiKey_A)) };
+
     if (is_digit(k))
-        return std::string(1, char('0' + (k - ImGuiKey_0)));
+        return { 1, char('0' + (k - ImGuiKey_0)) };
+
     if (is_fkey(k))
         return fmt::format("F{}", 1 + (k - ImGuiKey_F1));
+
     for (const named_key_t& nk : named_keys)
         if (nk.key == k)
             return std::string(nk.name);
+
     return {};
 }
 
@@ -116,6 +118,7 @@ ImGuiKey key_from_name(const std::string& lower)
         if (c >= '0' && c <= '9')
             return ImGuiKey(ImGuiKey_0 + (c - '0'));
     }
+
     if (lower.size() >= 2 && lower[0] == 'f')
     {
         int n = 0;
@@ -129,11 +132,14 @@ ImGuiKey key_from_name(const std::string& lower)
             return ImGuiKey(ImGuiKey_F1 + (n - 1));
         return ImGuiKey_None;
     }
+
     for (const named_key_t& nk : named_keys)
         if (str_tolower(std::string(nk.name)) == lower)
             return nk.key;
+
     if (lower == "prtsc" || lower == "print")
         return ImGuiKey_PrintScreen;
+
     return ImGuiKey_None;
 }
 
@@ -148,10 +154,13 @@ UINT to_vk(ImGuiKey k)
 {
     if (is_letter(k))
         return 'A' + (k - ImGuiKey_A);
+
     if (is_digit(k))
         return '0' + (k - ImGuiKey_0);
+
     if (is_fkey(k))
         return VK_F1 + (k - ImGuiKey_F1);
+
     switch (k)
     {
         case ImGuiKey_Space:       return VK_SPACE;
@@ -178,20 +187,25 @@ int to_kvk(ImGuiKey k)
         kVK_ANSI_J, kVK_ANSI_K, kVK_ANSI_L, kVK_ANSI_M, kVK_ANSI_N, kVK_ANSI_O, kVK_ANSI_P, kVK_ANSI_Q, kVK_ANSI_R,
         kVK_ANSI_S, kVK_ANSI_T, kVK_ANSI_U, kVK_ANSI_V, kVK_ANSI_W, kVK_ANSI_X, kVK_ANSI_Y, kVK_ANSI_Z,
     };
+
     static constexpr std::array<int, 10> digits = {
         kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4,
         kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9,
     };
+
     static constexpr std::array<int, 12> fkeys = {
         kVK_F1, kVK_F2, kVK_F3, kVK_F4, kVK_F5, kVK_F6, kVK_F7, kVK_F8, kVK_F9, kVK_F10, kVK_F11, kVK_F12,
     };
 
     if (is_letter(k))
         return letters[k - ImGuiKey_A];
+
     if (is_digit(k))
         return digits[k - ImGuiKey_0];
+
     if (is_fkey(k))
         return fkeys[k - ImGuiKey_F1];
+
     switch (k)
     {
         case ImGuiKey_Space:    return kVK_Space;
@@ -269,6 +283,7 @@ std::string to_string(const hotkey_t& hk)
         out += "Shift+";
     if (hk.mods & Mod::Super)
         out += OSHOT_MACOS ? "Cmd+" : (OSHOT_WINDOWS ? "Win+" : "Super+");
+
     return out + key_name(hk.key);
 }
 
@@ -341,6 +356,7 @@ void disable()
         UnregisterHotKey(static_cast<HWND>(Tray::GetNativeHandle()), HOTKEY_ID);
     s_registered = false;
 }
+
 #elif OSHOT_MACOS
 Result<> enable(const hotkey_t& hk, std::function<void()> on_pressed)
 {
@@ -401,6 +417,7 @@ void disable()
     s_ref        = nullptr;
     s_registered = false;
 }
+
 #else
 Result<> enable(const hotkey_t&, std::function<void()>)
 {
@@ -410,4 +427,5 @@ Result<> enable(const hotkey_t&, std::function<void()>)
 void disable()
 {}
 #endif
+
 }  // namespace hotkey

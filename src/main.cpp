@@ -35,7 +35,6 @@
 #include <ios>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <system_error>
 #include <thread>
 #include <utility>
@@ -50,15 +49,20 @@
 #  include <unistd.h>
 #endif
 
+#if OSHOT_TOOL_ON_MAIN_THREAD
+#  include <optional>
+
+#  include "hotkey.hpp"
+#  include "nvdialog/nvdialog_notification.h"
+#endif
+
 #include "clipboard.hpp"
 #include "config.hpp"
 #include "fmt/base.h"
 #include "fmt/compile.h"
 #include "fmt/format.h"
 #include "getopt_port/getopt.h"
-#include "hotkey.hpp"
 #include "nvdialog/nvdialog_error.h"
-#include "nvdialog/nvdialog_notification.h"
 #include "oshot_png.h"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
@@ -699,8 +703,6 @@ int main(int argc, char* argv[])
         tray_ico = get_exe_path();
     TrayIcon tray = { "oshot.png", tray_ico.string(), "oshot", menu };
 #else
-    // The tray APIs want an icon file, so write the embedded one. Per-user
-    // cache dir: a shared /tmp/oshot.png can be owned by another user
     const fs::path& png_path = get_cache_dir() / "tray-icon.png";
     fs::create_directories(png_path.parent_path(), ec);
     std::ofstream out(png_path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
@@ -727,7 +729,8 @@ int main(int argc, char* argv[])
                                               const std::array<const char*, 8> filters = { "*.png", "*.jpeg", "*.jpg",
                                                                                            "*.bmp", "*.PNG",  "*.JPEG",
                                                                                            "*.JPG", "*.BMP" };
-                                              const char*                      open_path =
+
+                                              const char* open_path =
                                                   tinyfd_openFileDialog("Open Image",
                                                                         "",              // default path
                                                                         filters.size(),  // number of filter patterns

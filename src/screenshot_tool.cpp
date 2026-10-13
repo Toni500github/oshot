@@ -159,6 +159,7 @@ static void draw_hotkey_recorder(std::string& hotkey_str, bool window_just_opene
     const std::string& label = recording ? "Press keys..." : (hotkey_str.empty() ? "Not set" : hotkey_str);
     if (ImGui::Button(fmt::format("{}##config_hotkey", label).c_str(), ImVec2(ImGui::GetFontSize() * 12, 0)))
         recording = !recording;
+
     ImGui::SameLine();
     ImGui::BeginDisabled(hotkey_str.empty());
     if (ImGui::Button("Clear##config_hotkey_clear"))
@@ -173,7 +174,7 @@ static void draw_hotkey_recorder(std::string& hotkey_str, bool window_just_opene
     {
         for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; ++k)
         {
-            const ImGuiKey key = ImGuiKey(k);
+            const auto key = toe<ImGuiKey>(k);
             if (!hotkey::is_supported_key(key) || !ImGui::IsKeyDown(key))
                 continue;
 
