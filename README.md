@@ -49,35 +49,20 @@ https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 | `Esc` | Close |
 
 ## Installation
-### Linux
 
->[!NOTE]
-For wayland platforms, `grim` and `wl-clipboard` are required for screen capture and clipboard support.
- 
-Download the package that fits your setup from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page:
+Get the file for your system from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page.
+Each package also comes as a `-plugins` variant, which adds plugin support and the `oshotpm` plugin manager.
+**If you don't use plugins, pick the file without `-plugins`.**
 
-| Package | Description |
-| ------- | ----------- |
-| `oshot-appimage-<version>.zip` | Recommended. Self-contained, no system dependencies required |
-| `oshot-debian-package-<version>.deb` | For Debian/Ubuntu and derivatives |
-| `oshot-linux-<version>.zip` | Generic binary, requires dependencies to be installed |
-
-#### Arch Linux (AUR)
-
-```bash
-yay -S oshot-bin
-```
-
----
 ### Windows
 
-Download `oshot-windows-setup-<version>.exe` from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page and run it.
+Download `oshot-windows-setup-<version>.exe` and run it.
 
-- Installs per-user by default (no admin prompt), with a Start Menu entry and an uninstaller.
-- Optional: start oshot in the system tray when you sign in.
+- Installs for your user only by default (no admin prompt), with a Start Menu entry and an uninstaller.
+- Optionally starts oshot in the system tray when you sign in.
 - English OCR data is included. Downloaded models go to `%APPDATA%\oshot\models`.
 
-Press **Alt+Shift+S** anywhere to capture (while oshot is in the tray). Change it in Preferences.
+Press **Alt+Shift+S** anywhere to capture while oshot is in the tray. You can change it in Preferences.
 
 Prefer a portable copy? Download `oshot-windows-<version>.zip`, extract it anywhere and run `oshot.exe`.
 
@@ -87,28 +72,88 @@ Prefer a portable copy? Download `oshot-windows-<version>.zip`, extract it anywh
 ---
 ### macOS
 
-Download the `.dmg` that matches your Mac from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page:
+Download the `.dmg` that matches your Mac:
 
 | Package | Description |
 | ------- | ----------- |
-| `oshot-macos-arm64-<version>.dmg` | Apple Silicon |
+| `oshot-macos-arm64-<version>.dmg` | Apple Silicon (M1 and newer) |
 | `oshot-macos-x86_64-<version>.dmg` | Intel |
 
 1. Open the `.dmg` and drag **oshot** onto **Applications**.
-2. The app isn't notarized yet, so on first launch run `xattr -dr com.apple.quarantine /Applications/oshot.app` (or right-click → **Open**).
-3. Grant **Screen Recording** permission when asked (System Settings → Privacy & Security).
+2. The app isn't notarized yet, so macOS blocks the first launch. Run this once in Terminal:
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/oshot.app
+   ```
+   Or open oshot once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
+3. Grant **Screen Recording** permission when asked (System Settings → Privacy & Security → Screen Recording), then reopen oshot.
 
-Press **Cmd+Shift+2** anywhere to capture (while oshot is in the menu bar). Change it in Preferences.
+Press **Cmd+Shift+2** anywhere to capture while oshot is in the menu bar. You can change it in Preferences.
 
 English OCR data is included. Downloaded models go to `~/.config/oshot/models`.
 In the `-plugins` builds, the plugin manager is at `/Applications/oshot.app/Contents/MacOS/oshotpm`.
 
+---
+### Linux
+
+| Package | Description |
+| ------- | ----------- |
+| `oshot-x86_64-<version>.AppImage` | Recommended. Self-contained, runs on most distributions |
+| `oshot-debian-package-<version>.deb` | Debian, Ubuntu and derivatives |
+| `oshot-linux-<version>.zip` | Generic binary, needs the runtime libraries installed (see [Dependencies](#dependencies)) |
+
+**AppImage**
+
+```bash
+chmod +x oshot-x86_64-*.AppImage
+./oshot-x86_64-*.AppImage
+```
+
+The `-plugins` AppImage comes as a zip: it also contains `oshotpm/`, with the plugin manager and its libraries.
+
+**Debian / Ubuntu**
+
+```bash
+sudo apt install ./oshot-debian-package-*.deb
+```
+
+Use `apt` rather than `dpkg -i`, so the dependencies get installed too.
+
+**Generic zip**
+
+```bash
+unzip oshot-linux-*.zip
+sudo ./oshot/install.sh            # installs into /usr/local
+```
+
+#### Arch Linux (AUR)
+
+```bash
+yay -S oshot-bin
+```
+
+#### Wayland
+
+On GNOME and most other desktops, screenshots go through the desktop's screenshot portal (the first capture may ask for permission). KDE uses Spectacle. Where no screenshot portal is available (e.g. some Sway/Hyprland setups), install `grim`.
+For copying to the clipboard, install `wl-clipboard`.
+
+#### Capture shortcut
+
+On Linux, oshot doesn't register a global shortcut itself. Bind `oshot --gui` to a key in your desktop's keyboard settings (e.g. **Settings → Keyboard → Custom Shortcuts** on GNOME), or in your window manager's config, for example:
+
+```ini
+# Hyprland
+bind = SUPER SHIFT, S, exec, oshot --gui
+# Sway / i3
+bindsym $mod+Shift+s exec oshot --gui
+```
+
 ## Usage
 
 ```
-oshot              # captures a screenshot and launches interactive overlay
-oshot --tray       # start minimized to tray
-oshot -f <path>    # open image file
+oshot              # captures a screenshot and opens the overlay, then stays in the tray
+oshot --gui        # only capture and open the overlay (for keyboard shortcuts)
+oshot --tray       # start in the tray without capturing
+oshot -f <path>    # open an image file instead of capturing
 ```
 
 ## Build from Source

@@ -20,7 +20,7 @@ jobs:
       version: ${{ steps.get-version.outputs.version }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -72,7 +72,7 @@ jobs:
             target: linux-appimage
             plugins: false
             artifact-name: linux-appimage
-            package-file: package/oshot-appimage.zip
+            package-file: package/oshot-x86_64.AppImage
 
           - os: ubuntu-22.04
             target: linux-appimage
@@ -138,7 +138,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -299,7 +299,7 @@ jobs:
         run: |
           cmake --install build --prefix package/oshot
           find package/oshot -type f \( -executable -o -name '*.so*' \) -exec strip --strip-unneeded {} + 2>/dev/null || true
-          printf '#!/bin/bash\ncp -r bin/* /usr/local/bin/\nmkdir -p /usr/local/lib\ncp -r lib/* /usr/local/lib/\n' > package/oshot/install.sh
+          cp scripts/install-linux-zip.sh package/oshot/install.sh
           chmod +x package/oshot/install.sh
           SUFFIX=$([ "${{ matrix.plugins }}" == "true" ] && echo "-plugins" || echo "")
           cd package && zip -ry oshot-linux${SUFFIX}.zip oshot/
@@ -310,11 +310,16 @@ jobs:
           mkdir -p package/oshot/
           ./scripts/create_appimage.sh ./build/oshot oshot-x86_64.AppImage
           chmod +x oshot-x86_64.AppImage
+          if [ "${{ matrix.plugins }}" != "true" ]; then
+            # Published as is: nothing else to ship next to it
+            mv oshot-x86_64.AppImage package/
+            exit 0
+          fi
+          # The plugin manager and its libraries live outside the AppImage
           mv oshot-x86_64.AppImage package/oshot/
           cmake --install build --prefix package/oshot/oshotpm
           rm -f package/oshot/oshotpm/bin/oshot
-          SUFFIX=$([ "${{ matrix.plugins }}" == "true" ] && echo "-plugins" || echo "")
-          cd package && zip -ry oshot-appimage${SUFFIX}.zip oshot/
+          cd package && zip -ry oshot-appimage-plugins.zip oshot/
 
       - name: Package macOS bundle
         if: runner.os == 'macOS'
@@ -330,6 +335,7 @@ jobs:
           export OSHOT_MODELS_DIR="$PWD/models"
           if [ "${{ matrix.plugins }}" == "true" ]; then
             export OSHOT_EXTRA_BINS="$PWD/build/oshotpm"
+            export OSHOT_EXTRA_LIBS="$PWD/build/libcimgui.dylib"
           fi
           ./scripts/create_app_bundle.sh ./build/oshot package/oshot-macos-${ARCH}${SUFFIX}.dmg ./build
 
@@ -373,7 +379,7 @@ jobs:
 
       # Upload artifact
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact-name }}-package
           path: ${{ matrix.package-file }}
@@ -387,8 +393,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts/
 
@@ -400,7 +409,7 @@ jobs:
           VERSION: ${{ needs.get-version.outputs.version }}
         run: |
           shopt -s globstar nullglob
-          for f in artifacts/**/*.zip artifacts/**/*.deb artifacts/**/*.dmg artifacts/**/*.exe; do
+          for f in artifacts/**/*.zip artifacts/**/*.deb artifacts/**/*.dmg artifacts/**/*.exe artifacts/**/*.AppImage; do
             [ -f "$f" ] || continue
             ext="${f##*.}"
             base=$(basename "$f" ".$ext")
@@ -409,18 +418,23 @@ jobs:
           done
           find artifacts/ -type f | sort
 
+      - name: Write release notes
+        run: ./scripts/release_notes.sh "${{ needs.get-version.outputs.version }}" > release_notes.md
+
       - name: Create release and upload assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.get-version.outputs.version }}
           name: oshot ${{ needs.get-version.outputs.version }}
           draft: false
           prerelease: false
+          body_path: release_notes.md
           fail_on_unmatched_files: true
           files: |
             artifacts/**/*.zip
             artifacts/**/*.deb
             artifacts/**/*.dmg
             artifacts/**/*.exe
+            artifacts/**/*.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

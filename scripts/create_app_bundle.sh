@@ -8,6 +8,7 @@
 #   OSHOT_VERSION     version string for Info.plist (default below, kept in sync by `make updatever`)
 #   OSHOT_MODELS_DIR  directory of *.traineddata to bundle into Contents/Resources/tessdata
 #   OSHOT_EXTRA_BINS  space-separated extra executables to put in Contents/MacOS (e.g. oshotpm)
+#   OSHOT_EXTRA_LIBS  space-separated dylibs that nothing in the bundle links but plugins do (e.g. libcimgui)
 
 set -euo pipefail
 set -x
@@ -89,6 +90,36 @@ main() {
         -d "${FRAMEWORKS}/" \
         -p @executable_path/../Frameworks/ \
         -s "$LIB_SEARCH_DIR"
+
+    # After the first pass, since -od wipes Frameworks/. Named after the install
+    # name (e.g. libcimgui.1.dylib), which is what plugins reference via @rpath.
+    if [ -n "${OSHOT_EXTRA_LIBS:-}" ]; then
+        LIB_ARGS=()
+        for lib in ${OSHOT_EXTRA_LIBS}; do
+            check_file "$lib"
+            name="$(basename "$(otool -D "$lib" | tail -n 1)")"
+            cp -fL "$lib" "${FRAMEWORKS}/${name}"
+            LIB_ARGS+=(-x "${FRAMEWORKS}/${name}")
+        done
+        dylibbundler -of -b \
+            "${LIB_ARGS[@]}" \
+            -d "${FRAMEWORKS}/" \
+            -p @executable_path/../Frameworks/ \
+            -s "$LIB_SEARCH_DIR"
+
+        # Lets dlopen()ed plugins resolve their @rpath/<lib> dependencies
+        install_name_tool -add_rpath @executable_path/../Frameworks "${MACOS}/${APP_NAME}" 2>/dev/null || true
+
+        # dylibbundler names copies after the real file (libimgui.1.92.9.dylib),
+        # plugins reference the soname (libimgui.1.dylib)
+        for f in "${FRAMEWORKS}"/*.dylib; do
+            b="$(basename "$f")"
+            if [[ "$b" =~ ^([^.]+)\.([0-9]+)\.[0-9.]+\.dylib$ ]]; then
+                soname="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.dylib"
+                [ -e "${FRAMEWORKS}/${soname}" ] || ln -s "$b" "${FRAMEWORKS}/${soname}"
+            fi
+        done
+    fi
 
     # OCR models: copied into ~/.config/oshot/models on first launch
     if [ -n "${OSHOT_MODELS_DIR:-}" ]; then
