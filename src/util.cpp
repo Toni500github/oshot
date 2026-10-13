@@ -617,6 +617,21 @@ bool is_system_dark_mode()
     return value == 0;
 }
 
+fs::path get_exe_path()
+{
+    std::wstring buf(MAX_PATH, L'\0');
+    DWORD        len = GetModuleFileNameW(nullptr, buf.data(), DWORD(buf.size()));
+    while (len == buf.size())
+    {
+        buf.resize(buf.size() * 2);
+        len = GetModuleFileNameW(nullptr, buf.data(), DWORD(buf.size()));
+    }
+    if (len == 0)
+        return {};
+    buf.resize(len);
+    return fs::path(buf);
+}
+
 fs::path get_home_dir()
 {
     if (const char* h = std::getenv("USERPROFILE"))
@@ -735,6 +750,21 @@ bool is_system_dark_mode()
     return true;
 }
 
+fs::path get_exe_path()
+{
+    std::error_code ec;
+#  if OSHOT_MACOS
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::string buf(size, '\0');
+    if (_NSGetExecutablePath(buf.data(), &size) != 0)
+        return {};
+    return fs::canonical(buf.c_str(), ec);
+#  else
+    return fs::canonical("/proc/self/exe", ec);
+#  endif
+}
+
 fs::path get_home_dir()
 {
     if (const char* h = std::getenv("HOME"))
@@ -835,33 +865,6 @@ fs::path get_cache_dir()
     return get_home_cache_dir() / "oshot";
 }
 
-fs::path get_exe_path()
-{
-    std::error_code ec;
-#if OSHOT_WINDOWS
-    std::wstring buf(MAX_PATH, L'\0');
-    DWORD        len = GetModuleFileNameW(nullptr, buf.data(), DWORD(buf.size()));
-    while (len == buf.size())
-    {
-        buf.resize(buf.size() * 2);
-        len = GetModuleFileNameW(nullptr, buf.data(), DWORD(buf.size()));
-    }
-    if (len == 0)
-        return {};
-    buf.resize(len);
-    return fs::path(buf);
-#elif OSHOT_MACOS
-    uint32_t size = 0;
-    _NSGetExecutablePath(nullptr, &size);
-    std::string buf(size, '\0');
-    if (_NSGetExecutablePath(buf.data(), &size) != 0)
-        return {};
-    return fs::canonical(buf.c_str(), ec);
-#else
-    return fs::canonical("/proc/self/exe", ec);
-#endif
-}
-
 fs::path get_exe_dir()
 {
     return get_exe_path().parent_path();
@@ -876,10 +879,11 @@ fs::path get_bundled_models_dir()
     std::error_code ec;
 #if OSHOT_MACOS
     // oshot.app/Contents/MacOS/oshot -> oshot.app/Contents/Resources/tessdata
-    const fs::path& resources = exe_dir.parent_path() / "Resources" / "tessdata";
+    const fs::path resources = exe_dir.parent_path() / "Resources" / "tessdata";
     if (fs::is_directory(resources, ec))
         return resources;
 #endif
+
     const fs::path& models = exe_dir / "models";
     if (fs::is_directory(models, ec))
         return models;
