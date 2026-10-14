@@ -164,12 +164,12 @@ public:
     Result(Err<U>&& e) : m_value(std::in_place_index<1>, std::move(e.value))
     {}
 
-    [[nodiscard]] bool ok() const { return std::holds_alternative<T>(m_value); }
-                       operator bool() const { return ok(); }
-    T&                 get() { return std::get<T>(m_value); }
-    E&                 error() { return std::get<E>(m_value); }
-    const T&           get() const { return std::get<T>(m_value); }
-    const E&           error() const { return std::get<E>(m_value); }
+    [[nodiscard]] bool     ok() const { return std::holds_alternative<T>(m_value); }
+                           operator bool() const { return ok(); }
+    T&                     get() { return std::get<T>(m_value); }
+    E&                     error() { return std::get<E>(m_value); }
+    [[nodiscard]] const T& get() const { return std::get<T>(m_value); }
+    [[nodiscard]] const E& error() const { return std::get<E>(m_value); }
 
     template <typename U = E, typename = typename U::value_type>
     typename U::value_type& error_v()
@@ -178,7 +178,7 @@ public:
     }
 
     template <typename U = E, typename = typename U::value_type>
-    const typename U::value_type& error_v() const
+    [[nodiscard]] const typename U::value_type& error_v() const
     {
         return std::get<E>(m_value).value;
     }
@@ -201,10 +201,10 @@ public:
     Result(Err<U>&& err) : m_ok(false), m_err{ std::move(err.value) }
     {}
 
-    [[nodiscard]] bool ok() const { return m_ok; }
-    E&                 error() { return m_err; }
-    const E&           error() const { return m_err; }
-                       operator bool() const { return ok(); }
+    [[nodiscard]] bool     ok() const { return m_ok; }
+    E&                     error() { return m_err; }
+    [[nodiscard]] const E& error() const { return m_err; }
+                           operator bool() const { return ok(); }
 
     template <typename U = E, typename = typename U::value_type>
     typename U::value_type& error_v()
@@ -213,7 +213,7 @@ public:
     }
 
     template <typename U = E, typename = typename U::value_type>
-    const typename U::value_type& error_v() const
+    [[nodiscard]] const typename U::value_type& error_v() const
     {
         return m_err.value;
     }
@@ -353,9 +353,6 @@ enum class ByteUnit
 inline constexpr std::array<std::pair<ImageExt, const char*>, idx(ImageExt::COUNT)> IMAGE_EXTS_STR = {
     { { ImageExt::PNG, "PNG" }, { ImageExt::JPEG, "JPEG" }, { ImageExt::BMP, "BMP" }, { ImageExt::TGA, "TGA" } }
 };
-inline std::unordered_map<std::string_view, ImageExt> IMAGE_EXTS_ENUM = {
-    { { "PNG", ImageExt::PNG }, { "JPEG", ImageExt::JPEG }, { "BMP", ImageExt::BMP }, { "TGA", ImageExt::TGA } }
-};
 
 extern bool g_is_systray;  // old g_is_clipboard_server;
 extern int  g_scr_w, g_scr_h;
@@ -364,6 +361,7 @@ extern bool g_is_flatpak;  // running inside a Flatpak sandbox
 
 extern std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_imgui_log_sink;
 
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization)
 static inline const std::string version_infos = fmt::format(
     "oshot v{} built from branch '{}' at {} commit '{}' ({}).\n"
     "Date: {}\n"
@@ -431,6 +429,21 @@ bool         parse_hex_rgba(const std::string_view hex, rgba_t& out);
 
 #define BOLD_COLOR(x) (fmt::emphasis::bold | fmt::fg(x))
 
+// fmt::format() with a runtime format string, for the noexcept helpers below:
+// on a format error it returns the unformatted string instead of throwing
+template <typename... Args>
+inline std::string format_noexcept(const std::string_view fmt, Args&&... args) noexcept
+{
+    try
+    {
+        return fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
+    }
+    catch (...)
+    {
+        return std::string(fmt);
+    }
+}
+
 static void create_dialog(const char* title, const NvdDialogType type, const std::string& str) noexcept
 {
     if (nvd_get_error() == NVD_NOT_INITIALIZED)
@@ -446,9 +459,10 @@ static void create_dialog(const char* title, const NvdDialogType type, const std
 }
 
 template <typename... Args>
+// NOLINTNEXTLINE(bugprone-exception-escape): only reachable through spdlog's own error handler
 [[noreturn]] inline void die(const std::string_view fmt, Args&&... args) noexcept
 {
-    const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
+    const std::string& str = format_noexcept(fmt, std::forward<Args>(args)...);
 
     spdlog::critical("{}", str);
     create_dialog("oshot Fatal Error", NVD_DIALOG_ERROR, str);
@@ -456,27 +470,30 @@ template <typename... Args>
 }
 
 template <typename... Args>
+// NOLINTNEXTLINE(bugprone-exception-escape): only reachable through spdlog's own error handler
 inline void error(const std::string_view fmt, Args&&... args) noexcept
 {
-    const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
+    const std::string& str = format_noexcept(fmt, std::forward<Args>(args)...);
 
     spdlog::error("{}", str);
     create_dialog("oshot Error", NVD_DIALOG_ERROR, str);
 }
 
 template <typename... Args>
+// NOLINTNEXTLINE(bugprone-exception-escape): only reachable through spdlog's own error handler
 inline void warn(const std::string_view fmt, Args&&... args) noexcept
 {
-    const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
+    const std::string& str = format_noexcept(fmt, std::forward<Args>(args)...);
 
     spdlog::warn("{}", str);
     create_dialog("oshot Warning", NVD_DIALOG_WARNING, str);
 }
 
 template <typename... Args>
+// NOLINTNEXTLINE(bugprone-exception-escape): only reachable through spdlog's own error handler
 inline void info(const std::string_view fmt, Args&&... args) noexcept
 {
-    const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
+    const std::string& str = format_noexcept(fmt, std::forward<Args>(args)...);
 
     spdlog::info("{}", str);
     create_dialog("oshot Info", NVD_DIALOG_SIMPLE, str);

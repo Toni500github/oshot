@@ -537,7 +537,7 @@ Result<> PluginManager::BuildPlugins(const fs::path& working_dir, bool is_update
     TRY(m_state_manager.AddNewRepo(repo));
     m_callbacks.on_success("Plugins are successfully built!");
 
-    if (origin == WorkingDirOrigin::GitClone)
+    if (cleanup)  // set only for a git clone
     {
         TRY(FinalizeRepoDirectory(working_dir, repo_cache_path));
         cleanup->Dismiss();

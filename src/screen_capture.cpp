@@ -67,14 +67,15 @@ using std::move;
 using namespace spdlog;
 
 #if !OSHOT_WINDOWS
-static const char* create_temp_png()
+// Returns an empty string on failure
+static std::string create_temp_png()
 {
-    char tmppath[] = "/tmp/oshot_XXXXXX.png";  // NOLINT
-    int  fd        = mkstemps(tmppath, 4);
+    std::string tmppath = "/tmp/oshot_XXXXXX.png";
+    const int   fd      = mkstemps(tmppath.data(), 4);
     if (fd < 0)
-        return nullptr;
+        return {};
     close(fd);
-    return strdup(tmppath);
+    return tmppath;
 }
 #endif
 
@@ -372,8 +373,8 @@ Result<capture_result_t> capture_full_screen_spectacle()
 {
     capture_result_t result;
 
-    const char* tmppath = create_temp_png();
-    if (!tmppath)
+    const std::string tmppath = create_temp_png();
+    if (tmppath.empty())
         return Err("Failed to create temp png");
 
     // -b  run in background (no GUI window)
@@ -385,14 +386,14 @@ Result<capture_result_t> capture_full_screen_spectacle()
     const int exit_code = proc.get_exit_status();
     if (exit_code != 0)
     {
-        unlink(tmppath);
+        unlink(tmppath.c_str());
         spdlog::warn("spectacle exited with code {}. Trying wayland capture...", exit_code);
         return capture_full_screen_wayland();
     }
 
     int      w = 0, h = 0, comp = 0;
-    uint8_t* rgba = stbi_load(tmppath, &w, &h, &comp, STBI_rgb_alpha);
-    unlink(tmppath);
+    uint8_t* rgba = stbi_load(tmppath.c_str(), &w, &h, &comp, STBI_rgb_alpha);
+    unlink(tmppath.c_str());
 
     if (!rgba)
         return Err("Failed to read PNG: {}", STBI_ERROR);
@@ -735,8 +736,8 @@ Result<capture_result_t> capture_full_screen_macos()
 {
     capture_result_t result;
 
-    const char* tmppath = create_temp_png();
-    if (!tmppath)
+    const std::string tmppath = create_temp_png();
+    if (tmppath.empty())
         return Err("Failed to create temp png");
 
     // -x        suppress shutter sound
@@ -749,7 +750,7 @@ Result<capture_result_t> capture_full_screen_macos()
     const int exit_code = proc.get_exit_status();
     if (exit_code != 0)
     {
-        unlink(tmppath);
+        unlink(tmppath.c_str());
         return Err(
             "screencapture failed (exit code {}). Please check Screen Recording permission in System Settings -> "
             "Privacy & Security",
@@ -757,8 +758,8 @@ Result<capture_result_t> capture_full_screen_macos()
     }
 
     int      w = 0, h = 0, comp = 0;
-    uint8_t* rgba = stbi_load(tmppath, &w, &h, &comp, STBI_rgb_alpha);
-    unlink(tmppath);  // clean up regardless
+    uint8_t* rgba = stbi_load(tmppath.c_str(), &w, &h, &comp, STBI_rgb_alpha);
+    unlink(tmppath.c_str());  // clean up regardless
 
     if (!rgba)
         return Err("Failed to decode screenshot PNG: {}", STBI_ERROR);

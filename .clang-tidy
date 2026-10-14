@@ -8,5 +8,6 @@ Checks: >
   -bugprone-reserved-identifier,
   -bugprone-easily-swappable-parameters,
   -modernize-avoid-c-style-cast,
+  -bugprone-signed-bitwise,
 WarningsAsErrors: ''
 HeaderFilterRegex: '.*'

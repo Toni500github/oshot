@@ -12,7 +12,7 @@
 
 using namespace std::chrono_literals;
 
-static std::deque<monitor_t> monitors;
+static std::deque<monitor_t> monitors;  // NOLINT(bugprone-throwing-static-initialization)
 
 static zxdg_output_manager_v1* s_xdg_output_manager = nullptr;
 

@@ -99,7 +99,7 @@ Result<> Manifest::ParseManifest()
             [&](const char* buf, size_t len) { str_stderr.append(buf, len); });
         if (proc.get_exit_status() != 0)
             return Err("Failed to get manifest git repository hash: {}", str_stderr);
-        m_repo.git_hash.erase(std::remove(m_repo.git_hash.begin(), m_repo.git_hash.end(), '\n'), m_repo.git_hash.end());
+        std::erase(m_repo.git_hash, '\n');
     }
 
     const auto& deps_all  = m_toml.GetValueArrayStr("dependencies.all", {});

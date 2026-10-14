@@ -2420,9 +2420,9 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     {
         for (size_t i = 0; i < idx(ImageExt::COUNT); ++i)
         {
-            bool selected = image_ext_sel == int(i);
+            const bool selected = std::cmp_equal(image_ext_sel, i);
 
-            if (ImGui::Selectable(IMAGE_EXTS_STR[i].second, image_ext_sel))
+            if (ImGui::Selectable(IMAGE_EXTS_STR[i].second, selected))
             {
                 image_ext_sel                        = int(i);
                 g_config->File.image_out_type.first  = IMAGE_EXTS_STR[i].second;
@@ -2444,9 +2444,9 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     {
         for (size_t i = 0; i < image_prev_units.size(); ++i)
         {
-            bool selected = image_preuni_sel == int(i);
+            const bool selected = std::cmp_equal(image_preuni_sel, i);
 
-            if (ImGui::Selectable(image_prev_units[i], image_preuni_sel))
+            if (ImGui::Selectable(image_prev_units[i], selected))
             {
                 image_preuni_sel                  = int(i);
                 g_config->File.image_out_size_fmt = image_prev_units[i];
@@ -3318,7 +3318,7 @@ void ScreenshotTool::StartInstall(const std::string& source)
     // touches ImGui, so it's safe to invoke from the worker thread.
     auto push = [state](plugin_install_event_t::Kind kind) {
         return [state, kind](const std::string_view msg) {
-            std::lock_guard lock(state->events_mutex);
+            std::scoped_lock lock(state->events_mutex);
             state->pending_events.push_back({ .kind = kind, .text = std::string(msg) });
         };
     };
@@ -3350,7 +3350,7 @@ void ScreenshotTool::StartInstall(const std::string& source)
         Result<> r = m_plugin_manager.Install(source);
         if (!r.ok())
         {
-            std::lock_guard lock(state->events_mutex);
+            std::scoped_lock lock(state->events_mutex);
             state->pending_events.push_back({ .kind = plugin_install_event_t::Kind::Error, .text = r.error_v() });
         }
         state->running = false;
@@ -3432,7 +3432,7 @@ void ScreenshotTool::DrawPluginInstallStatus()
     // Drain the worker thread's queue into the UI-owned tree. This is the
     // only place m_install_events gets mutated.
     {
-        std::lock_guard lock(m_install_state->events_mutex);
+        std::scoped_lock lock(m_install_state->events_mutex);
         while (!m_install_state->pending_events.empty())
         {
             plugin_install_event_t ev = std::move(m_install_state->pending_events.front());
@@ -3486,7 +3486,7 @@ void ScreenshotTool::DrawPluginInstallStatus()
         // inside this same window's frame.
         bool has_confirm;
         {
-            std::lock_guard lock(m_install_state->confirm_mutex);
+            std::scoped_lock lock(m_install_state->confirm_mutex);
             has_confirm = m_install_state->confirm_pending && !m_install_state->confirm_answered;
         }
         if (has_confirm)
@@ -3495,7 +3495,7 @@ void ScreenshotTool::DrawPluginInstallStatus()
         ImGui::SetNextWindowSize(ImVec2(550, 220));
         if (ImGui::BeginPopupModal("Confirm##plugin_install_confirm", nullptr, ImGuiWindowFlags_NoCollapse))
         {
-            std::lock_guard lock(m_install_state->confirm_mutex);
+            std::scoped_lock lock(m_install_state->confirm_mutex);
             ImGui::TextWrapped("%s", m_install_state->confirm_prompt.c_str());
             if (ImGui::Button("Yes"))
             {
@@ -3764,7 +3764,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
                     "",
                     [](const char*, size_t) { /* stdout: unused */ },
                     [&dl](const char* buf, size_t n) {
-                        std::lock_guard g(dl->err_mutex);
+                        std::scoped_lock g(dl->err_mutex);
 
                         dl->line_buf.append(buf, n);
 
@@ -3854,7 +3854,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
                 {
                     std::string err;
                     {
-                        std::lock_guard g(m_ocr_download->err_mutex);
+                        std::scoped_lock g(m_ocr_download->err_mutex);
                         err = std::move(m_ocr_download->err);
                     }
                     SetError(ectx,

@@ -34,6 +34,8 @@
 #include "util.hpp"
 
 // Extern variables declarations
+// These have to be globals and only a failed allocation could throw here
+// NOLINTBEGIN(bugprone-throwing-static-initialization)
 std::deque<std::string> g_dropped_paths;
 std::unique_ptr<Config> g_config;
 std::unique_ptr<Cache>  g_cache;
@@ -54,3 +56,4 @@ plugin_runtime_t*                                 g_current_plugin;
 #else
 ScreenshotTool g_ss_tool;
 #endif
+// NOLINTEND(bugprone-throwing-static-initialization)

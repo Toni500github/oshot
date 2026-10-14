@@ -44,7 +44,7 @@
 // --------------------
 // OCR
 // --------------------
-static std::string psm_to_str(tesseract::PageSegMode psm)
+static std::string_view psm_to_str(tesseract::PageSegMode psm)
 {
     using namespace tesseract;
     switch (psm)

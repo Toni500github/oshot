@@ -289,7 +289,7 @@ struct GeneralContext
     [[nodiscard]] bool Has(Enum e) const { return flags.test(idx(e)); }
 
     template <typename... E>
-    bool HasAny(E... e) const
+    [[nodiscard]] bool HasAny(E... e) const
     {
         return (Has(e) || ...);
     }
