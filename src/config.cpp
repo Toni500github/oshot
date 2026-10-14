@@ -92,7 +92,7 @@ void Config::LoadConfigFile(const std::string& filename)
     MUST_OK(LoadFile(filename), die("{}", _r.error_v()));
 
     // older versions wrote the misspelled "ocr-repo-downlaod" key
-    const std::string legacy_ocr_repo = GetValue<std::string>("default.ocr-repo-downlaod", "tesseract-ocr/tessdata");
+    const auto legacy_ocr_repo = GetValue<std::string>("default.ocr-repo-downlaod", "tesseract-ocr/tessdata");
 
     File.ocr_path         = GetValue<std::string>("default.ocr-path", File.ocr_path);
     File.ocr_get_repo     = GetValue<std::string>("default.ocr-repo-download", legacy_ocr_repo);
@@ -116,9 +116,11 @@ void Config::LoadConfigFile(const std::string& filename)
         File.ocr_path = t;
 
     File.image_out_type.first = str_toupper(GetValue<std::string>("default.image-out-ext", "PNG"));
-    if (IMAGE_EXTS_ENUM.find(File.image_out_type.first) != IMAGE_EXTS_ENUM.end())
+    const auto ext_it =
+        std::ranges::find_if(IMAGE_EXTS_STR, [&](const auto& ext) { return File.image_out_type.first == ext.second; });
+    if (ext_it != IMAGE_EXTS_STR.end())
     {
-        File.image_out_type.second = IMAGE_EXTS_ENUM.at(File.image_out_type.first);
+        File.image_out_type.second = ext_it->first;
     }
     else
     {
@@ -158,7 +160,7 @@ void Config::LoadThemeFile(const std::string& filename)
     if (const toml::table* colors = m_theme.GetTbl().at_path("theme.colors").as_table())
     {
         colors->for_each(
-            [&](const toml::key& k, const toml::value<std::string>& v) { ov.colors[k.str().data()] = v.get(); });
+            [&](const toml::key& k, const toml::value<std::string>& v) { ov.colors[std::string(k.str())] = v.get(); });
     }
 
     ov.smooth_animations = m_theme.GetValue<bool>("smooth-animations", false);

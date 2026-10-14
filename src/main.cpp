@@ -272,7 +272,7 @@ static void on_crash_signal(int sig)
 static void request_quit()
 {
     {
-        std::lock_guard lk(mtx);
+        std::scoped_lock lk(mtx);
         quit.store(true);
     }
     cv.notify_all();
@@ -477,7 +477,7 @@ static void capture_from_tray(const std::string& source)
 #  endif
 #else
     {
-        std::lock_guard lk(mtx);
+        std::scoped_lock lk(mtx);
         // Already queued, about to start
         if (do_capture || quit.load())
             return;
@@ -563,7 +563,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     return oshot_main(int(args.size()), argv.data());
 }
 #else
-int main(int argc, char* argv[])
+// Not caught on purpose: with the tray/worker threads still running there's nothing to unwind to
+int main(int argc, char* argv[])  // NOLINT(bugprone-exception-escape)
 {
     return oshot_main(argc, argv);
 }

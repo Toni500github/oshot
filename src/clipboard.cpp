@@ -25,6 +25,8 @@
 
 #include "clipboard.hpp"
 
+#include <array>
+#include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -42,7 +44,7 @@
 
 // Starts wlcopy/xclip in the background, forgetting it.
 // Sets wlcopy_pid/xclip_pid, and returns an stdin pipe on success.
-Result<int> start_linux_copy(SessionType session, const std::string_view mime_type)
+Result<int> start_linux_copy(SessionType session, const std::string& mime_type)
 {
 #if OSHOT_FREEDESKTOP
     static pid_t clip_pid = -1;
@@ -78,13 +80,13 @@ Result<int> start_linux_copy(SessionType session, const std::string_view mime_ty
 
         if (session == SessionType::Wayland)
         {
-            const char* args[] = { tool, "--foreground", "--type", mime_type.data(), nullptr };
-            execvp(tool, const_cast<char* const*>(args));
+            std::array<const char*, 5> args{ tool, "--foreground", "--type", mime_type.data(), nullptr };
+            execvp(tool, const_cast<char* const*>(args.data()));
         }
         else
         {
-            const char* args[] = { tool, "-selection", "clipboard", "-t", mime_type.data(), "-i", nullptr };
-            execvp(tool, const_cast<char* const*>(args));
+            std::array<const char*, 7> args{ tool, "-selection", "clipboard", "-t", mime_type.data(), "-i", nullptr };
+            execvp(tool, const_cast<char* const*>(args.data()));
         }
 
         exit(-1);
@@ -116,10 +118,11 @@ Result<> Clipboard::CopyText(const std::string& text)
 
         if (write(fd, text.c_str(), text.size()) == -1)
         {
+            const int err = errno;  // close() may overwrite it
             close(fd);
-            if (errno == EPIPE)
+            if (err == EPIPE)
                 return Err("Failed to copy text: clipboard tool not found or exited unexpectedly");
-            return Err("Failed to copy text: {}", strerror(errno));
+            return Err("Failed to copy text: {}", strerror(err));
         }
 
         close(fd);
@@ -147,10 +150,11 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap, ImageExt ext)
         const int fd = res.get();
         if (write(fd, reinterpret_cast<const char*>(png.data()), png.size()) == -1)
         {
+            const int err = errno;  // close() may overwrite it
             close(fd);
-            if (errno == EPIPE)
+            if (err == EPIPE)
                 return Err("Failed to copy image: clipboard tool not found or exited unexpectedly");
-            return Err("Failed to write image to stdin: {}", strerror(errno));
+            return Err("Failed to write image to stdin: {}", strerror(err));
         }
 
         close(fd);

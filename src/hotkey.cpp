@@ -420,7 +420,7 @@ void disable()
 }
 
 #else
-Result<> enable(const hotkey_t&, std::function<void()>)
+Result<> enable(const hotkey_t&, std::function<void()>)  // NOLINT(performance-unnecessary-value-param)
 {
     return Err("Global hotkeys aren't supported on this platform, bind `oshot --gui` in your WM/DE instead");
 }

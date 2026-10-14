@@ -105,7 +105,7 @@ typedef struct
     const char* name;          // display name, doesn't need to be unique
     const char* id;            // reverse-domain, e.g. "com.example.myplugin"
 
-    void* (*init)(void);
+    void* (*init)(void);  // NOLINT(modernize-redundant-void-arg): this header is also C
     void (*destroy)(void* state);
     void (*render)(void* state);
 

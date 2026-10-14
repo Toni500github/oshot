@@ -53,7 +53,7 @@ static void load_plugin_path(const fs::path& path)
     try
     {
         dylib::library  lib(path.string());
-        oshot_plugin_t* plugin = lib.get_function<oshot_plugin_t*(void)>("oshot_host_get_plugin")();
+        oshot_plugin_t* plugin = lib.get_function<oshot_plugin_t*()>("oshot_host_get_plugin")();
 
         if (!plugin || plugin->abi_version != oshot_get_abi_version())
         {

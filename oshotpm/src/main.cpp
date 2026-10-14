@@ -23,9 +23,12 @@
  *
  */
 
+#include <algorithm>
+#include <array>
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
-#include <unordered_map>
+#include <utility>
 
 #include "fmt/compile.h"
 #include "fmt/os.h"
@@ -62,14 +65,20 @@ enum OPs : std::uint8_t
     HELP
 } op = NONE;
 
-const std::unordered_map<std::string_view, OPs> map{
-    { "install", INSTALL }, { "update", UPDATE },   { "list", LIST },           { "help", HELP },
-    { "enable", ENABLE },   { "disable", DISABLE }, { "uninstall", UNINSTALL }, { "gen-manifest", GEN_MANIFEST },
-};
+constexpr std::array<std::pair<std::string_view, OPs>, 8> map{ {
+    { "install", INSTALL },
+    { "update", UPDATE },
+    { "list", LIST },
+    { "help", HELP },
+    { "enable", ENABLE },
+    { "disable", DISABLE },
+    { "uninstall", UNINSTALL },
+    { "gen-manifest", GEN_MANIFEST },
+} };
 
 OPs str_to_enum(const std::string_view name)
 {
-    if (auto it = map.find(name); it != map.end())
+    if (auto it = std::ranges::find(map, name, &std::pair<std::string_view, OPs>::first); it != map.end())
         return it->second;
     return NONE;
 }
@@ -414,7 +423,7 @@ constexpr const char* yellow = "\033[1;33m";
 constexpr const char* red    = "\033[1;31m";
 }  // namespace ansi
 
-int main(int argc, char* argv[])
+static int oshotpm_main(int argc, char** argv)
 {
     if (!parseargs(argc, argv))
         return -1;
@@ -438,8 +447,8 @@ int main(int argc, char* argv[])
         return ask_user_yn(default_answer, "{}", prompt);
     };
 
-    StateManager  state;
-    PluginManager plugin_manager(std::move(state), cb, /*is_cli=*/true);
+    PluginManager       plugin_manager(StateManager{}, cb, /*is_cli=*/true);
+    const StateManager& state = plugin_manager.GetStateManager();
     switch (op)
     {
         case INSTALL:
@@ -492,4 +501,18 @@ int main(int argc, char* argv[])
     }
 
     return EXIT_SUCCESS;
+}
+
+int main(int argc, char* argv[])
+{
+    // e.g. std::filesystem or fmt::output_file errors: report them instead of std::terminate()
+    try
+    {
+        return oshotpm_main(argc, argv);
+    }
+    catch (const std::exception& e)
+    {
+        error("{}", e.what());
+        return EXIT_FAILURE;
+    }
 }

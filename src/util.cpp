@@ -727,13 +727,15 @@ bool is_system_dark_mode()
 
 #  else
     // 1. GSettings (GNOME / most DEs)
+    // Fixed command string, nothing user-controlled reaches the shell
+    // NOLINTNEXTLINE(bugprone-command-processor)
     if (FILE* f = popen("gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null", "r"))
     {
-        char buf[64] = {};
-        if (fgets(buf, sizeof(buf), f))
+        std::array<char, 64> buf{};
+        if (fgets(buf.data(), int(buf.size()), f))
         {
             pclose(f);
-            return std::string_view(buf).find("dark") != std::string_view::npos;
+            return std::string_view(buf.data()).find("dark") != std::string_view::npos;
         }
         pclose(f);
     }
