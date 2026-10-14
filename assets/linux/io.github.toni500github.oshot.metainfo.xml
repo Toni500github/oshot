@@ -24,6 +24,24 @@
     </ul>
   </description>
   <launchable type="desktop-id">oshot.desktop</launchable>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Extract the text of a selection with OCR</caption>
+      <image>https://raw.githubusercontent.com/Toni500github/oshot/main/assets/screenshots/ocr.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Decode QR codes and barcodes</caption>
+      <image>https://raw.githubusercontent.com/Toni500github/oshot/main/assets/screenshots/qr-barcode.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Annotate the selection before copying or saving it</caption>
+      <image>https://raw.githubusercontent.com/Toni500github/oshot/main/assets/screenshots/annotations.png</image>
+    </screenshot>
+  </screenshots>
+  <branding>
+    <color type="primary" scheme_preference="light">#8f9cff</color>
+    <color type="primary" scheme_preference="dark">#1a1a8c</color>
+  </branding>
   <provides>
     <binary>oshot</binary>
   </provides>
@@ -44,4 +62,21 @@
     <control>keyboard</control>
   </supports>
   <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.5.0~rc2" date="2026-10-12" type="development">
+      <url type="details">https://github.com/Toni500github/oshot/releases/tag/v0.5.0-rc2</url>
+    </release>
+    <release version="0.5.0~rc1" date="2026-08-08" type="development">
+      <url type="details">https://github.com/Toni500github/oshot/releases/tag/v0.5.0-rc1</url>
+    </release>
+    <release version="0.4.6" date="2026-06-19">
+      <url type="details">https://github.com/Toni500github/oshot/releases/tag/v0.4.6</url>
+    </release>
+    <release version="0.4.5" date="2026-05-24">
+      <url type="details">https://github.com/Toni500github/oshot/releases/tag/v0.4.5</url>
+    </release>
+    <release version="0.4.4" date="2026-05-03">
+      <url type="details">https://github.com/Toni500github/oshot/releases/tag/v0.4.4</url>
+    </release>
+  </releases>
 </component>

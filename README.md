@@ -239,6 +239,14 @@ sudo make install          # into /usr (/usr/local on the BSDs), or PREFIX=<dir>
 sudo make uninstall
 ```
 
+To build and install the Flatpak (without plugin support) instead, with `org.flatpak.Builder` installed from Flathub:
+
+```bash
+flatpak run org.flatpak.Builder --user --install --force-clean \
+  --state-dir=build/flatpak-state build/flatpak flatpak/io.github.toni500github.oshot.yml
+flatpak run io.github.toni500github.oshot
+```
+
 `make DISABLE_PLUGINS=1` builds without plugin support. Packagers can use `DESTDIR` with `make install`, or CMake directly; `-DOSHOT_INSTALL_LICENSEDIR=` changes or skips (empty) where the license goes.
 
 Or with CMake + Ninja:

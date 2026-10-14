@@ -60,3 +60,6 @@ src/xdg-output-unstable-v1-protocol.c
 # Nix Flake
 result
 result-*
+
+# Flatpak
+.flatpak-builder/

@@ -1916,9 +1916,10 @@ void ScreenshotTool::DrawOcrTools()
         }
 
 #if !OSHOT_WINDOWS
-        ImGui::BulletText(
-            "Install one of the tesseract language packages (e.g. tesseract-data-eng on Arch, tesseract-ocr-eng on "
-            "Debian/Ubuntu, tesseract-langpack-eng on Fedora).");
+        if (!g_is_flatpak)
+            ImGui::BulletText(
+                "Install one of the tesseract language packages (e.g. tesseract-data-eng on Arch, tesseract-ocr-eng on "
+                "Debian/Ubuntu, tesseract-langpack-eng on Fedora).");
 #endif
         ImGui::BulletText("Download a tesseract language model via 'Tools -> Download OCR Model'.");
         ImGui::Unindent();

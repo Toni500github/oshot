@@ -90,10 +90,14 @@ SessionType get_session_type()
     const char* x11     = std::getenv("DISPLAY");
     const char* kde     = std::getenv("KDE_FULL_SESSION");
 
-    if (xdg && strstr(xdg, "KDE") != nullptr)
-        return SessionType::KDE;
-    if (kde && kde[0] != '\0')
-        return SessionType::KDE;
+    // A Flatpak can't run the host's spectacle, so KDE goes through the portal (or X11) there
+    if (!g_is_flatpak)
+    {
+        if (xdg && strstr(xdg, "KDE") != nullptr)
+            return SessionType::KDE;
+        if (kde && kde[0] != '\0')
+            return SessionType::KDE;
+    }
 
     xdg = std::getenv("XDG_SESSION_TYPE");
 

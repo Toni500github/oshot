@@ -41,6 +41,7 @@ std::array<char, 100>   g_sock_path;
 int                     g_sock       = -1;
 bool                    g_is_systray = false;
 bool                    g_is_nix     = fs::exists("/nix");
+bool                    g_is_flatpak = fs::exists("/.flatpak-info");
 int                     g_scr_w{}, g_scr_h{};
 Clipboard               g_clipboard(SessionType::Unknown);
 
