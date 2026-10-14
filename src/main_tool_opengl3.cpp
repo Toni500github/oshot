@@ -47,7 +47,7 @@
 #  if OSHOT_WINDOWS
 #    define WIN32_LEAN_AND_MEAN
 #    include <windows.h>
-#  elif OSHOT_LINUX
+#  elif OSHOT_FREEDESKTOP
 #    include <X11/Xlib.h>
 #  endif
 
@@ -79,7 +79,7 @@ static GLFWmonitor* get_monitor_at_cursor()
         cursor_y  = int(pt.y);
         cursor_ok = true;
     }
-#  elif OSHOT_LINUX
+#  elif OSHOT_FREEDESKTOP
     // X11 or XWayland
     Display* dpy = XOpenDisplay(nullptr);
     if (dpy)

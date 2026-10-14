@@ -1,4 +1,4 @@
-#ifdef __linux__
+#if !defined(_WIN32) && !defined(__APPLE__)
 #include <gtk/gtk.h>
 #include <glib-unix.h>
 #include <csignal>

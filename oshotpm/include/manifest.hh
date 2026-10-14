@@ -36,6 +36,14 @@
 
 #if OSHOT_LINUX
 #  define OSHOT_PLATFORM "linux"
+#elif defined(__FreeBSD__)
+#  define OSHOT_PLATFORM "freebsd"
+#elif defined(__OpenBSD__)
+#  define OSHOT_PLATFORM "openbsd"
+#elif defined(__NetBSD__)
+#  define OSHOT_PLATFORM "netbsd"
+#elif defined(__DragonFly__)
+#  define OSHOT_PLATFORM "dragonfly"
 #elif OSHOT_MACOS
 #  define OSHOT_PLATFORM "macos"
 #elif OSHOT_WINDOWS

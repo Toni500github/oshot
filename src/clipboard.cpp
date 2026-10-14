@@ -33,7 +33,7 @@
 #include "config.hpp"
 #include "screen_capture.hpp"
 
-#if OSHOT_LINUX
+#if OSHOT_FREEDESKTOP
 #  include <sys/wait.h>
 #  include <unistd.h>
 
@@ -44,7 +44,7 @@
 // Sets wlcopy_pid/xclip_pid, and returns an stdin pipe on success.
 Result<int> start_linux_copy(SessionType session, const std::string_view mime_type)
 {
-#if OSHOT_LINUX
+#if OSHOT_FREEDESKTOP
     static pid_t clip_pid = -1;
 
     const char* tool = (session == SessionType::Wayland) ? "wl-copy" : "xclip";

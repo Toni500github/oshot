@@ -5,16 +5,9 @@ DISABLE_PLUGINS ?= 1
 %:
 	dh $@
 
+# The license is in debian/copyright, so don't install a second copy
 override_dh_auto_configure:
 	dh_auto_configure --buildsystem=cmake -- \
 		-DCMAKE_BUILD_TYPE=Release \
-		-DCMAKE_INSTALL_PREFIX=/usr \
-		-DDISABLE_PLUGINS=$(DISABLE_PLUGINS)
-
-override_dh_auto_build:
-	dh_auto_build --buildsystem=cmake
-
-override_dh_auto_install:
-	dh_auto_install --buildsystem=cmake
-	install -Dm644 assets/linux/oshot.desktop \
-		$(CURDIR)/debian/oshot/usr/share/applications/oshot.desktop
+		-DDISABLE_PLUGINS=$(DISABLE_PLUGINS) \
+		-DOSHOT_INSTALL_LICENSEDIR=

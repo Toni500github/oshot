@@ -1,0 +1,80 @@
+.TH OSHOT 1 "2026-10-14" "oshot" "User Commands"
+.SH NAME
+oshot \- screenshot overlay that extracts text and scans QR codes and barcodes
+.SH SYNOPSIS
+.B oshot
+.RI [ OPTIONS ]...
+.SH DESCRIPTION
+.B oshot
+captures the screen and opens an overlay to select a region of it.
+The selection can be read with Tesseract OCR, scanned for QR codes and
+barcodes with ZBar, annotated, and copied to the clipboard or saved.
+.PP
+Without options, oshot captures the screen, opens the overlay and then
+stays in the system tray.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print the help and exit.
+.TP
+.BR \-V ", " \-\-version
+Print the version and other information about the build.
+.TP
+.BR \-f ", " \-\-source " \fIPATH\fR"
+Use the image at \fIPATH\fR instead of capturing the screen.
+Use \fB\-\fR to read the image from standard input.
+.TP
+.BR \-C ", " \-\-config " \fIPATH\fR"
+Use the config file at \fIPATH\fR
+(default: \fI~/.config/oshot/config.toml\fR).
+.TP
+.BR \-O ", " \-\-override " \fIOPTION\fR"
+Override a config option, for example
+\fB"delay=200"\fR or \fB"default.ocr-model='jpn'"\fR.
+.TP
+.BR \-d ", " \-\-delay " \fIMILLIS\fR"
+Wait \fIMILLIS\fR milliseconds before capturing the screen.
+Has no effect with \fB\-f\fR.
+.TP
+.BR \-\-instant\-copy ", " \-\-instant\-save
+Copy or save the selection as soon as it is made.
+.TP
+.BR \-\-gen\-config " [\fIPATH\fR]"
+Generate the default config file at \fIPATH\fR, or at the default location
+if omitted. Asks before overwriting.
+.TP
+.BR \-g ", " \-\-gui
+Only capture and open the overlay, without the system tray.
+Bind this to a key in the desktop or window manager settings to get a
+capture shortcut.
+.TP
+.BR \-t ", " \-\-tray
+Only start in the system tray, without capturing.
+.SH ENVIRONMENT
+.TP
+.B TESSDATA_PREFIX
+Directory with the Tesseract \fI.traineddata\fR models.
+Takes precedence over the \fBocr\-path\fR config option, unless
+\fBconfig\-over\-env\fR is enabled.
+.SH FILES
+.TP
+.I ~/.config/oshot/config.toml
+The config file. \fB$XDG_CONFIG_HOME\fR is used instead of \fI~/.config\fR
+when set.
+.TP
+.I ~/.config/oshot/theme.toml
+The theme file.
+.SH NOTES
+On Wayland the screen is captured through the desktop's screenshot portal,
+Spectacle on KDE, or
+.BR grim (1)
+where no portal is available. Copying to the clipboard needs
+.BR wl\-copy (1)
+on Wayland and
+.BR xclip (1)
+on X11.
+.SH SEE ALSO
+.BR tesseract (1),
+.BR zbarimg (1)
+.PP
+https://github.com/Toni500github/oshot

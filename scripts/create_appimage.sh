@@ -47,9 +47,16 @@ main() {
         exit 1
     fi
 
-    download "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
-    download "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
-    chmod +x *.AppImage
+    ARCH="$(uname -m)"
+    case "$ARCH" in
+        amd64) ARCH=x86_64 ;;
+        arm64) ARCH=aarch64 ;;
+    esac
+
+    download "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${ARCH}.AppImage"
+    # AppImageKit is archived, appimagetool lives in its own repo now
+    download "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${ARCH}.AppImage"
+    chmod +x "linuxdeploy-${ARCH}.AppImage" "appimagetool-${ARCH}.AppImage"
 
     # The release binary
     check_file "$1"
@@ -71,15 +78,15 @@ EOF
     cp -f assets/oshot.png AppDir/
     cp -f assets/linux/oshot.desktop AppDir/
 
-    ./linuxdeploy-x86_64.AppImage \
+    ./linuxdeploy-${ARCH}.AppImage \
         --appdir AppDir \
         --executable AppDir/usr/bin/oshot \
         --desktop-file AppDir/oshot.desktop \
         --icon-file AppDir/oshot.png
 
     # Use second argument as output name or default
-    OUTPUT_NAME="${2:-oshot-x86_64.AppImage}"
-    ./appimagetool-x86_64.AppImage AppDir "$OUTPUT_NAME"
+    OUTPUT_NAME="${2:-oshot-${ARCH}.AppImage}"
+    ARCH="$ARCH" ./appimagetool-${ARCH}.AppImage AppDir "$OUTPUT_NAME"
 
     echo "AppImage created: $OUTPUT_NAME"
 }

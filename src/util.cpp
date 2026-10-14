@@ -28,7 +28,9 @@
 #include <fcntl.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -79,6 +81,9 @@
 #    include <CoreFoundation/CoreFoundation.h>
 #    include <CoreGraphics/CoreGraphics.h>
 #    include <mach-o/dyld.h>
+#  elif defined(__FreeBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#    include <sys/types.h>
+#    include <sys/sysctl.h>
 #  endif
 #  include <arpa/inet.h>
 #  include <netdb.h>
@@ -198,7 +203,7 @@ bool acquire_tray_lock()
 
 int get_screen_dpi()
 {
-#  if defined(__APPLE__)
+#  if OSHOT_MACOS
     // CGDisplayScreenSize returns physical size in millimetres
     CGDirectDisplayID display  = CGMainDisplayID();
     CGSize            size_mm  = CGDisplayScreenSize(display);
@@ -762,6 +767,7 @@ bool is_system_dark_mode()
 fs::path get_exe_path()
 {
     std::error_code ec;
+
 #  if OSHOT_MACOS
     uint32_t size = 0;
     _NSGetExecutablePath(nullptr, &size);
@@ -769,7 +775,22 @@ fs::path get_exe_path()
     if (_NSGetExecutablePath(buf.data(), &size) != 0)
         return {};
     return fs::canonical(buf.c_str(), ec);
+
+#  elif defined(__FreeBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#    if defined(__NetBSD__)
+    int mib[4] = { CTL_KERN, KERN_PROC_ARGS, -1, KERN_PROC_PATHNAME };
+#    else
+    int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1 };
+#    endif
+    char   buf[PATH_MAX];
+    size_t len = sizeof(buf);
+    if (sysctl(mib, 4, buf, &len, nullptr, 0) != 0)
+        return {};
+    return fs::canonical(buf, ec);
+
 #  else
+    // Linux. OpenBSD has no way to get it, so this fails there and callers
+    // fall back to what they'd do without the path
     return fs::canonical("/proc/self/exe", ec);
 #  endif
 }
@@ -897,6 +918,36 @@ fs::path get_bundled_models_dir()
     if (fs::is_directory(models, ec))
         return models;
     return {};
+}
+
+std::string get_default_ocr_path()
+{
+#if OSHOT_FREEDESKTOP
+    static constexpr std::array candidates = {
+#  ifdef OSHOT_TESSERACT_DATADIR
+        OSHOT_TESSERACT_DATADIR "/tessdata",  // tesseract.pc's datadir, the prefix tesseract was built for
+#  endif
+        "/usr/share/tessdata",                     // Arch, openSUSE, Alpine, Gentoo, Void
+        "/usr/share/tesseract-ocr/5/tessdata",     // Debian 12+, Ubuntu 23.04+
+        "/usr/share/tesseract-ocr/4.00/tessdata",  // Debian 11, Ubuntu 22.04
+        "/usr/share/tesseract/tessdata",           // Fedora, RHEL
+        "/usr/local/share/tessdata",               // FreeBSD, OpenBSD, source installs
+        "/usr/pkg/share/tessdata",                 // NetBSD (pkgsrc)
+    };
+
+    std::error_code ec;
+    for (const char* dir : candidates)
+    {
+        for (const fs::directory_entry& entry : fs::directory_iterator(dir, ec))
+            if (entry.path().extension() == ".traineddata")
+                return std::string(dir) + '/';
+    }
+    // No models installed yet: keep the path most distros use
+    return "/usr/share/tessdata/";
+#else
+    // Windows and macOS ship eng.traineddata, which Config seeds into the config dir
+    return "./models";
+#endif
 }
 
 fs::path get_font_path(const std::string& font)

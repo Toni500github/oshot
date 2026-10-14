@@ -1,8 +1,16 @@
 [Desktop Entry]
 Type=Application
 Name=oshot
-Exec=oshot %U
+GenericName=Screenshot Tool
+Comment=Take a screenshot, extract its text and scan QR codes and barcodes
+Exec=oshot
 Icon=oshot
-Categories=Utility;
 Terminal=false
-StartupNotify=true
+StartupNotify=false
+Categories=Utility;
+Keywords=screenshot;screen;capture;ocr;text;qr;barcode;annotate;
+Actions=Tray;
+
+[Desktop Action Tray]
+Name=Start in the System Tray
+Exec=oshot --tray

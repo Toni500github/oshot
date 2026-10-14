@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.toni500github.oshot</id>
+  <name>oshot</name>
+  <summary>Take a screenshot and extract its text on the fly</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>BSD-3-Clause</project_license>
+  <developer id="io.github.toni500github">
+    <name>Toni500</name>
+  </developer>
+  <description>
+    <p>
+      oshot is a lightweight screenshot overlay: select a region of the screen
+      and extract its text with Tesseract OCR, decode QR codes and barcodes with
+      ZBar, annotate it, then copy or save it.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Text extraction (OCR) in any language Tesseract has a model for</li>
+      <li>QR code and barcode scanning</li>
+      <li>Annotations: arrows, lines, rectangles, circles, numbered counters, text and freehand drawing</li>
+      <li>Works on X11 and Wayland, with multiple monitors</li>
+      <li>Optional system tray mode</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">oshot.desktop</launchable>
+  <provides>
+    <binary>oshot</binary>
+  </provides>
+  <url type="homepage">https://github.com/Toni500github/oshot</url>
+  <url type="bugtracker">https://github.com/Toni500github/oshot/issues</url>
+  <url type="vcs-browser">https://github.com/Toni500github/oshot</url>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <keywords>
+    <keyword>screenshot</keyword>
+    <keyword>ocr</keyword>
+    <keyword>qr</keyword>
+    <keyword>barcode</keyword>
+  </keywords>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+</component>

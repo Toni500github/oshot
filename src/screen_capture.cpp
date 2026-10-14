@@ -40,7 +40,7 @@
 #include "tiny-process-library/process.hpp"
 #include "util.hpp"
 
-#if defined(__linux__)
+#if OSHOT_FREEDESKTOP
 #  include <X11/Xlib.h>
 #  include <X11/Xutil.h>
 #  include <X11/extensions/Xrandr.h>
@@ -203,7 +203,7 @@ capture_result_t rotate_rgba(const capture_result_t& src, int turns_cw)
     return out;
 }
 
-#if OSHOT_LINUX
+#if OSHOT_FREEDESKTOP
 Result<capture_result_t> capture_full_screen_portal();
 
 // Query the geometry of the monitor under the cursor via Xlib + XRandR.
@@ -689,7 +689,7 @@ Result<capture_result_t> capture_full_screen_portal()
 {
     return Err();
 }
-#endif  // OSHOT_LINUX
+#endif  // OSHOT_FREEDESKTOP
 
 #if OSHOT_MACOS
 // The OS automatically prompts for Screen Recording permission on first use.

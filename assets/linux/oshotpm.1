@@ -1,0 +1,62 @@
+.TH OSHOTPM 1 "2026-10-14" "oshot" "User Commands"
+.SH NAME
+oshotpm \- plugin manager for oshot
+.SH SYNOPSIS
+.B oshotpm
+.RI [ "GLOBAL OPTIONS" ]...
+.I COMMAND
+.RI [ OPTIONS ]...
+.SH DESCRIPTION
+.B oshotpm
+installs, updates and removes plugin repositories for
+.BR oshot (1).
+A repository is a Git repository or a local directory with plugins and an
+\fIoshot\-plugin.toml\fR manifest.
+.SH COMMANDS
+.TP
+.BI help " COMMAND"
+Show the help for \fICOMMAND\fR (\fBinstall\fR or \fBlist\fR).
+.TP
+.BR install " [\fB\-f\fR|\fB\-\-force\fR] \fIREPO\fR..."
+Install the plugin repositories at the given Git URLs or local paths.
+\fB\-\-force\fR installs them even if they are already installed.
+.TP
+.BI uninstall " REPO" ...
+Uninstall the given installed repositories.
+.TP
+.BI enable " REPO/PLUGIN" ...
+Enable plugins from installed repositories.
+.TP
+.BI disable " REPO/PLUGIN" ...
+Disable plugins from installed repositories.
+.TP
+.BR list " [\fB\-v\fR|\fB\-\-verbose\fR]"
+List the installed plugins.
+.TP
+.B update
+Update all installed repositories.
+.TP
+.B gen\-manifest
+Generate a template manifest.
+.SH GLOBAL OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print the help and exit.
+.TP
+.BR \-V ", " \-\-version
+Print the version and other information about the build.
+.TP
+.BR \-D ", " \-\-dialogs
+Show errors and prompts in GUI dialogs.
+.SH FILES
+.TP
+.I ~/.config/oshot/plugins/
+Installed plugins and their config.
+.SH EXAMPLES
+.nf
+oshotpm install https://github.com/Toni500github/oshot-test-plugins
+oshotpm disable toni-test/plugins
+oshotpm uninstall tonis-plugins
+.fi
+.SH SEE ALSO
+.BR oshot (1)

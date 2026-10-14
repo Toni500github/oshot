@@ -385,6 +385,51 @@ jobs:
           path: ${{ matrix.package-file }}
           if-no-files-found: error
 
+  # Build-only check that oshot still compiles on the BSDs, nothing is packaged
+  build-freebsd:
+    timeout-minutes: 45
+    name: Build (freebsd${{ matrix.plugins && '-plugins' || '' }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        plugins: [false, true]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Build in a FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y \
+              git \
+              cmake \
+              pkgconf \
+              glfw \
+              tesseract \
+              zbar \
+              gtk3 \
+              libayatana-appindicator \
+              dbus \
+              libX11 \
+              libXrandr \
+              mesa-libs \
+              wayland \
+              wayland-protocols
+          run: |
+            set -e
+            git config --global --add safe.directory '*'
+            ./scripts/generateVersion.sh
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }}
+            cmake --build build --parallel "$(sysctl -n hw.ncpu)"
+            cmake --install build --prefix "$PWD/stage"
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     name: Create GitHub Release & Upload Assets
