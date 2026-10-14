@@ -1140,10 +1140,6 @@ Result<capture_result_t> capture_full_screen_windows()
     return Ok(std::move(result));
 }
 #else
-Result<capture_result_t> capture_full_screen_windows_fallback()
-{
-    return Err();
-}
 Result<capture_result_t> capture_full_screen_windows()
 {
     return Err();

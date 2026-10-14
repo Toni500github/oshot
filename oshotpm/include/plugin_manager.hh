@@ -110,7 +110,6 @@ enum class ArchiveType : std::uint8_t
     Targz,
     Tarxz,
     Zip,
-    SevenZip  // C++ doesn't let me use 7z
 };
 
 namespace Archiver

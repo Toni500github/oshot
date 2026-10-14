@@ -47,9 +47,6 @@
 #if OSHOT_WINDOWS
 #  include "dylib.hpp"
 #else
-#  include <netdb.h>
-#  include <netinet/in.h>
-#  include <sys/socket.h>
 #  include <unistd.h>
 #endif
 
@@ -289,10 +286,6 @@ static void exit_handler_nc()
         return;
 
     request_quit();
-#if !OSHOT_WINDOWS
-    if (g_sock > 0)
-        shutdown(g_sock, SHUT_RDWR);
-#endif
     // Terminating GLFW under a running capture (e.g. die() from the worker
     // thread) would crash it instead of exiting
     if (!capture_active.load())

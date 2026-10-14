@@ -85,14 +85,9 @@
 #    include <sys/types.h>
 #    include <sys/sysctl.h>
 #  endif
-#  include <arpa/inet.h>
-#  include <netdb.h>
 #  include <pwd.h>
-#  include <sys/select.h>
-#  include <sys/socket.h>
 #  include <sys/file.h>
 #  include <unistd.h>
-#  include <sys/un.h>
 #  include <X11/Xlib.h>
 #endif
 // clang-format on

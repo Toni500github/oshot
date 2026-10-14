@@ -171,18 +171,6 @@ public:
     const T&           get() const { return std::get<T>(m_value); }
     const E&           error() const { return std::get<E>(m_value); }
 
-    template <typename U = T, typename = typename U::value_type>
-    typename U::value_type& get_v()
-    {
-        return std::get<T>(m_value).value;
-    }
-
-    template <typename U = T, typename = typename U::value_type>
-    const typename U::value_type& get_v() const
-    {
-        return std::get<T>(m_value).value;
-    }
-
     template <typename U = E, typename = typename U::value_type>
     typename U::value_type& error_v()
     {
@@ -360,7 +348,6 @@ enum class ByteUnit
 {
     Kibibyte = 1024,
     Kilobyte = 1000,
-    Byte     = 1,
 };
 
 inline constexpr std::array<std::pair<ImageExt, const char*>, idx(ImageExt::COUNT)> IMAGE_EXTS_STR = {
@@ -371,12 +358,10 @@ inline std::unordered_map<std::string_view, ImageExt> IMAGE_EXTS_ENUM = {
 };
 
 extern bool g_is_systray;  // old g_is_clipboard_server;
-extern int  g_sock;
 extern int  g_scr_w, g_scr_h;
 extern bool g_is_nix;
 extern bool g_is_flatpak;  // running inside a Flatpak sandbox
 
-extern std::array<char, 100>                              g_sock_path;
 extern std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_imgui_log_sink;
 
 static inline const std::string version_infos = fmt::format(
@@ -398,7 +383,6 @@ static inline const std::string version_infos = fmt::format(
 std::vector<uint8_t> encode_to_image(const capture_result_t& cap, ImageExt ext);
 
 std::string replace_str(std::string& str, const std::string_view from, const std::string_view to);
-std::string select_image();
 std::string expand_var(std::string ret);
 std::string col_to_hexstr(const rgba_t& col);
 std::string get_relative_path(const std::string_view relative_path, const char* env, const long long mode);

@@ -144,7 +144,6 @@ public:
     using TomlAPI::SetValue;
 
     [[nodiscard]] const std::string& GetConfigPath() const { return m_config_path; }
-    [[nodiscard]] const std::string& GetThemePath() const { return m_theme_path; }
     [[nodiscard]] const std::string& GetConfigDirPath() const { return m_config_dir_path; }
 
 private:
@@ -152,7 +151,6 @@ private:
     TomlAPI m_theme;
 
     std::string m_config_path;
-    std::string m_theme_path;
     std::string m_config_dir_path;
 };
 

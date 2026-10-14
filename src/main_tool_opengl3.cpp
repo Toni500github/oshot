@@ -34,7 +34,6 @@
 #  include "screenshot_tool.hpp"
 #  include "stb_image_write.h"
 #  include "util.hpp"
-#  define GL_SILENCE_DEPRECATION
 #  if defined(IMGUI_IMPL_OPENGL_ES2)
 #    include <GLES2/gl2.h>
 #  endif

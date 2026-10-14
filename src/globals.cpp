@@ -33,12 +33,10 @@
 #include "screenshot_tool.hpp"
 #include "util.hpp"
 
-// Extern variables declariaions
+// Extern variables declarations
 std::deque<std::string> g_dropped_paths;
 std::unique_ptr<Config> g_config;
 std::unique_ptr<Cache>  g_cache;
-std::array<char, 100>   g_sock_path;
-int                     g_sock       = -1;
 bool                    g_is_systray = false;
 bool                    g_is_nix     = fs::exists("/nix");
 bool                    g_is_flatpak = fs::exists("/.flatpak-info");
