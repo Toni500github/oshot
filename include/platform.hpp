@@ -52,9 +52,23 @@
 #  define OSHOT_WINDOWS 0
 #endif
 
-#if !(OSHOT_LINUX || OSHOT_WINDOWS || OSHOT_MACOS)
+#if (defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__))
+#  define OSHOT_BSD 1
+#else
+#  define OSHOT_BSD 0
+#endif
+
+// X11/Wayland desktops following the freedesktop.org conventions (Linux and the BSDs).
+// Use OSHOT_LINUX only for what is really Linux-specific, such as AppImages.
+#if (OSHOT_LINUX || OSHOT_BSD)
+#  define OSHOT_FREEDESKTOP 1
+#else
+#  define OSHOT_FREEDESKTOP 0
+#endif
+
+#if !(OSHOT_FREEDESKTOP || OSHOT_WINDOWS || OSHOT_MACOS)
 #  warning \
-      "Platform currently may not be supported, only Linux, Windows and MacOS. Please feel free to report any compilation errors"
+      "Platform currently may not be supported, only Linux, the BSDs, Windows and MacOS. Please feel free to report any compilation errors"
 #endif
 
 #endif  // _PLATFORM_H_

@@ -6,12 +6,12 @@
   };
 
   outputs = { self, nixpkgs, ... }:
-    let 
-      system = "x86_64-linux";
-      pkgs = import nixpkgs { inherit system; };
+    let
+      systems = [ "x86_64-linux" "aarch64-linux" ];
+      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
       version = "0.5.0-rc2";
 
-      mkOshot = { disablePlugins ? false }:
+      mkOshot = pkgs: { disablePlugins ? false }:
         pkgs.stdenv.mkDerivation {
           pname = if disablePlugins then "oshot" else "oshot-plugins";
           inherit version;
@@ -40,7 +40,10 @@
             glib
             gtk3
             libappindicator-gtk3
-            
+            dbus
+            wayland
+            wayland-protocols
+
             systemd
             libarchive
             curl
@@ -55,18 +58,26 @@
           installPhase = ''
             cmake --install . --prefix "$out"
           '';
+
+          meta = with pkgs.lib; {
+            description = "Screenshot tool to extract text, scan QR codes and barcodes on the fly";
+            homepage = "https://github.com/Toni500github/oshot";
+            license = licenses.bsd3;
+            mainProgram = "oshot";
+            platforms = platforms.linux;
+          };
         };
     in {
-      packages.${system} = {
-        oshot-plugins = mkOshot {
+      packages = forAllSystems (pkgs: {
+        oshot-plugins = mkOshot pkgs {
           disablePlugins = false;
         };
 
-        oshot = mkOshot {
+        oshot = mkOshot pkgs {
           disablePlugins = true;
         };
 
-        default = self.packages.${system}.oshot;
-      };
+        default = self.packages.${pkgs.stdenv.hostPlatform.system}.oshot;
+      });
     };
 }

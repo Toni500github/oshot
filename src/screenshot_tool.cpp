@@ -445,7 +445,7 @@ Result<> ScreenshotTool::Start()
         }
         TRY_MSG(result, "Failed to capture screenshot: {}");
 
-#if OSHOT_LINUX
+#if OSHOT_FREEDESKTOP
         if (m_session == SessionType::Wayland)
         {
             m_wayland_monitors = wl_get_monitors();
@@ -1916,7 +1916,9 @@ void ScreenshotTool::DrawOcrTools()
         }
 
 #if !OSHOT_WINDOWS
-        ImGui::BulletText("Install one of the tesseract language packages (e.g. tesseract-data-eng).");
+        ImGui::BulletText(
+            "Install one of the tesseract language packages (e.g. tesseract-data-eng on Arch, tesseract-ocr-eng on "
+            "Debian/Ubuntu, tesseract-langpack-eng on Fedora).");
 #endif
         ImGui::BulletText("Download a tesseract language model via 'Tools -> Download OCR Model'.");
         ImGui::Unindent();
@@ -4039,7 +4041,7 @@ void ScreenshotTool::DrawAnnotations()
 
 void ScreenshotTool::DrawOutputMenuSelection()
 {
-#if OSHOT_LINUX
+#if OSHOT_FREEDESKTOP
     if (!m_show_window.Has(SubWindow::OutputMenuSelection))
         return;
 

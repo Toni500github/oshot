@@ -381,10 +381,11 @@ extern std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_imgui_log_sink;
 static inline const std::string version_infos = fmt::format(
     "oshot v{} built from branch '{}' at {} commit '{}' ({}).\n"
     "Date: {}\n"
-    "Tag: {}\n",
+    "Tag: {}\n"
 #ifdef DISABLE_PLUGINS
-    "NO PLUGINS SUPPORT\n",
+    "NO PLUGINS SUPPORT\n"
 #endif
+    ,
     VERSION,
     GIT_BRANCH,
     GIT_DIRTY,
@@ -423,6 +424,8 @@ fs::path get_exe_path();
 fs::path get_exe_dir();
 // OCR models shipped next to the executable (Windows zip/installer, macOS .app), empty if none
 fs::path get_bundled_models_dir();
+// Where the system's tesseract models are, which differs per distro. Only the default ocr-path
+std::string get_default_ocr_path();
 
 Result<capture_result_t> load_image_rgba(const std::string& path);
 Result<std::string>      get_config_image_out_fmt();
@@ -451,7 +454,7 @@ static void create_dialog(const char* title, const NvdDialogType type, const std
     NvdDialogBox* dialog = nvd_dialog_box_new(title, str.c_str(), type);
     nvd_show_dialog(dialog);
     nvd_free_object(dialog);
-#if OSHOT_LINUX
+#if OSHOT_FREEDESKTOP
     while (gtk_events_pending())
         gtk_main_iteration();
 #endif

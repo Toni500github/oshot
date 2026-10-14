@@ -16,7 +16,7 @@ Capture any screen region, extract text, and decode QR/barcodes locally.
 
 Select a screen region, run OCR or scan a QR/barcode, and copy the result to your clipboard. No uploads, no browser workflow, no bulky image editor. Useful for copying text from apps that block selection, extracting content from VMs or remote desktops, reading text in videos or slides, or decoding QR codes on screen.
 
-Supports Windows, Linux, and macOS.
+Supports Windows, Linux, macOS and the BSDs (built from source).
 
 ## Demo
 
@@ -124,7 +124,8 @@ Use `apt` rather than `dpkg -i`, so the dependencies get installed too.
 
 ```bash
 unzip oshot-linux-*.zip
-sudo ./oshot/install.sh            # installs into /usr/local
+sudo ./oshot/install.sh               # installs into /usr/local
+sudo ./oshot/install.sh --uninstall   # removes it again
 ```
 
 #### Arch Linux (AUR)
@@ -166,7 +167,7 @@ Requires a C++20 compiler.
 
 **All platforms:** `glfw3`, `tesseract`, `leptonica`, `zbar`, `OpenGL`, `libpng`
 
-**Linux extras:** `libx11`, `libxcb`, `libxrandr`, `gio-2.0`, `gtk+-3.0`, `libappindicator3` / `ayatana-appindicator3`
+**Linux / BSD extras:** `libx11`, `libxrandr`, `gio-2.0`, `gtk+-3.0`, `dbus-1`, `libappindicator3` / `ayatana-appindicator3`, `wayland`, `wayland-protocols`
 
 **macOS frameworks:** `Cocoa`, `Metal`, `QuartzCore`, `CoreGraphics`, `IOKit`
 
@@ -177,11 +178,12 @@ Requires a C++20 compiler.
 ```bash
 sudo apt-get install -y \
   build-essential pkg-config cmake \
-  libx11-dev libxcb1-dev libxrandr-dev \
-  libglfw3-dev libpng-dev \
+  libx11-dev libxrandr-dev libgl-dev \
+  libglfw3-dev \
   libtesseract-dev libleptonica-dev \
   libzbar-dev \
-  libgtk-3-dev libayatana-appindicator3-dev
+  libgtk-3-dev libdbus-1-dev libayatana-appindicator3-dev \
+  libwayland-dev libwayland-bin wayland-protocols
 ```
 
 #### Arch Linux
@@ -189,12 +191,23 @@ sudo apt-get install -y \
 ```bash
 sudo pacman -S --needed \
   base-devel cmake \
-  libx11 libxcb libxrandr \
-  glfw libpng \
+  libx11 libxrandr \
+  glfw \
   tesseract leptonica \
   zbar \
-  gtk3 libappindicator-gtk3
+  gtk3 libappindicator-gtk3 \
+  wayland wayland-protocols
 ```
+
+#### FreeBSD
+
+```bash
+pkg install git cmake pkgconf gmake \
+  glfw tesseract zbar gtk3 libayatana-appindicator dbus \
+  libX11 libXrandr mesa-libs wayland wayland-protocols
+```
+
+Other BSDs need the same libraries from their ports. FreeBSD is built in CI; the others aren't tested, so please report build errors.
 
 #### macOS (Homebrew)
 
@@ -220,9 +233,13 @@ pacman -S --needed \
 ```bash
 git clone https://github.com/Toni500github/oshot/
 cd oshot
-make
+make                       # `gmake` on the BSDs
 ./build/release/oshot
+sudo make install          # into /usr (/usr/local on the BSDs), or PREFIX=<dir>
+sudo make uninstall
 ```
+
+`make DISABLE_PLUGINS=1` builds without plugin support. Packagers can use `DESTDIR` with `make install`, or CMake directly; `-DOSHOT_INSTALL_LICENSEDIR=` changes or skips (empty) where the license goes.
 
 Or with CMake + Ninja:
 

@@ -13,6 +13,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+include(GNUInstallDirs)
+
 #add_compile_options($<$<CONFIG:Debug>:-fsanitize=address>)
 #add_compile_options($<$<CONFIG:Debug>:-fno-omit-frame-pointer>)
 #add_link_options($<$<CONFIG:Debug>:-fsanitize=address>)
@@ -103,6 +105,8 @@ endif()
 pkg_check_modules(TESSERACT REQUIRED IMPORTED_TARGET tesseract)
 pkg_check_modules(LEPTONICA REQUIRED IMPORTED_TARGET lept)
 pkg_check_modules(ZBAR REQUIRED IMPORTED_TARGET zbar)
+# Where tesseract was installed to, one of the places to look for its models
+pkg_get_variable(TESSERACT_DATADIR tesseract datadir)
 
 # Homebrew's lept.pc points Cflags at .../include/leptonica directly (its
 # own convention is `#include <allheaders.h>`), but our code uses
@@ -219,12 +223,22 @@ else()
     set(_rpath_origin "$ORIGIN")
 endif()
 
+# Relative, so the install stays relocatable (zip, AppImage), and following
+# CMAKE_INSTALL_LIBDIR, which is lib64 on Fedora/openSUSE and
+# lib/<multiarch> on Debian
+file(
+    RELATIVE_PATH _bin_to_lib
+    "${CMAKE_INSTALL_FULL_BINDIR}"
+    "${CMAKE_INSTALL_FULL_LIBDIR}"
+)
+set(OSHOT_INSTALL_RPATH "${_rpath_origin}/${_bin_to_lib}")
+
 set_target_properties(
     ${PROJECT_NAME}
     PROPERTIES
         BUILD_RPATH
             "${_rpath_origin}/../lib;$<TARGET_FILE_DIR:imgui>${OSHOT_COMMON_RPATH_ENTRY}"
-        INSTALL_RPATH "${_rpath_origin}/../lib"
+        INSTALL_RPATH "${OSHOT_INSTALL_RPATH}"
 )
 
 # -----------------------------
@@ -427,6 +441,12 @@ target_compile_definitions(
     oshot_common
     PUBLIC VERSION="${PROJECT_VERSION}" TOML_HEADER_ONLY=0
 )
+if(TESSERACT_DATADIR)
+    target_compile_definitions(
+        oshot_common
+        PRIVATE OSHOT_TESSERACT_DATADIR="${TESSERACT_DATADIR}"
+    )
+endif()
 
 # NOTE: PkgConfig::TESSERACT / PkgConfig::ZBAR already propagate their own
 # include dirs, link dirs, and compile options as usage requirements via
@@ -453,7 +473,7 @@ if(NOT DISABLE_PLUGINS)
         PROPERTIES
             BUILD_RPATH
                 "${_rpath_origin}/../lib;$<TARGET_FILE_DIR:imgui>${OSHOT_COMMON_RPATH_ENTRY}"
-            INSTALL_RPATH "${_rpath_origin}/../lib"
+            INSTALL_RPATH "${OSHOT_INSTALL_RPATH}"
     )
     target_link_libraries(oshotpm PRIVATE oshot_common)
     if(WIN32)
@@ -778,7 +798,13 @@ enable_lto(tiny-process-library)
 # Install
 # -----------------------------
 
-include(GNUInstallDirs)
+# Arch-style default; Debian sets it empty, as the license goes into
+# /usr/share/doc/oshot/copyright there
+set(OSHOT_INSTALL_LICENSEDIR
+    "${CMAKE_INSTALL_DATAROOTDIR}/licenses/${PROJECT_NAME}"
+    CACHE STRING
+    "Where to install the LICENSE file, relative to the prefix (empty to skip)"
+)
 
 if(DISABLE_PLUGINS)
     install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -798,12 +824,36 @@ else()
     )
 endif()
 
-install(
-    FILES LICENSE
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/licenses/${PROJECT_NAME}
-)
+if(OSHOT_INSTALL_LICENSEDIR)
+    install(FILES LICENSE DESTINATION ${OSHOT_INSTALL_LICENSEDIR})
+endif()
 
-install(
-    FILES assets/linux/oshot.desktop
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
-)
+# Desktop integration for Linux and the BSDs (freedesktop.org)
+if(UNIX AND NOT APPLE)
+    install(
+        FILES assets/linux/oshot.desktop
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
+    )
+    install(
+        FILES assets/linux/io.github.toni500github.oshot.metainfo.xml
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo
+    )
+    install(
+        FILES assets/linux/oshot.svg
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps
+    )
+    install(
+        FILES assets/oshot.png
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/64x64/apps
+    )
+    install(
+        FILES assets/linux/oshot.1
+        DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
+    )
+    if(NOT DISABLE_PLUGINS)
+        install(
+            FILES assets/linux/oshotpm.1
+            DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
+        )
+    endif()
+endif()

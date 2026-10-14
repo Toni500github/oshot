@@ -43,15 +43,7 @@ public:
     // They can be overwritten from CLI arguments
     struct config_file_t
     {
-        // Since we package the eng.traineddata file on Windows/MacOS,
-        // because the user may not know how to download one or doesn't want to,
-        // just for out-of-box experience sake, let's use the relative
-        // ./models directory for the OCR models.
-#ifdef __linux__
-        std::string ocr_path = "/usr/share/tessdata/";
-#else
-        std::string ocr_path = "./models";
-#endif
+        std::string ocr_path           = get_default_ocr_path();
         std::string ocr_get_repo       = "tesseract-ocr/tessdata";
         std::string ocr_model          = "eng";
         std::string theme_file_path    = "theme.toml";

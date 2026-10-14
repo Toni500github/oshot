@@ -48,7 +48,7 @@ Config::Config(const fs::path& configFile, const fs::path& configDir)
         fs::create_directories(configDir / "plugins");
     }
 
-#if !OSHOT_LINUX
+#if !OSHOT_FREEDESKTOP
     // The install location (Program Files, a signed .app) isn't writable and the
     // working directory is arbitrary when launched from Explorer/Finder, so keep
     // every OCR model in the config dir and seed it with the bundled ones.

@@ -5,8 +5,9 @@ OUT="./include/version.h"
 TMP="$(mktemp)"
 
 # Fallback values if git is missing or not a git repository
+# rev-parse rather than testing ./.git, which is a file in worktrees and submodules
 IS_GIT_REPO=true
-if ! command -v git >/dev/null 2>&1 || [ ! -d ./.git ]; then
+if ! command -v git >/dev/null 2>&1 || ! git rev-parse --git-dir >/dev/null 2>&1; then
     IS_GIT_REPO=false
 fi
 
@@ -28,15 +29,15 @@ else
     COMMITS=${COMMITS-$(git rev-list --count HEAD 2>/dev/null || echo "0")}
 fi
 
-cp ./include/version.h.in "$TMP"
-
-sed -i -e "s#@HASH@#$HASH#" "$TMP"
-sed -i -e "s#@BRANCH@#$BRANCH#" "$TMP"
-sed -i -e "s#@MESSAGE@#$MESSAGE#" "$TMP"
-sed -i -e "s#@DATE@#$DATE#" "$TMP"
-sed -i -e "s#@DIRTY@#$DIRTY#" "$TMP"
-sed -i -e "s#@TAG@#$TAG#" "$TMP"
-sed -i -e "s#@COMMITS@#$COMMITS#" "$TMP"
+# No sed -i: BSD and macOS sed take its argument as a backup suffix
+sed -e "s#@HASH@#$HASH#" \
+    -e "s#@BRANCH@#$BRANCH#" \
+    -e "s#@MESSAGE@#$MESSAGE#" \
+    -e "s#@DATE@#$DATE#" \
+    -e "s#@DIRTY@#$DIRTY#" \
+    -e "s#@TAG@#$TAG#" \
+    -e "s#@COMMITS@#$COMMITS#" \
+    ./include/version.h.in > "$TMP"
 
 if [ ! -f "$OUT" ] || ! cmp -s "$TMP" "$OUT"; then
     mv "$TMP" "$OUT"
