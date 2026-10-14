@@ -296,5 +296,30 @@ systemd.user.sessionVariables = {
 
 Open an [issue](https://github.com/Toni500github/oshot/issues) with your OS version, the exact error message, and steps to reproduce.
 
+## How oshot is developed
+
+oshot is a solo project. I've been building it since December 2025 in whatever time university and exams leave me.
+A few people who use it daily have sent fixes, and the people in the r/unixporn Discord thread helped shape a lot of it,
+but most days it's just me. For now, at least: see [Contributing](#contributing).
+
+Since that time is short, I use AI coding tools (ChatGPT, Claude, DeepSeek) for a large part of the code and most of the
+build and packaging setup. The help from that Discord thread is the reason less of it is AI-generated than it would
+have been.
+
+Nothing ships without me reading it and running it. I test every change on Linux (X11 and Wayland), Windows and macOS,
+in VMs and on real hardware. I once nearly wrecked my school's monitor because a missing `glfwTerminate()` left it
+stuck at a broken resolution, so I take the "real hardware" part seriously. If something is broken, that's on me, not
+on a tool: [open an issue](https://github.com/Toni500github/oshot/issues) and I'll fix it.
+
 ## Contributing
-Bug reports, focused pull requests, and feature proposals (open an issue first) are welcome: https://github.com/Toni500github/oshot/issues
+Give oshot a shot, and if something bugs you, tell me. With one person behind it, every bug report and pull request
+makes a real difference, for me and for everyone else using it.
+
+No contribution is too small:
+- **Found a bug or a crash?** [Open an issue](https://github.com/Toni500github/oshot/issues), even if you aren't sure
+  it's a bug. A screenshot and your OS are often enough.
+- **Spotted a typo or a misplaced dot?** Send a pull request. Yes, really, a one-character fix is welcome.
+- **Missing a feature?** Open an issue first so we can talk about how it fits.
+- **Using oshot daily?** Tell me what annoys you. That feedback is what shaped most of oshot so far.
+
+AI-assisted pull requests are fine, as long as you understand the code and have tested it yourself.
