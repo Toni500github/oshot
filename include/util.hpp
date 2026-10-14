@@ -374,6 +374,7 @@ extern bool g_is_systray;  // old g_is_clipboard_server;
 extern int  g_sock;
 extern int  g_scr_w, g_scr_h;
 extern bool g_is_nix;
+extern bool g_is_flatpak;  // running inside a Flatpak sandbox
 
 extern std::array<char, 100>                              g_sock_path;
 extern std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_imgui_log_sink;
