@@ -143,7 +143,6 @@ void Config::LoadConfigFile(const std::string& filename)
 
 void Config::LoadThemeFile(const std::string& filename)
 {
-    m_theme_path    = filename;
     theme_overrides = {};
     theme_overrides.colors.clear();
 
@@ -153,10 +152,7 @@ void Config::LoadThemeFile(const std::string& filename)
     CdGuard guard(m_config_dir_path);
 
     if (fs::exists(filename))
-    {
         MUST_OK(m_theme.LoadFile(filename), die("{}", _r.error_v()));
-        m_theme_path = filename;
-    }
 
     theme_overrides_t& ov = theme_overrides;
     if (const toml::table* colors = m_theme.GetTbl().at_path("theme.colors").as_table())

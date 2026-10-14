@@ -74,7 +74,6 @@ enum class ToolType : std::uint8_t
 enum class ToolState : std::uint8_t
 {
     Idle,
-    Capturing,
     Selecting,
     Selected,
     Resizing,
@@ -157,7 +156,6 @@ enum class CurrentAction : std::uint8_t
 
 enum class OcrDownloadError : std::uint8_t
 {
-    InvalidRepo,
     InvalidPath,
     FailedToDownload,
     COUNT
@@ -343,8 +341,7 @@ public:
         m_tool_textures[idx(type)]._TexID = static_cast<ImTextureID>(size_t(tex));
     }
 
-    auto&                     GetImGuiIDTexts() { return m_imgui_id_texts; }
-    [[nodiscard]] const auto& GetImageTexture() const { return m_texture_id; }
+    auto& GetImGuiIDTexts() { return m_imgui_id_texts; }
 
     void SetOnImageReload(std::function<void(const capture_result_t&)> fn) { m_on_image_reload = std::move(fn); }
 

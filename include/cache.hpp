@@ -50,8 +50,6 @@ public:
 
     Result<> LoadCacheFile();
 
-    [[nodiscard]] const std::string& GetCacheDirPath() const { return m_cache_dir_path; }
-
     using TomlAPI::GetValue;
     using TomlAPI::SetValue;
 
