@@ -306,7 +306,7 @@ protected:
     /**
      * Get value of config variables
      * @param value The config variable "path" (e.g "config.source-path")
-     * @param fallback Default value if couldn't retrive value
+     * @param fallback Default value if couldn't retrieve the value
      */
     template <typename T>
     T GetValueImpl(const std::string_view value, const T& fallback, bool dont_expand_var = false) const
@@ -340,7 +340,7 @@ private:
     /**
      * Get value of config variables
      * @param value The config variable "path" (e.g "config.source-path")
-     * @param fallback Default value if couldn't retrive value
+     * @param fallback Default value if couldn't retrieve the value
      */
     template <typename T>
     T GetValueIntern(const std::string_view  key,

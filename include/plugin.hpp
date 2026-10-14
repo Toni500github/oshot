@@ -54,7 +54,7 @@ struct plugin_runtime_t
 
     oshot_plugin_t* plugin  = nullptr;  // non-owning and static, process-lifetime per ABI contract
     void*           state   = nullptr;  // owned by the plugin; released via plugin->destroy()
-    const bool      enabled = false;    // set once, never chnaged
+    const bool      enabled = false;    // set once, never changed
     dylib::library  lib;
 
     TomlAPI  config;       // this plugin's own config, loaded from

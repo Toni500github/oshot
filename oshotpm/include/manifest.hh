@@ -76,7 +76,7 @@ struct plugin_t
     std::string description;
 
     // The plugin build directory,
-    // where we'll retrive the built plugin library.
+    // where we'll retrieve the built plugin library.
     std::string output_dir;
 
     // The plugin SPDX Licenses Identifier (MIT, GPL-2.0, ...)

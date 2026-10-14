@@ -46,19 +46,19 @@ Examples:
         oshotpm uninstall tonis-plugins
 
 Commands:
-    help <COMMAND>                     Show help for a specific command. As right now just 'install' and 'list'
-    install [OPTIONS] <REPO(s)>...     Install one or more plugin repository from a Git repo or local path.
-    uninstall <REPO(s)>...             Uninstall one or more installed plugin repository.
+    help <COMMAND>                     Show help for a specific command. Currently only 'install' and 'list'.
+    install [OPTIONS] <REPO(s)>...     Install one or more plugin repositories from a Git repo or local path.
+    uninstall <REPO(s)>...             Uninstall one or more installed plugin repositories.
     enable <REPO/PLUGIN>...            Enable one or more plugins from an installed repository.
     disable <REPO/PLUGIN>...           Disable one or more plugins from an installed repository.
     list [-v]                          Show all plugins installed via state.toml.
-    update                             Update and upgrade all repositories
-    gen-manifest                       Generate a template 'oshotpm.toml' file.
+    update                             Update and upgrade all repositories.
+    gen-manifest                       Generate a template 'oshot-plugin.toml' file.
 
 Global options:
     -h, --help          Show this help message.
     -V, --version       Show version and build information.
-    -D, --dialogs       Enable GUI dialogs
+    -D, --dialogs       Enable GUI dialogs.
 )");
 
 inline constexpr std::string_view oshotpm_help_install = (R"(Usage: oshotpm install [OPTIONS] <REPO>...
@@ -85,18 +85,18 @@ Options:
 // oshot
 
 inline constexpr std::string_view oshot_help = (R"(Usage: oshot [OPTIONS]...
-Lightweight Screenshot tool to extract text (and more) on the fly.
+Lightweight screenshot tool to extract text (and more) on the fly.
 
 GENERAL OPTIONS:
     -h, --help                  Print this help menu.
-    -V, --version               Print version and other infos about the build.
+    -V, --version               Print version and other information about the build.
     -f, --source <PATH>         Path to the image to use as background (use '-' for reading from stdin).
     -C, --config <PATH>         Path to the config file to use (default: ~/.config/oshot/config.toml).
-    -O, --override <OPTION>     Override a config option (e.g "delay=200", "default.ocr-model='jpn'").
+    -O, --override <OPTION>     Override a config option (e.g. "delay=200", "default.ocr-model='jpn'").
     -d, --delay <MILLIS>        Delay the app before acquiring the screenshot by milliseconds.
-                                Won't affect if using the -f flag
+                                Has no effect with the -f flag.
 
-    --instant-copy/save         Instant copy/save a selection once it's selected
+    --instant-copy/save         Instantly copy/save a selection once it's selected.
     --gen-config [<PATH>]       Generate default config file. If PATH is omitted, saves to default location.
                                 Prompts before overwriting.
 
@@ -106,7 +106,7 @@ GENERAL OPTIONS:
 
 // default oshot config
 inline constexpr std::string_view AUTOCONFIG = R"#([default]
-# Default Path to where we'll use all the '.traineddata' models.
+# Default path to where we'll use all the '.traineddata' models.
 # The TESSDATA_PREFIX environment variable supersedes this.
 ocr-path = "{}"
 
@@ -115,11 +115,11 @@ ocr-model = "{}"
 
 # GitHub repository from where we are going to
 # download an OCR '.traineddata' model.
-# The models must be on the root directory of the repository
-ocr-repo-downlaod = "{}"
+# The models must be in the root directory of the repository.
+ocr-repo-download = "{}"
 
 # Delay the app before acquiring a screenshot (in milliseconds)
-# Doesn't affect if opening external image (i.e. -f flag)
+# Has no effect when opening an external image (i.e. -f flag)
 delay = {}
 
 # Which ImGui color picker widget to use for annotation colors.
@@ -149,7 +149,7 @@ allow-text-edit = {}
 # Display the text tools window (OCR, Bar/QR code scan) at startup.
 show-text-tools = {}
 
-# Prefer using config variables over environment variable.
+# Prefer using config variables over environment variables.
 config-over-env = {}
 
 # Consider annotations when scanning (true)
@@ -174,7 +174,7 @@ hotkey = "{}"
 # Fonts to use for the application. Can be an absolute path, or just a name.
 # You can combine multiple fonts for multiple language support.
 # for example, using "Roboto-Regular.ttf" and "RobotoCJK-Regular.ttc" for Chinese, Japanese, and Korean support alongside English support.
-# If empty, or non-existent (or commented out), oshot will use the default font for ImGUI.
+# If empty, or non-existent (or commented out), oshot will use the default font for ImGui.
 fonts = [{}]
 
 # Extension of the output image when saving/copying.
@@ -192,7 +192,7 @@ image-out-fmt = "{}"
 
 # Size format of the capture in the selected image
 # extension from image-out-ext, shown under the capture size widget.
-# Case Sensitive.
+# Case sensitive.
 # Accepts: "off", "auto", "B", "KiB", "MiB", "KB", "MB", more...
 image-out-size-ind = "{}"
 
@@ -286,7 +286,7 @@ PlotHistogram = "#5274F0FF"
 
 inline constexpr std::string_view AUTO_MANIFEST = R"([repository]
 # The repository name.
-# It must contain only alpha-numeric characters and symbols such as '-' or '_'
+# It must contain only alphanumeric characters and symbols such as '-' or '_'
 name = "repo_name"
 
 # The repository git clone / homepage url.
@@ -305,11 +305,11 @@ macos   = ["gtk+3"]
 
 # From now on, each table that is neither "repository" nor "dependencies" will be treated as a plugin entry.
 # The table's name (e.g. "test-plugin" below) is used directly as the plugin's name,
-# so it still must conform to alpha-numeric characters and symbols such as '-' or '_'
+# so it still must conform to alphanumeric characters and symbols such as '-' or '_'
 [test-plugin]
 
 # The plugin ID.
-# It must contain only alpha-numeric characters and symbols such as '-' or '_'
+# It must contain only alphanumeric characters and symbols such as '-' or '_'
 # and at least one dot '.'
 id = "dev.test-plugin"
 
@@ -330,12 +330,12 @@ platforms = ["all"]
 
 # The directory where the final plugin output (the built library) shall be found.
 # It is checked right after running build-steps below; oshotpm then picks up the
-# one library found in this directory and installs it as one of this plugin's library.
+# one library found in this directory and installs it as one of this plugin's libraries.
 # The path is relative to the repository root unless absolute.
 output-dir = "build/plugin-dir/"
 
 # A list of commands to be executed for building the plugin.
-# All commands are executed in a single shared shell session, in a concatened && sequences,
+# All commands are chained with && and executed in a single shared shell session,
 # so environment variables, `cd`, and other shell state persist across steps.
 # Commands are executed in order and stop at the first failure.
 build-steps = [

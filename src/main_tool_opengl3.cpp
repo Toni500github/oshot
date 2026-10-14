@@ -208,7 +208,7 @@ int run_main_tool()
 
 #  if !DEBUG
     // Don't make the window actually fullscreen if debug build
-    // this because on Windows it hanged in gdb and everytime I had to restart the VM
+    // this because on Windows it hanged in gdb and every time I had to restart the VM
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);  // Borderless
     glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);    // Always on top
     glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE);
