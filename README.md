@@ -203,7 +203,7 @@ sudo pacman -S --needed \
 
 ```bash
 pkg install git cmake pkgconf gmake \
-  glfw tesseract zbar gtk3 libayatana-appindicator dbus \
+  glfw tesseract zbar gtk3 libappindicator dbus \
   libX11 libXrandr mesa-libs wayland wayland-protocols
 ```
 
