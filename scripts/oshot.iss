@@ -5,6 +5,9 @@
 ;
 ; SourceDir is relative to this script. It must contain oshot.exe, its DLLs and models\eng.traineddata,
 ; i.e. the same folder that goes into the portable zip.
+;
+; The uninstaller asks whether to delete the user data (%APPDATA%\oshot, %LOCALAPPDATA%\oshot and
+; %LOCALAPPDATA%\oshotpm). Silent uninstalls keep it unless /PURGE is passed: unins000.exe /SILENT /PURGE
 
 #ifndef AppVersion
   #error AppVersion must be defined (/DAppVersion=x.y.z)
@@ -71,3 +74,75 @@ Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: s
 [Run]
 Filename: "{app}\oshot.exe"; Parameters: "--tray"; Description: "Start oshot in the system tray"; \
     Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+; Also remove what the installer didn't put there (leftovers of a running oshot, models added by hand, ...)
+Type: filesandordirs; Name: "{app}"; Check: IsOshotDir
+
+[Code]
+var
+  DeleteUserData: Boolean;
+
+// Never wipe a folder the user pointed the installer at, like C:\Program Files.
+// Evaluated at install time, when the entry is written to the uninstall log.
+function IsOshotDir: Boolean;
+begin
+  Result := Pos('oshot', Lowercase(ExtractFileName(ExpandConstant('{app}')))) > 0;
+end;
+
+function HasParam(const Name: String): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), Name) = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+end;
+
+// The tray instance usually runs at sign-in; its locked files would otherwise be left behind.
+// Only kill processes started from {app}, so a portable oshot elsewhere keeps running.
+procedure StopRunningOshot;
+var
+  AppDir:     String;
+  ResultCode: Integer;
+begin
+  AppDir := ExpandConstant('{app}\');
+  StringChangeEx(AppDir, '''', '''''', True);
+  Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+       '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "' +
+       'Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and ' +
+       '$_.ExecutablePath.StartsWith(''' + AppDir + ''', ''OrdinalIgnoreCase'') } | ' +
+       'Invoke-CimMethod -MethodName Terminate | Out-Null"',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(500);
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  case CurUninstallStep of
+    usUninstall:
+      begin
+        // Silent uninstalls keep the user data unless /PURGE is passed
+        if UninstallSilent then
+          DeleteUserData := HasParam('/PURGE')
+        else
+          DeleteUserData := MsgBox('Do you also want to delete your oshot settings, themes, OCR models and plugins?' + #13#10#13#10 +
+                                   ExpandConstant('{userappdata}\oshot') + #13#10 +
+                                   ExpandConstant('{localappdata}\oshot') + #13#10 +
+                                   ExpandConstant('{localappdata}\oshotpm'),
+                                   mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+        StopRunningOshot;
+      end;
+    usPostUninstall:
+      if DeleteUserData then
+      begin
+        DelTree(ExpandConstant('{userappdata}\oshot'), True, True, True);
+        DelTree(ExpandConstant('{localappdata}\oshot'), True, True, True);
+        DelTree(ExpandConstant('{localappdata}\oshotpm'), True, True, True);
+      end;
+  end;
+end;
