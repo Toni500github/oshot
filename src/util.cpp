@@ -1044,7 +1044,7 @@ void build_font_atlas(ImGuiIO& io)
         if (!first)
         {
             first = f;
-            // this value is false by default, and we can't set it to true without adding atleast one font first.
+            // this value is false by default, and we can't set it to true without adding at least one font first.
             // so, after we add the first font, this will be true (and will stay true).
             // MergeMode fills the gap in previous fonts with glyphs from this font, for example, adding Arabic glyphs to a non-Arabic font.
             font_cfg.MergeMode = true;

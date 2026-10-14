@@ -264,7 +264,7 @@ ninja
 
 Download [MesaForWindows.7z](https://downloads.fdossena.com/geth.php?r=mesa64-latest), extract `opengl32.dll` beside `oshot.exe`, and relaunch.
 
-### Linux: missing/mismatch runtime libraries
+### Linux: missing/mismatched runtime libraries
 
 Use the AppImage build.
 

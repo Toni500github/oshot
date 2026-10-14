@@ -137,7 +137,7 @@ static void help(bool invalid_opt = false, std::string_view bad_opt = {})
 
 // clang-format off
 // NOLINTBEGIN
-// parseargs() but only for parsing the user config path trough args
+// parseargs() but only for parsing the user config path through args
 // and so we can directly construct Config
 static fs::path parse_config_path(int argc, char* argv[], const fs::path& configDir)
 {
@@ -782,7 +782,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
 #endif
     }
 
-    // Quitted the tray
+    // The tray loop has exited
     request_quit();
 #if !OSHOT_TOOL_ON_MAIN_THREAD
     worker.join();

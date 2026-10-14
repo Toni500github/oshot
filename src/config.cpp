@@ -91,8 +91,11 @@ void Config::LoadConfigFile(const std::string& filename)
 {
     MUST_OK(LoadFile(filename), die("{}", _r.error_v()));
 
+    // older versions wrote the misspelled "ocr-repo-downlaod" key
+    const std::string legacy_ocr_repo = GetValue<std::string>("default.ocr-repo-downlaod", "tesseract-ocr/tessdata");
+
     File.ocr_path         = GetValue<std::string>("default.ocr-path", File.ocr_path);
-    File.ocr_get_repo     = GetValue<std::string>("default.ocr-repo-downlaod", "tesseract-ocr/tessdata");
+    File.ocr_get_repo     = GetValue<std::string>("default.ocr-repo-download", legacy_ocr_repo);
     File.ocr_model        = GetValue<std::string>("default.ocr-model", "eng");
     File.theme_file_path  = GetValue<std::string>("default.theme-file", "theme.toml");
     File.image_out_fmt    = GetValue<std::string>("default.image-out-fmt", "oshot_{:%F_%H-%M}");
