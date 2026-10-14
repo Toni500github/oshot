@@ -415,7 +415,7 @@ jobs:
               tesseract \
               zbar \
               gtk3 \
-              libayatana-appindicator \
+              libappindicator \
               dbus \
               libX11 \
               libXrandr \

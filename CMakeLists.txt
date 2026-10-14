@@ -122,14 +122,21 @@ message(STATUS "LEPTONICA_INCLUDE_DIRS after: ${LEPTONICA_INCLUDE_DIRS}")
 
 if(UNIX AND NOT APPLE)
     find_package(X11 REQUIRED)
-    pkg_check_modules(APPINDICATOR appindicator3-0.1)
+    # Imported targets carry the full library paths: on the BSDs these
+    # live in /usr/local/lib, which the linker doesn't search by default
+    pkg_check_modules(APPINDICATOR IMPORTED_TARGET appindicator3-0.1)
     if(NOT APPINDICATOR_FOUND)
-        pkg_check_modules(APPINDICATOR REQUIRED ayatana-appindicator3-0.1)
+        pkg_check_modules(
+            APPINDICATOR
+            REQUIRED
+            IMPORTED_TARGET
+            ayatana-appindicator3-0.1
+        )
     endif()
-    pkg_check_modules(GIO REQUIRED gio-2.0)
-    pkg_check_modules(XRANDR REQUIRED xrandr)
-    pkg_check_modules(GTK REQUIRED gtk+-3.0)
-    pkg_check_modules(DBUS REQUIRED dbus-1)
+    pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0)
+    pkg_check_modules(XRANDR REQUIRED IMPORTED_TARGET xrandr)
+    pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
+    pkg_check_modules(DBUS REQUIRED IMPORTED_TARGET dbus-1)
     pkg_check_modules(
         WAYLAND
         REQUIRED
@@ -359,30 +366,15 @@ elseif(APPLE)
             "-framework OpenGL"
     )
 else()
-    target_include_directories(
-        oshot_common
-        PRIVATE ${APPINDICATOR_INCLUDE_DIRS} ${WAYLAND_INCLUDE_DIRS}
-    )
-    target_compile_options(oshot_common PRIVATE ${APPINDICATOR_CFLAGS_OTHER})
-
-    target_link_libraries(oshot_common PRIVATE X11::X11)
-    target_include_directories(
-        oshot_common
-        PRIVATE
-        SYSTEM
-        ${GIO_INCLUDE_DIRS}
-        ${XRANDR_INCLUDE_DIRS}
-    )
+    # GTK: util.hpp calls gtk_events_pending()/gtk_main_iteration()
     target_link_libraries(
         oshot_common
-        PRIVATE ${GIO_LIBRARIES} ${XRANDR_LIBRARIES} PkgConfig::WAYLAND
-    )
-    target_compile_options(
-        oshot_common
         PRIVATE
-            ${GIO_CFLAGS_OTHER}
-            ${XRANDR_CFLAGS_OTHER}
-            ${WAYLAND_CFLAGS_OTHER}
+            X11::X11
+            PkgConfig::GTK
+            PkgConfig::GIO
+            PkgConfig::XRANDR
+            PkgConfig::WAYLAND
     )
 
     pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
@@ -609,26 +601,11 @@ else()
             target_compile_definitions(tray PRIVATE TRAY_APPKIT=1)
             target_link_libraries(tray PRIVATE ${COCOA_FRAMEWORK})
         else()
-            target_compile_options(
-                tray
-                PRIVATE ${GTK_CFLAGS} ${GTK_CFLAGS_OTHER}
-            )
-            target_include_directories(
-                tray
-                PRIVATE ${GTK_INCLUDE_DIRS} ${APPINDICATOR_INCLUDE_DIRS}
-            )
-            target_link_directories(
-                tray
-                PRIVATE ${GTK_LIBRARY_DIRS} ${APPINDICATOR_LIBRARY_DIRS}
-            )
-            target_link_libraries(tray PRIVATE ${GTK_LIBRARIES})
-
-            target_compile_options(
-                tray
-                PRIVATE ${APPINDICATOR_CFLAGS} ${APPINDICATOR_CFLAGS_OTHER}
-            )
             target_compile_definitions(tray PRIVATE TRAY_APPINDICATOR=1)
-            target_link_libraries(tray PRIVATE ${APPINDICATOR_LIBRARIES})
+            target_link_libraries(
+                tray
+                PRIVATE PkgConfig::GTK PkgConfig::APPINDICATOR
+            )
         endif()
     endif()
 endif()
@@ -729,20 +706,7 @@ elseif(APPLE)
             "-framework UserNotifications"
     )
 else()
-    target_compile_options(
-        nvdialog
-        PRIVATE
-            ${GTK_CFLAGS}
-            ${GTK_CFLAGS_OTHER}
-            ${DBUS_CFLAGS}
-            ${DBUS_CFLAGS_OTHER}
-    )
-    target_include_directories(nvdialog PRIVATE ${DBUS_INCLUDE_DIRS})
-    target_link_directories(
-        nvdialog
-        PRIVATE ${GTK_LIBRARY_DIRS} ${DBUS_LIBRARY_DIRS}
-    )
-    target_link_libraries(nvdialog PRIVATE ${GTK_LIBRARIES} ${DBUS_LIBRARIES})
+    target_link_libraries(nvdialog PRIVATE PkgConfig::GTK PkgConfig::DBUS)
 endif()
 
 # -----------------------------
