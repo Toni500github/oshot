@@ -460,6 +460,9 @@ private:
     OcrAPI           m_ocr_api;
     ZbarAPI          m_zbar_api;
     capture_result_t m_screenshot;
+    // The whole-desktop capture at full resolution while the output picker is
+    // open, so the chosen monitor is cropped from it and not from the shrunk copy
+    capture_result_t m_uncropped;
 
     ImTextureRef m_texture_id;
     ToolState    m_state = ToolState::Idle;

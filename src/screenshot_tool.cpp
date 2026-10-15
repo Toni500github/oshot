@@ -476,6 +476,9 @@ Result<> ScreenshotTool::Start()
 
 Result<> ScreenshotTool::StartWindow()
 {
+    m_uncropped = {};
+    if (m_show_window.Has(SubWindow::OutputMenuSelection))
+        m_uncropped = m_screenshot;
     fit_to_screen(m_screenshot);
 
     // Do not load anything about the text tools window,
@@ -4319,14 +4322,17 @@ void ScreenshotTool::UpdateAnnsToolbarPos()
 
 Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const monitor_t& target, int transform)
 {
-    Result<capture_result_t> cropped = crop_to_monitor(m_screenshot, layout, target.geo);
+    const capture_result_t&  full    = m_uncropped.data.empty() ? m_screenshot : m_uncropped;
+    Result<capture_result_t> cropped = crop_to_monitor(full, layout, target.geo);
     TRY_MSG(cropped, "Failed to crop capture to focused monitor: {}");
 
     m_screenshot = std::move(cropped.get());
+    m_uncropped  = {};
 
     spdlog::debug("target.transform = {}", target.transform);
     if (transform >= 1 && transform <= 3)
         m_screenshot = rotate_rgba(m_screenshot, 4 - transform);  // swap 1 (90) and 3 (270)
+    fit_to_screen(m_screenshot);
 
     const Result<ImTextureRef>& r =
         CreateTexture(m_texture_id._TexID, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
