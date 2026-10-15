@@ -412,6 +412,9 @@ std::string get_default_ocr_path();
 Result<capture_result_t> load_image_rgba(const std::string& path);
 Result<std::string>      get_config_image_out_fmt();
 Result<>                 save_image(SavingOp op, const capture_result_t& img, ImageExt ext);
+Result<>                 write_image_file(const std::string& path, const capture_result_t& img, ImageExt ext);
+// Writes `img` in `dir` (created if missing), named after the image-out-fmt option. Returns its path
+Result<std::string> save_image_to_dir(const fs::path& dir, const capture_result_t& img, ImageExt ext);
 
 void minimize_window();
 void maximize_window();

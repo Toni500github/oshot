@@ -72,6 +72,7 @@
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "switch_fnv1a.hpp"
+#include "text_extraction.hpp"
 #include "texts.hpp"
 #include "tiny-process-library/process.hpp"
 #include "tinyfiledialogs.h"
@@ -181,9 +182,12 @@ static bool parseargs(int argc, char* argv[], const fs::path& configFile)
         {"source",  required_argument, 0, 'f'},
         {"override",required_argument, 0, 'O'},
 
-        {"instant-save", no_argument,       0, "instant-save"_fnv1a16},
-        {"instant-copy", no_argument,       0, "instant-copy"_fnv1a16},
-        {"gen-config",   optional_argument, 0, "gen-config"_fnv1a16},
+        {"instant-save",    optional_argument, 0, "instant-save"_fnv1a16},
+        {"instant-copy",    no_argument,       0, "instant-copy"_fnv1a16},
+        {"extract-text",    no_argument,       0, "extract-text"_fnv1a16},
+        {"extract-barcode", no_argument,       0, "extract-barcode"_fnv1a16},
+        {"selection",       required_argument, 0, "selection"_fnv1a16},
+        {"gen-config",      optional_argument, 0, "gen-config"_fnv1a16},
 
         {0,0,0,0}
     };
@@ -216,9 +220,27 @@ static bool parseargs(int argc, char* argv[], const fs::path& configFile)
                 g_config->Runtime.only_launch_gui = true; break;
 
             case "instant-save"_fnv1a16:
-                g_config->Runtime.instant_copy_save = SavingOp::File; break;
+                g_config->Runtime.instant_copy_save = SavingOp::File;
+                if (OPTIONAL_ARGUMENT_IS_PRESENT)
+                    g_config->Runtime.instant_save_dir = expand_var(optarg);
+                break;
             case "instant-copy"_fnv1a16:
                 g_config->Runtime.instant_copy_save = SavingOp::Clipboard; break;
+            case "extract-text"_fnv1a16:
+                g_config->Runtime.extract_text = true; break;
+            case "extract-barcode"_fnv1a16:
+                g_config->Runtime.extract_barcode = true; break;
+            case "selection"_fnv1a16:
+            {
+                Result<region_t> region = parse_region(optarg);
+                if (!region.ok())
+                {
+                    spdlog::error("{}", region.error_v());
+                    std::exit(EXIT_FAILURE);
+                }
+                g_config->Runtime.selection = region.get();
+                break;
+            }
 
             case "gen-config"_fnv1a16:
                 if (OPTIONAL_ARGUMENT_IS_PRESENT)
@@ -302,6 +324,136 @@ static int run_capture()
     return ret;
 }
 
+// Script mode: --extract-text/--extract-barcode, or --instant-copy/--instant-save
+// with --selection. Takes the screenshot (or -f image), crops it to the
+// selection and extracts/copies/saves it with no window, dialog or notification
+static int run_without_overlay()
+{
+    const auto& rt      = g_config->Runtime;
+    const bool  extract = rt.extract_text || rt.extract_barcode;
+
+    if (extract && rt.instant_copy_save == SavingOp::File)
+    {
+        spdlog::error("--instant-save can't be used with --extract-text/--extract-barcode");
+        return EXIT_FAILURE;
+    }
+
+    Result<capture_result_t> loaded{ Err() };
+    if (!rt.source_file.empty())
+    {
+        loaded = load_image_rgba(rt.source_file);
+    }
+    else
+    {
+        if (g_config->File.delay > 0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(g_config->File.delay));
+        loaded = capture_full_screen(get_session_type());
+    }
+    if (!loaded.ok())
+    {
+        spdlog::error("Failed to get the image: {}", loaded.error_v());
+        return EXIT_FAILURE;
+    }
+
+    capture_result_t image = std::move(loaded.get());
+    if (rt.selection)
+    {
+        Result<capture_result_t> cropped = crop_image(image, *rt.selection);
+        if (!cropped.ok())
+        {
+            spdlog::error("--selection: {}", cropped.error_v());
+            return EXIT_FAILURE;
+        }
+        image = std::move(cropped.get());
+    }
+
+    if (!extract)
+    {
+        const ImageExt ext = g_config->File.image_out_type.second;
+        if (rt.instant_copy_save == SavingOp::Clipboard)
+        {
+            const Result<>& res = g_clipboard.CopyImage(image, ext);
+            if (!res.ok())
+            {
+                spdlog::error("Failed to copy the image: {}", res.error_v());
+                return EXIT_FAILURE;
+            }
+            return EXIT_SUCCESS;
+        }
+
+        // No save dialog: the --instant-save folder, or the one the overlay
+        // last saved to, then print where it went
+        const fs::path dir = rt.instant_save_dir.empty()
+                                 ? g_cache->GetValue(CacheEntry::ImgSavePath, get_home_pictures_dir().string())
+                                 : rt.instant_save_dir;
+
+        const Result<std::string>& path = save_image_to_dir(dir, image, ext);
+        if (!path.ok())
+        {
+            spdlog::error("{}", path.error_v());
+            return EXIT_FAILURE;
+        }
+        fmt::println("{}", path.get());
+        return EXIT_SUCCESS;
+    }
+
+    std::vector<std::string> outputs;
+    if (rt.extract_text)
+    {
+        OcrAPI          ocr;
+        const Result<>& configured = ocr.Configure(g_config->File.ocr_path.c_str(), g_config->File.ocr_model.c_str());
+        if (!configured.ok())
+        {
+            spdlog::error("Failed to load the OCR model '{}' from '{}': {}",
+                          g_config->File.ocr_model,
+                          g_config->File.ocr_path,
+                          configured.error_v());
+            return EXIT_FAILURE;
+        }
+
+        Result<ocr_result_t> text = ocr.ExtractTextCapture(image);
+        if (text.ok())
+            outputs.push_back(std::move(text.get().data));
+        else
+            spdlog::warn("OCR: {}", text.error_v());
+    }
+
+    if (rt.extract_barcode)
+    {
+        ZbarAPI               zbar;
+        Result<zbar_result_t> codes = zbar.ExtractTextsCapture(image);
+        if (codes.ok())
+            std::ranges::move(codes.get().datas, std::back_inserter(outputs));
+        else
+            spdlog::warn("Barcode: {}", codes.error_v());
+    }
+
+    if (outputs.empty())
+    {
+        spdlog::error("Nothing found in the image");
+        return EXIT_FAILURE;
+    }
+
+    std::string joined;
+    for (const std::string& out : outputs)
+        joined += out + '\n';
+
+    if (rt.instant_copy_save == SavingOp::Clipboard)
+    {
+        joined.pop_back();
+        const Result<>& res = g_clipboard.CopyText(joined);
+        if (!res.ok())
+        {
+            spdlog::error("{}", res.error_v());
+            return EXIT_FAILURE;
+        }
+        return EXIT_SUCCESS;
+    }
+
+    fmt::print("{}", joined);
+    return EXIT_SUCCESS;
+}
+
 void glfw_error_callback(int i_error, const char* description)
 {
     error("GLFW Error {}: {}", i_error, description);
@@ -374,8 +526,9 @@ static void sync_hotkey()
     spdlog::warn("Global hotkey: {}", res.error_v());
     const std::string& body =
         fmt::format("{}\nPick another shortcut in Preferences, or set 'hotkey' in the config.", res.error_v());
-    NvdNotification* notif =
-        init_dialogs() ? nvd_notification_new("oshot: hotkey not set", body.c_str(), NVD_NOTIFICATION_WARNING) : nullptr;
+    NvdNotification* notif = init_dialogs()
+                                 ? nvd_notification_new("oshot: hotkey not set", body.c_str(), NVD_NOTIFICATION_WARNING)
+                                 : nullptr;
     if (notif)
     {
         nvd_send_notification(notif);
@@ -538,10 +691,22 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
         }
     }
 
-    // Writing to the missing stdout/stderr fails and fmt::print() throws
-    FILE* dummy = nullptr;
-    freopen_s(&dummy, "NUL", "w", stdout);
-    freopen_s(&dummy, "NUL", "w", stderr);
+    // GUI-subsystem app: stdout/stderr only exist when redirected (scripts
+    // reading --extract-text). Otherwise write to the console oshot was
+    // started from, if any, or to NUL: writing to a missing stream fails and
+    // fmt::print() throws
+    const auto has_stream = [](DWORD id) {
+        HANDLE h = GetStdHandle(id);
+        return h != nullptr && h != INVALID_HANDLE_VALUE;
+    };
+    const bool has_out    = has_stream(STD_OUTPUT_HANDLE);
+    const bool has_err    = has_stream(STD_ERROR_HANDLE);
+    const bool to_console = (!has_out || !has_err) && AttachConsole(ATTACH_PARENT_PROCESS);
+    FILE*      dummy      = nullptr;
+    if (!has_out)
+        freopen_s(&dummy, to_console ? "CONOUT$" : "NUL", "w", stdout);
+    if (!has_err)
+        freopen_s(&dummy, to_console ? "CONOUT$" : "NUL", "w", stderr);
 
     // UTF-8 argv instead of the ANSI code page one
     std::vector<std::string> args;
@@ -606,7 +771,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     signal(SIGSEGV, on_crash_signal);
 #endif
 
-    auto console = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    auto console = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
     auto imgui   = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(500);  // keep last 500 lines
     std::vector<spdlog::sink_ptr> sinks = { console, imgui };
     if (file)
@@ -631,6 +796,17 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     if (!parseargs(argc, argv, configFile))
         return EXIT_FAILURE;
 
+    const bool no_overlay = g_config->Runtime.extract_text || g_config->Runtime.extract_barcode ||
+                            (g_config->Runtime.selection && g_config->Runtime.instant_copy_save != SavingOp::kNone);
+    if (g_config->Runtime.selection && !no_overlay)
+    {
+        spdlog::error("--selection needs --extract-text, --extract-barcode, --instant-copy or --instant-save");
+        return EXIT_FAILURE;
+    }
+    // stdout is for the extracted text, and the info logs would clutter a terminal or script
+    if (no_overlay)
+        console->set_level(spdlog::level::warn);
+
     g_config->LoadConfigFile(configFile);
     {
         fs::path p(g_config->File.theme_file_path);
@@ -645,6 +821,9 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
         logger.info("Log file path: {}", file->filename());
     logger.flush();
     spdlog::flush_every(1s);
+
+    if (no_overlay)
+        return run_without_overlay();
 
     // Before taking the tray lock: any number of --gui overlays can run at
     // once, and one shouldn't keep a tray from starting while it's open

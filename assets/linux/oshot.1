@@ -36,8 +36,33 @@ Override a config option, for example
 Wait \fIMILLIS\fR milliseconds before capturing the screen.
 Has no effect with \fB\-f\fR.
 .TP
-.BR \-\-instant\-copy ", " \-\-instant\-save
-Copy or save the selection as soon as it is made.
+.BR \-\-instant\-copy ", " \-\-instant\-save [=\fIDIR\fR]
+Copy or save the selection as soon as it is made. With \fIDIR\fR, save it
+there without asking, named after the \fBimage-out-fmt\fR option; \fIDIR\fR is
+created if it doesn't exist.
+.TP
+.B \-\-extract\-text
+Print the text of the screenshot, or of the \fB\-f\fR image, recognized with OCR,
+without opening the overlay. With \fB\-\-instant\-copy\fR, copy it to the
+clipboard instead. Exits with status 1 if no text is found.
+.TP
+.B \-\-extract\-barcode
+Like \fB\-\-extract\-text\fR, for QR codes and barcodes: prints the content of
+each one found, one per line.
+.TP
+.BR \-\-selection " \fIREGION\fR"
+Use only \fIREGION\fR of the screenshot or image, in its pixels, given as
+\fIW\fRx\fIH\fR+\fIX\fR+\fIY\fR (as printed by
+.BR slop (1))
+or "\fIX\fR,\fIY\fR \fIW\fRx\fIH\fR" (as printed by
+.BR slurp (1)).
+Needs \fB\-\-extract\-text\fR, \fB\-\-extract\-barcode\fR, \fB\-\-instant\-copy\fR
+or \fB\-\-instant\-save\fR, and skips the overlay. \fB\-\-instant\-save\fR then
+saves without asking, to \fIDIR\fR or else the folder an image was last saved
+to (by default the Pictures folder), and prints the file's path.
+.PP
+These options are meant for scripts: they never open a window, dialog or
+notification, print errors on stderr, and exit with status 1 on failure.
 .TP
 .BR \-\-gen\-config " [\fIPATH\fR]"
 Generate the default config file at \fIPATH\fR, or at the default location

@@ -234,6 +234,11 @@ oshot              # captures a screenshot and opens the overlay, then stays in 
 oshot --gui        # only capture and open the overlay (for keyboard shortcuts)
 oshot --tray       # start in the tray without capturing
 oshot -f <path>    # open an image file instead of capturing
+
+oshot --extract-text                                # print the text on the screen, no overlay
+oshot -f <path> --extract-text --selection 400x80+10+20   # text of one region of an image
+oshot --extract-barcode --instant-copy              # copy the QR codes/barcodes on the screen
+oshot --instant-copy --selection "$(slop)"          # copy a region picked with slop as an image
 ```
 
 ### Keyboard shortcuts

@@ -28,8 +28,10 @@
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 
+#include "screen_capture.hpp"
 #include "toml_api.hpp"
 #include "util.hpp"
 
@@ -87,6 +89,12 @@ public:
         bool        only_launch_tray  = false;
         bool        only_launch_gui   = false;
         SavingOp    instant_copy_save = SavingOp::kNone;
+        std::string instant_save_dir;  // --instant-save=DIR: save there without asking
+        bool        extract_text      = false;
+        bool        extract_barcode   = false;
+
+        // --selection: region of the screenshot (or -f image) to use, skips the overlay
+        std::optional<region_t> selection;
 
         bool operator==(const runtime_settings_t&) const = default;
     } Runtime;

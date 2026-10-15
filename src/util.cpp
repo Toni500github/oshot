@@ -405,6 +405,35 @@ void disable_dialogs() noexcept
     dialogs_disabled = true;
 }
 
+Result<> write_image_file(const std::string& path, const capture_result_t& img, ImageExt ext)
+{
+    FILE* fp = fopen(path.c_str(), "wb");
+    if (!fp)
+        return Err("Failed to open {} to write the image: {}", path, strerror(errno));
+
+    const std::vector<uint8_t>& data    = encode_to_image(img, ext);
+    size_t                      written = fwrite(data.data(), 1, data.size(), fp);
+    fclose(fp);
+    if (written != data.size())
+        return Err("Failed to write image data to {}", path);
+    return Ok();
+}
+
+Result<std::string> save_image_to_dir(const fs::path& dir, const capture_result_t& img, ImageExt ext)
+{
+    const Result<std::string>& name = get_config_image_out_fmt();
+    TRY(name);
+
+    std::error_code err;
+    fs::create_directories(dir, err);
+    if (err)
+        return Err("Failed to create the folder {}: {}", dir.string(), err.message());
+
+    const std::string path = (dir / name.get()).string();
+    TRY(write_image_file(path, img, ext));
+    return Ok(path);
+}
+
 Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
 {
     auto deleter = [](NvdNotification* p) {
@@ -420,6 +449,17 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
         if (res.ok() && notify)
             notif.reset(nvd_notification_new("Copied!", "Screenshot copied to clipboard", NVD_NOTIFICATION_SIMPLE));
         return res;
+    }
+
+    // --instant-save=DIR: no dialog
+    if (!g_config->Runtime.instant_save_dir.empty())
+    {
+        const Result<std::string>& saved = save_image_to_dir(g_config->Runtime.instant_save_dir, img, ext);
+        TRY(saved);
+        spdlog::info("Saved to {}", saved.get());
+        if (notify)
+            notif.reset(nvd_notification_new("Saved!", "Screenshot saved successfully", NVD_NOTIFICATION_SIMPLE));
+        return Ok();
     }
 
     const Result<std::string>& fmt = get_config_image_out_fmt();
@@ -446,15 +486,7 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
         return Ok();  // Not really an error, maybe the user cancelled
     }
 
-    FILE* fp = fopen(save_path, "wb");
-    if (!fp)
-        return Err("Failed to open file to write image");
-
-    const std::vector<uint8_t>& data    = encode_to_image(img, ext);
-    size_t                      written = fwrite(data.data(), 1, data.size(), fp);
-    fclose(fp);
-    if (written != data.size())
-        return Err("Failed to write image data");
+    TRY(write_image_file(save_path, img, ext));
     if (notify)
         notif.reset(nvd_notification_new("Saved!", "Screenshot saved successfully", NVD_NOTIFICATION_SIMPLE));
 

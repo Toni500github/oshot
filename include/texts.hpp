@@ -97,6 +97,16 @@ GENERAL OPTIONS:
                                 Has no effect with the -f flag.
 
     --instant-copy/save         Instantly copy/save a selection once it's selected.
+    --instant-save=<DIR>        Save it in DIR, named after the "image-out-fmt" option, without asking.
+
+    --extract-text              Print the text (OCR) of the screenshot or -f image, without opening the overlay.
+    --extract-barcode           Print the QR codes and barcodes found in it, one per line.
+                                With --instant-copy, the result is copied to the clipboard instead of printed.
+    --selection <REGION>        Use only this region of the screenshot or -f image, in pixels, as
+                                "WxH+X+Y" (slop) or "X,Y WxH" (slurp). Needs --extract-text, --extract-barcode,
+                                --instant-copy or --instant-save, and skips the overlay.
+                                --instant-save then saves without asking (to DIR, or the last used folder)
+                                and prints the path.
     --gen-config [<PATH>]       Generate default config file. If PATH is omitted, saves to default location.
                                 Prompts before overwriting.
 
