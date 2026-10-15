@@ -385,6 +385,17 @@ static std::unordered_map<std::string, int>& color_name_map()
     return map;
 }
 
+// ImGuiCond_Appearing, plus again whenever the display size changes: on Wayland
+// the overlay only becomes fullscreen after its first frame has been drawn
+static ImGuiCond center_cond(ImVec2& last_display)
+{
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    if (display.x == last_display.x && display.y == last_display.y)
+        return ImGuiCond_Appearing;
+    last_display = display;
+    return ImGuiCond_Always;
+}
+
 void apply_imgui_theme()
 {
     ScreenshotTool::StyleDefaultColor();
@@ -611,7 +622,8 @@ void ScreenshotTool::RenderOverlay()
 
     if (m_main_sel.selection.get_width() == 0 || m_main_sel.selection.get_height() == 0)
     {
-        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+        static ImVec2 hint_display;
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), center_cond(hint_display), ImVec2(0.5f, 0.5f));
         ImGui::Begin("##select_area", nullptr, minimal_win_flags);
         ImGui::TextColored(Colors::GREEN, "Select an area");
         ImGui::TextColored(Colors::CYAN, "Press Save/Copy for the full screenshot");
@@ -4052,7 +4064,8 @@ void ScreenshotTool::DrawOutputMenuSelection()
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 14));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 10));
 
-    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    static ImVec2 menu_display;
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), center_cond(menu_display), ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSizeConstraints(ImVec2(320, 0), ImVec2(520, 480));
     ImGui::Begin("Choose an output to capture##select_output_crop",
                  nullptr,

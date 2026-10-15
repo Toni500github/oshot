@@ -48,6 +48,9 @@
 #    include <windows.h>
 #  elif OSHOT_FREEDESKTOP
 #    include <X11/Xlib.h>
+
+#    include <cstring>
+#    include <deque>
 #  endif
 
 using namespace std::chrono_literals;
@@ -55,6 +58,9 @@ using namespace std::chrono_literals;
 GLFWwindow* window = nullptr;
 
 void apply_imgui_theme();
+#  if OSHOT_FREEDESKTOP
+std::deque<monitor_t> wl_get_monitors();  // wl_get_monitors.cpp
+#  endif
 void glfw_error_callback(int i_error, const char* description);
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
 void register_window_callbacks(void (*minimize_fn)(),
@@ -214,6 +220,24 @@ int run_main_tool()
     glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
 #  endif
 
+    // On Wayland a window can't place or size itself, so a tiling compositor
+    // would tile the overlay like any other window. Fullscreen is the only way
+    // to cover the monitor there, and unlike X11 it never changes the video mode.
+    bool                  fullscreen = g_config->File.real_full_screen;
+    [[maybe_unused]] bool wayland    = false;              // only read on Linux/BSD
+#  if OSHOT_FREEDESKTOP && defined(GLFW_PLATFORM_WAYLAND)  // GLFW 3.4+
+    if (glfwGetPlatform() == GLFW_PLATFORM_WAYLAND)
+    {
+        wayland    = true;
+        fullscreen = true;
+        glfwWindowHintString(GLFW_WAYLAND_APP_ID, "oshot");  // matches oshot.desktop, for window rules and icons
+        // The overlay maps one window unit to one framebuffer pixel. With a scaled
+        // output (e.g. 1.5x) keep it that way and let the compositor upscale, as
+        // it does for XWayland, instead of a framebuffer bigger than the window.
+        glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GLFW_FALSE);
+    }
+#  endif
+
     GLFWmonitor*       monitor = get_monitor_at_cursor();
     const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
 
@@ -223,8 +247,7 @@ int run_main_tool()
     // (they are silently ignored for exclusive fullscreen windows), and
     // keeps mouse/keyboard events scoped to this monitor so they don't
     // bleed in from the other display on multi-monitor setups.
-    window = glfwCreateWindow(
-        mode->width, mode->height, "oshot", g_config->File.real_full_screen ? monitor : nullptr, nullptr);
+    window = glfwCreateWindow(mode->width, mode->height, "oshot", fullscreen ? monitor : nullptr, nullptr);
     if (!window)
     {
         if (!g_is_systray)
@@ -237,6 +260,30 @@ int run_main_tool()
 
     g_scr_w = mode->width;
     g_scr_h = mode->height;
+#  if OSHOT_FREEDESKTOP
+    // On Wayland the video mode is in physical pixels, while a scaled output
+    // gives the window fewer (logical) units: size the overlay to the output's
+    // logical size. The window itself only gets it once the compositor has
+    // configured it as fullscreen, a few events later.
+    if (wayland)
+    {
+        const char* name = glfwGetMonitorName(monitor);
+        for (const monitor_t& m : wl_get_monitors())
+        {
+            if (name && std::strcmp(m.name.data(), name) == 0 && m.geo.w > 0 && m.geo.h > 0)
+            {
+                g_scr_w = m.geo.w;
+                g_scr_h = m.geo.h;
+            }
+        }
+        spdlog::debug("Wayland overlay on {}: {}x{} (output mode {}x{})",
+                      name ? name : "?",
+                      g_scr_w,
+                      g_scr_h,
+                      mode->width,
+                      mode->height);
+    }
+#  endif
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
