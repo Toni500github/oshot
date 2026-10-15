@@ -5,48 +5,119 @@
 <h1 align="center">oshot</h1>
 
 <p align="center">
-Fast, lightweight, cross-platform screenshot text extractor.<br>
-Capture any screen region, extract text, and decode QR/barcodes locally.
+<b>The screenshot tool that can read.</b><br>
+Capture, annotate, extract text and decode QR/barcodes in one overlay.<br>
+Native and offline, on Linux, Windows and macOS.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/languages/top/Toni500github/oshot?logo=cplusplusbuilder&label=%20" />
+  <a href="https://github.com/Toni500github/oshot/releases/latest"><img src="https://img.shields.io/github/v/release/Toni500github/oshot?label=release" /></a>
+  <a href="https://github.com/Toni500github/oshot/releases"><img src="https://img.shields.io/github/downloads/Toni500github/oshot/total?label=downloads" /></a>
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-blue" />
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Toni500github/oshot" /></a>
   <img src="https://img.shields.io/github/actions/workflow/status/Toni500github/oshot/build.yml" />
 </p>
 
-Select a screen region, run OCR or scan a QR/barcode, and copy the result to your clipboard. No uploads, no browser workflow, no bulky image editor. Useful for copying text from apps that block selection, extracting content from VMs or remote desktops, reading text in videos or slides, or decoding QR codes on screen.
-
-Supports Windows, Linux, macOS and the BSDs (built from source).
-
-## Demo
+<p align="center">
+  <a href="#installation">Install</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#how-does-it-compare">Compare</a> ·
+  <a href="#contributing">Contributing</a>
+</p>
 
 https://github.com/user-attachments/assets/8367490a-f7b0-4320-86e9-8ef8764a56b5
 
+Press a hotkey, drag over anything on your screen, and take it with you: as text, as a decoded QR code or barcode, or as an
+annotated image. Everything runs on your machine. No uploads, no account, no browser.
+
+## Why oshot?
+
+- **One tool instead of three.** A screenshot tool, an OCR app and the QR scanner on your phone, all working from the
+  same selection.
+- **Copy what you can't select.** Text in apps that block selection, VMs and remote desktops, videos, slides, error
+  dialogs and images.
+- **Private by default.** OCR (Tesseract) and barcode decoding (ZBar) run locally. oshot only goes online when you ask
+  it to download an OCR language or install a plugin.
+- **Native and light.** C++ and Dear ImGui, no Qt, no Electron, no Python runtime.
+- **One overlay on every OS.** Linux (X11 and Wayland), Windows and macOS share the same overlay and config file. The
+  BSDs build from source.
+- **Extensible (optional).** The `-plugins` builds load plugins through a plain C ABI, so they can be written in any
+  language that can export C functions.
+
+| Extract text | Decode QR codes and barcodes | Annotate |
+| :----------: | :--------------------------: | :------: |
+| ![OCR](assets/screenshots/ocr.png) | ![QR and barcode decoding](assets/screenshots/qr-barcode.png) | ![Annotations](assets/screenshots/annotations.png) |
+
+<details>
+<summary>Another demo</summary>
+
 https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
+
+</details>
 
 ## Features
 
-- Region selection with resize handles, full-screen select (`Ctrl+A`), and capture delay
-- OCR via Tesseract with multiple language models and configurable segmentation mode
-- In-app OCR model downloader (specify a GitHub link and model name)
-- QR/barcode decoding via ZBar
-- Editable OCR output before copying
-- Annotation tools: arrow, line, rectangle, circle, filled shapes, numbered counters, text, freehand pencil
-- Color picker with zoom loupe, undo support
-- **Really Customizable** with Preferences window with light/dark/auto/classic or custom themes
-- Font configuration, output filename format, behavior and rendering options
+**Capture**
+- Region selection with resize handles, full-screen select (`Ctrl+A`) and capture delay
+- Multi-monitor support on X11, Wayland (screenshot portal, Spectacle or grim), Windows and macOS
+- Tray mode with a global hotkey on Windows and macOS (on Linux, bind `oshot --gui` in your desktop settings)
+- Open existing images with `oshot -f <image>`
 - Borderless overlay window, always on top
 
-## Keyboard Shortcuts
+**Read**
+- OCR via Tesseract, with multiple languages and a configurable segmentation mode
+- In-app OCR model downloader
+- QR code and barcode decoding via ZBar
+- Edit the recognized text before copying it
 
-| Shortcut | Action |
-| -------------- | ----------------------- |
-| `Ctrl+C/S` | Copy/Save selection as image |
-| `Ctrl+A` | Select full image |
-| `Ctrl+Z` | Undo |
-| `Ctrl+G` | Toggle handles |
-| `Ctrl+E` | Toggle text editing |
-| `Esc` | Close |
+**Annotate**
+- Arrow, line, rectangle, circle, filled shapes, numbered counters, text and freehand pencil
+- Color picker with zoom loupe, and undo
+- Copy or save the result as an image (`Ctrl+C` / `Ctrl+S`)
+
+**Customize**
+- Light, dark, auto, classic or fully custom themes
+- Fonts, output filename format, behavior and rendering options, from the Preferences window or a TOML config file
+
+**Extend** (only in the `-plugins` builds, see [Installation](#installation))
+- Plain C ABI, so plugins can be written in any language that can export C functions, with UI through cimgui
+- Install, update, enable and disable plugins from git repositories, in the text tools window or from the command line
+  with `oshotpm`
+
+## How does it compare?
+
+|                       | oshot | [Flameshot](https://github.com/flameshot-org/flameshot) | [NormCap](https://github.com/dynobo/normcap) | [ShareX](https://github.com/ShareX/ShareX) |
+| --------------------- | :---: | :-------: | :-----: | :----: |
+| Annotation            | ✅ | ✅ | ❌ | ✅ |
+| OCR                   | ✅ | ❌ ([#702](https://github.com/flameshot-org/flameshot/issues/702)) | ✅ | ✅ |
+| QR / barcode decoding | ✅ | ❌ ([#511](https://github.com/flameshot-org/flameshot/issues/511)) | ✅ | ✅ |
+| Linux                 | ✅ | ✅ | ✅ | ❌ ([#6625](https://github.com/ShareX/ShareX/issues/6625)) |
+| Windows               | ✅ | ✅ | ✅ | ✅ |
+| macOS                 | ✅¹ | ✅ | ✅ | ❌ |
+| Plugins               | ✅² | ❌ | ❌ | ❌ |
+| Pin captures to the screen | ❌ | ✅ | ❌ | ✅ |
+| Upload and share      | ❌ | ✅ | ❌ | ✅ |
+| Screen recording      | ❌ | ❌ | ❌ | ✅ |
+| Distro packages / Flathub | AUR only | ✅ | ✅ | – |
+| Built with            | C++, Dear ImGui | C++, Qt | Python, Qt | C#, WinForms |
+
+<sub>¹ Apple Silicon Macs need macOS 26.4 or later for now, Intel Macs macOS 15. ² Only in the `-plugins` builds.</sub>
+
+Some of these gaps are long-standing requests. Flameshot users have asked for
+[OCR since 2020](https://github.com/flameshot-org/flameshot/issues/702) and for
+[QR code scanning since 2019](https://github.com/flameshot-org/flameshot/issues/511), and
+[Linux support for ShareX](https://github.com/ShareX/ShareX/issues/6625) has been requested since 2022. In oshot, OCR and
+QR/barcode decoding are built in on every platform.
+
+Flameshot and ShareX are mature tools with a lot that oshot doesn't do (yet), and they are far more widely packaged.
+NormCap is focused on getting text into your clipboard. oshot is for when you want text and codes out of your screen,
+and sometimes an annotated screenshot, from one tool on any OS.
+
+Plugins can read the capture and the recognized text, replace the text output, draw their own UI and use the network,
+so features such as uploading, translation or a different OCR engine could be built as plugins. None of these exist
+yet: if you want to write one, [open an issue](https://github.com/Toni500github/oshot/issues) and I'll help.
+
+<sub>Compared as of October 2026. Spotted something out of date? Please open an issue.</sub>
 
 ## Installation
 
@@ -159,6 +230,17 @@ oshot --tray       # start in the tray without capturing
 oshot -f <path>    # open an image file instead of capturing
 ```
 
+### Keyboard shortcuts
+
+| Shortcut | Action |
+| -------------- | ----------------------- |
+| `Ctrl+C/S` | Copy/Save selection as image |
+| `Ctrl+A` | Select full image |
+| `Ctrl+Z` | Undo |
+| `Ctrl+G` | Toggle handles |
+| `Ctrl+E` | Toggle text editing |
+| `Esc` | Close |
+
 ## Build from Source
 
 Requires a C++20 compiler.
@@ -239,14 +321,6 @@ sudo make install          # into /usr (/usr/local on the BSDs), or PREFIX=<dir>
 sudo make uninstall
 ```
 
-To build and install the Flatpak (without plugin support) instead, with `org.flatpak.Builder` installed from Flathub:
-
-```bash
-flatpak run org.flatpak.Builder --user --install --force-clean \
-  --state-dir=build/flatpak-state build/flatpak flatpak/io.github.toni500github.oshot.yml
-flatpak run io.github.toni500github.oshot
-```
-
 `make DISABLE_PLUGINS=1` builds without plugin support. Packagers can use `DESTDIR` with `make install`, or CMake directly; `-DOSHOT_INSTALL_LICENSEDIR=` changes or skips (empty) where the license goes.
 
 Or with CMake + Ninja:
@@ -323,3 +397,9 @@ No contribution is too small:
 - **Using oshot daily?** Tell me what annoys you. That feedback is what shaped most of oshot so far.
 
 AI-assisted pull requests are fine, as long as you understand the code and have tested it yourself.
+
+If oshot saves you time, starring the repo helps other people find it.
+
+## License
+
+oshot is released under the [BSD 3-Clause License](LICENSE). Bundled third-party libraries keep their own licenses.
