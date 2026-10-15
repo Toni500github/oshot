@@ -433,7 +433,7 @@ static int oshotpm_main(int argc, char** argv)
 
     // For logging methods in util.hpp to not popup
     // a dialog box
-    nvd_set_error(NVD_NOT_INITIALIZED);
+    disable_dialogs();
 
     PluginCallbacks cb;
     cb.on_status  = [](const std::string_view msg) { fmt::print("{}==> {}...{}\n", ansi::blue, msg, ansi::reset); };

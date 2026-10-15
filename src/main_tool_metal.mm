@@ -148,6 +148,9 @@ int run_main_tool()
         return EXIT_FAILURE;
     });
 
+    // Set up dialogs only now that the screenshot is taken, so they can't delay it
+    init_dialogs();
+
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
         return EXIT_FAILURE;

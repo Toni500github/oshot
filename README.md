@@ -76,7 +76,7 @@ https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 - Copy or save the result as an image (`Ctrl+C` / `Ctrl+S`)
 
 **Customize**
-- Light, dark, auto, classic or fully custom themes
+- Dark theme by default, with colors, rounding and borders customizable in a TOML theme file
 - Fonts, output filename format, behavior and rendering options, from the Preferences window or a TOML config file
 
 **Extend** (only in the `-plugins` builds, see [Installation](#installation))

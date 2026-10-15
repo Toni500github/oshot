@@ -387,7 +387,6 @@ std::string get_relative_path(const std::string_view relative_path, const char* 
 std::string which(const std::string_view command);
 
 bool acquire_tray_lock();
-bool is_system_dark_mode();
 bool hexstr_to_col(const std::string_view hex, uint32_t& out);
 bool hexstr_to_imvec4(const std::string_view hex, ImVec4& out);
 
@@ -444,9 +443,20 @@ inline std::string format_noexcept(const std::string_view fmt, Args&&... args) n
     }
 }
 
+/** Set up nvdialog the first time a dialog or notification needs it.
+ * On Linux this starts GTK, which takes tens of milliseconds, so it runs after
+ * the screenshot is taken instead of at startup. Thread-safe; call it on the
+ * main thread where possible, since that's where GTK gets set up.
+ * @returns false if dialogs are unavailable (init failed, or disable_dialogs())
+ */
+bool init_dialogs() noexcept;
+
+/// Never show dialogs, e.g. in the oshotpm CLI: messages only go to the log/terminal
+void disable_dialogs() noexcept;
+
 static void create_dialog(const char* title, const NvdDialogType type, const std::string& str) noexcept
 {
-    if (nvd_get_error() == NVD_NOT_INITIALIZED)
+    if (!init_dialogs())
         return;
 
     NvdDialogBox* dialog = nvd_dialog_box_new(title, str.c_str(), type);
@@ -509,7 +519,7 @@ template <typename... Args>
 inline bool ask_user_yn(bool def, const std::string_view fmt, Args&&... args)
 {
     const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
-    if (nvd_get_error() == NVD_NOT_INITIALIZED)
+    if (!init_dialogs())
     {
 #if OSHOT_WINDOWS
         int result = MessageBox(NULL, str.c_str(), "Confirmation", MB_YESNO | MB_ICONQUESTION);

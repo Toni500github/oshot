@@ -263,6 +263,7 @@ int run_main_tool()
     });
 
     bool force_fire_frame = false;
+    bool dialogs_inited   = false;
     // app_quitting(): tray Quit or a signal while capturing
     while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive() && !app_quitting())
     {
@@ -309,6 +310,15 @@ int run_main_tool()
         }
 
         glfwSwapBuffers(window);
+
+        // Set up dialogs only once the overlay is on screen: on Linux this
+        // starts GTK, which would otherwise delay the capture and the overlay
+        // by tens of milliseconds. An error before this sets them up itself.
+        if (!dialogs_inited)
+        {
+            init_dialogs();
+            dialogs_inited = true;
+        }
     }
 
     // Cleanup
