@@ -750,8 +750,7 @@ void ScreenshotTool::HandleShortcutsInput()
     if (ImGui::Shortcut(ImGuiKey_A | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
     {
         m_main_sel.selection.start = point_t{ .x = m_image_origin.x, .y = m_image_origin.y };
-        m_main_sel.selection.end   = point_t{ .x = m_image_origin.x + static_cast<float>(m_screenshot.w),
-                                              .y = m_image_origin.y + static_cast<float>(m_screenshot.h) };
+        m_main_sel.selection.end   = point_t{ .x = m_image_end.x, .y = m_image_end.y };
         m_state                    = ToolState::Selected;
     }
 
@@ -1239,8 +1238,8 @@ void ScreenshotTool::HandleColorPickerInput()
     ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 
     const ImVec2& mouse_pos = ImGui::GetMousePos();
-    const int     px        = int(mouse_pos.x - m_image_origin.x);
-    const int     py        = int(mouse_pos.y - m_image_origin.y);
+    const int     px        = int((mouse_pos.x - m_image_origin.x) * m_image_scale);
+    const int     py        = int((mouse_pos.y - m_image_origin.y) * m_image_scale);
 
     const bool in_image = px >= 0 && px < m_screenshot.w && py >= 0 && py < m_screenshot.h;
 
@@ -4241,11 +4240,12 @@ region_t ScreenshotTool::GetActiveRegion() const
     const auto  img_w = float(m_screenshot.w);
     const auto  img_h = float(m_screenshot.h);
     const auto& s     = m_main_sel.selection;
+    const float k     = m_image_scale;  // screen units -> screenshot pixels
 
-    const int x0 = int(std::round(std::clamp(s.get_x() - m_image_origin.x, 0.0f, img_w)));
-    const int y0 = int(std::round(std::clamp(s.get_y() - m_image_origin.y, 0.0f, img_h)));
-    const int x1 = int(std::round(std::clamp(s.get_x() + s.get_width() - m_image_origin.x, 0.0f, img_w)));
-    const int y1 = int(std::round(std::clamp(s.get_y() + s.get_height() - m_image_origin.y, 0.0f, img_h)));
+    const int x0 = int(std::round(std::clamp((s.get_x() - m_image_origin.x) * k, 0.0f, img_w)));
+    const int y0 = int(std::round(std::clamp((s.get_y() - m_image_origin.y) * k, 0.0f, img_h)));
+    const int x1 = int(std::round(std::clamp((s.get_x() + s.get_width() - m_image_origin.x) * k, 0.0f, img_w)));
+    const int y1 = int(std::round(std::clamp((s.get_y() + s.get_height() - m_image_origin.y) * k, 0.0f, img_h)));
 
     return region_t{ .x = x0, .y = y0, .w = x1 - x0, .h = y1 - y0 };
 }
@@ -4255,9 +4255,10 @@ void ScreenshotTool::UpdateWindowBg()
     // Calculate where the screenshot will be drawn (centered)
     // clang-format off
     auto* vp = ImGui::GetMainViewport();
+    m_image_scale = m_full_res_image ? std::max(1.0f, ImGui::GetIO().DisplayFramebufferScale.x) : 1.0f;
     ImVec2 image_size(
-        float(m_screenshot.w),
-        float(m_screenshot.h)
+        float(m_screenshot.w) / m_image_scale,
+        float(m_screenshot.h) / m_image_scale
     );
 
     m_image_origin = ImVec2(
