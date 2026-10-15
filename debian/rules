@@ -10,4 +10,5 @@ override_dh_auto_configure:
 	dh_auto_configure --buildsystem=cmake -- \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DDISABLE_PLUGINS=$(DISABLE_PLUGINS) \
-		-DOSHOT_INSTALL_LICENSEDIR=
+		-DOSHOT_INSTALL_LICENSEDIR= \
+		$(if $(GLFW3_DIR),-Dglfw3_DIR=$(GLFW3_DIR))
