@@ -79,6 +79,51 @@ static std::string create_temp_png()
 }
 #endif
 
+Result<capture_result_t> capture_full_screen(SessionType session)
+{
+    switch (session)
+    {
+        case SessionType::X11:     return capture_full_screen_x11();
+        case SessionType::Wayland: return capture_full_screen_wayland();
+        case SessionType::KDE:     return capture_full_screen_spectacle();
+        case SessionType::Windows: return capture_full_screen_windows();
+        case SessionType::MacOS:   return capture_full_screen_macos();
+        default:                   return Err("Unknown platform");
+    }
+}
+
+Result<capture_result_t> crop_image(const capture_result_t& src, const region_t& region)
+{
+    if (region.w <= 0 || region.h <= 0 || region.x < 0 || region.y < 0 || region.x + region.w > src.w ||
+        region.y + region.h > src.h)
+        return Err(
+            "Region {}x{}+{}+{} is outside the {}x{} image", region.w, region.h, region.x, region.y, src.w, src.h);
+
+    capture_result_t out{ .data = std::vector<uint8_t>(size_t(region.w) * region.h * 4), .w = region.w, .h = region.h };
+    const size_t     row = size_t(region.w) * 4;
+    for (int y = 0; y < region.h; ++y)
+        std::memcpy(out.data.data() + y * row, src.data.data() + ((size_t(region.y + y) * src.w) + region.x) * 4, row);
+
+    return Ok(std::move(out));
+}
+
+Result<region_t> parse_region(std::string_view str)
+{
+    const std::string s(str);
+    region_t          r{};
+    char              tail = 0;
+
+    // %c catches trailing garbage: a full match leaves it unassigned
+    if (std::sscanf(s.c_str(), "%dx%d+%d+%d%c", &r.w, &r.h, &r.x, &r.y, &tail) != 4 &&
+        std::sscanf(s.c_str(), "%d,%d %dx%d%c", &r.x, &r.y, &r.w, &r.h, &tail) != 4)
+        return Err("Invalid region '{}', expected WxH+X+Y or \"X,Y WxH\"", str);
+
+    if (r.w <= 0 || r.h <= 0 || r.x < 0 || r.y < 0)
+        return Err("Invalid region '{}': the size must be positive and the position not negative", str);
+
+    return Ok(r);
+}
+
 SessionType get_session_type()
 {
 #if OSHOT_WINDOWS

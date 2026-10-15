@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <deque>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include "util.hpp"
@@ -39,6 +40,8 @@ struct region_t
     int y{};
     int w{};
     int h{};
+
+    bool operator==(const region_t&) const = default;
 };
 
 struct capture_result_t
@@ -76,6 +79,13 @@ Result<capture_result_t> capture_full_screen_wayland();
 Result<capture_result_t> capture_full_screen_spectacle();
 Result<capture_result_t> capture_full_screen_windows();
 Result<capture_result_t> capture_full_screen_macos();
+
+// Full screenshot with the backend for `session`
+Result<capture_result_t> capture_full_screen(SessionType session);
+// Copy of `region` from `src`, which must lie fully inside it
+Result<capture_result_t> crop_image(const capture_result_t& src, const region_t& region);
+// "WxH+X+Y" (X11 geometry, slop) or "X,Y WxH" (slurp)
+Result<region_t> parse_region(std::string_view str);
 
 SessionType              get_session_type();
 capture_result_t         rotate_rgba(const capture_result_t& src, int quarter_turns_cw);

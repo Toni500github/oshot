@@ -445,15 +445,7 @@ Result<> ScreenshotTool::Start()
         if (g_config->File.delay > 0)
             std::this_thread::sleep_for(std::chrono::milliseconds(g_config->File.delay));
 
-        switch (m_session)
-        {
-            case SessionType::X11:     result = capture_full_screen_x11(); break;
-            case SessionType::Wayland: result = capture_full_screen_wayland(); break;
-            case SessionType::KDE:     result = capture_full_screen_spectacle(); break;
-            case SessionType::Windows: result = capture_full_screen_windows(); break;
-            case SessionType::MacOS:   result = capture_full_screen_macos(); break;
-            default:                   return Err("Unknown platform");
-        }
+        result = capture_full_screen(m_session);
         TRY_MSG(result, "Failed to capture screenshot: {}");
 
 #if OSHOT_FREEDESKTOP
