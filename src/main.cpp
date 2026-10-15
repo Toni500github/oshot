@@ -65,7 +65,6 @@
 #include "fmt/compile.h"
 #include "fmt/format.h"
 #include "getopt_port/getopt.h"
-#include "nvdialog/nvdialog_error.h"
 #include "oshot_png.h"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
@@ -375,7 +374,8 @@ static void sync_hotkey()
     spdlog::warn("Global hotkey: {}", res.error_v());
     const std::string& body =
         fmt::format("{}\nPick another shortcut in Preferences, or set 'hotkey' in the config.", res.error_v());
-    NvdNotification* notif = nvd_notification_new("oshot: hotkey not set", body.c_str(), NVD_NOTIFICATION_WARNING);
+    NvdNotification* notif =
+        init_dialogs() ? nvd_notification_new("oshot: hotkey not set", body.c_str(), NVD_NOTIFICATION_WARNING) : nullptr;
     if (notif)
     {
         nvd_send_notification(notif);
@@ -606,13 +606,6 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     signal(SIGSEGV, on_crash_signal);
 #endif
 
-    if (nvd_init() != 0)
-    {
-        fprintf(
-            stderr, "Failed to initialize nvdialog: %s\n", nvd_string_to_cstr(nvd_stringify_error(nvd_get_error())));
-        return -67;
-    }
-
     auto console = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     auto imgui   = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(500);  // keep last 500 lines
     std::vector<spdlog::sink_ptr> sinks = { console, imgui };
@@ -687,6 +680,11 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     if (!g_config->Runtime.only_launch_tray)
         capture_from_tray(g_config->Runtime.source_file);
 #endif
+
+    // Set up dialogs (GTK on Linux) here on the main thread, where the tray
+    // runs. The worker only reaches init_dialogs() once its overlay is on
+    // screen, so this call gets there first and the worker's is a no-op.
+    init_dialogs();
 
     std::vector<TrayMenu*> menu;
 

@@ -37,7 +37,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <atomic>
 #include <filesystem>
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -408,6 +410,38 @@ Result<std::string> get_config_image_out_fmt()
     return Ok(out_path);
 }
 
+static std::atomic<bool> dialogs_disabled{ false };
+
+bool init_dialogs() noexcept
+{
+    static std::once_flag    once;
+    static std::atomic<bool> ready{ false };
+
+    if (dialogs_disabled)
+        return false;
+
+    try
+    {
+        std::call_once(once, [] {
+            if (nvd_init() == 0)
+                ready = true;
+            else
+                spdlog::warn("Failed to initialize nvdialog (error {}), dialogs are disabled",
+                             static_cast<int>(nvd_get_error()));
+        });
+    }
+    catch (const std::system_error&)
+    {
+        return false;
+    }
+    return ready;
+}
+
+void disable_dialogs() noexcept
+{
+    dialogs_disabled = true;
+}
+
 Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
 {
     auto deleter = [](NvdNotification* p) {
@@ -416,10 +450,11 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
     };
     std::unique_ptr<NvdNotification, decltype(deleter)> notif(nullptr, deleter);
 
+    const bool notify = init_dialogs();
     if (op == SavingOp::Clipboard)
     {
         const Result<>& res = g_clipboard.CopyImage(img, ext);
-        if (res.ok())
+        if (res.ok() && notify)
             notif.reset(nvd_notification_new("Copied!", "Screenshot copied to clipboard", NVD_NOTIFICATION_SIMPLE));
         return res;
     }
@@ -443,7 +478,8 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
 
     if (!save_path)
     {
-        notif.reset(nvd_notification_new("Canceled", "Save canceled by user", NVD_NOTIFICATION_WARNING));
+        if (notify)
+            notif.reset(nvd_notification_new("Canceled", "Save canceled by user", NVD_NOTIFICATION_WARNING));
         return Ok();  // Not really an error, maybe the user cancelled
     }
 
@@ -456,7 +492,8 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
     fclose(fp);
     if (written != data.size())
         return Err("Failed to write image data");
-    notif.reset(nvd_notification_new("Saved!", "Screenshot saved successfully", NVD_NOTIFICATION_SIMPLE));
+    if (notify)
+        notif.reset(nvd_notification_new("Saved!", "Screenshot saved successfully", NVD_NOTIFICATION_SIMPLE));
 
     fs::path path(save_path);
     g_cache->SetValue(CacheEntry::ImgSavePath, path.parent_path().string());
@@ -611,21 +648,6 @@ static bool is_hidden_directory(const fs::directory_entry& e)
     return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_HIDDEN);
 }
 
-bool is_system_dark_mode()
-{
-    DWORD value = 1;
-    DWORD size  = sizeof(value);
-    // AppsUseLightTheme == 0  -> dark mode
-    RegGetValueW(HKEY_CURRENT_USER,
-                 L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
-                 L"AppsUseLightTheme",
-                 RRF_RT_DWORD,
-                 nullptr,
-                 &value,
-                 &size);
-    return value == 0;
-}
-
 fs::path get_exe_path()
 {
     std::wstring buf(MAX_PATH, L'\0');
@@ -711,54 +733,6 @@ static bool is_hidden_directory(const fs::directory_entry& e)
 {
     const std::string& name = e.path().filename().string();
     return !name.empty() && name.front() == '.';
-}
-
-bool is_system_dark_mode()
-{
-#  if OSHOT_MACOS
-    // CFPreferencesCopyAppValue returns nullptr when no preference is set (= light)
-    CFStringRef style =
-        (CFStringRef)CFPreferencesCopyAppValue(CFSTR("AppleInterfaceStyle"), kCFPreferencesAnyApplication);
-    if (!style)
-        return false;
-    bool dark = (CFStringCompare(style, CFSTR("Dark"), kCFCompareCaseInsensitive) == kCFCompareEqualTo);
-    CFRelease(style);
-    return dark;
-
-#  else
-    // 1. GSettings (GNOME / most DEs)
-    // Fixed command string, nothing user-controlled reaches the shell
-    // NOLINTNEXTLINE(bugprone-command-processor)
-    if (FILE* f = popen("gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null", "r"))
-    {
-        std::array<char, 64> buf{};
-        if (fgets(buf.data(), int(buf.size()), f))
-        {
-            pclose(f);
-            return std::string_view(buf.data()).find("dark") != std::string_view::npos;
-        }
-        pclose(f);
-    }
-
-    // 2. GTK_THEME env var (e.g. "Adwaita:dark")
-    if (const char* t = ::getenv("GTK_THEME"))
-    {
-        std::string s(t);
-        std::ranges::transform(s, s.begin(), ::tolower);
-        if (s.find("dark") != std::string::npos)
-            return true;
-        if (s.find("light") != std::string::npos)
-            return false;
-    }
-
-    // 3. ~/.config/gtk-3.0/settings.ini
-    // gtk-application-prefer-dark-theme=1
-    std::ifstream ini((get_home_dir() / ".config/gtk-3.0/settings.ini").string());
-    for (std::string line; std::getline(ini, line);)
-        if (line.find("gtk-application-prefer-dark-theme") != std::string::npos && line.find('1') != std::string::npos)
-            return true;
-#  endif
-    return true;
 }
 
 fs::path get_exe_path()

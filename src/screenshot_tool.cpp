@@ -387,7 +387,7 @@ static std::unordered_map<std::string, int>& color_name_map()
 
 void apply_imgui_theme()
 {
-    is_system_dark_mode() ? ScreenshotTool::StyleDefaultColor() : ImGui::StyleColorsLight();
+    ScreenshotTool::StyleDefaultColor();
 
     ImGuiStyle& style = ImGui::GetStyle();
     const auto& ov    = g_config->theme_overrides;
