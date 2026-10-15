@@ -335,6 +335,13 @@ public:
     [[nodiscard]] bool   IsActive() const { return m_state != ToolState::Idle; }
     capture_result_t&    GetRawScreenshot() { return m_screenshot; }
     const point_t        GetImageOrigin() const { return { .x = m_image_origin.x, .y = m_image_origin.y }; }
+    // Screenshot pixels per screen unit: above 1 on a scaled (HiDPI) output when
+    // the backend renders at full resolution, see SetFullResolutionImage()
+    [[nodiscard]] float GetImageScale() const { return m_image_scale; }
+    // Draw the screenshot at its full resolution on a scaled output, instead of
+    // shrinking it to the logical screen size. The backend must then read back
+    // framebuffer pixels at GetImageScale().
+    void                 SetFullResolutionImage(bool enable) { m_full_res_image = enable; }
     void                 SetBackendTexture(void* tex) { m_texture_id._TexID = static_cast<ImTextureID>(size_t(tex)); }
     void                 SetToolTexture(ToolType type, void* tex)
     {
@@ -470,6 +477,8 @@ private:
 
     ImVec2 m_image_origin;
     ImVec2 m_image_end;
+    float  m_image_scale    = 1.0f;
+    bool   m_full_res_image = false;
 
     std::shared_ptr<ocr_download_t>                                m_ocr_download;
     std::vector<std::string>                                       m_ocr_models_list;
