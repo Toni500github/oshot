@@ -33,6 +33,7 @@
 #include <cstddef>
 #include <cstring>
 #include <numbers>
+#include <numeric>
 #include <ranges>
 #include <utility>
 #include <vector>
@@ -61,141 +62,336 @@ static std::string_view psm_to_str(tesseract::PageSegMode psm)
     }
 }
 
-static tesseract::PageSegMode choose_psm(int w, int h)
+struct PixFree
+{
+    void operator()(PIX* pix) const
+    {
+        if (pix)
+            pixDestroy(&pix);
+    }
+};
+using PixPtr = std::unique_ptr<PIX, PixFree>;
+
+using rgb_t = std::array<uint8_t, 3>;
+
+// Composited over white, so the transparent parts of an opened image read as background
+static rgb_t opaque_rgb(const uint8_t* p)
+{
+    const unsigned a = p[3];
+    if (a == 255)
+        return { p[0], p[1], p[2] };
+
+    const auto blend = [a](unsigned c) { return uint8_t(((c * a) + (255 * (255 - a)) + 127) / 255); };
+    return { blend(p[0]), blend(p[1]), blend(p[2]) };
+}
+
+static int color_dist2(const rgb_t& a, const rgb_t& b)
+{
+    const int dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
+    return (dr * dr) + (dg * dg) + (db * db);
+}
+
+// The image's main colors, most common first: the most populated bins of a
+// 4 bits per channel histogram, each averaged to its real color
+static std::vector<rgb_t> main_colors(const std::vector<rgb_t>& px)
+{
+    constexpr size_t max_colors = 8;
+    const size_t     step       = std::max<size_t>(1, px.size() / 1'000'000);  // sampling is plenty
+
+    const auto bin = [](const rgb_t& c) { return ((c[0] >> 4) << 8) | ((c[1] >> 4) << 4) | (c[2] >> 4); };
+
+    std::vector<uint32_t> hist(4096);
+    size_t                samples = 0;
+    for (size_t i = 0; i < px.size(); i += step, ++samples)
+        ++hist[bin(px[i])];
+
+    std::vector<int> bins(hist.size());
+    std::iota(bins.begin(), bins.end(), 0);
+    std::ranges::partial_sort(bins, bins.begin() + max_colors, [&](int a, int b) { return hist[a] > hist[b]; });
+
+    std::vector<rgb_t> colors;
+    for (size_t k = 0; k < max_colors; ++k)
+    {
+        // Text and antialiasing, not an area
+        if (k > 0 && hist[bins[k]] * 200 < samples)
+            break;
+
+        std::array<uint64_t, 3> sum{};
+        uint64_t                count = 0;
+        for (size_t i = 0; i < px.size(); i += step)
+        {
+            if (bin(px[i]) != bins[k])
+                continue;
+            for (size_t c = 0; c < 3; ++c)
+                sum[c] += px[i][c];
+            ++count;
+        }
+        colors.push_back({ uint8_t(sum[0] / count), uint8_t(sum[1] / count), uint8_t(sum[2] / count) });
+    }
+
+    return colors;
+}
+
+// Grayscale where each pixel is its color distance from the background around
+// it: dark text on white for any pair of colors (white on blue, red on black,
+// black on yellow...), in every panel of a screenshot that mixes light, dark
+// and colored areas, without guessing when to invert.
+// The local background is whichever main color covers the most of a `window`
+// px square around each 4x4 cell: text covers less of it than its background,
+// and next to a straight edge between two areas a pixel's own side always
+// covers at least half.
+static PIX* distance_from_background(const std::vector<rgb_t>& px, int w, int h, int window)
+{
+    const std::vector<rgb_t> colors = main_colors(px);
+    const int                n      = int(colors.size());
+
+    constexpr int cell = 4;
+    const int     cw = (w + cell - 1) / cell, ch = (h + cell - 1) / cell;
+
+    // Main color of each pixel (if it's close to one), counted per cell, as
+    // per-color summed-area tables over the cells
+    constexpr int        tolerance2 = 32 * 32;
+    std::vector<int32_t> sat(size_t(n) * (cw + 1) * (ch + 1));
+    const auto           at = [&](int k, int cx, int cy) -> int32_t& {
+        return sat[((size_t(k) * (ch + 1)) + cy) * (cw + 1) + cx];
+    };
+    for (int y = 0; y < h; ++y)
+    {
+        for (int x = 0; x < w; ++x)
+        {
+            const rgb_t& c       = px[(size_t(y) * w) + x];
+            int          best    = -1;
+            int          best_d2 = tolerance2 + 1;
+            for (int k = 0; k < n; ++k)
+            {
+                const int d2 = color_dist2(c, colors[k]);
+                if (d2 < best_d2)
+                {
+                    best_d2 = d2;
+                    best    = k;
+                }
+            }
+            if (best >= 0)
+                ++at(best, (x / cell) + 1, (y / cell) + 1);
+        }
+    }
+    for (int k = 0; k < n; ++k)
+        for (int cy = 1; cy <= ch; ++cy)
+            for (int cx = 1; cx <= cw; ++cx)
+                at(k, cx, cy) += at(k, cx - 1, cy) + at(k, cx, cy - 1) - at(k, cx - 1, cy - 1);
+
+    // Most common main color in the window of `radius` cells around a cell, and its share of the window
+    const auto majority = [&](int cx, int cy, int radius) -> std::pair<int, float> {
+        const int x0 = std::max(0, cx - radius), x1 = std::min(cw, cx + radius + 1);
+        const int y0 = std::max(0, cy - radius), y1 = std::min(ch, cy + radius + 1);
+        int       best = 0;
+        int32_t   most = 0;
+        for (int k = 0; k < n; ++k)
+        {
+            const int32_t count = at(k, x1, y1) - at(k, x0, y1) - at(k, x1, y0) + at(k, x0, y0);
+            if (count > most)
+            {
+                most = count;
+                best = k;
+            }
+        }
+        return { best, float(most) / float((x1 - x0) * (y1 - y0) * cell * cell) };
+    };
+
+    // The big window misses the corners of an area (its own color covers a
+    // quarter of the window there), so a color that fills most of a window a
+    // quarter that size wins: text strokes never fill that much of it
+    const int        radius       = std::max(1, window / (2 * cell));
+    const int        small_radius = std::max(1, radius / 4);
+    std::vector<int> cell_bg(size_t(cw) * ch, 0);
+    for (int cy = 0; cy < ch; ++cy)
+    {
+        for (int cx = 0; cx < cw; ++cx)
+        {
+            const auto [near_color, near_share] = majority(cx, cy, small_radius);
+            cell_bg[(size_t(cy) * cw) + cx]     = near_share >= 0.6f ? near_color : majority(cx, cy, radius).first;
+        }
+    }
+
+    PIX* pix = pixCreate(w, h, 8);
+    if (!pix)
+        return nullptr;
+
+    l_uint32* dst = pixGetData(pix);
+    const int wpl = pixGetWpl(pix);
+    for (int y = 0; y < h; ++y)
+    {
+        l_uint32* line = dst + static_cast<ptrdiff_t>(y) * wpl;
+        for (int x = 0; x < w; ++x)
+        {
+            const rgb_t& bg = colors[cell_bg[(size_t(y / cell) * cw) + (x / cell)]];
+            const int    d  = int(std::lround(std::sqrt(float(color_dist2(px[(size_t(y) * w) + x], bg)))));
+            SET_DATA_BYTE(line, x, 255 - std::min(d, 255));
+        }
+    }
+
+    return pix;
+}
+
+// Otsu's threshold, kept below 255 - 24 so a background with a little noise
+// or JPEG artifacts doesn't count as text
+static int text_threshold(PIX* gray)
+{
+    std::array<double, 256> hist{};
+    const l_uint32*         data = pixGetData(gray);
+    const int               wpl  = pixGetWpl(gray);
+    const int               w = pixGetWidth(gray), h = pixGetHeight(gray);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x)
+            hist[GET_DATA_BYTE(data + static_cast<ptrdiff_t>(y) * wpl, x)] += 1;
+
+    const double total = double(w) * h;
+    double       sum   = 0;
+    for (size_t i = 0; i < hist.size(); ++i)
+        sum += double(i) * hist[i];
+
+    double sum_low = 0, weight_low = 0, best_var = -1;
+    int    best = 128;
+    for (int t = 0; t < 256; ++t)
+    {
+        weight_low += hist[t];
+        sum_low += double(t) * hist[t];
+        const double weight_high = total - weight_low;
+        if (weight_low == 0 || weight_high == 0)
+            continue;
+
+        const double mean_low = sum_low / weight_low, mean_high = (sum - sum_low) / weight_high;
+        const double var = weight_low * weight_high * (mean_low - mean_high) * (mean_low - mean_high);
+        if (var > best_var)
+        {
+            best_var = var;
+            best     = t + 1;  // pixels < best are text
+        }
+    }
+
+    return std::min(best, 255 - 24);
+}
+
+struct text_layout_t
+{
+    int char_height = 0;  // median height of the glyphs, 0 if no text was found
+    int lines       = 0;
+    int threshold   = 128;
+};
+
+// Glyph size and line count from the connected components of the text pixels
+static text_layout_t measure_text(PIX* gray)
+{
+    text_layout_t layout;
+    layout.threshold = text_threshold(gray);
+
+    PIX* bin = pixThresholdToBinary(gray, layout.threshold);
+    if (!bin)
+        return layout;
+    BOXA* boxa = pixConnCompBB(bin, 8);
+    pixDestroy(&bin);
+    if (!boxa)
+        return layout;
+
+    std::vector<std::pair<int, int>> spans;  // y, h
+    for (int i = 0; i < boxaGetCount(boxa); ++i)
+    {
+        l_int32 x = 0, y = 0, w = 0, h = 0;
+        boxaGetBoxGeometry(boxa, i, &x, &y, &w, &h);
+        // Specks, and rules or underlines
+        if (h < 3 || w > h * 8)
+            continue;
+        spans.emplace_back(y, h);
+    }
+    boxaDestroy(&boxa);
+    if (spans.empty())
+        return layout;
+
+    std::vector<int> heights;
+    heights.reserve(spans.size());
+    for (const auto& [y, h] : spans)
+        heights.push_back(h);
+    std::ranges::nth_element(heights, heights.begin() + static_cast<ptrdiff_t>(heights.size() / 2));
+    layout.char_height = heights[heights.size() / 2];
+
+    // Lines: overlapping vertical spans of the glyphs, leaving out punctuation
+    // and accents, and frames or table grids that would join every line
+    std::ranges::sort(spans);
+    int line_end = -1;
+    for (const auto& [y, h] : spans)
+    {
+        if (h * 2 < layout.char_height || h > layout.char_height * 3)
+            continue;
+        if (y >= line_end)
+            ++layout.lines;
+        line_end = std::max(line_end, y + h);
+    }
+
+    return layout;
+}
+
+// Scale so the glyphs are about the size Tesseract reads best, pad the edges,
+// and straighten a skewed scan
+static PIX* normalize_for_ocr(PIX* gray, const text_layout_t& layout)
+{
+    // Median glyph height (mostly x-height and capitals) Tesseract reads best, from the test set
+    constexpr int target = 24;
+
+    PixPtr out(pixClone(gray));
+    if (layout.char_height > 0)
+    {
+        const float max_px = 40e6f;  // keep a 4K screenshot with small text from exploding
+        float       scale  = std::clamp(float(target) / float(layout.char_height), 1.0f, 4.0f);
+        scale = std::min(scale, std::sqrt(max_px / (float(pixGetWidth(gray)) * float(pixGetHeight(gray)))));
+        scale = std::round(scale * 4) / 4;  // same scale for the same text size, wherever it's cropped
+        if (scale > 1.0f)
+        {
+            if (PIX* scaled = pixScaleGrayLI(gray, scale, scale))
+                out.reset(scaled);
+        }
+    }
+
+    // Text touching the edge of a tight selection is often dropped
+    if (PIX* padded = pixAddBorder(out.get(), target, 255))
+        out.reset(padded);
+
+    PIX*      bin   = pixThresholdToBinary(out.get(), layout.threshold);
+    l_float32 angle = 0.f, conf = 0.f;
+    if (bin && pixFindSkew(bin, &angle, &conf) == 0 && std::abs(angle) > 0.4f && conf > 1.5f)
+    {
+        // The angle to rotate by, as in pixDeskew()
+        const l_float32 rad = angle * (std::numbers::pi_v<l_float32> / 180.f);
+        if (PIX* rotated = pixRotate(out.get(), rad, L_ROTATE_AREA_MAP, L_BRING_IN_WHITE, 0, 0))
+            out.reset(rotated);
+    }
+    if (bin)
+        pixDestroy(&bin);
+
+    // No binarization: Tesseract's LSTM engine does its own, and keeping the
+    // gray levels helps stroke detail, especially for CJK scripts
+    return out.release();
+}
+
+static tesseract::PageSegMode choose_psm(const text_layout_t& layout)
 {
     using namespace tesseract;
 
     if (g_config->Runtime.preferred_psm != 0)
         return PageSegMode(g_config->Runtime.preferred_psm);
 
-    const size_t area   = size_t(w) * h;
-    const float  aspect = (h > 0) ? float(w) / float(h) : 1.0f;
+    // A word, a number or a line: the page layout analysis tends to drop text this short
+    if (layout.lines == 1)
+        return PSM_SINGLE_LINE;
 
-    spdlog::debug("Choosing PSM, area: {}*{}={}, aspect: {}", w, h, area, aspect);
-
-    // Single character: tiny and roughly square
-    if (area < 2'500 && aspect > 0.3f && aspect < 3.0f)
-        return PSM_SINGLE_CHAR;
-
-    // Single word: small area, not excessively wide
-    if (area < 15'000 && aspect > 0.3f && aspect < 5.0f)
-        return PSM_SINGLE_WORD;
-
-    // AUTO_OSD is good enough to take care of the rest.
-    return PSM_AUTO_OSD;
+    return PSM_AUTO;
 }
 
-static PIX* preprocess_pix(PIX* src)
+// Models for scripts written without spaces between words
+static bool is_cjk_model(std::string_view model)
 {
-    // Remove alpha and convert to grayscale
-    // pixConvertRGBToGray doesn't handle 32bpp RGBA correctly
-    PIX* no_alpha = pixRemoveAlpha(src);  // returns new 24bpp RGB Pix
-    if (!no_alpha)
-        no_alpha = pixClone(src);
-
-    // Quick dark-bg detection on the RGB image
-    PIX*      gray_probe = pixConvertRGBToGray(no_alpha, 0.299f, 0.587f, 0.114f);
-    l_float32 mean_val   = 128.f;
-    if (gray_probe)
-    {
-        pixGetAverageMasked(gray_probe, nullptr, 0, 0, 1, L_MEAN_ABSVAL, &mean_val);
-        pixDestroy(&gray_probe);
-    }
-
-    PIX* gray    = nullptr;
-    bool dark_bg = (mean_val < 128.f);
-
-    if (dark_bg)
-    {
-        // Max-channel: preserves colored text (red, green, cyan) on dark BG.
-        // Luma weights would map red(200,50,50) -> ~95, almost invisible after invert.
-        // Max-channel maps it -> 200, giving full contrast after invert.
-        gray = pixConvertRGBToGrayMinMax(no_alpha, L_CHOOSE_MAX);
-    }
-    else
-    {
-        gray = pixConvertRGBToGray(no_alpha, 0.299f, 0.587f, 0.114f);
-    }
-
-    pixDestroy(&no_alpha);
-    if (!gray)
-        return pixClone(src);
-
-    // Invert dark backgrounds
-    if (dark_bg)
-    {
-        PIX* inverted = pixInvert(nullptr, gray);
-        if (inverted)
-        {
-            pixDestroy(&gray);
-            gray = inverted;
-        }
-    }
-
-    // Upscale tiny text before binarization (helps for <12px font sizes)
-    if (pixGetHeight(gray) < 200)
-    {
-        PIX* scaled = pixScale(gray, 2.0f, 2.0f);
-        if (scaled)
-        {
-            pixDestroy(&gray);
-            gray = scaled;
-        }
-    }
-
-    // Deskew
-    PIX*      bin_for_skew = pixThresholdToBinary(gray, 128);
-    l_float32 angle = 0.f, conf = 0.f;
-    PIX*      result_gray = gray;
-
-    if (bin_for_skew && pixFindSkew(bin_for_skew, &angle, &conf) == 0 && std::abs(angle) > 0.4f && conf > 1.5f)
-    {
-        l_float32 rad     = -angle * (std::numbers::pi_v<l_float32> / 180.f);
-        PIX*      rotated = pixRotate(gray, rad, L_ROTATE_AREA_MAP, L_BRING_IN_WHITE, 0, 0);
-        if (rotated)
-        {
-            pixDestroy(&gray);
-            result_gray = rotated;
-        }
-    }
-    if (bin_for_skew)
-        pixDestroy(&bin_for_skew);
-
-    // Let Tesseract's LSTM engine do its own internal binarization.
-    // Pre-binarizing (e.g. Sauvola) strips gradient information that LSTM uses for
-    // stroke-width estimation. This is especially damaging for CJK scripts where
-    // fine stroke detail distinguishes many characters. The CLI tool works because
-    // it passes the raw image; we must do the same.
-    return result_gray;
-}
-
-static Pix* rgba_to_pix(std::span<const uint8_t> rgba, int w, int h)
-{
-    const size_t required = size_t(w) * h * 4;
-    if (rgba.size() < required)
-        return nullptr;
-
-    PIX* pix = pixCreate(w, h, 32);
-    if (!pix)
-        return nullptr;
-
-    const uint8_t* src    = rgba.data();
-    uint32_t*      dst    = pixGetData(pix);
-    const int      stride = pixGetWpl(pix);
-
-    for (int y = 0; y < h; ++y)
-    {
-        uint32_t* row = dst + static_cast<ptrdiff_t>(y * stride);
-        for (int x = 0; x < w; ++x)
-        {
-            const uint8_t* p    = src + (size_t(y) * w + x) * 4;
-            rgba_t         byte = load_rgba(p);
-            // Leptonica 32bpp word layout (big-endian word): R G B A
-            SET_DATA_FOUR_BYTES(row, x, byte.to_rgba());
-        }
-    }
-
-    return pix;
+    return std::ranges::any_of(
+        std::to_array<std::string_view>({ "jpn", "chi_", "kor", "Japanese", "HanS", "HanT", "Hangul" }),
+        [&](std::string_view m) { return model.find(m) != std::string_view::npos; });
 }
 
 OcrAPI::~OcrAPI()
@@ -220,6 +416,9 @@ Result<> OcrAPI::Configure(const char* data_path, const char* model, tesseract::
 
     if (m_api->Init(data_path, model, oem) != 0)
         return Err("Failed to Init OCR engine");
+
+    // Otherwise Tesseract puts a space between every CJK character
+    m_api->SetVariable("preserve_interword_spaces", is_cjk_model(model) ? "1" : "0");
 
     m_config      = std::move(next);
     m_initialized = true;
@@ -249,25 +448,34 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
         return Err(fmt::format(
             "Image buffer too small: got {} bytes, need {} ({}x{} × 4)", cap.view().size(), required, cap.w, cap.h));
 
-    PixPtr raw_pix(rgba_to_pix(cap.view(), cap.w, cap.h));
-    if (!raw_pix)
+    std::vector<rgb_t> px(size_t(cap.w) * cap.h);
+    for (size_t i = 0; i < px.size(); ++i)
+        px[i] = opaque_rgb(cap.view().data() + (i * 4));
+
+    // The background window must be a few glyphs wide, which we only know
+    // once we've seen the text: measure it, then redo it for big text
+    constexpr int default_window = 64;
+    PixPtr        gray(distance_from_background(px, cap.w, cap.h, default_window));
+    if (!gray)
         return Err("Failed to convert image into Pix format");
 
-    // Preprocess: dark-bg inversion, upscale, deskew.
-    // Returns grayscale so Tesseract's LSTM engine retains stroke-gradient info.
-    PixPtr pix(preprocess_pix(raw_pix.get()));
+    text_layout_t layout = measure_text(gray.get());
+    if (layout.char_height * 3 > default_window)
+    {
+        gray.reset(distance_from_background(px, cap.w, cap.h, layout.char_height * 3));
+        if (!gray)
+            return Err("Failed to convert image into Pix format");
+        layout = measure_text(gray.get());
+    }
+    PixPtr pix(normalize_for_ocr(gray.get(), layout));
     if (!pix)
         return Err("Failed to preprocess image");
 
-    // Use the binarized pix dimensions for PSM (they may differ after deskew rotation)
-    const int proc_w = pixGetWidth(pix.get());
-    const int proc_h = pixGetHeight(pix.get());
-
-    tesseract::PageSegMode psm = choose_psm(proc_w, proc_h);
-
-    float scale         = std::min(float(g_scr_w) / float(cap.w), float(g_scr_h) / float(cap.h));
-    int   effective_dpi = int(float(get_screen_dpi()) * scale);
-    effective_dpi       = std::clamp(effective_dpi, 150, 300);
+    const int                    proc_w = pixGetWidth(pix.get());
+    const int                    proc_h = pixGetHeight(pix.get());
+    const tesseract::PageSegMode psm    = choose_psm(layout);
+    // The glyphs are now the size of ~10pt text at 300 DPI, whatever the screen
+    constexpr int effective_dpi = 300;
 
     m_api->SetPageSegMode(psm);
     m_api->SetImage(pix.get());
@@ -324,33 +532,59 @@ ZbarAPI::ZbarAPI()
     SetConfig(zbar::ZBAR_NONE, true);  // enable all
 }
 
+// Codes found in a grayscale image, added to `ret` unless already there
+static void scan_gray(zbar::ImageScanner& scanner, std::vector<uint8_t>& gray, int w, int h, zbar_result_t& ret)
+{
+    // ZBar doesn't take ownership of the buffer
+    zbar::Image image(w, h, "Y800", gray.data(), gray.size());
+    if (scanner.scan(image) <= 0)
+        return;
+
+    for (auto sym = image.symbol_begin(); sym != image.symbol_end(); ++sym)
+    {
+        std::string data = sym->get_data();
+        if (std::ranges::find(ret.datas, data) != ret.datas.end())
+            continue;
+        ret.datas.push_back(std::move(data));
+        ret.symbologies[sym->get_type_name()]++;
+    }
+}
+
 Result<zbar_result_t> ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
 {
     zbar_result_t        ret;
     std::vector<uint8_t> gray(size_t(cap.w) * cap.h);
 
     rgba_to_grayscale(cap.view().data(), gray.data(), cap.w, cap.h);
+    scan_gray(m_scanner, gray, cap.w, cap.h, ret);
 
-    zbar::Image image(cap.w,
-                      cap.h,
-                      "Y800",  // GRAYSCALE
-                      gray.data(),
-                      gray.size());
-
-    if (m_scanner.scan(image) <= 0)
-        return Err("Failed to scan image");
-
-    for (auto sym = image.symbol_begin(); sym != image.symbol_end(); ++sym)
+    // Light codes on a dark background (dark mode, inverted codes)
+    if (ret.datas.empty())
     {
-        ret.datas.push_back(sym->get_data());
-        ret.symbologies[sym->get_type_name()]++;
+        std::ranges::transform(gray, gray.begin(), [](uint8_t v) { return uint8_t(255 - v); });
+        scan_gray(m_scanner, gray, cap.w, cap.h, ret);
+        std::ranges::transform(gray, gray.begin(), [](uint8_t v) { return uint8_t(255 - v); });
     }
 
-    if (ret.datas.empty() || ret.symbologies.empty())
-        return Err("Failed to decode barcode from image");
+    // Bars or modules under ~2px, both polarities
+    if (ret.datas.empty() && std::max(cap.w, cap.h) <= 2000)
+    {
+        const int            w2 = cap.w * 2, h2 = cap.h * 2;
+        std::vector<uint8_t> big(size_t(w2) * h2);
+        for (int y = 0; y < h2; ++y)
+            for (int x = 0; x < w2; ++x)
+                big[(size_t(y) * w2) + x] = gray[(size_t(y / 2) * cap.w) + (x / 2)];
 
-    // Prevent ZBar from freeing the buffer
-    image.set_data(nullptr, 0);
+        scan_gray(m_scanner, big, w2, h2, ret);
+        if (ret.datas.empty())
+        {
+            std::ranges::transform(big, big.begin(), [](uint8_t v) { return uint8_t(255 - v); });
+            scan_gray(m_scanner, big, w2, h2, ret);
+        }
+    }
+
+    if (ret.datas.empty())
+        return Err("No QR code or barcode found");
 
     return Ok(std::move(ret));
 }

@@ -150,16 +150,6 @@ bool acquire_tray_lock()
     return true;  // we own it
 }
 
-int get_screen_dpi()
-{
-    uint32_t dpiX = 96;
-    uint32_t dpiY = 96;
-
-    HMONITOR hMonitor = MonitorFromWindow(nullptr, MONITOR_DEFAULTTOPRIMARY);
-    if (hMonitor && SUCCEEDED(GetDpiForMonitor(hMonitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY)))
-        return dpiX;
-    return 96;  // fallback
-}
 #else
 fs::path get_runtime_dir()
 {
@@ -196,33 +186,6 @@ bool acquire_tray_lock()
 
     // We hold the lock. it's released automatically when the process exits
     return true;
-}
-
-int get_screen_dpi()
-{
-#  if OSHOT_MACOS
-    // CGDisplayScreenSize returns physical size in millimetres
-    CGDirectDisplayID display  = CGMainDisplayID();
-    CGSize            size_mm  = CGDisplayScreenSize(display);
-    size_t            width_px = CGDisplayPixelsWide(display);
-
-    if (size_mm.width <= 0)
-        return 96;  // fallback
-
-    double dpi = double(width_px) / (size_mm.width / 25.4);
-    return int(std::lround(dpi));
-#  else
-    Display* dpy = XOpenDisplay(nullptr);
-    if (!dpy)
-        return 96;
-
-    double width_mm = DisplayWidthMM(dpy, DefaultScreen(dpy));
-    double width_px = DisplayWidth(dpy, DefaultScreen(dpy));
-    XCloseDisplay(dpy);
-
-    double dpi = width_px / (width_mm / 25.4);
-    return int(std::lround(dpi));
-#  endif
 }
 #endif
 

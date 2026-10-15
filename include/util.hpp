@@ -423,7 +423,6 @@ byte_units_t divide_bytes(const double num, const std::string_view prefix);
 void         fit_to_screen(capture_result_t& img);
 void         rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int height);
 void         build_font_atlas(ImGuiIO& io);
-int          get_screen_dpi();
 bool         parse_hex_rgba(const std::string_view hex, rgba_t& out);
 
 #define BOLD_COLOR(x) (fmt::emphasis::bold | fmt::fg(x))

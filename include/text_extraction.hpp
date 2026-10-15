@@ -72,16 +72,6 @@ private:
         bool operator==(const ocr_config_t&) const = default;
     };
 
-    struct PixDeleter
-    {
-        void operator()(PIX* pix) const
-        {
-            if (pix)
-                pixDestroy(&pix);
-        }
-    };
-
-    using PixPtr  = std::unique_ptr<PIX, PixDeleter>;
     using TextPtr = std::unique_ptr<char, void (*)(char*)>;
 
     std::unique_ptr<tesseract::TessBaseAPI> m_api;
