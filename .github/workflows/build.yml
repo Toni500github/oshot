@@ -157,13 +157,17 @@ jobs:
             libx11 \
             libxcb \
             libpng \
-            glfw \
             tesseract \
             zbar \
             libappindicator-gtk3 \
             wayland-protocols \
             wayland-utils \
-            wayland
+            wayland \
+            libxkbcommon \
+            libxrandr \
+            libxinerama \
+            libxcursor \
+            libxi
 
       - name: Install dependencies (AppImage)
         if: matrix.target == 'linux-appimage'
@@ -179,7 +183,11 @@ jobs:
             fuse \
             libx11-dev \
             libxcb1-dev \
-            libglfw3-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxkbcommon-dev \
             libtesseract-dev \
             libcurl4-openssl-dev \
             libpng-dev \
@@ -205,6 +213,11 @@ jobs:
             libx11-dev \
             libxcb1-dev \
             libglfw3-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxkbcommon-dev \
             libtesseract-dev \
             libpng-dev \
             libzbar-dev \
@@ -251,24 +264,38 @@ jobs:
             mingw-w64-x86_64-curl
 
       # Build
+      # Distro GLFW is X11-only on Ubuntu 22.04 (3.3) and depends on the host for the
+      # zip: link a static GLFW with X11 and Wayland, so oshot never needs XWayland
+      - name: Build GLFW with X11 and Wayland (Linux)
+        if: matrix.target == 'linux' || matrix.target == 'linux-appimage' || matrix.target == 'debian-package'
+        run: ./scripts/build_glfw.sh /usr/local
+
       - name: Build project (Linux)
         if: matrix.target == 'linux' || matrix.target == 'linux-appimage'
         run: |
           ./scripts/generateVersion.sh
           mkdir -p build
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }}
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }} \
+            -Dglfw3_DIR=/usr/local/lib/cmake/glfw3
           cmake --build build
+          # The static GLFW must be the one linked in, not a system libglfw
+          if ldd build/oshot | grep libglfw; then echo "oshot links a shared libglfw" >&2; exit 1; fi
 
       - name: Build deb package (Linux)
         if: matrix.target == 'debian-package'
         env:
           DISABLE_PLUGINS: ${{ matrix.plugins && '0' || '1' }}
+          GLFW3_DIR: /usr/local/lib/cmake/glfw3
         run: |
           ./scripts/generateVersion.sh
           dpkg-buildpackage -us -uc -b
           mkdir -p package
           SUFFIX=$([ "${{ matrix.plugins }}" == "true" ] && echo "-plugins" || echo "")
           mv ../oshot_*.deb package/oshot-debian-package${SUFFIX}.deb
+          # The static GLFW must be the one linked in, not Ubuntu's X11-only libglfw3
+          if dpkg-deb -f package/oshot-debian-package${SUFFIX}.deb Depends | grep libglfw; then
+            echo "the .deb depends on libglfw3" >&2; exit 1
+          fi
 
       - name: Build project (macOS)
         if: runner.os == 'macOS'

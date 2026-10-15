@@ -210,6 +210,12 @@ yay -S oshot-bin
 On GNOME and most other desktops, screenshots go through the desktop's screenshot portal (the first capture may ask for permission). KDE uses Spectacle. Where no screenshot portal is available (e.g. some Sway/Hyprland setups), install `grim`.
 For copying to the clipboard, install `wl-clipboard`.
 
+oshot doesn't need XWayland. Capturing, picking a monitor, copying and dialogs all talk to Wayland directly, and the
+release packages (AppImage, `.deb` and zip) include GLFW 3.5 built for both X11 and Wayland, so the overlay is a native
+Wayland window too. It works on compositors running without XWayland, such as Hyprland with XWayland disabled. If you
+build oshot yourself, the overlay is native on Wayland when your distribution's GLFW is 3.4 or newer with Wayland
+support (Arch's is); with an X11-only GLFW, such as Ubuntu's, it runs through XWayland.
+
 #### Capture shortcut
 
 On Linux, oshot doesn't register a global shortcut itself. Bind `oshot --gui` to a key in your desktop's keyboard settings (e.g. **Settings → Keyboard → Custom Shortcuts** on GNOME), or in your window manager's config, for example:
