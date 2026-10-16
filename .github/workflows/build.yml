@@ -10,7 +10,8 @@ env:
   HOMEBREW_NO_AUTO_UPDATE: 1
   HOMEBREW_NO_BOTTLE_SOURCE_FALLBACK: 1
   # Oldest macOS the macOS packages run on. It must match the runners' macOS,
-  # as that's what the bundled Homebrew libraries are built for
+  # as that's what the bundled Homebrew libraries are built for (tesseract,
+  # whose bottles need a newer one, is built from source with this target)
   MACOSX_DEPLOYMENT_TARGET: "15.0"
   MODELS_URL_RAW: "https://github.com/tesseract-ocr/tessdata/raw/main"
   BUILD_TYPE: ${{ startsWith(github.ref, 'refs/tags/v') && 'Release' || 'Debug' }}
@@ -169,12 +170,13 @@ jobs:
             artifact-name: macos-x86_64-plugins
             package-file: package/oshot-macos-x86_64-plugins.dmg
 
-          # Windows package. MSYS2 has no GCC for ARM64, so it's built with
-          # its clang environment (libc++ instead of libstdc++)
+          # Windows package. x64 is built in MSYS2's UCRT64 environment (MINGW64
+          # no longer has every package, zbar for one). MSYS2 has no GCC for ARM64,
+          # so it's built with its clang environment (libc++ instead of libstdc++)
           - os: windows-latest
             target: windows
             arch: x64
-            msystem: MINGW64
+            msystem: UCRT64
             plugins: false
             artifact-name: windows-x64
             package-file: |
@@ -184,7 +186,7 @@ jobs:
           - os: windows-latest
             target: windows
             arch: x64
-            msystem: MINGW64
+            msystem: UCRT64
             plugins: true
             artifact-name: windows-x64-plugins
             package-file: |
@@ -306,7 +308,6 @@ jobs:
           brew install --formula --force-bottle \
             cmake \
             glfw \
-            tesseract \
             leptonica \
             zbar \
             curl \
@@ -322,7 +323,7 @@ jobs:
             zip
             git
             libcurl-devel
-          # :p adds the environment's package prefix (mingw-w64-x86_64-, mingw-w64-clang-aarch64-)
+          # :p adds the environment's package prefix (mingw-w64-ucrt-x86_64-, mingw-w64-clang-aarch64-)
           pacboy: >-
             7zip:p
             directx-headers:p
@@ -375,6 +376,14 @@ jobs:
             echo "the .deb depends on libglfw3" >&2; exit 1
           fi
 
+      # Homebrew's tesseract bottles need a newer macOS than MACOSX_DEPLOYMENT_TARGET
+      # (15.7.5 on arm64) and there's none for Intel: build a static libtesseract
+      - name: Build Tesseract (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          echo "TESSERACT_PREFIX=$RUNNER_TEMP/tesseract" >> "$GITHUB_ENV"
+          ./scripts/build_tesseract.sh "$RUNNER_TEMP/tesseract"
+
       - name: Build project (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -383,12 +392,14 @@ jobs:
           mkdir -p build
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
-            -DCMAKE_PREFIX_PATH="$BREW" \
+            -DCMAKE_PREFIX_PATH="$TESSERACT_PREFIX;$BREW" \
             -DPKG_CONFIG_PATH="$BREW/lib/pkgconfig:$BREW/share/pkgconfig" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" \
             -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }}
           cd build && make
           strip -x ./oshot
+          # The static libtesseract must be the one linked in, not a Homebrew dylib
+          if find . -maxdepth 1 \( -name oshot -o -name '*.dylib' \) -exec otool -L {} + | grep libtesseract; then echo "oshot links a libtesseract dylib" >&2; exit 1; fi
 
       - name: Build project (Windows)
         if: runner.os == 'Windows'
