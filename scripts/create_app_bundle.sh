@@ -108,8 +108,9 @@ main() {
             -p @executable_path/../Frameworks/ \
             -s "$LIB_SEARCH_DIR"
 
-        # Lets dlopen()ed plugins resolve their @rpath/<lib> dependencies
-        install_name_tool -add_rpath @executable_path/../Frameworks "${MACOS}/${APP_NAME}" 2>/dev/null || true
+        # Lets dlopen()ed plugins resolve their @rpath/<lib> dependencies.
+        # Spelled like dylibbundler's -p, so it's skipped if already there
+        install_name_tool -add_rpath @executable_path/../Frameworks/ "${MACOS}/${APP_NAME}" 2>/dev/null || true
 
         # dylibbundler names copies after the real file (libimgui.1.92.9.dylib),
         # plugins reference the soname (libimgui.1.dylib)
@@ -121,6 +122,22 @@ main() {
             fi
         done
     fi
+
+    # dylibbundler rewrites each LC_RPATH of a binary to the same -p path, so
+    # one built with several rpaths (oshot, oshotpm, liboshot_common, libcimgui
+    # in the plugin build) ends up listing it several times. dyld refuses to
+    # load those: "duplicate LC_RPATH '@executable_path/../Frameworks/'".
+    rpaths_of() {
+        otool -l "$1" | awk '$1 == "cmd" && $2 == "LC_RPATH" {getline; getline; print $2}'
+    }
+    for f in "$MACOS"/* "$FRAMEWORKS"/*.dylib; do
+        [ -f "$f" ] && [ ! -L "$f" ] || continue
+        rpaths_of "$f" | sort | uniq -d | while read -r rp; do
+            while [ "$(rpaths_of "$f" | grep -cxF "$rp")" -gt 1 ]; do
+                install_name_tool -delete_rpath "$rp" "$f"
+            done
+        done
+    done
 
     # OCR models: copied into ~/.config/oshot/models on first launch
     if [ -n "${OSHOT_MODELS_DIR:-}" ]; then
@@ -210,6 +227,11 @@ EOF
     # Ad-hoc code signature. Required to run at all on Apple Silicon; a Developer ID
     # signature + notarization is needed to open without the Gatekeeper prompt.
     codesign --force --deep --sign - "$APP_DIR"
+
+    # Fails here, instead of on the user's Mac, if dyld can't load something
+    for exe in "$MACOS"/*; do
+        "$exe" --version >/dev/null
+    done
 
     # Stage the .dmg with an /Applications shortcut so users can drag-and-drop install
     DMG_STAGE=$(mktemp -d)
