@@ -72,13 +72,17 @@ jobs:
             target: linux-appimage
             plugins: false
             artifact-name: linux-appimage
-            package-file: package/oshot-x86_64.AppImage
+            package-file: |
+              package/oshot-x86_64*.AppImage
+              package/oshot-x86_64*.AppImage.zsync
 
           - os: ubuntu-22.04
             target: linux-appimage
             plugins: true
             artifact-name: linux-appimage-plugins
-            package-file: package/oshot-appimage-plugins.zip
+            package-file: |
+              package/oshot-x86_64-plugins*.AppImage
+              package/oshot-x86_64-plugins*.AppImage.zsync
 
           # Debian package
           - os: ubuntu-22.04
@@ -333,20 +337,22 @@ jobs:
 
       - name: Package Linux AppImage
         if: matrix.target == 'linux-appimage'
+        env:
+          OSHOT_VERSION: ${{ needs.get-version.outputs.version }}
+          IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: |
-          mkdir -p package/oshot/
-          ./scripts/create_appimage.sh ./build/oshot oshot-x86_64.AppImage
-          chmod +x oshot-x86_64.AppImage
-          if [ "${{ matrix.plugins }}" != "true" ]; then
-            # Published as is: nothing else to ship next to it
-            mv oshot-x86_64.AppImage package/
-            exit 0
+          # Published as is: the plugin build bundles oshotpm and its libraries inside
+          NAME=oshot-x86_64${{ matrix.plugins && '-plugins' || '' }}
+          if [ "$IS_RELEASE" = true ]; then
+            # Update information points AppImageUpdate at the .zsync of the same variant
+            # in the latest release. The .zsync names the AppImage, so it gets its final
+            # name here and the release job doesn't rename it
+            export UPDATE_INFORMATION="gh-releases-zsync|${GITHUB_REPOSITORY%%/*}|${GITHUB_REPOSITORY#*/}|latest|${NAME}-v*.AppImage.zsync"
+            NAME="${NAME}-${OSHOT_VERSION}"
           fi
-          # The plugin manager and its libraries live outside the AppImage
-          mv oshot-x86_64.AppImage package/oshot/
-          cmake --install build --prefix package/oshot/oshotpm
-          rm -f package/oshot/oshotpm/bin/oshot
-          cd package && zip -ry oshot-appimage-plugins.zip oshot/
+          mkdir -p package/
+          ./scripts/create_appimage.sh ./build/oshot "package/${NAME}.AppImage"
+          chmod +x "package/${NAME}.AppImage"
 
       - name: Package macOS bundle
         if: runner.os == 'macOS'
@@ -483,6 +489,8 @@ jobs:
           shopt -s globstar nullglob
           for f in artifacts/**/*.zip artifacts/**/*.deb artifacts/**/*.dmg artifacts/**/*.exe artifacts/**/*.AppImage; do
             [ -f "$f" ] || continue
+            # Already named by its build job (the AppImages, see their .zsync)
+            case "$(basename "$f")" in *"-${VERSION}."*) continue ;; esac
             ext="${f##*.}"
             base=$(basename "$f" ".$ext")
             dir=$(dirname "$f")
@@ -508,5 +516,6 @@ jobs:
             artifacts/**/*.dmg
             artifacts/**/*.exe
             artifacts/**/*.AppImage
+            artifacts/**/*.zsync
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

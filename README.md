@@ -181,7 +181,15 @@ chmod +x oshot-x86_64-*.AppImage
 ./oshot-x86_64-*.AppImage
 ```
 
-The `-plugins` AppImage comes as a zip: it also contains `oshotpm/`, with the plugin manager and its libraries.
+The `oshot-x86_64-plugins-<version>.AppImage` also contains the `oshotpm` plugin manager. Plugins can be managed from
+the text tools window, or on the command line by passing `oshotpm` as the first argument:
+
+```bash
+./oshot-x86_64-plugins-*.AppImage oshotpm install https://github.com/user/repo
+# or link it as oshotpm somewhere in your PATH
+ln -s "$PWD"/oshot-x86_64-plugins-*.AppImage ~/.local/bin/oshotpm
+oshotpm list
+```
 
 **Debian / Ubuntu**
 
