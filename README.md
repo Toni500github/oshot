@@ -127,7 +127,12 @@ Each package also comes as a `-plugins` variant, which adds plugin support and t
 
 ### Windows
 
-Download `oshot-windows-setup-<version>.exe` and run it.
+Download the installer for your PC and run it:
+
+| Package | PC |
+| ------- | -- |
+| `oshot-windows-x64-setup-<version>.exe` | Intel or AMD (most PCs) |
+| `oshot-windows-arm64-setup-<version>.exe` | ARM, e.g. Snapdragon (Windows 11) |
 
 - Installs for your user only by default (no admin prompt), with a Start Menu entry and an uninstaller.
 - Optionally starts oshot in the system tray when you sign in.
@@ -135,7 +140,11 @@ Download `oshot-windows-setup-<version>.exe` and run it.
 
 Press **Alt+Shift+S** anywhere to capture while oshot is in the tray. You can change it in Preferences.
 
-Prefer a portable copy? Download `oshot-windows-<version>.zip`, extract it anywhere and run `oshot.exe`.
+Prefer a portable copy? Download `oshot-windows-x64-<version>.zip` (or `-arm64-`), extract it anywhere and run `oshot.exe`.
+
+On Windows on ARM, oshot draws with OpenGL, which ARM graphics drivers don't provide themselves. If oshot says it can't
+create its window, install the [OpenCL and OpenGL Compatibility Pack](https://devblogs.microsoft.com/directx/announcing-the-opencl-and-opengl-compatibility-pack-for-windows-10-on-arm/)
+from the Microsoft Store.
 
 >[!NOTE]
 >The installer is not code-signed yet, so SmartScreen may warn on first run: click **More info → Run anyway**.
@@ -170,24 +179,27 @@ In the `-plugins` builds, the plugin manager is at `/Applications/oshot.app/Cont
 
 | Package | Description |
 | ------- | ----------- |
-| `oshot-x86_64-<version>.AppImage` | Recommended. Self-contained, runs on most distributions |
-| `oshot-debian-package-<version>.deb` | Debian, Ubuntu and derivatives |
-| `oshot-linux-<version>.zip` | Generic binary, needs the runtime libraries installed (see [Dependencies](#dependencies)) |
+| `oshot-<arch>-<version>.AppImage` | Recommended. Self-contained, runs on most distributions |
+| `oshot-debian-package-<arch>-<version>.deb` | Debian, Ubuntu and derivatives |
+| `oshot-linux-x86_64-<version>.zip` | Generic binary, needs the runtime libraries installed (see [Dependencies](#dependencies)) |
+
+`<arch>` is your CPU, as printed by `uname -m`: `x86_64` for Intel/AMD and `aarch64` for 64-bit ARM (the `.deb`s
+use Debian's names, `amd64` and `arm64`). Other architectures, including 32-bit ARM, can [build from source](#build-from-source).
 
 **AppImage**
 
 ```bash
-chmod +x oshot-x86_64-*.AppImage
-./oshot-x86_64-*.AppImage
+chmod +x oshot-$(uname -m)-*.AppImage
+./oshot-$(uname -m)-*.AppImage
 ```
 
-The `oshot-x86_64-plugins-<version>.AppImage` also contains the `oshotpm` plugin manager. Plugins can be managed from
+The `oshot-<arch>-plugins-<version>.AppImage` also contains the `oshotpm` plugin manager. Plugins can be managed from
 the text tools window, or on the command line by passing `oshotpm` as the first argument:
 
 ```bash
-./oshot-x86_64-plugins-*.AppImage oshotpm install https://github.com/user/repo
+./oshot-$(uname -m)-plugins-*.AppImage oshotpm install https://github.com/user/repo
 # or link it as oshotpm somewhere in your PATH
-ln -s "$PWD"/oshot-x86_64-plugins-*.AppImage ~/.local/bin/oshotpm
+ln -s "$PWD"/oshot-$(uname -m)-plugins-*.AppImage ~/.local/bin/oshotpm
 oshotpm list
 ```
 
@@ -318,6 +330,8 @@ brew install cmake glfw tesseract leptonica zbar
 
 #### Windows (MSYS2 UCRT64)
 
+On Windows on ARM, use the CLANGARM64 environment instead, with the same packages named `mingw-w64-clang-aarch64-*`.
+
 ```bash
 pacman -S --needed \
   mingw-w64-ucrt-x86_64-toolchain \
@@ -356,6 +370,7 @@ ninja
 ### Windows: flicker on launch / app fails to start
 
 Download [MesaForWindows.7z](https://downloads.fdossena.com/geth.php?r=mesa64-latest), extract `opengl32.dll` beside `oshot.exe`, and relaunch.
+This `opengl32.dll` is for x64 only; on Windows on ARM, install the OpenGL compatibility pack instead (see [Windows](#windows)).
 
 ### Linux: missing/mismatched runtime libraries
 

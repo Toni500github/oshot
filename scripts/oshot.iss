@@ -1,10 +1,11 @@
 ; Inno Setup script for the oshot Windows installer.
 ;
 ; Usage (from the repo root, after packaging the portable folder):
-;   iscc /DAppVersion=0.5.0-rc2 /DAppNumVersion=0.5.0 /DSourceDir=..\package\oshot /DOutputName=oshot-windows-setup scripts\oshot.iss
+;   iscc /DAppVersion=0.5.0-rc2 /DAppNumVersion=0.5.0 /DArch=x64 /DSourceDir=..\package\oshot /DOutputName=oshot-windows-x64-setup scripts\oshot.iss
 ;
 ; SourceDir is relative to this script. It must contain oshot.exe, its DLLs and models\eng.traineddata,
 ; i.e. the same folder that goes into the portable zip.
+; Arch is what the binaries in it were built for: x64 (the default) or arm64.
 ;
 ; The uninstaller asks whether to delete the user data (%APPDATA%\oshot, %LOCALAPPDATA%\oshot and
 ; %LOCALAPPDATA%\oshotpm). Silent uninstalls keep it unless /PURGE is passed: unins000.exe /SILENT /PURGE
@@ -20,7 +21,18 @@
   #define SourceDir "..\package\oshot"
 #endif
 #ifndef OutputName
-  #define OutputName "oshot-windows-setup"
+  #define OutputName "oshot-windows-x64-setup"
+#endif
+#ifndef Arch
+  #define Arch "x64"
+#endif
+; x64compatible also covers ARM64 Windows 11, which runs x64 programs emulated
+#if Arch == "arm64"
+  #define ArchAllowed "arm64"
+#elif Arch == "x64"
+  #define ArchAllowed "x64compatible"
+#else
+  #error Arch must be x64 or arm64
 #endif
 
 [Setup]
@@ -45,8 +57,8 @@ OutputBaseFilename={#OutputName}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed={#ArchAllowed}
+ArchitecturesInstallIn64BitMode={#ArchAllowed}
 ; Install per-user by default (no admin prompt); the user can still pick "all users"
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
