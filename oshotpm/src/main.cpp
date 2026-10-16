@@ -320,8 +320,10 @@ void switch_plugin(const StateManager& state, bool switch_)
                             continue;
                         TomlAPI plugin_api(*plugin_tbl);
                         if (arg == plugin_api.GetValue<std::string>("id", UNKNOWN))
-                            for (fs::path base_path : plugin_api.GetValueArrayStr("libraries", {}))
-                                switch_plugin_path(arg, base_path, switch_, switch_str);
+                        {
+                            fs::path base_path = plugin_api.GetValue<std::string>("library", UNKNOWN);
+                            switch_plugin_path(arg, base_path, switch_, switch_str);
+                        }
                     }
                 }
             }
@@ -342,8 +344,8 @@ void switch_plugin(const StateManager& state, bool switch_)
                     if (!plugin_tbl || TomlAPI(*plugin_tbl).GetValue<std::string>("name", "(unknown)") != plugin)
                         continue;
 
-                    for (fs::path base_path : TomlAPI(*plugin_tbl).GetValueArrayStr("libraries", {}))
-                        switch_plugin_path(arg, base_path, switch_, switch_str);
+                    fs::path base_path = TomlAPI(*plugin_tbl).GetValue<std::string>("library", UNKNOWN);
+                    switch_plugin_path(arg, base_path, switch_, switch_str);
                 }
             }
         }
@@ -364,9 +366,9 @@ void list_all_plugins(const StateManager& state)
                 if (!plugin_tbl || TomlAPI(*plugin_tbl).GetValue<std::string>("name", "(unknown)") != plugin_name)
                     continue;
 
-                for (fs::path base_path : TomlAPI(*plugin_tbl).GetValueArrayStr("libraries", {}))
-                    if (fs::exists(base_path += ".disabled"))  // NOLINT
-                        return true;
+                const fs::path base_path = TomlAPI(*plugin_tbl).GetValue<std::string>("library", UNKNOWN);
+                if (fs::exists(base_path.string() + ".disabled"))
+                    return true;
             }
         }
         return false;
