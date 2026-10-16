@@ -235,6 +235,11 @@ int run_main_tool()
     GLFWmonitor*       monitor = get_monitor_at_cursor();
     const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
 
+    // Only log GLFW errors while creating the window: a failed first try isn't an
+    // error yet, and a real failure gets one dialog below instead of one per try
+    GLFWerrorfun error_callback = glfwSetErrorCallback(
+        [](int i_error, const char* description) { spdlog::warn("GLFW Error {}: {}", i_error, description); });
+
     // Pass nullptr as the monitor to get a borderless windowed overlay
     // instead of exclusive fullscreen. This ensures GLFW_DECORATED,
     // GLFW_FLOATING, and GLFW_AUTO_ICONIFY hints actually take effect
@@ -242,8 +247,26 @@ int run_main_tool()
     // keeps mouse/keyboard events scoped to this monitor so they don't
     // bleed in from the other display on multi-monitor setups.
     window = glfwCreateWindow(mode->width, mode->height, "oshot", fullscreen ? monitor : nullptr, nullptr);
+#  if !OSHOT_MACOS && !defined(IMGUI_IMPL_OPENGL_ES2) && !defined(IMGUI_IMPL_OPENGL_ES3)
     if (!window)
     {
+        // Some drivers stop below 3.3, e.g. Mesa's on the Raspberry Pi 4 and 5 (3.1).
+        // The ImGui renderer works with 3.0 and GLSL 130 too
+        spdlog::warn("Couldn't create an OpenGL 3.3 context, trying OpenGL 3.0");
+        glsl_version = "#version 130";
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);  // profiles only exist from 3.2
+        window = glfwCreateWindow(mode->width, mode->height, "oshot", fullscreen ? monitor : nullptr, nullptr);
+    }
+#  endif
+    glfwSetErrorCallback(error_callback);
+    if (!window)
+    {
+        const char* desc = nullptr;
+        glfwGetError(&desc);
+        error("Failed to create the overlay window: {}\noshot needs OpenGL 3.0 or newer.",
+              desc ? desc : "unknown error");
         if (!g_is_systray)
             glfwTerminate();
         return EXIT_FAILURE;
