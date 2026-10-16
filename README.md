@@ -101,7 +101,7 @@ https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 | Distro packages / Flathub | AUR only | ✅ | ✅ | – |
 | Built with            | C++, Dear ImGui | C++, Qt | Python, Qt | C#, WinForms |
 
-<sub>¹ Apple Silicon Macs need macOS 26.4 or later for now, Intel Macs macOS 15. ² Only in the `-plugins` builds.</sub>
+<sub>¹ macOS 15 (Sequoia) or later. ² Only in the `-plugins` builds.</sub>
 
 Some of these gaps are long-standing requests. Flameshot users have asked for
 [OCR since 2020](https://github.com/flameshot-org/flameshot/issues/702) and for
@@ -156,7 +156,7 @@ Download the `.dmg` that matches your Mac:
 
 | Package | Mac | Requires |
 | ------- | --- | -------- |
-| `oshot-macos-arm64-<version>.dmg` | Apple Silicon (M1 and newer) | macOS 26.4 (Tahoe) or later |
+| `oshot-macos-arm64-<version>.dmg` | Apple Silicon (M1 and newer) | macOS 15 (Sequoia) or later |
 | `oshot-macos-x86_64-<version>.dmg` | Intel | macOS 15 (Sequoia) or later |
 
 Older macOS versions aren't supported yet: the bundled libraries come from Homebrew, which builds them for the macOS of our build machines.

@@ -9,6 +9,9 @@ on:
 env:
   HOMEBREW_NO_AUTO_UPDATE: 1
   HOMEBREW_NO_BOTTLE_SOURCE_FALLBACK: 1
+  # Oldest macOS the macOS packages run on. It must match the runners' macOS,
+  # as that's what the bundled Homebrew libraries are built for
+  MACOSX_DEPLOYMENT_TARGET: "15.0"
   MODELS_URL_RAW: "https://github.com/tesseract-ocr/tessdata/raw/main"
   BUILD_TYPE: ${{ startsWith(github.ref, 'refs/tags/v') && 'Release' || 'Debug' }}
 
@@ -135,15 +138,16 @@ jobs:
             artifact-name: debian-package-arm64-plugins
             package-file: package/oshot-debian-package-arm64-plugins.deb
 
-          # macOS aarch64 (arm64) package
-          - os: macos-latest
+          # macOS aarch64 (arm64) package. Homebrew's bottles are built for the
+          # runner's macOS, so the runner sets the oldest macOS oshot runs on
+          - os: macos-15
             target: macos
             arch: arm64
             plugins: false
             artifact-name: macos-arm64
             package-file: package/oshot-macos-arm64.dmg
 
-          - os: macos-latest
+          - os: macos-15
             target: macos
             arch: arm64
             plugins: true
@@ -381,6 +385,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
             -DCMAKE_PREFIX_PATH="$BREW" \
             -DPKG_CONFIG_PATH="$BREW/lib/pkgconfig:$BREW/share/pkgconfig" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" \
             -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }}
           cd build && make
           strip -x ./oshot
@@ -434,6 +439,8 @@ jobs:
           # Tagged builds get the tag; branch builds keep the script's default version
           case "$OSHOT_VERSION" in v*) ;; *) unset OSHOT_VERSION ;; esac
           export OSHOT_MODELS_DIR="$PWD/models"
+          # Fail if a bundled library needs a newer macOS than MACOSX_DEPLOYMENT_TARGET
+          export OSHOT_MIN_MACOS="$MACOSX_DEPLOYMENT_TARGET"
           if [ "${{ matrix.plugins }}" == "true" ]; then
             export OSHOT_EXTRA_BINS="$PWD/build/oshotpm"
             export OSHOT_EXTRA_LIBS="$PWD/build/libcimgui.dylib"
