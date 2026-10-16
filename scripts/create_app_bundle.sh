@@ -9,6 +9,7 @@
 #   OSHOT_MODELS_DIR  directory of *.traineddata to bundle into Contents/Resources/tessdata
 #   OSHOT_EXTRA_BINS  space-separated extra executables to put in Contents/MacOS (e.g. oshotpm)
 #   OSHOT_EXTRA_LIBS  space-separated dylibs that nothing in the bundle links but plugins do (e.g. libcimgui)
+#   OSHOT_MIN_MACOS   fail if anything in the bundle needs a newer macOS than this (e.g. 15.0)
 
 set -euo pipefail
 set -x
@@ -145,13 +146,23 @@ main() {
     # The newest minimum macOS among everything bundled. Homebrew's libraries
     # are built for the CI runner's macOS, so they usually decide it. With it
     # in Info.plist, Finder says "requires macOS X" instead of failing to launch.
-    MIN_MACOS="$(for f in "$MACOS"/* "$FRAMEWORKS"/*.dylib; do
-        if [ -f "$f" ] && [ ! -L "$f" ]; then
-            otool -l "$f" | awk '/LC_BUILD_VERSION/ {b = 1} /LC_VERSION_MIN_MACOSX/ {m = 1}
-                (b && $1 == "minos" || m && $1 == "version") && !done {print $2; done = 1}'
-        fi
-    done | sort -V | tail -n 1)"
+    # "<minimum macOS> <file>" for every binary in the bundle
+    min_macos_per_file() {
+        for f in "$MACOS"/* "$FRAMEWORKS"/*.dylib; do
+            if [ -f "$f" ] && [ ! -L "$f" ]; then
+                printf '%s %s\n' "$(otool -l "$f" | awk '/LC_BUILD_VERSION/ {b = 1} /LC_VERSION_MIN_MACOSX/ {m = 1}
+                    (b && $1 == "minos" || m && $1 == "version") && !done {print $2; done = 1}')" "$(basename "$f")"
+            fi
+        done | sort -V
+    }
+    MIN_MACOS="$(min_macos_per_file | tail -n 1 | cut -d' ' -f1)"
     echo "Minimum macOS: ${MIN_MACOS:-unknown}"
+    if [ -n "${OSHOT_MIN_MACOS:-}" ] && [ -n "$MIN_MACOS" ] &&
+        [ "$(printf '%s\n' "$OSHOT_MIN_MACOS" "$MIN_MACOS" | sort -V | tail -n 1)" != "$OSHOT_MIN_MACOS" ]; then
+        echo "The bundle needs macOS $MIN_MACOS, newer than OSHOT_MIN_MACOS=$OSHOT_MIN_MACOS:" >&2
+        min_macos_per_file >&2
+        exit 1
+    fi
     MIN_MACOS_KEY=""
     if [ -n "$MIN_MACOS" ]; then
         MIN_MACOS_KEY="<key>LSMinimumSystemVersion</key><string>${MIN_MACOS}</string>"
