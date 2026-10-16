@@ -19,10 +19,12 @@ cat << EOF
 
 | System | File |
 | ------ | ---- |
-| Windows | \`oshot-windows-setup-${TAG}.exe\` (installer) or \`oshot-windows-${TAG}.zip\` (portable) |
+| Windows (Intel/AMD) | \`oshot-windows-x64-setup-${TAG}.exe\` (installer) or \`oshot-windows-x64-${TAG}.zip\` (portable) |
+| Windows on ARM | \`oshot-windows-arm64-setup-${TAG}.exe\` (installer) or \`oshot-windows-arm64-${TAG}.zip\` (portable) |
 | macOS, Apple Silicon | \`oshot-macos-arm64-${TAG}.dmg\` |
 | macOS, Intel | \`oshot-macos-x86_64-${TAG}.dmg\` |
-| Linux | \`oshot-x86_64-${TAG}.AppImage\`, or \`oshot-debian-package-${TAG}.deb\` on Debian/Ubuntu |
+| Linux (Intel/AMD) | \`oshot-x86_64-${TAG}.AppImage\`, or \`oshot-debian-package-amd64-${TAG}.deb\` on Debian/Ubuntu |
+| Linux on ARM64 (e.g. Raspberry Pi OS 64-bit) | \`oshot-aarch64-${TAG}.AppImage\`, or \`oshot-debian-package-arm64-${TAG}.deb\` on Debian/Ubuntu |
 
 Files ending in \`-plugins\` add plugin support and the \`oshotpm\` plugin manager. If you don't use plugins, you don't need them.
 

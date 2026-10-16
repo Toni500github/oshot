@@ -48,97 +48,164 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux package
+          # Linux package. Arch Linux's container image only exists for x86_64
           - os: ubuntu-latest
             container:
               image: ghcr.io/toni500github/arch-dev:latest
               options: --user 0
             target: linux
+            arch: x86_64
             plugins: false
-            artifact-name: linux
-            package-file: package/oshot-linux.zip
+            artifact-name: linux-x86_64
+            package-file: package/oshot-linux-x86_64.zip
 
           - os: ubuntu-latest
             container:
               image: ghcr.io/toni500github/arch-dev:latest
               options: --user 0
             target: linux
+            arch: x86_64
             plugins: true
-            artifact-name: linux-plugins
-            package-file: package/oshot-linux-plugins.zip
+            artifact-name: linux-x86_64-plugins
+            package-file: package/oshot-linux-x86_64-plugins.zip
 
-          # AppImage package
+          # AppImage package (arch: uname -m, as in AppImage names)
           - os: ubuntu-22.04
             target: linux-appimage
+            arch: x86_64
             plugins: false
-            artifact-name: linux-appimage
+            artifact-name: linux-appimage-x86_64
             package-file: |
               package/oshot-x86_64*.AppImage
               package/oshot-x86_64*.AppImage.zsync
 
           - os: ubuntu-22.04
             target: linux-appimage
+            arch: x86_64
             plugins: true
-            artifact-name: linux-appimage-plugins
+            artifact-name: linux-appimage-x86_64-plugins
             package-file: |
               package/oshot-x86_64-plugins*.AppImage
               package/oshot-x86_64-plugins*.AppImage.zsync
 
-          # Debian package
+          - os: ubuntu-22.04-arm
+            target: linux-appimage
+            arch: aarch64
+            plugins: false
+            artifact-name: linux-appimage-aarch64
+            package-file: |
+              package/oshot-aarch64*.AppImage
+              package/oshot-aarch64*.AppImage.zsync
+
+          - os: ubuntu-22.04-arm
+            target: linux-appimage
+            arch: aarch64
+            plugins: true
+            artifact-name: linux-appimage-aarch64-plugins
+            package-file: |
+              package/oshot-aarch64-plugins*.AppImage
+              package/oshot-aarch64-plugins*.AppImage.zsync
+
+          # Debian package (arch: dpkg --print-architecture)
           - os: ubuntu-22.04
             target: debian-package
+            arch: amd64
             plugins: false
-            artifact-name: debian-package
-            package-file: package/oshot-debian-package.deb
+            artifact-name: debian-package-amd64
+            package-file: package/oshot-debian-package-amd64.deb
 
           - os: ubuntu-22.04
             target: debian-package
+            arch: amd64
             plugins: true
-            artifact-name: debian-package-plugins
-            package-file: package/oshot-debian-package-plugins.deb
+            artifact-name: debian-package-amd64-plugins
+            package-file: package/oshot-debian-package-amd64-plugins.deb
+
+          - os: ubuntu-22.04-arm
+            target: debian-package
+            arch: arm64
+            plugins: false
+            artifact-name: debian-package-arm64
+            package-file: package/oshot-debian-package-arm64.deb
+
+          - os: ubuntu-22.04-arm
+            target: debian-package
+            arch: arm64
+            plugins: true
+            artifact-name: debian-package-arm64-plugins
+            package-file: package/oshot-debian-package-arm64-plugins.deb
 
           # macOS aarch64 (arm64) package
           - os: macos-latest
-            target: macos-arm64
+            target: macos
+            arch: arm64
             plugins: false
             artifact-name: macos-arm64
             package-file: package/oshot-macos-arm64.dmg
 
           - os: macos-latest
-            target: macos-arm64
+            target: macos
+            arch: arm64
             plugins: true
             artifact-name: macos-arm64-plugins
             package-file: package/oshot-macos-arm64-plugins.dmg
 
           # macOS x86_64 (Intel) package
           - os: macos-15-intel
-            target: macos-x86_64
+            target: macos
+            arch: x86_64
             plugins: false
             artifact-name: macos-x86_64
             package-file: package/oshot-macos-x86_64.dmg
 
           - os: macos-15-intel
-            target: macos-x86_64
+            target: macos
+            arch: x86_64
             plugins: true
             artifact-name: macos-x86_64-plugins
             package-file: package/oshot-macos-x86_64-plugins.dmg
 
-          # Windows package
+          # Windows package. MSYS2 has no GCC for ARM64, so it's built with
+          # its clang environment (libc++ instead of libstdc++)
           - os: windows-latest
             target: windows
+            arch: x64
+            msystem: MINGW64
             plugins: false
-            artifact-name: windows
+            artifact-name: windows-x64
             package-file: |
-              package/oshot-windows.zip
-              package/oshot-windows-setup.exe
+              package/oshot-windows-x64.zip
+              package/oshot-windows-x64-setup.exe
 
           - os: windows-latest
             target: windows
+            arch: x64
+            msystem: MINGW64
             plugins: true
-            artifact-name: windows-plugins
+            artifact-name: windows-x64-plugins
             package-file: |
-              package/oshot-windows-plugins.zip
-              package/oshot-windows-plugins-setup.exe
+              package/oshot-windows-x64-plugins.zip
+              package/oshot-windows-x64-plugins-setup.exe
+
+          - os: windows-11-arm
+            target: windows
+            arch: arm64
+            msystem: CLANGARM64
+            plugins: false
+            artifact-name: windows-arm64
+            package-file: |
+              package/oshot-windows-arm64.zip
+              package/oshot-windows-arm64-setup.exe
+
+          - os: windows-11-arm
+            target: windows
+            arch: arm64
+            msystem: CLANGARM64
+            plugins: true
+            artifact-name: windows-arm64-plugins
+            package-file: |
+              package/oshot-windows-arm64-plugins.zip
+              package/oshot-windows-arm64-plugins-setup.exe
 
     steps:
       - name: Checkout repository
@@ -245,27 +312,30 @@ jobs:
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
+          msystem: ${{ matrix.msystem }}
           update: true
           install: >-
             zip
             git
             libcurl-devel
-            mingw-w64-x86_64-7zip
-            mingw-w64-x86_64-directx-headers
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-minizip
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-zbar
-            mingw-w64-x86_64-make
-            mingw-w64-x86_64-tesseract-ocr
-            mingw-w64-x86_64-glfw
-            mingw-w64-x86_64-libpng
-            mingw-w64-x86_64-libjpeg-turbo
-            mingw-w64-x86_64-openjpeg2
-            mingw-w64-x86_64-libwebp
-            mingw-w64-x86_64-libtiff
-            mingw-w64-x86_64-curl
+          # :p adds the environment's package prefix (mingw-w64-x86_64-, mingw-w64-clang-aarch64-)
+          pacboy: >-
+            7zip:p
+            directx-headers:p
+            ninja:p
+            toolchain:p
+            minizip:p
+            cmake:p
+            zbar:p
+            make:p
+            tesseract-ocr:p
+            glfw:p
+            libpng:p
+            libjpeg-turbo:p
+            openjpeg2:p
+            libwebp:p
+            libtiff:p
+            curl:p
 
       # Build
       # Distro GLFW is X11-only on Ubuntu 22.04 (3.3) and depends on the host for the
@@ -294,10 +364,10 @@ jobs:
           ./scripts/generateVersion.sh
           dpkg-buildpackage -us -uc -b
           mkdir -p package
-          SUFFIX=$([ "${{ matrix.plugins }}" == "true" ] && echo "-plugins" || echo "")
-          mv ../oshot_*.deb package/oshot-debian-package${SUFFIX}.deb
+          DEB=package/oshot-debian-package-${{ matrix.arch }}${{ matrix.plugins && '-plugins' || '' }}.deb
+          mv ../oshot_*_${{ matrix.arch }}.deb "$DEB"
           # The static GLFW must be the one linked in, not Ubuntu's X11-only libglfw3
-          if dpkg-deb -f package/oshot-debian-package${SUFFIX}.deb Depends | grep libglfw; then
+          if dpkg-deb -f "$DEB" Depends | grep libglfw; then
             echo "the .deb depends on libglfw3" >&2; exit 1
           fi
 
@@ -332,8 +402,7 @@ jobs:
           find package/oshot -type f \( -executable -o -name '*.so*' \) -exec strip --strip-unneeded {} + 2>/dev/null || true
           cp scripts/install-linux-zip.sh package/oshot/install.sh
           chmod +x package/oshot/install.sh
-          SUFFIX=$([ "${{ matrix.plugins }}" == "true" ] && echo "-plugins" || echo "")
-          cd package && zip -ry oshot-linux${SUFFIX}.zip oshot/
+          cd package && zip -ry oshot-linux-${{ matrix.arch }}${{ matrix.plugins && '-plugins' || '' }}.zip oshot/
 
       - name: Package Linux AppImage
         if: matrix.target == 'linux-appimage'
@@ -342,7 +411,7 @@ jobs:
           IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: |
           # Published as is: the plugin build bundles oshotpm and its libraries inside
-          NAME=oshot-x86_64${{ matrix.plugins && '-plugins' || '' }}
+          NAME=oshot-${{ matrix.arch }}${{ matrix.plugins && '-plugins' || '' }}
           if [ "$IS_RELEASE" = true ]; then
             # Update information points AppImageUpdate at the .zsync of the same variant
             # in the latest release. The .zsync names the AppImage, so it gets its final
@@ -360,7 +429,6 @@ jobs:
           OSHOT_VERSION: ${{ needs.get-version.outputs.version }}
         run: |
           mkdir -p package models
-          ARCH=$(uname -m)
           SUFFIX=$([ "${{ matrix.plugins }}" == "true" ] && echo "-plugins" || echo "")
           curl -fL $MODELS_URL_RAW/eng.traineddata -o models/eng.traineddata
           # Tagged builds get the tag; branch builds keep the script's default version
@@ -370,7 +438,7 @@ jobs:
             export OSHOT_EXTRA_BINS="$PWD/build/oshotpm"
             export OSHOT_EXTRA_LIBS="$PWD/build/libcimgui.dylib"
           fi
-          ./scripts/create_app_bundle.sh ./build/oshot package/oshot-macos-${ARCH}${SUFFIX}.dmg ./build
+          ./scripts/create_app_bundle.sh ./build/oshot package/oshot-macos-${{ matrix.arch }}${SUFFIX}.dmg ./build
 
       - name: Package Windows binary
         if: runner.os == 'Windows'
@@ -378,14 +446,16 @@ jobs:
         run: |
           shopt -s nullglob
           mkdir -p package/oshot/models
-          SUFFIX=$([ "${{ matrix.plugins }}" == "true" ] && echo "-plugins" || echo "")
           cmake --install build --prefix package/oshot_install
-          strip --strip-unneeded package/oshot_install/bin/*.exe package/oshot_install/bin/*.dll
-          cp package/oshot_install/bin/*.exe package/oshot_install/bin/*.dll package/oshot/ 2>/dev/null || true
+          # The clang environments have llvm's binutils, which may only exist under their llvm- names
+          STRIP=$(command -v strip || command -v llvm-strip)
+          "$STRIP" --strip-unneeded package/oshot_install/bin/*.exe package/oshot_install/bin/*.dll
+          cp package/oshot_install/bin/*.exe package/oshot_install/bin/*.dll package/oshot/
           cp ./assets/windows/oshot.ico package/oshot/
-          ldd ./build/oshot.exe | grep -i mingw | awk '{print $3}' | xargs -I {} cp {} package/oshot/ || true
+          # Every DLL that oshot, oshotpm and their DLLs need from the MSYS2 environment
+          ./scripts/bundle_windows_dlls.sh package/oshot
           curl -fL $MODELS_URL_RAW/eng.traineddata -o package/oshot/models/eng.traineddata
-          cd package && zip -ry oshot-windows${SUFFIX}.zip oshot/
+          cd package && zip -ry oshot-windows-${{ matrix.arch }}${{ matrix.plugins && '-plugins' || '' }}.zip oshot/
 
       - name: Build Windows installer
         if: runner.os == 'Windows'
@@ -406,8 +476,8 @@ jobs:
           }
           $numVersion = ($version -split '-')[0]
           $suffix = if ('${{ matrix.plugins }}' -eq 'true') { '-plugins' } else { '' }
-          & $iscc /Qp "/DAppVersion=$version" "/DAppNumVersion=$numVersion" `
-            "/DSourceDir=..\package\oshot" "/DOutputName=oshot-windows$suffix-setup" scripts\oshot.iss
+          & $iscc /Qp "/DAppVersion=$version" "/DAppNumVersion=$numVersion" "/DArch=${{ matrix.arch }}" `
+            "/DSourceDir=..\package\oshot" "/DOutputName=oshot-windows-${{ matrix.arch }}$suffix-setup" scripts\oshot.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # Upload artifact
