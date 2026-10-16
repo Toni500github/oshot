@@ -6,7 +6,7 @@
 # Only DLLs found in the search dir are copied; any other import is taken to
 # be part of Windows (KERNEL32.dll, api-ms-win-crt-*.dll, ...). Reads the
 # import tables with objdump, so it works for every MSYS2 environment
-# (MINGW64, CLANGARM64, ...) and doesn't need to run the binaries like ldd.
+# (UCRT64, CLANGARM64, ...) and doesn't need to run the binaries like ldd.
 #
 # usage: scripts/bundle_windows_dlls.sh <dir> [search-dir]
 #   search-dir defaults to $MINGW_PREFIX/bin, the active MSYS2 environment
