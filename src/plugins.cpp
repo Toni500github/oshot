@@ -25,108 +25,209 @@
 
 #ifndef DISABLE_PLUGINS
 
+#  include <cstddef>
+
+#  include "imgui.h"
 #  include "manifest.hh"
 #  include "plugin.hpp"
+#  include "state_manager.hh"
 #  include "util.hpp"
 
-static void load_plugin_path(const fs::path& path)
+static_assert(OSHOT_IMGUI_VERSION == IMGUI_VERSION_NUM,
+              "Update OSHOT_IMGUI_VERSION in src/plugins/oshot_plugin.h together with imgui");
+
+// From libcimgui. oshot itself doesn't need cimgui, but calling into it makes
+// liboshot_common depend on it, so it's loaded before any plugin is: plugins
+// then find its symbols without linking it (or without finding it on their
+// own, e.g. inside the AppImage).
+extern "C" const char* igGetVersion(void);
+
+static std::thread::id g_plugin_ui_thread;
+
+fs::path get_plugins_dir()
 {
-    const fs::path disabled_path = path.string() + ".disabled";
+    return get_config_dir() / "plugins";
+}
 
-    const bool is_enabled = fs::exists(path);
+bool on_plugin_ui_thread()
+{
+    return std::this_thread::get_id() == g_plugin_ui_thread;
+}
 
-    if (fs::exists(disabled_path))
-    {
-        spdlog::info("Plugin '{}' is disabled, skipping", path.filename().string());
+plugin_runtime_t::~plugin_runtime_t()
+{
+    if (initialized && plugin->destroy)
+        plugin->destroy(state);
+    SaveConfig();
+}
+
+void plugin_runtime_t::SaveConfig()
+{
+    if (!config_dirty)
         return;
-    }
+    if (!config.SaveFile(config_path.string()))
+        spdlog::error("Failed to save {}", config_path.string());
+    config_dirty = false;
+}
 
-    if (!is_enabled)
+void plugin_runtime_t::RunUiTasks()
+{
+    std::vector<std::pair<void (*)(void*), void*>> todo;
     {
-        spdlog::warn("Plugin file '{}' listed in state.toml not found (checked '{}' and '{}'). Skipping",
-                     path.filename().string(),
-                     path.string(),
-                     disabled_path.string());
-        return;
+        std::scoped_lock lock(tasks_mutex);
+        todo.swap(tasks);
     }
+    for (auto& [fn, user] : todo)
+        fn(user);
+}
 
+Result<> validate_plugin_descriptor(const oshot_plugin_t* plugin)
+{
+    if (!plugin)
+        return Err("oshot_plugin_entry() returned NULL");
+    if (plugin->abi_version != OSHOT_API_VERSION)
+        return Err("it's built for plugin ABI {}, but this oshot has ABI {}", plugin->abi_version, OSHOT_API_VERSION);
+    if (plugin->struct_size < sizeof(oshot_plugin_t))
+        return Err("its oshot_plugin_t is {} bytes, expected at least {}: rebuild it with the current oshot_plugin.h",
+                   plugin->struct_size,
+                   sizeof(oshot_plugin_t));
+    if (plugin->imgui_version == 0)
+    {
+        if (plugin->render || plugin->render_preferences)
+            return Err("imgui_version is 0, but it has render functions: set it to OSHOT_IMGUI_VERSION");
+    }
+    else if (plugin->imgui_version != IMGUI_VERSION_NUM)
+    {
+        return Err("it's built for Dear ImGui {}, but oshot uses {}: rebuild it with this oshot's SDK",
+                   plugin->imgui_version,
+                   IMGUI_VERSION_NUM);
+    }
+    if (!plugin->id || !Manifest::IsValidID(plugin->id))
+        return Err("its ID '{}' is invalid", plugin->id ? plugin->id : "(null)");
+    if (!plugin->name || plugin->name[0] == '\0')
+        return Err("it has no name");
+    return Ok();
+}
+
+// The library and its validated descriptor
+static Result<std::pair<dylib::library, const oshot_plugin_t*>> open_plugin(const fs::path& path)
+{
     try
     {
-        dylib::library  lib(path.string());
-        oshot_plugin_t* plugin = lib.get_function<oshot_plugin_t*()>("oshot_host_get_plugin")();
-
-        if (!plugin || plugin->abi_version != oshot_get_abi_version())
-        {
-            spdlog::error("Plugin '{}' has incompatible ABI version, skipping", path.stem().string());
-            return;
-        }
-
-        if (!plugin->render || !plugin->id || !plugin->name || plugin->name[0] == '\0' || plugin->id[0] == '\0')
-        {
-            spdlog::error("Plugin '{}' doesn't define name/ID or render function", path.stem().string());
-            return;
-        }
-
-        if (plugin->id[0] == '.' || !Manifest::IsValidID(plugin->id))
-        {
-            spdlog::error("Plugin '{}' has an invalid ID", plugin->id);
-            return;
-        }
-
-        fs::path plugin_config_dir  = path.parent_path();
-        fs::path plugin_config_path = plugin_config_dir / "config.toml";
-
-        fs::create_directories(plugin_config_dir);
-
-        TomlAPI toml_api;
-        if (!fs::exists(plugin_config_path))
-            std::ofstream(plugin_config_path, std::ios::trunc | std::ios::ate).close();
-        MUST_OK(toml_api.LoadFile(plugin_config_path.string()),
-                { spdlog::error("Failed to load plugin '{}' config.toml: {}", plugin->id, _r.error_v()); });
-
-        auto [it, inserted] = g_plugins.try_emplace(plugin->id,
-                                                    plugin->id,
-                                                    fmt::format("plugins.{}.", plugin->id),
-                                                    std::move(plugin_config_dir),
-                                                    path,
-                                                    plugin,
-                                                    nullptr,  // state filled in below
-                                                    is_enabled,
-                                                    std::move(lib),
-                                                    std::move(toml_api),
-                                                    std::move(plugin_config_path));
-        if (!inserted)
-        {
-            spdlog::warn("Duplicate plugin '{}'", plugin->id);
-            return;
-        }
-
-        if (is_enabled && plugin->init)
-        {
-            ScopedActivePlugin _(&it->second);
-            it->second.state = plugin->init();
-        }
-
-        spdlog::info("loading plugin at {}!", path.string());
+        dylib::library        lib(path);
+        const oshot_plugin_t* plugin = lib.get_function<const oshot_plugin_t*()>("oshot_plugin_entry")();
+        TRY(validate_plugin_descriptor(plugin));
+        return Ok(std::make_pair(std::move(lib), plugin));
     }
     catch (const dylib::load_error& e)
     {
-        spdlog::error("Failed to load '{}' library: {}", path.stem().string(), e.what());
+        return Err("can't load it: {}", e.what());
     }
-    catch (const dylib::symbol_error& e)
+    catch (const dylib::symbol_error&)
     {
-        spdlog::error("Failed to get 'oshot_get_plugin()' symbol: {}", e.what());
+        return Err("it doesn't export oshot_plugin_entry()");
     }
 }
 
-void load_plugins(const std::vector<manifest_t>& repos)
+Result<plugin_info_t> inspect_plugin_library(const fs::path& path)
 {
-    const fs::path pluginsDir = get_config_dir() / "plugins";
-    fs::create_directories(pluginsDir);
+    auto res = open_plugin(path);
+    if (!res.ok())
+        return Err(res.error_v());
+    const oshot_plugin_t* plugin = res.get().second;
+    return Ok(plugin_info_t{ .id = plugin->id, .name = plugin->name });
+}
 
-    for (const manifest_t& repo : repos)
+// Directories left behind by an uninstall that couldn't delete a loaded
+// library (Windows), and libraries replaced while they were loaded
+static void remove_leftovers(const StateManager& state)
+{
+    std::error_code ec;
+    for (const fs::directory_entry& entry : fs::directory_iterator(get_plugins_dir(), ec))
+    {
+        const std::string name = entry.path().filename().string();
+        if (!entry.is_directory(ec) || !Manifest::IsValidID(name))
+            continue;
+
+        if (!state.FindPlugin(name))
+        {
+            spdlog::info("Removing the leftovers of uninstalled plugin '{}'", name);
+            remove_tree(entry.path());
+            continue;
+        }
+
+        for (const fs::directory_entry& file : fs::directory_iterator(entry.path(), ec))
+            if (file.path().extension() == ".old")
+                fs::remove(file.path(), ec);
+    }
+}
+
+static void load_plugin(const plugin_t& info)
+{
+    auto res = open_plugin(info.library);
+    if (!res.ok())
+    {
+        spdlog::error("Not loading plugin '{}' ({}): {}", info.id, info.library.string(), res.error_v());
+        return;
+    }
+
+    auto& [lib, plugin] = res.get();
+    if (info.id != plugin->id)
+    {
+        spdlog::error("Not loading plugin '{}': its library says its ID is '{}'", info.id, plugin->id);
+        return;
+    }
+
+    auto [it, inserted] = g_plugins.try_emplace(info.id, info.id, info.library.parent_path(), plugin, std::move(lib));
+    if (!inserted)
+        return;
+
+    plugin_runtime_t& rt = it->second;
+    rt.config_path       = rt.dir / "config.toml";
+
+    std::error_code ec;
+    if (fs::exists(rt.config_path, ec))
+        MUST_OK(rt.config.LoadFile(rt.config_path.string()),
+                spdlog::error("Plugin '{}' config: {}. Using defaults", info.id, _r.error_v()));
+
+    if (plugin->init)
+    {
+        void* state = nullptr;
+        if (!plugin->init(&g_oshot_host, reinterpret_cast<oshot_ctx_t*>(&rt), &state))
+        {
+            spdlog::error("Plugin '{}' failed to initialize, not loading it", info.id);
+            rt.config_dirty = false;
+            g_plugins.erase(it);
+            return;
+        }
+        rt.state = state;
+    }
+    rt.initialized = true;
+
+    spdlog::info("Loaded plugin '{}' from {}", info.id, info.library.string());
+}
+
+void load_plugins(const StateManager& state)
+{
+    g_plugin_ui_thread = std::this_thread::get_id();
+
+    std::error_code ec;
+    fs::create_directories(get_plugins_dir(), ec);
+    remove_leftovers(state);
+
+    spdlog::debug("Loading plugins (cimgui for Dear ImGui {})", igGetVersion());
+    for (const manifest_t& repo : state.GetAllRepos())
+    {
         for (const plugin_t& plugin : repo.plugins)
-            load_plugin_path(plugin.library);
+        {
+            if (!plugin.enabled)
+                spdlog::info("Plugin '{}' is disabled", plugin.id);
+            else if (plugin.library.empty())
+                spdlog::warn("Plugin '{}' has no library in state.toml, reinstall it", plugin.id);
+            else
+                load_plugin(plugin);
+        }
+    }
 }
 
 #endif

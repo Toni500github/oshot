@@ -26,76 +26,74 @@
 #pragma once
 
 #ifndef DISABLE_PLUGINS
-#  include <unordered_map>
+#  include <map>
+#  include <mutex>
+#  include <thread>
+#  include <utility>
+#  include <vector>
 
-#  include "../oshotpm/include/manifest.hh"
+#  ifndef OSHOT_HOST
+#    define OSHOT_HOST
+#  endif
 #  include "../src/plugins/oshot_plugin.h"
 #  include "dylib.hpp"
 #  include "toml_api.hpp"
 
-struct plugin_runtime_t;
+class StateManager;
 
-extern std::unordered_map<std::string, plugin_runtime_t> g_plugins;
-extern plugin_runtime_t*                                 g_current_plugin;  // plain global, see above
-
-struct ScopedActivePlugin
-{
-    plugin_runtime_t* prev;
-    explicit ScopedActivePlugin(plugin_runtime_t* rt) : prev(g_current_plugin) { g_current_plugin = rt; }
-    ~ScopedActivePlugin() { g_current_plugin = prev; }
-};
-
+// A loaded plugin. Lives in g_plugins from load until oshot exits; its address
+// is the oshot_ctx_t the plugin gets, so it must never move.
 struct plugin_runtime_t
 {
-    std::string id;             // must be validated
-    std::string config_prefix;  // cached "plugins.<id>."
-    fs::path    data_dir;
-    fs::path    plugin_path;
+    std::string           id;
+    fs::path              dir;                    // ~/.config/oshot/plugins/<id>: library, config.toml, plugin data
+    const oshot_plugin_t* plugin      = nullptr;  // static in the library, per the ABI contract
+    void*                 state       = nullptr;  // owned by the plugin, released by plugin->destroy()
+    bool                  initialized = false;
+    dylib::library        lib;
 
-    oshot_plugin_t* plugin  = nullptr;  // non-owning and static, process-lifetime per ABI contract
-    void*           state   = nullptr;  // owned by the plugin; released via plugin->destroy()
-    const bool      enabled = false;    // set once, never changed
-    dylib::library  lib;
+    TomlAPI  config;  // the plugin's config.toml
+    fs::path config_path;
+    bool     config_dirty = false;
 
-    TomlAPI  config;       // this plugin's own config, loaded from
-    fs::path config_path;  // ~/.config/oshot/plugins/<id>/config.toml
+    std::mutex                                     tasks_mutex;  // run_on_ui_thread() queue
+    std::vector<std::pair<void (*)(void*), void*>> tasks;
 
-    plugin_runtime_t(std::string     id,
-                     std::string     config_prefix,
-                     fs::path        data_dir,
-                     fs::path        plugin_path,
-                     oshot_plugin_t* plugin,
-                     void*           state,
-                     bool            enabled,
-                     dylib::library  lib,
-                     const TomlAPI&  config,
-                     fs::path        config_path)
-        : id(std::move(id)),
-          config_prefix(std::move(config_prefix)),
-          data_dir(std::move(data_dir)),
-          plugin_path(std::move(plugin_path)),
-          plugin(plugin),
-          state(state),
-          enabled(enabled),
-          lib(std::move(lib)),
-          config(config),
-          config_path(std::move(config_path))
+    plugin_runtime_t(std::string id, fs::path dir, const oshot_plugin_t* plugin, dylib::library lib)
+        : id(std::move(id)), dir(std::move(dir)), plugin(plugin), lib(std::move(lib))
     {}
 
-    ~plugin_runtime_t()
-    {
-        if (plugin && plugin->destroy && state)
-        {
-            ScopedActivePlugin _(this);  // destroy() may still call oshot_log/config_get_*
-            plugin->destroy(state);
-        }
-    }
+    ~plugin_runtime_t();
 
     plugin_runtime_t(const plugin_runtime_t&)            = delete;
     plugin_runtime_t& operator=(const plugin_runtime_t&) = delete;
-    plugin_runtime_t(plugin_runtime_t&&)                 = default;
+
+    void SaveConfig();
+    void RunUiTasks();
 };
 
-void load_plugins(const std::vector<manifest_t>& repos);
+extern std::map<std::string, plugin_runtime_t> g_plugins;
+extern const oshot_host_t                      g_oshot_host;
+
+struct plugin_info_t
+{
+    std::string id;
+    std::string name;
+};
+
+fs::path get_plugins_dir();
+
+// Checks a descriptor against what this oshot supports (ABI, ImGui version, ID)
+Result<> validate_plugin_descriptor(const oshot_plugin_t* plugin);
+
+// Loads the library without initializing it and returns what its descriptor
+// says, after validate_plugin_descriptor(). Used by oshotpm before installing.
+Result<plugin_info_t> inspect_plugin_library(const fs::path& path);
+
+// Loads every enabled plugin in state.toml, on the thread that will draw them
+void load_plugins(const StateManager& state);
+
+// Whether the caller is on the thread plugins were loaded on (their UI thread)
+bool on_plugin_ui_thread();
 
 #endif

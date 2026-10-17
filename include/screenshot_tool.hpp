@@ -132,7 +132,6 @@ enum class SubWindow : std::uint8_t
     InstallPlugins,
     PluginInstallStatus,
     ManagePlugins,
-    UninstallPlugins,
     Logs,
     OutputMenuSelection,
     COUNT
@@ -239,7 +238,8 @@ struct plugin_install_event_t
         Success,
         Warning,
         Error,
-        Info
+        Info,
+        Output  // raw git/build output, appended to the running step
     };
 
     Kind        kind;
@@ -254,7 +254,8 @@ struct install_node_t
     plugin_install_event_t::Kind kind;
     std::string                  text;
     std::vector<std::string>     details;
-    bool                         in_progress;
+    bool                         in_progress = false;
+    std::string                  output;  // build output printed while this step ran
 };
 
 // Shared between the render thread and the install worker thread for the
@@ -561,14 +562,13 @@ private:
     void DrawManagePluginsWindow();
     void DrawInstallPluginsWindow();
     void DrawPluginInstallStatus();
-    void DrawUninstallPluginsWindow();
     void DrawEventIcon(plugin_install_event_t::Kind kind);
 
-    // Kicks off `source` (git URL / local folder / archive path) on a
+    // Runs a PluginManager operation (install, update, uninstall) on a
     // background thread. Wires fresh PluginCallbacks around a new
     // plugin_install_state_t so the render thread can drain progress from
     // it without touching ImGui from off the render thread.
-    void StartInstall(const std::string& source);
+    void StartPluginTask(std::string title, std::function<Result<>(PluginManager&)> task);
 #endif
 
     void UpdateHandleHoverState(selection_info_t& sel);

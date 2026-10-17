@@ -23,348 +23,313 @@
  *
  */
 
+// The oshot_host_t table every plugin gets in init(). Plugins only reach
+// oshot through these functions, with their oshot_ctx_t telling which plugin
+// is calling; nothing here is exported for them to link against.
+
+#include <cstdlib>
+#include <cstring>
+
 #include "cache.hpp"
 #include "fmt/format.h"
-#include "oshot_plugin.h"
 #include "plugin.hpp"
 #include "screenshot_tool.hpp"
 #include "util.hpp"
 
-static size_t toml_get_array(const toml::array* arr, oshot_value_t** out, size_t max)
+static plugin_runtime_t& rt_of(oshot_ctx_t* ctx)
 {
-    if (!arr)
-        return 0;
-
-    size_t i = 0;
-    for (const toml::node& el : *arr)
-    {
-        if (i == max)
-            break;
-
-        oshot_value_t& val = *out[i];
-        switch (el.type())
-        {
-            case toml::node_type::string:
-                val.kind = OSValueKind::OSHOT_VAL_STRING;
-                val.s    = oshot_str_new(el.as_string()->get().c_str(), el.as_string()->get().length());
-                break;
-
-            case toml::node_type::boolean:
-                val.kind = OSValueKind::OSHOT_VAL_BOOL;
-                val.b    = el.as_boolean()->get();
-                break;
-
-            case toml::node_type::integer:
-                val.kind = OSValueKind::OSHOT_VAL_INT64;
-                val.i    = el.as_integer()->get();
-                break;
-
-            case toml::node_type::floating_point:
-                val.kind = OSValueKind::OSHOT_VAL_DOUBLE;
-                val.d    = el.as_floating_point()->get();
-                break;
-
-            default: continue;  // unsupported TOML type: skip, don't consume a slot
-        }
-        i++;
-    }
-
-    return i;
-}
-
-static std::string prefixed_key(const char* key)
-{
-    return g_current_plugin->config_prefix + key;
-}
-
-static void set_toml_value(TomlAPI* api, const char* key, const oshot_value_t* val)
-{
-    if (val->kind < OSHOT_VAL_STRING || val->kind > OSHOT_VAL_DOUBLE)
-    {
-        oshot_error(oshot_str_borrow("Failed to set toml value: unknown kind"));
-        return;
-    }
-
-    switch (val->kind)
-    {
-        case OSValueKind::OSHOT_VAL_STRING:
-            if (!val->s.p)
-                oshot_error(oshot_str_borrow("Failed to set toml value: string has null pointer"));
-            else
-                api->SetValue<std::string>(key, std::string(val->s.p, val->s.len));
-            break;
-
-        case OSValueKind::OSHOT_VAL_INT64:  api->SetValue<int64_t>(key, val->i); break;
-        case OSValueKind::OSHOT_VAL_DOUBLE: api->SetValue<double>(key, val->d); break;
-        case OSValueKind::OSHOT_VAL_BOOL:   api->SetValue<bool>(key, val->b); break;
-    }
+    return *reinterpret_cast<plugin_runtime_t*>(ctx);
 }
 
 /* ------------------------------------------------------------------
- * ABI / identity
+ * Strings
  * ------------------------------------------------------------------ */
-uint32_t oshot_get_abi_version()
+static oshot_str_t str_new(const char* str, size_t len)
 {
-    return OSHOT_API_VERSION;
-}
-
-oshot_str_t oshot_get_plugin_data_dir()
-{
-    const fs::path& p = g_current_plugin->data_dir;
-    if (!fs::exists(p))
-        return oshot_str_borrow(nullptr);
-
-    return oshot_str_new(p.string().c_str(), p.string().length());
-}
-
-/* ------------------------------------------------------------------
- * oshot_str_t lifecycle
- * ------------------------------------------------------------------ */
-oshot_str_t oshot_str_new(const char* str, size_t len)
-{
-    oshot_str_t r;
-    r.p = reinterpret_cast<char*>(malloc(len));
-    if (r.p)
-        memcpy(const_cast<char*>(r.p), str, len);
-    r.len = r.p ? len : 0;
+    oshot_str_t r{ .p = nullptr, .len = 0 };
+    char*       buf = static_cast<char*>(std::malloc(len + 1));
+    if (!buf)
+        return r;
+    if (str && len)
+        std::memcpy(buf, str, len);
+    buf[len] = '\0';
+    r.p      = buf;
+    r.len    = len;
     return r;
 }
 
-void oshot_str_free(oshot_str_t* str)
+static oshot_str_t str_new(const std::string& s)
 {
-    free((void*)str->p);
+    return str_new(s.data(), s.size());
+}
+
+static void str_free(oshot_str_t* str)
+{
+    if (!str)
+        return;
+    std::free(const_cast<char*>(str->p));
     str->p   = nullptr;
     str->len = 0;
 }
 
-void oshot_value_array_free(oshot_value_t* arr, size_t n)
+static void value_array_free(oshot_value_t* arr, size_t n)
 {
-    for (size_t i = 0; i < n; ++i)
-        if (arr[i].kind == OSValueKind::OSHOT_VAL_STRING)
-            oshot_str_free(&arr[i].s);
+    for (size_t i = 0; arr && i < n; ++i)
+        if (arr[i].kind == OSHOT_VAL_STRING)
+            str_free(&arr[i].s);
+}
+
+static std::string to_string(oshot_str_t s)
+{
+    return s.p ? std::string(s.p, s.len) : std::string();
 }
 
 /* ------------------------------------------------------------------
- * Logging
+ * Any thread
  * ------------------------------------------------------------------ */
-void oshot_log(const OSLogLevel lvl, oshot_str_t str)
+static void host_log(oshot_ctx_t* ctx, oshot_log_level_t lvl, oshot_str_t msg)
 {
-    const std::string& out = fmt::format("{}: {}", g_current_plugin->plugin->id, std::string_view(str.p, str.len));
+    const std::string_view text(msg.p ? msg.p : "", msg.p ? msg.len : 0);
+    const std::string&     id = rt_of(ctx).id;
     switch (lvl)
     {
-        case OSLogLevel::OSHOT_LOG_DEBUG: spdlog::debug("{}", out); break;
-        case OSLogLevel::OSHOT_LOG_INFO:  spdlog::info("{}", out); break;
-        case OSLogLevel::OSHOT_LOG_WARN:  spdlog::warn("{}", out); break;
-        case OSLogLevel::OSHOT_LOG_ERROR: spdlog::error("{}", out); break;
+        case OSHOT_LOG_DEBUG: spdlog::debug("{}: {}", id, text); break;
+        case OSHOT_LOG_INFO:  spdlog::info("{}: {}", id, text); break;
+        case OSHOT_LOG_WARN:  spdlog::warn("{}: {}", id, text); break;
+        default:              spdlog::error("{}: {}", id, text); break;
     }
 }
 
-void oshot_debug(oshot_str_t str)
+static oshot_str_t get_data_dir(oshot_ctx_t* ctx)
 {
-    oshot_log(OSLogLevel::OSHOT_LOG_DEBUG, str);
+    return str_new(rt_of(ctx).dir.string());
 }
 
-void oshot_error(oshot_str_t str)
+static void run_on_ui_thread(oshot_ctx_t* ctx, void (*fn)(void*), void* user)
 {
-    oshot_log(OSLogLevel::OSHOT_LOG_ERROR, str);
-}
-
-void oshot_warn(oshot_str_t str)
-{
-    oshot_log(OSLogLevel::OSHOT_LOG_WARN, str);
-}
-
-void oshot_info(oshot_str_t str)
-{
-    oshot_log(OSLogLevel::OSHOT_LOG_INFO, str);
+    if (!fn)
+        return;
+    plugin_runtime_t& rt = rt_of(ctx);
+    std::scoped_lock  lock(rt.tasks_mutex);
+    rt.tasks.emplace_back(fn, user);
 }
 
 /* ------------------------------------------------------------------
- * Config
+ * UI thread only
  * ------------------------------------------------------------------ */
 
-// ---------------------
-// Getter
-// ---------------------
+// Logs and returns false when called from the wrong thread, instead of racing the UI
+static bool ui_thread_check(oshot_ctx_t* ctx, const char* func)
+{
+    if (on_plugin_ui_thread())
+        return true;
+    spdlog::error("{}: {}() called outside the UI thread, ignored. Use run_on_ui_thread()", rt_of(ctx).id, func);
+    return false;
+}
+
+// The config lives in the plugin's own file; the cache in oshot's, under "plugins.<id>."
+static TomlAPI& store_of(oshot_ctx_t* ctx, oshot_store_t store, std::string& key)
+{
+    plugin_runtime_t& rt = rt_of(ctx);
+    if (store == OSHOT_STORE_CACHE)
+    {
+        key.insert(0, fmt::format("plugins.{}.", rt.id));
+        return *g_cache;
+    }
+    return rt.config;
+}
+
+// For lookups straight in the table, which skip TomlAPI::BuildKey(): Cache keeps
+// everything under [cache]
+static const toml::node* find_node(oshot_ctx_t* ctx, oshot_store_t store, const char* key)
+{
+    std::string    k(key);
+    const TomlAPI& api = store_of(ctx, store, k);
+    if (store == OSHOT_STORE_CACHE)
+        k.insert(0, "cache.");
+    return api.GetTbl().at_path(k).node();
+}
+
 template <typename T>
-static T get_config_value(const char* key, const T& fallback)
+static T get_typed(oshot_ctx_t* ctx, oshot_store_t store, const char* key, const T& fallback, const char* func)
 {
-    return g_current_plugin->config.GetValue(key, fallback);
+    if (!key || !ui_thread_check(ctx, func))
+        return fallback;
+    std::string k(key);
+    return store_of(ctx, store, k).GetValue<T>(k, fallback, true);
 }
 
-oshot_str_t oshot_config_get_string(const char* key, oshot_str_t fallback)
-{
-    const std::string& str = get_config_value(key, std::string(fallback.p, fallback.len));
-    return oshot_str_new(str.c_str(), str.length());
-}
-
-bool oshot_config_get_bool(const char* key, bool fallback)
-{
-    return get_config_value<bool>(key, fallback);
-}
-
-int64_t oshot_config_get_int64(const char* key, int64_t fallback)
-{
-    return get_config_value<int64_t>(key, fallback);
-}
-
-double oshot_config_get_double(const char* key, double fallback)
-{
-    return get_config_value<double>(key, fallback);
-}
-
-size_t oshot_config_get_array(const char* key, oshot_value_t** out, size_t max)
-{
-    return toml_get_array(g_current_plugin->config.GetValueArray(key), out, max);
-}
-
-// ---------------------
-// Setter
-// ---------------------
 template <typename T>
-static void set_config_value(const char* key, const T& val)
+static void set_typed(oshot_ctx_t* ctx, oshot_store_t store, const char* key, const T& val, const char* func)
 {
-    g_current_plugin->config.SetValue(key, val);
+    if (!key || !ui_thread_check(ctx, func))
+        return;
+    std::string k(key);
+    store_of(ctx, store, k).SetValue<T>(k, val);
+    if (store == OSHOT_STORE_CONFIG)
+        rt_of(ctx).config_dirty = true;
 }
 
-void oshot_config_set_string(const char* key, oshot_str_t val)
+static oshot_str_t get_string(oshot_ctx_t* ctx, oshot_store_t store, const char* key, oshot_str_t fallback)
 {
-    set_config_value(key, std::string(val.p, val.len));
+    return str_new(get_typed<std::string>(ctx, store, key, to_string(fallback), "get_string"));
 }
 
-void oshot_config_set_bool(const char* key, bool val)
+static bool get_bool(oshot_ctx_t* ctx, oshot_store_t store, const char* key, bool fallback)
 {
-    set_config_value<bool>(key, val);
+    return get_typed<bool>(ctx, store, key, fallback, "get_bool");
 }
 
-void oshot_config_set_int64(const char* key, int64_t val)
+static int64_t get_int64(oshot_ctx_t* ctx, oshot_store_t store, const char* key, int64_t fallback)
 {
-    set_config_value<int64_t>(key, val);
+    return get_typed<int64_t>(ctx, store, key, fallback, "get_int64");
 }
 
-void oshot_config_set_double(const char* key, double val)
+static double get_double(oshot_ctx_t* ctx, oshot_store_t store, const char* key, double fallback)
 {
-    set_config_value<double>(key, val);
+    return get_typed<double>(ctx, store, key, fallback, "get_double");
 }
 
-void oshot_config_set_value(const char* key, const oshot_value_t* val)
+// Converts a TOML value, returns false for types the ABI doesn't have
+static bool node_to_value(const toml::node& node, oshot_value_t& val)
 {
-    set_toml_value(&g_current_plugin->config, key, val);
+    switch (node.type())
+    {
+        case toml::node_type::string:
+            val.kind = OSHOT_VAL_STRING;
+            val.s    = str_new(node.as_string()->get());
+            return true;
+        case toml::node_type::boolean:
+            val.kind = OSHOT_VAL_BOOL;
+            val.b    = node.as_boolean()->get();
+            return true;
+        case toml::node_type::integer:
+            val.kind = OSHOT_VAL_INT64;
+            val.i    = node.as_integer()->get();
+            return true;
+        case toml::node_type::floating_point:
+            val.kind = OSHOT_VAL_DOUBLE;
+            val.d    = node.as_floating_point()->get();
+            return true;
+        default: return false;
+    }
 }
 
-/* ------------------------------------------------------------------
- * Cache
- * ------------------------------------------------------------------ */
-
-// ---------------------
-// Getter
-// ---------------------
-template <typename T>
-static T get_cache_value(const char* key, const T& fallback)
+static size_t get_array(oshot_ctx_t* ctx, oshot_store_t store, const char* key, oshot_value_t* out, size_t max)
 {
-    return g_cache->GetValue<T>(prefixed_key(key), fallback);
+    if (!key || !out || !ui_thread_check(ctx, "get_array"))
+        return 0;
+
+    const toml::node*  node = find_node(ctx, store, key);
+    const toml::array* arr  = node ? node->as_array() : nullptr;
+    if (!arr)
+        return 0;
+
+    size_t n = 0;
+    for (const toml::node& el : *arr)
+    {
+        if (n == max)
+            break;
+        if (node_to_value(el, out[n]))
+            ++n;
+    }
+    return n;
 }
 
-oshot_str_t oshot_cache_get_string(const char* key, oshot_str_t fallback)
+static oshot_value_t get_value(oshot_ctx_t* ctx, oshot_store_t store, const char* key, oshot_value_t fallback)
 {
-    const std::string& str = get_cache_value(key, std::string(fallback.p, fallback.len));
-    return oshot_str_new(str.c_str(), str.length());
+    oshot_value_t ret = fallback;
+    if (fallback.kind == OSHOT_VAL_STRING)
+        ret.s = str_new(fallback.s.p, fallback.s.p ? fallback.s.len : 0);
+
+    if (!key || !ui_thread_check(ctx, "get_value"))
+        return ret;
+
+    const toml::node* node = find_node(ctx, store, key);
+    oshot_value_t     found{};
+    if (node && node_to_value(*node, found))
+    {
+        value_array_free(&ret, 1);
+        return found;
+    }
+    return ret;
 }
 
-bool oshot_cache_get_bool(const char* key, bool fallback)
+static void set_string(oshot_ctx_t* ctx, oshot_store_t store, const char* key, oshot_str_t val)
 {
-    return get_cache_value<bool>(key, fallback);
+    set_typed<std::string>(ctx, store, key, to_string(val), "set_string");
 }
 
-int64_t oshot_cache_get_int64(const char* key, int64_t fallback)
+static void set_bool(oshot_ctx_t* ctx, oshot_store_t store, const char* key, bool val)
 {
-    return get_cache_value<int64_t>(key, fallback);
+    set_typed<bool>(ctx, store, key, val, "set_bool");
 }
 
-double oshot_cache_get_double(const char* key, double fallback)
+static void set_int64(oshot_ctx_t* ctx, oshot_store_t store, const char* key, int64_t val)
 {
-    return get_cache_value<double>(key, fallback);
+    set_typed<int64_t>(ctx, store, key, val, "set_int64");
 }
 
-size_t oshot_cache_get_array(const char* key, oshot_value_t** out, size_t max)
+static void set_double(oshot_ctx_t* ctx, oshot_store_t store, const char* key, double val)
 {
-    return toml_get_array(g_cache->GetValueArray(prefixed_key(key)), out, max);
+    set_typed<double>(ctx, store, key, val, "set_double");
 }
 
-// ---------------------
-// Setter
-// ---------------------
-template <typename T>
-static void set_cache_value(const char* key, const T& val)
+static void set_value(oshot_ctx_t* ctx, oshot_store_t store, const char* key, const oshot_value_t* val)
 {
-    g_cache->SetValue<T>(prefixed_key(key), val);
+    if (!val)
+        return;
+    switch (val->kind)
+    {
+        case OSHOT_VAL_STRING: set_string(ctx, store, key, val->s); break;
+        case OSHOT_VAL_INT64:  set_int64(ctx, store, key, val->i); break;
+        case OSHOT_VAL_BOOL:   set_bool(ctx, store, key, val->b); break;
+        case OSHOT_VAL_DOUBLE: set_double(ctx, store, key, val->d); break;
+        default:               spdlog::error("{}: set_value() with an unknown value kind", rt_of(ctx).id); break;
+    }
 }
 
-void oshot_cache_set_string(const char* key, oshot_str_t val)
+static bool get_text(oshot_ctx_t* ctx, const char* id, oshot_str_t* out)
 {
-    set_cache_value(key, std::string(val.p, val.len));
-}
-
-void oshot_cache_set_bool(const char* key, bool val)
-{
-    set_cache_value<bool>(key, val);
-}
-
-void oshot_cache_set_int64(const char* key, int64_t val)
-{
-    set_cache_value<int64_t>(key, val);
-}
-
-void oshot_cache_set_double(const char* key, double val)
-{
-    set_cache_value<double>(key, val);
-}
-
-void oshot_cache_set_value(const char* key, const oshot_value_t* val)
-{
-    set_toml_value(g_cache.get(), prefixed_key(key).c_str(), val);
-}
-
-/* ------------------------------------------------------------------
- * ImGui-bound text buffers
- * ------------------------------------------------------------------ */
-bool oshot_get_text(const char* imgui_id, oshot_str_t* ret)
-{
-    auto& t = g_ss_tool.GetImGuiIDTexts();
-    auto  p = t.find(imgui_id);
-    if (p == t.end())
+    if (!id || !out || !ui_thread_check(ctx, "get_text"))
         return false;
 
-    ret->p = static_cast<const char*>(std::malloc(p->second->length()));
-    if (!ret->p)
+    auto& texts = g_ss_tool.GetImGuiIDTexts();
+    auto  it    = texts.find(id);
+    if (it == texts.end())
         return false;
 
-    std::memcpy(const_cast<char*>(ret->p), p->second->c_str(), p->second->length());
-    ret->len = p->second->length();
+    *out = str_new(*it->second);
+    return out->p != nullptr;
+}
+
+static bool set_text(oshot_ctx_t* ctx, const char* id, oshot_str_t value)
+{
+    if (!id || !ui_thread_check(ctx, "set_text"))
+        return false;
+
+    auto& texts = g_ss_tool.GetImGuiIDTexts();
+    auto  it    = texts.find(id);
+    if (it == texts.end())
+    {
+        spdlog::error(
+            "{}: set_text(): unknown text id '{}' (use OSHOT_TEXT_OCR or OSHOT_TEXT_BARCODE)", rt_of(ctx).id, id);
+        return false;
+    }
+
+    it->second->assign(to_string(value));
     return true;
 }
 
-void oshot_set_text(const char* imgui_id, const oshot_str_t value)
+static oshot_capture_t get_capture(oshot_ctx_t* ctx)
 {
-    auto& t  = g_ss_tool.GetImGuiIDTexts();
-    auto  it = t.find(imgui_id);
-    if (it == t.end())
-        return;  // unknown id
+    oshot_capture_t ret{};  // rgba == nullptr: no capture
+    if (!ui_thread_check(ctx, "get_capture"))
+        return ret;
 
-    it->second->assign(value.p, value.len);
-}
-
-/* ------------------------------------------------------------------
- * Capture acquisition
- * ------------------------------------------------------------------ */
-oshot_capture_t oshot_get_capture(void)
-{
     const capture_result_t& cap = g_ss_tool.GetFinalImage();
-
-    oshot_capture_t ret{};  // zero-inits
-
     if (cap.data.empty() || cap.w <= 0 || cap.h <= 0)
-        return ret;  // plugin must check ret.rgba == nullptr before use
+        return ret;
 
     ret.rgba = static_cast<uint8_t*>(std::malloc(cap.data.size()));
     if (!ret.rgba)
@@ -376,9 +341,38 @@ oshot_capture_t oshot_get_capture(void)
     return ret;
 }
 
-void oshot_capture_free(oshot_capture_t* cap)
+static void capture_free(oshot_capture_t* cap)
 {
+    if (!cap)
+        return;
     std::free(cap->rgba);
     cap->rgba = nullptr;
     cap->w = cap->h = 0;
 }
+
+const oshot_host_t g_oshot_host = {
+    .struct_size   = sizeof(oshot_host_t),
+    .abi_version   = OSHOT_API_VERSION,
+    .oshot_version = VERSION,
+    .str_new       = [](const char* s, size_t n) { return str_new(s, n); },
+    .str_free         = str_free,
+    .value_array_free = value_array_free,
+    .log              = host_log,
+    .get_data_dir     = get_data_dir,
+    .run_on_ui_thread = run_on_ui_thread,
+    .get_string       = get_string,
+    .get_bool         = get_bool,
+    .get_int64        = get_int64,
+    .get_double       = get_double,
+    .get_array        = get_array,
+    .get_value        = get_value,
+    .set_string       = set_string,
+    .set_bool         = set_bool,
+    .set_int64        = set_int64,
+    .set_double       = set_double,
+    .set_value        = set_value,
+    .get_text         = get_text,
+    .set_text         = set_text,
+    .get_capture      = get_capture,
+    .capture_free     = capture_free,
+};

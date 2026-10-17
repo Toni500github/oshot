@@ -426,7 +426,9 @@ target_link_libraries(
     PRIVATE Threads::Threads
 )
 if(NOT DISABLE_PLUGINS)
-    target_link_libraries(oshot_common PRIVATE dylib)
+    # cimgui: plugins use it, and oshot loading it means they find it without
+    # linking it (Linux/BSD/macOS) or having to locate it (AppImage)
+    target_link_libraries(oshot_common PRIVATE dylib cimgui)
 endif()
 
 target_compile_definitions(
@@ -569,6 +571,40 @@ if(NOT DISABLE_PLUGINS)
             WINDOWS_EXPORT_ALL_SYMBOLS ON
             POSITION_INDEPENDENT_CODE ON
     )
+
+    # The plugin SDK in the build tree: what packages ship next to oshot and
+    # what oshotpm passes to plugin builds as OSHOT_SDK. Windows plugins also
+    # need cimgui's import library.
+    set(OSHOT_SDK_DIR "${CMAKE_BINARY_DIR}/sdk")
+    add_custom_command(
+        TARGET cimgui
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${OSHOT_SDK_DIR}/include/oshot"
+        COMMAND
+            ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/src/plugins/oshot_plugin.h"
+            "${CMAKE_SOURCE_DIR}/include/libs/cimgui/cimgui.h" "${OSHOT_SDK_DIR}/include/oshot/"
+        COMMENT "Copying the plugin SDK headers to ${OSHOT_SDK_DIR}"
+    )
+    if(WIN32)
+        add_custom_command(
+            TARGET cimgui
+            POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${OSHOT_SDK_DIR}/lib"
+            COMMAND
+                ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_LINKER_FILE:cimgui>" "${OSHOT_SDK_DIR}/lib/"
+        )
+    endif()
+
+    # The example plugin, built so CI checks it compiles everywhere. Not installed.
+    add_library(oshot_example_uppercase MODULE examples/plugins/uppercase/uppercase.c)
+    target_include_directories(oshot_example_uppercase PRIVATE "${OSHOT_SDK_DIR}/include")
+    set_target_properties(oshot_example_uppercase PROPERTIES C_VISIBILITY_PRESET hidden)
+    add_dependencies(oshot_example_uppercase cimgui)
+    if(WIN32)
+        target_link_libraries(oshot_example_uppercase PRIVATE cimgui)
+    elseif(APPLE)
+        target_link_options(oshot_example_uppercase PRIVATE -undefined dynamic_lookup)
+    endif()
 endif()
 
 # -----------------------------

@@ -29,57 +29,88 @@
 #include <string_view>
 
 // oshotpm
-inline constexpr std::string_view oshotpm_help = (R"(Usage: oshotpm [GLOBAL OPTIONS]... <COMMAND> [OPTIONS]...
-Manage plugins for oshot.
-
-Terms:
-    REPO:
-        - With install: a Git repository, either URL or local path, both containing plugins and a 'oshot-plugin.toml' manifest.
-        - With enable OR disable: the name of a repository already installed (as listed with 'oshotpm list').
-
-Examples:
-    Install a plugin repository from GitHub:
-        oshotpm install https://github.com/Toni500github/oshot-test-plugins
-    Disable a plugin from an installed repository:
-        oshotpm disable toni-test/plugins
-    Uninstall an entire plugin repository:
-        oshotpm uninstall tonis-plugins
+inline constexpr std::string_view oshotpm_help = (R"(Usage: oshotpm [-h|-V] <COMMAND> [OPTIONS]...
+Install and manage oshot plugins.
 
 Commands:
-    help <COMMAND>                     Show help for a specific command. Currently only 'install' and 'list'.
-    install [OPTIONS] <REPO(s)>...     Install one or more plugin repositories from a Git repo or local path.
-    uninstall <REPO(s)>...             Uninstall one or more installed plugin repositories.
-    enable <REPO/PLUGIN>...            Enable one or more plugins from an installed repository.
-    disable <REPO/PLUGIN>...           Disable one or more plugins from an installed repository.
-    list [-v]                          Show all plugins installed via state.toml.
-    update                             Update and upgrade all repositories.
-    gen-manifest                       Generate a template 'oshot-plugin.toml' file.
+    install [-f] [-y] <SOURCE>...     Install the plugins from a git URL, a local folder or a prebuilt archive.
+    update [-y]                       Update the plugins installed from git URLs.
+    uninstall <NAME>...               Uninstall a plugin (by ID) or a repository with all its plugins.
+    enable <PLUGIN>...                Enable installed plugins.
+    disable <PLUGIN>...               Disable installed plugins.
+    list [-v]                         List the installed plugins.
+    gen-manifest                      Write a template oshot-plugin.toml in the current folder.
+    help [<COMMAND>]                  Show the help of a command.
 
-Global options:
-    -h, --help          Show this help message.
+Terms:
+    SOURCE      A git URL (https://..., git@..., or ending in .git), a folder with an oshot-plugin.toml,
+                or a prebuilt archive (.zip, .tar.gz/.tgz, .tar.xz/.txz) with one.
+    REPOSITORY  Everything one oshot-plugin.toml installs, named after its [repository] name.
+    PLUGIN      A plugin ID like io.github.user.plugin, or <REPOSITORY>/<plugin name>.
+
+Examples:
+    oshotpm install https://github.com/user/oshot-plugins
+    oshotpm install ./my-plugin
+    oshotpm disable io.github.user.translate
+    oshotpm uninstall oshot-plugins
+
+Options:
+    -h, --help          Show this help.
     -V, --version       Show version and build information.
-    -D, --dialogs       Enable GUI dialogs.
+
+Plugins are installed in the "plugins" folder of oshot's config folder, and take effect the next time oshot starts.
 )");
 
-inline constexpr std::string_view oshotpm_help_install = (R"(Usage: oshotpm install [OPTIONS] <REPO>...
-
-Install one or more plugin repositories. If a given argument exists on disk,
-it is treated as a local directory. Otherwise, it is treated as a Git
-repository URL and will be cloned.
-
-All plugins found within the repository will be installed.
+inline constexpr std::string_view oshotpm_help_install = (R"(Usage: oshotpm install [OPTIONS] <SOURCE>...
+Install the plugins from each SOURCE:
+    - a git URL: cloned, then built with the build steps in its oshot-plugin.toml (needs git and the build tools);
+    - a local folder with an oshot-plugin.toml: built in place;
+    - a prebuilt archive (.zip, .tar.gz/.tgz, .tar.xz/.txz): its libraries are installed, nothing is built.
 
 Options:
-    -f, --force        Force installation, even if already installed.
-    -h, --help         Show help for this command.
+    -f, --force        Reinstall a repository that is already installed.
+    -y, --yes          Don't ask anything, answer the default.
+    -h, --help         Show this help.
 )");
 
-inline constexpr std::string_view oshotpm_help_list = (R"(Usage: oshotpm list [options]
-List all installed plugins.
+inline constexpr std::string_view oshotpm_help_update = (R"(Usage: oshotpm update [OPTIONS]
+Fetch every repository installed from a git URL and rebuild the ones that changed.
+Plugins installed from a folder or an archive are updated by installing them again.
 
 Options:
-    -v, --verbose      Show detailed plugin information.
-    -h, --help         Show help for this command.
+    -y, --yes          Don't ask anything, answer the default.
+    -h, --help         Show this help.
+)");
+
+inline constexpr std::string_view oshotpm_help_uninstall = (R"(Usage: oshotpm uninstall <NAME>...
+Uninstall plugins. NAME is either a plugin ID (io.github.user.plugin), which removes that plugin,
+or a repository name, which removes the repository and all its plugins. Their settings are deleted too.
+
+Options:
+    -h, --help         Show this help.
+)");
+
+inline constexpr std::string_view oshotpm_help_enable = (R"(Usage: oshotpm enable|disable <PLUGIN>...
+Enable or disable installed plugins. PLUGIN is a plugin ID (io.github.user.plugin)
+or <REPOSITORY>/<plugin name>, as shown by `oshotpm list`.
+
+Options:
+    -h, --help         Show this help.
+)");
+
+inline constexpr std::string_view oshotpm_help_list = (R"(Usage: oshotpm list [OPTIONS]
+List the installed repositories and their plugins.
+
+Options:
+    -v, --verbose      Also show authors, licenses, platforms and where each plugin is.
+    -h, --help         Show this help.
+)");
+
+inline constexpr std::string_view oshotpm_help_gen_manifest = (R"(Usage: oshotpm gen-manifest
+Write a commented template oshot-plugin.toml in the current folder.
+
+Options:
+    -h, --help         Show this help.
 )");
 
 // oshot
@@ -294,65 +325,59 @@ MenuBarBg = "#090B0FFF"
 PlotHistogram = "#5274F0FF"
 )");
 
-inline constexpr std::string_view AUTO_MANIFEST = R"([repository]
-# The repository name.
-# It must contain only alphanumeric characters and symbols such as '-' or '_'
-name = "repo_name"
+inline constexpr std::string_view AUTO_MANIFEST = R"(# oshot plugin manifest. See docs/plugins.md in the oshot repository.
 
-# The repository git clone / homepage url.
-url = "https://github.com/user/repo"
+[repository]
+# The repository name, used by `oshotpm uninstall` and the like.
+# 1-64 letters, digits, '-', '_' or '='.
+name = "my-plugins"
 
-# Platform-dependent packages required to build all plugins in this repository.
-# NOTE: This will ONLY tell the user which packages are needed;
-#       it will not actually install them.
-#
-# Use the "all" key for dependencies common to every platform.
-# Current platforms: all, linux, macos, windows
+# The homepage. When installing from a git URL, oshotpm updates from that URL instead.
+url = "https://github.com/user/my-plugins"
+
+# Packages needed to build the plugins, only shown to the person installing them
+# (oshotpm never installs anything). Keys: all, linux, macos, windows, freebsd, openbsd, netbsd, dragonfly.
 [dependencies]
-all     = ["pkg-config", "cmake"]
-linux   = ["wayland-protocols", "xorg-dev"]
-macos   = ["gtk+3"]
+all     = ["cmake", "a C compiler"]
 
-# From now on, each table that is neither "repository" nor "dependencies" will be treated as a plugin entry.
-# The table's name (e.g. "test-plugin" below) is used directly as the plugin's name,
-# so it still must conform to alphanumeric characters and symbols such as '-' or '_'
-[test-plugin]
+# Every other table is a plugin. The table name is the plugin's name, with the
+# same rules as the repository name.
+[my-plugin]
 
-# The plugin ID.
-# It must contain only alphanumeric characters and symbols such as '-' or '_'
-# and at least one dot '.'
-id = "dev.test-plugin"
+# Must be the same as the `id` in the plugin's oshot_plugin_t.
+# Lowercase letters, digits, '-', '_' and at least one '.', e.g. "io.github.user.my-plugin".
+id = "io.github.user.my-plugin"
 
-# The plugin description.
-description = "Test plugin"
+description = "What the plugin does"
+authors     = ["user"]
+licenses    = ["MIT"]  # SPDX identifiers, not validated
 
-# The plugin authors.
-authors = ["user1", "friend_user1"]
-
-# The plugin SPDX License Identifiers (not validated)
-licenses = ["MIT", "GPL-2.0"]
-
-# Which platforms this specific plugin supports.
-# Use ["all"] if it builds on every platform, otherwise list only the ones it supports.
-# If the current platform isn't in this list, the plugin is skipped (with a warning) during install/update.
-# Current platforms: all, linux, macos, windows
+# Platforms the plugin supports: ["all"], or some of linux, macos, windows, freebsd, openbsd, netbsd, dragonfly.
+# Plugins that don't support the current platform are skipped.
 platforms = ["all"]
 
-# The directory where the final plugin output (the built library) shall be found.
-# It is checked right after running build-steps below; oshotpm then picks up the
-# one library found in this directory and installs it as one of this plugin's libraries.
-# The path is relative to the repository root unless absolute.
-output-dir = "build/plugin-dir/"
-
-# A list of commands to be executed for building the plugin.
-# All commands are chained with && and executed in a single shared shell session,
-# so environment variables, `cd`, and other shell state persist across steps.
-# Commands are executed in order and stop at the first failure.
+# Building from source (git URL or folder): each step runs in the repository's root folder,
+# with `sh -c` (cmd.exe on Windows), and installing stops at the first failing step.
+# The environment has OSHOT_SDK (the folder with include/oshot/oshot_plugin.h, and lib/ on Windows),
+# OSHOT_PLATFORM, OSHOT_ARCH, OSHOT_TARGET (e.g. "linux-x86_64") and OSHOT_VERSION.
+# build-steps-<platform> (e.g. build-steps-windows) replaces build-steps on that platform.
 build-steps = [
-    "make -C ./test-plugin-entry/",
-    "mkdir -p ./build/plugin-dir/",
-    "mv ./test-plugin-entry/library.so ./build/plugin-dir/library.so"
+    "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
+    "cmake --build build --config Release",
 ]
+
+# Where the build steps leave the library, relative to the repository root.
+# It must contain exactly one library (.so, .dll or .dylib): the plugin.
+output-dir = "build/out"
+
+# Prebuilt archives: the library for each target, relative to the archive root.
+# Without this table, the library is looked up in output-dir.
+#[my-plugin.prebuilt]
+#linux-x86_64   = "linux-x86_64/libmy-plugin.so"
+#linux-aarch64  = "linux-aarch64/libmy-plugin.so"
+#windows-x86_64 = "windows-x86_64/my-plugin.dll"
+#macos-aarch64  = "macos-aarch64/libmy-plugin.dylib"
+#macos-x86_64   = "macos-x86_64/libmy-plugin.dylib"
 )";
 
 #endif  // !_TEXTS_HPP_
