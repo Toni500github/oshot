@@ -52,14 +52,15 @@ public:
     [[nodiscard]] std::optional<manifest_t>      FindRepo(std::string_view name) const;
     [[nodiscard]] std::optional<plugin_t>        FindPlugin(std::string_view id) const;
 
-    void SetRepo(const manifest_t& repo);
     // Adds or replaces a plugin, keeping its enabled state if it was installed
     void SetPlugin(const std::string& repo, const plugin_t& plugin, const std::string& library_file);
-    void RemovePlugin(std::string_view id);
-    // Removes the repository and the plugins it installed
-    void     RemoveRepo(std::string_view name);
-    Result<> SetEnabled(std::string_view id, bool enabled);
 
+    // Removes the repository and the plugins it installed
+    void RemoveRepo(const std::string_view name);
+    void RemovePlugin(const std::string_view id);
+
+    void     SetRepo(const manifest_t& repo);
+    Result<> SetEnabled(const std::string_view id, bool enabled);
     Result<> SaveState();
 
 private:

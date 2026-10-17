@@ -38,17 +38,19 @@
 #include "tiny-process-library/process.hpp"
 #include "toml_api.hpp"
 
-static constexpr std::string_view DEFAULT_INDEX_URL = "https://toni500github.github.io/oshot-plugin-index/index.toml";
-static constexpr int64_t          INDEX_SCHEMA      = 1;
-static constexpr std::string_view MAX_DOWNLOAD      = "209715200";  // 200 MiB
+// NOLINTBEGIN(modernize-avoid-c-arrays)
+static constexpr char const DEFAULT_INDEX_URL[] = "https://toni500github.github.io/oshot-plugin-index/index.toml";
+static constexpr char const MAX_DOWNLOAD[]      = "209715200";  // 200 MiB
+static constexpr int64_t    INDEX_SCHEMA        = 1;
+// NOLINTEND(modernize-avoid-c-arrays)
 
-const index_version_t* index_plugin_t::FindVersion(std::string_view version) const
+const index_version_t* index_plugin_t::FindVersion(const std::string_view version) const
 {
     auto it = std::ranges::find(versions, version, &index_version_t::version);
     return it != versions.end() ? &*it : nullptr;
 }
 
-const index_plugin_t* plugin_index_t::Find(std::string_view id) const
+const index_plugin_t* plugin_index_t::Find(const std::string_view id) const
 {
     auto it = std::ranges::find(plugins, id, &index_plugin_t::id);
     return it != plugins.end() ? &*it : nullptr;
@@ -58,10 +60,9 @@ std::string plugin_index_url()
 {
     if (const char* env = std::getenv("OSHOT_PLUGIN_INDEX"); env && *env)
         return env;
-    return std::string(DEFAULT_INDEX_URL);
+    return DEFAULT_INDEX_URL;
 }
 
-// ----- downloading -----
 Result<> download_file(const std::string& url, const fs::path& dest)
 {
     std::string output;
@@ -73,11 +74,11 @@ Result<> download_file(const std::string& url, const fs::path& dest)
 
     // curl ships with Windows 10+, macOS and nearly every Linux distribution
     TinyProcessLib::Process proc(
-        std::vector<std::string>{
-            "curl", "-fsSL", "--retry", "2", "--max-filesize", std::string(MAX_DOWNLOAD), "-o", dest.string(), url },
+        { "curl", "-fsSL", "--retry", "2", "--max-filesize", MAX_DOWNLOAD, "-o", dest.string(), url },
         "",
         collect,
         collect);
+
     const int status = proc.get_exit_status();
     if (status != 0)
     {
@@ -269,10 +270,13 @@ bool is_installable(const index_version_t& v, std::string* why_not)
     std::string why;
     if (v.abi != OSHOT_API_VERSION)
         why = fmt::format("it's built for plugin ABI {}, this oshot has ABI {}", v.abi, OSHOT_API_VERSION);
+
     else if (v.imgui != 0 && v.imgui != OSHOT_IMGUI_VERSION)
         why = fmt::format("it's built for Dear ImGui {}, this oshot uses {}", v.imgui, OSHOT_IMGUI_VERSION);
+
     else if (!v.min_oshot.empty() && compare_versions(VERSION, v.min_oshot) < 0)
         why = fmt::format("it needs oshot {} or newer", v.min_oshot);
+
     else if (!v.artifacts.contains(OSHOT_TARGET) && !v.source)
         why = fmt::format("there's no build for {} and no source to build it from", OSHOT_TARGET);
 
@@ -295,7 +299,7 @@ const index_version_t* pick_version(const index_plugin_t& plugin, std::string* w
             first_reason = fmt::format("{} {}", v.version, why);
     }
     if (why_not)
-        *why_not = first_reason.empty() ? std::string("every version was withdrawn") : first_reason;
+        *why_not = first_reason.empty() ? "every version was withdrawn" : first_reason;
     return nullptr;
 }
 
