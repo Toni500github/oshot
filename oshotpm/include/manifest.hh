@@ -152,6 +152,7 @@ public:
 
     // Letters, digits, '-', '_' and '=', 1-64 characters
     static bool IsValidName(const std::string_view name);
+
     // Lowercase letters, digits, '-', '_' and '.', at least one '.', 1-64
     // characters, starting and ending with a letter or digit, no ".."
     static bool IsValidID(const std::string_view id);

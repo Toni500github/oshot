@@ -85,7 +85,7 @@ struct index_plugin_t
 
     std::vector<index_version_t> versions;  // newest first
 
-    [[nodiscard]] const index_version_t* FindVersion(std::string_view version) const;
+    [[nodiscard]] const index_version_t* FindVersion(const std::string_view version) const;
 };
 
 struct plugin_index_t
@@ -93,7 +93,7 @@ struct plugin_index_t
     std::string                 generated;
     std::vector<index_plugin_t> plugins;  // sorted by ID
 
-    [[nodiscard]] const index_plugin_t* Find(std::string_view id) const;
+    [[nodiscard]] const index_plugin_t* Find(const std::string_view id) const;
 };
 
 // The index's URL, or $OSHOT_PLUGIN_INDEX (any URL curl takes, e.g. file://)
@@ -112,7 +112,7 @@ Result<> download_file(const std::string& url, const fs::path& dest);
 Result<std::string> sha256_file(const fs::path& path);
 
 // <0, 0 or >0, like strcmp, for semantic versions ("1.10.0" > "1.9.0" > "1.9.0-beta")
-int compare_versions(std::string_view a, std::string_view b);
+int compare_versions(const std::string_view a, const std::string_view b);
 
 // Whether this oshot can load the version (ABI, ImGui and oshot version) and
 // install it on this platform (a prebuilt file for OSHOT_TARGET, or a source)

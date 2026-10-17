@@ -29,7 +29,6 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
-#include <utility>
 
 #if OSHOT_WINDOWS
 #  include <io.h>
@@ -38,7 +37,6 @@
 #  include <unistd.h>
 #endif
 
-#include "fmt/compile.h"
 #include "fmt/os.h"
 #include "fmt/ranges.h"
 #include "manifest.hh"
@@ -83,15 +81,15 @@ struct command_t
 };
 
 constexpr auto commands = std::to_array<command_t>({
-    { "search", SEARCH, oshotpm_help_search, "vh" },
-    { "install", INSTALL, oshotpm_help_install, "fyh" },
-    { "update", UPDATE, oshotpm_help_update, "yh" },
-    { "list", LIST, oshotpm_help_list, "vh" },
-    { "enable", ENABLE, oshotpm_help_enable, "h" },
-    { "disable", DISABLE, oshotpm_help_enable, "h" },
-    { "uninstall", UNINSTALL, oshotpm_help_uninstall, "h" },
-    { "gen-manifest", GEN_MANIFEST, oshotpm_help_gen_manifest, "h" },
-    { "help", HELP, oshotpm_help, "h" },
+    { .name = "search", .op = SEARCH, .help = oshotpm_help_search, .short_opts = "vh" },
+    { .name = "install", .op = INSTALL, .help = oshotpm_help_install, .short_opts = "fyh" },
+    { .name = "update", .op = UPDATE, .help = oshotpm_help_update, .short_opts = "yh" },
+    { .name = "list", .op = LIST, .help = oshotpm_help_list, .short_opts = "vh" },
+    { .name = "enable", .op = ENABLE, .help = oshotpm_help_enable, .short_opts = "h" },
+    { .name = "disable", .op = DISABLE, .help = oshotpm_help_enable, .short_opts = "h" },
+    { .name = "uninstall", .op = UNINSTALL, .help = oshotpm_help_uninstall, .short_opts = "h" },
+    { .name = "gen-manifest", .op = GEN_MANIFEST, .help = oshotpm_help_gen_manifest, .short_opts = "h" },
+    { .name = "help", .op = HELP, .help = oshotpm_help, .short_opts = "h" },
 });
 
 static const command_t* g_cmd = nullptr;  // the command being run
