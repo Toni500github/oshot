@@ -29,6 +29,8 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <cctype>
 #include <chrono>
 #include <climits>
 #include <cstddef>
@@ -37,7 +39,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
-#include <atomic>
 #include <filesystem>
 #include <mutex>
 #include <utility>
@@ -859,13 +860,55 @@ std::string expand_var(std::string ret)
     if (ret.empty())
         return ret;
 
-    if (ret.front() == '~')
+    if (ret.front() == '~' && (ret.size() == 1 || ret[1] == '/' || ret[1] == DIR_SEP))
         ret.replace(0, 1, get_home_dir().string());
 
-    Dotenv env;
-    env.parse_line(ret);
+    auto is_name_char = [](const char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
 
-    return ret;
+    std::string out;
+    out.reserve(ret.size());
+    for (size_t i = 0; i < ret.size(); ++i)
+    {
+        if (ret[i] != '$' || i + 1 == ret.size())
+        {
+            out += ret[i];
+            continue;
+        }
+
+        // ${NAME} or $NAME, where NAME doesn't start with a digit
+        size_t name_start = i + 1, name_end = 0, next = 0;
+        if (ret[name_start] == '{')
+        {
+            ++name_start;
+            name_end = ret.find('}', name_start);
+            if (name_end == ret.npos)
+            {
+                out += ret[i];
+                continue;
+            }
+            next = name_end + 1;
+        }
+        else
+        {
+            name_end = name_start;
+            while (name_end < ret.size() && is_name_char(ret[name_end]))
+                ++name_end;
+            next = name_end;
+        }
+
+        const std::string name = ret.substr(name_start, name_end - name_start);
+        const char*       value =
+            (name.empty() || std::isdigit(static_cast<unsigned char>(name[0]))) ? nullptr : std::getenv(name.c_str());
+
+        // Unset variables stay as they are, so a literal '$' survives
+        if (value)
+            out += value;
+        else
+            out.append(ret, i, next - i);
+        i = next - 1;
+    }
+
+    return out;
 }
 
 std::string str_toupper(std::string str)

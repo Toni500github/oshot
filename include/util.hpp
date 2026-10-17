@@ -678,9 +678,9 @@ std::string str_toupper(std::string str);
 std::string str_tolower(std::string str);
 
 /**
- * Replace a leading '~' with the home directory.
- * The string also goes through Dotenv::parse_line(), which trims it
- * and cuts off a " #" comment.
+ * Expand a leading '~' (alone or before a directory separator) to the home
+ * directory, and $NAME or ${NAME} to the environment variable's value.
+ * Unset variables are left as they are.
  * @param ret The string to expand
  **/
 std::string expand_var(std::string ret);
