@@ -361,6 +361,15 @@ extern bool g_is_flatpak;  // running inside a Flatpak sandbox
 
 extern std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_imgui_log_sink;
 
+// Makes logger spdlog's default logger in liboshot_common. spdlog is
+// header-only, and on Windows an executable and a DLL each get their own copy
+// of its registry, so the executable has to set it on both sides.
+void set_shared_default_logger(std::shared_ptr<spdlog::logger> logger);
+
+// At exit, before the log file is deleted: the DLL's registry outlives the
+// executable's and would keep the file open, which Windows can't delete
+void release_shared_default_logger();
+
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
 static inline const std::string version_infos = fmt::format(
     "oshot v{} built from branch '{}' at {} commit '{}' ({}).\n"

@@ -311,7 +311,10 @@ static void exit_handler_nc()
     // thread) would crash it instead of exiting
     if (!capture_active.load())
         extern_glfwTerminate();
-    fs::remove(fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid()));
+    release_shared_default_logger();
+    // Not the throwing overload: an exception here would terminate. On Windows
+    // the file can still be open (e.g. exit() from die() while main's logger is alive)
+    fs::remove(fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid()), ec);
 }
 
 int run_main_tool();
@@ -776,13 +779,13 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     std::vector<spdlog::sink_ptr> sinks = { console, imgui };
     if (file)
         sinks.push_back(file);
-    spdlog::logger logger("oshot_logger", sinks.begin(), sinks.end());
-    spdlog::set_default_logger(std::make_shared<spdlog::logger>(logger));
-    g_imgui_log_sink = imgui;
-
+    auto logger = std::make_shared<spdlog::logger>("oshot_logger", sinks.begin(), sinks.end());
     // [2026-03-10 17:24:07.593] [DEBUG] <col>message</col>
-    logger.set_pattern("[%Y-%m-%d %T.%e] [%l] %^%v%$");
-    logger.flush_on(spdlog::level::trace);
+    logger->set_pattern("[%Y-%m-%d %T.%e] [%l] %^%v%$");
+    logger->flush_on(spdlog::level::trace);
+    spdlog::set_default_logger(logger);
+    set_shared_default_logger(logger);
+    g_imgui_log_sink = imgui;
 
     g_clipboard.SetSession(get_session_type());
 
@@ -816,10 +819,9 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
 
     spdlog::set_level(spdlog::level::debug);
 
-    logger.info("=== oshot starting ===");
+    logger->info("=== oshot starting ===");
     if (file)
-        logger.info("Log file path: {}", file->filename());
-    logger.flush();
+        logger->info("Log file path: {}", file->filename());
     spdlog::flush_every(1s);
 
     if (no_overlay)
@@ -836,7 +838,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     {
         if (!tray_lock_acquired)
         {
-            logger.info("oshot is already running in the system tray");
+            logger->info("oshot is already running in the system tray");
             return EXIT_SUCCESS;
         }
 

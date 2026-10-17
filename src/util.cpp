@@ -53,6 +53,7 @@
 #include "platform.hpp"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
+#include "spdlog/sinks/stdout_color_sinks.h"
 #include "tinyfiledialogs.h"
 
 #define STBI_WRITE_NO_STDIO
@@ -403,6 +404,26 @@ bool init_dialogs() noexcept
 void disable_dialogs() noexcept
 {
     dialogs_disabled = true;
+}
+
+static bool own_spdlog_registry = false;
+
+void set_shared_default_logger(std::shared_ptr<spdlog::logger> logger)
+{
+    // With a single registry (Linux, builds without plugins) it's already the default
+    if (spdlog::default_logger_raw() == logger.get())
+        return;
+    own_spdlog_registry = true;
+    spdlog::set_default_logger(std::move(logger));
+}
+
+void release_shared_default_logger()
+{
+    if (!own_spdlog_registry)
+        return;
+    // Same name, so it also replaces the old logger in the registry
+    spdlog::set_default_logger(
+        std::make_shared<spdlog::logger>("oshot_logger", std::make_shared<spdlog::sinks::stderr_color_sink_mt>()));
 }
 
 Result<> write_image_file(const std::string& path, const capture_result_t& img, ImageExt ext)
