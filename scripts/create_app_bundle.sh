@@ -9,6 +9,7 @@
 #   OSHOT_MODELS_DIR  directory of *.traineddata to bundle into Contents/Resources/tessdata
 #   OSHOT_EXTRA_BINS  space-separated extra executables to put in Contents/MacOS (e.g. oshotpm)
 #   OSHOT_EXTRA_LIBS  space-separated dylibs that nothing in the bundle links but plugins do (e.g. libcimgui)
+#   OSHOT_SDK_DIR     plugin SDK (build/sdk) to copy into Contents/Resources/sdk, for oshotpm's plugin builds
 #   OSHOT_MIN_MACOS   fail if anything in the bundle needs a newer macOS than this (e.g. 15.0)
 
 set -euo pipefail
@@ -84,6 +85,11 @@ main() {
         chmod +x "$MACOS/$(basename "$extra")"
         BUNDLER_ARGS+=(-x "${MACOS}/$(basename "$extra")")
     done
+
+    if [ -n "${OSHOT_SDK_DIR:-}" ]; then
+        check_file "${OSHOT_SDK_DIR}/include/oshot/oshot_plugin.h"
+        cp -R "${OSHOT_SDK_DIR}" "${RESOURCES}/sdk"
+    fi
 
     # Bundle all dylib dependencies and rewrite their load paths
     dylibbundler -od -b \

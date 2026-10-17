@@ -410,6 +410,25 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }}
           ninja -C build
 
+      # The whole plugin path: oshotpm builds the example plugin against the SDK
+      # in build/sdk, checks the library and installs it
+      - name: Test installing a plugin (Linux, macOS)
+        if: matrix.plugins && (matrix.target == 'linux' || runner.os == 'macOS')
+        run: |
+          ./build/oshotpm install -y examples/plugins/uppercase
+          ./build/oshotpm list -v
+          ./build/oshotpm uninstall io.github.toni500github.uppercase
+
+      - name: Test installing a plugin (Windows)
+        if: matrix.plugins && runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          CMAKE_GENERATOR: Ninja
+        run: |
+          ./build/oshotpm install -y examples/plugins/uppercase
+          ./build/oshotpm list -v
+          ./build/oshotpm uninstall io.github.toni500github.uppercase
+
       # Package
       - name: Package Linux binary
         if: matrix.target == 'linux'
@@ -455,6 +474,7 @@ jobs:
           if [ "${{ matrix.plugins }}" == "true" ]; then
             export OSHOT_EXTRA_BINS="$PWD/build/oshotpm"
             export OSHOT_EXTRA_LIBS="$PWD/build/libcimgui.dylib"
+            export OSHOT_SDK_DIR="$PWD/build/sdk"
           fi
           ./scripts/create_app_bundle.sh ./build/oshot package/oshot-macos-${{ matrix.arch }}${SUFFIX}.dmg ./build
 
@@ -470,6 +490,8 @@ jobs:
           "$STRIP" --strip-unneeded package/oshot_install/bin/*.exe package/oshot_install/bin/*.dll
           cp package/oshot_install/bin/*.exe package/oshot_install/bin/*.dll package/oshot/
           cp ./assets/windows/oshot.ico package/oshot/
+          # Plugin SDK (headers, cimgui import library), which oshotpm hands to plugin builds
+          if [ -d build/sdk ]; then cp -r build/sdk package/oshot/; fi
           # Every DLL that oshot, oshotpm and their DLLs need from the MSYS2 environment
           ./scripts/bundle_windows_dlls.sh package/oshot
           curl -fL $MODELS_URL_RAW/eng.traineddata -o package/oshot/models/eng.traineddata
