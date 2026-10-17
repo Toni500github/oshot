@@ -3,7 +3,7 @@
 > Plugins are **experimental**: the API below can still change before it's declared stable, and
 > plugins then need to be rebuilt.
 
-Plugins only work in the `-plugins` builds of oshot. A plugin is a shared library (`.so`, `.dll` or `.dylib`) with a plain
+Plugins only work in the `-plugins` builds of oshot. A plugin is a shared library (`.so`, `.dll`, or `.dylib` or `.so` on macOS) with a plain
 C interface, so it can be written in any language that can export a C function: C, C++, Rust, Zig, and so on. The
 example in [`examples/plugins/uppercase`](../examples/plugins/uppercase) is a complete plugin in C.
 

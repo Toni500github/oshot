@@ -367,7 +367,7 @@ build-steps = [
 ]
 
 # Where the build steps leave the library, relative to the repository root.
-# It must contain exactly one library (.so, .dll or .dylib): the plugin.
+# It must contain exactly one library (.so, .dll or .dylib, .so also on macOS): the plugin.
 output-dir = "build/out"
 
 # Prebuilt archives: the library for each target, relative to the archive root.
