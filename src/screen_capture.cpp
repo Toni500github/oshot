@@ -208,11 +208,6 @@ Result<capture_result_t> crop_to_monitor(const capture_result_t&     full,
     return Ok(std::move(out));
 }
 
-// Rotates an RGBA buffer by a multiple of 90 degrees clockwise.
-// 90/270 swap width and height; 180 doesn't. Used to correct crop_to_monitor()'s
-// output for outputs with a non-zero wl_output transform (rotated monitors),
-// since the compositor's combined capture buffer doesn't pre-rotate per-output
-// content the way logical geometry implies it should.
 capture_result_t rotate_rgba(const capture_result_t& src, int turns_cw)
 {
     turns_cw = ((turns_cw % 4) + 4) % 4;
@@ -863,7 +858,7 @@ Result<capture_result_t> capture_full_screen_windows_fallback()
     BITMAPINFO bmi              = { 0 };
     bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth       = width;
-    bmi.bmiHeader.biHeight      = -height;  // Negative for top-down DIB
+    bmi.bmiHeader.biHeight      = -height;  // negative for a top-down DIB
     bmi.bmiHeader.biPlanes      = 1;
     bmi.bmiHeader.biBitCount    = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
@@ -879,11 +874,9 @@ Result<capture_result_t> capture_full_screen_windows_fallback()
         return Err("Failed to create DIB section");
     }
 
-    // Select the bitmap into the memory DC
     HBITMAP hOldBitmap = (HBITMAP)SelectObject(hMemoryDC, hBitmap);
 
-    // Copy the target monitor's region from the virtual-desktop DC.
-    // origin_x/origin_y are the monitor's coordinates in virtual-desktop space.
+    // origin_x/origin_y are the monitor's position in the virtual desktop
     BitBlt(hMemoryDC,
            0,
            0,
@@ -895,7 +888,7 @@ Result<capture_result_t> capture_full_screen_windows_fallback()
            SRCCOPY | CAPTUREBLT  // CAPTUREBLT captures layered windows
     );
 
-    // Convert BGRA DIB -> RGBA
+    // BGRA -> RGBA
     const uint8_t* s = reinterpret_cast<const uint8_t*>(pBits);
     uint8_t*       d = reinterpret_cast<uint8_t*>(result.data.data());
 
@@ -969,9 +962,7 @@ Result<capture_result_t> capture_full_screen_windows()
     else
         cursor_monitor = MonitorFromPoint({ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
 
-    // Enumerate adapters/outputs and prefer the one whose HMONITOR matches
-    // the cursor's monitor. Fall back to the first desktop-attached output
-    // if no exact match is found (e.g., GetCursorPos failed).
+    // The output of the monitor under the cursor, else the first one attached to the desktop
     com_ptr<IDXGIAdapter1> adapter, fallback_adapter;
     com_ptr<IDXGIOutput>   output, fallback_output;
 
@@ -990,8 +981,6 @@ Result<capture_result_t> capture_full_screen_windows()
 
             if (od.Monitor == cursor_monitor)
             {
-                // Exact match: this is the monitor under the cursor.
-                // Promote to the selected adapter/output and stop searching.
                 found_exact = true;
                 debug("DXGI capture: matched cursor monitor (adapter {}, output {})", ai, oi);
                 break;
@@ -999,13 +988,8 @@ Result<capture_result_t> capture_full_screen_windows()
 
             if (!found_fallback)
             {
-                // Remember the first desktop-attached output as a fallback.
-                // We can't call reset_and_get_address on the com_ptrs we still
-                // need, so we re-query them if we end up using the fallback.
-                found_fallback = true;
-                // Store adapter/output indices for a potential second pass.
-                // Simpler: just keep a raw pointer snapshot. We re-AddRef to
-                // be safe because the com_ptr loop will Release on next iteration.
+                // Keep our own reference: the loop's com_ptrs release theirs on the next iteration
+                found_fallback       = true;
                 fallback_adapter.ptr = adapter.ptr;
                 fallback_adapter.ptr->AddRef();
                 fallback_output.ptr = output.ptr;
@@ -1025,7 +1009,6 @@ Result<capture_result_t> capture_full_screen_windows()
             return capture_full_screen_windows_fallback();
         }
         debug("DXGI capture: no output matched cursor monitor, using first desktop-attached output");
-        // Swap in the fallback (adapter/output already hold the right COM objects).
         adapter.ptr          = fallback_adapter.ptr;
         fallback_adapter.ptr = nullptr;
         output.ptr           = fallback_output.ptr;
@@ -1037,7 +1020,7 @@ Result<capture_result_t> capture_full_screen_windows()
     if (hr_failed(hr, "QueryInterface(IDXGIOutput1)"))
         return capture_full_screen_windows_fallback();
 
-    // D3D11 device bound to output adapter
+    // D3D11 device on the output's adapter
     com_ptr<ID3D11Device>        device;
     com_ptr<ID3D11DeviceContext> context;
 

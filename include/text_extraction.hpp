@@ -42,10 +42,14 @@
 // ------------------------------
 struct ocr_result_t
 {
-    std::string data;
-    int         confidence = -1;  // 0..100
+    // Mean word confidence, 0..100, or -1 if nothing was read yet
+    int confidence = -1;
+
+    // The tesseract::PageSegMode the text was read with, and its name
     int         psm;
     std::string psm_str;
+
+    std::string data;
 };
 
 class OcrAPI
@@ -58,9 +62,21 @@ public:
     OcrAPI(const OcrAPI&)            = delete;
     OcrAPI& operator=(const OcrAPI&) = delete;
 
-    Result<>             Configure(const char*              data_path,
-                                   const char*              model,
-                                   tesseract::OcrEngineMode oem = tesseract::OEM_LSTM_ONLY);
+    /**
+     * (Re)initialize the engine with a model. Does nothing if it already uses it
+     * @param data_path The directory with the .traineddata models
+     * @param model The model name, e.g. "eng" for eng.traineddata
+     * @param oem The engine mode
+     **/
+    Result<> Configure(const char*              data_path,
+                       const char*              model,
+                       tesseract::OcrEngineMode oem = tesseract::OEM_LSTM_ONLY);
+
+    /**
+     * Read the text in an image, after preparing it for Tesseract (scaled, padded,
+     * dark text on white). Configure() must have succeeded first
+     * @param cap The RGBA image
+     **/
     Result<ocr_result_t> ExtractTextCapture(const capture_result_t& cap);
 
 private:
@@ -74,8 +90,10 @@ private:
 
     using TextPtr = std::unique_ptr<char, void (*)(char*)>;
 
+    // What the engine was last initialized with
+    std::optional<ocr_config_t> m_config;
+
     std::unique_ptr<tesseract::TessBaseAPI> m_api;
-    std::optional<ocr_config_t>             m_config;
     bool                                    m_initialized = false;
 };
 
@@ -84,17 +102,30 @@ private:
 // ------------------------------
 struct zbar_result_t
 {
-    std::vector<std::string>             datas;        // decoded payload
-    std::unordered_map<std::string, int> symbologies;  // e.g. "QRCODE", "EAN-13", ...
+    std::vector<std::string>             datas;        // decoded payloads, without duplicates
+    std::unordered_map<std::string, int> symbologies;  // how many of each, e.g. "QRCODE", "EAN-13", ...
 };
 
 class ZbarAPI
 {
 public:
+    // Every symbology is enabled
     ZbarAPI();
 
+    /**
+     * Decode the QR codes and barcodes in an image. Also tries the inverted image
+     * (light codes on dark) and, for small images, a 2x upscale
+     * @param cap The RGBA image
+     **/
     Result<zbar_result_t> ExtractTextsCapture(const capture_result_t& cap);
-    bool                  SetConfig(zbar::zbar_symbol_type_e zbar_code, int enable);
+
+    /**
+     * Enable or disable a symbology
+     * @param zbar_code The symbology, or ZBAR_NONE for all of them
+     * @param enable 1 to enable it, 0 to disable it
+     * @return false if ZBar refused the setting
+     **/
+    bool SetConfig(zbar::zbar_symbol_type_e zbar_code, int enable);
 
 private:
     zbar::ImageScanner m_scanner;

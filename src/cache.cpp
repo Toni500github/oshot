@@ -62,9 +62,7 @@ void Cache::CreateFile()
 
 Result<> Cache::LoadCacheFile()
 {
-    // Since the filename (default.theme-file) will be likely
-    // related to relative path of the config directory, let's
-    // snapshot and switch to that directory.
+    // mk_file_path is relative to the cache directory
     CdGuard guard(m_cache_dir_path);
 
     return LoadFile(mk_file_path);

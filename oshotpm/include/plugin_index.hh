@@ -38,15 +38,14 @@
 
 #include "util.hpp"
 
-// The repository name installed index plugins are grouped under in state.toml
-constexpr char const INDEX_REPO_NAME[] = "index";  // NOLINT
-
+// A prebuilt file of a version: a bare library or an archive
 struct index_artifact_t
 {
     std::string url;
     std::string sha256;
 };
 
+// Where to build a version from. Built with designated initializers, so keep the field order
 struct index_source_t
 {
     std::string git;
@@ -57,22 +56,34 @@ struct index_source_t
 
 struct index_version_t
 {
-    std::string version;
-    std::string date;
+    // By target, e.g. "linux-x86_64"
+    std::map<std::string, index_artifact_t> artifacts;
+
+    // The plugin ABI and IMGUI_VERSION_NUM it's built for
+    int64_t abi   = 0;
+    int64_t imgui = 0;
+
+    // The oldest oshot version it works with
     std::string min_oshot;
-    std::string changes;
-    int64_t     abi   = 0;
-    int64_t     imgui = 0;
 
-    std::optional<index_source_t>           source;
-    std::map<std::string, index_artifact_t> artifacts;  // by target, e.g. "linux-x86_64"
-
+    // Withdrawn: pick_version() skips it, and updating warns if it's the installed one
     bool        yanked = false;
     std::string yanked_reason;
+
+    std::string                   version;
+    std::string                   date;
+    std::string                   changes;
+    std::optional<index_source_t> source;
 };
 
 struct index_plugin_t
 {
+    // The author says it connects to the internet
+    bool network = false;
+
+    // newest first
+    std::vector<index_version_t> versions;
+
     std::string              id;
     std::string              name;
     std::string              description;
@@ -81,44 +92,87 @@ struct index_plugin_t
     std::vector<std::string> owners;
     std::vector<std::string> authors;
     std::vector<std::string> tags;
-    bool                     network = false;  // the author says it connects to the internet
-
-    std::vector<index_version_t> versions;  // newest first
 
     [[nodiscard]] const index_version_t* FindVersion(const std::string_view version) const;
 };
 
 struct plugin_index_t
 {
-    std::string                 generated;
-    std::vector<index_plugin_t> plugins;  // sorted by ID
+    // sorted by ID
+    std::vector<index_plugin_t> plugins;
+
+    std::string generated;
 
     [[nodiscard]] const index_plugin_t* Find(const std::string_view id) const;
 };
 
-// The index's URL, or $OSHOT_PLUGIN_INDEX (any URL curl takes, e.g. file://)
+// The repository name installed index plugins are grouped under in state.toml
+constexpr char const INDEX_REPO_NAME[] = "index";  // NOLINT
+
+// ------------------------------
+// The index
+// ------------------------------
+
+/**
+ * Get the index's URL
+ * @return $OSHOT_PLUGIN_INDEX if set (any URL curl takes, e.g. file://), else the official one
+ **/
 std::string plugin_index_url();
 
-// Downloads the index to `cache_file` and parses it. With `allow_cached`, a
-// failed download falls back to the last downloaded copy (and `stale` is set).
+/**
+ * Download the index and parse it
+ * @param cache_file Where to keep the downloaded copy
+ * @param allow_cached Fall back to the last downloaded copy if the download fails
+ * @param stale Set to whether the cached copy was used, if not null
+ **/
 Result<plugin_index_t> fetch_plugin_index(const fs::path& cache_file, bool allow_cached, bool* stale = nullptr);
 
+/**
+ * Parse an index.toml. Entries this oshot can't make sense of are skipped
+ * @param path The index file
+ **/
 Result<plugin_index_t> parse_plugin_index(const std::string& path);
 
-// Downloads `url` to `dest` with the curl program
-Result<> download_file(const std::string& url, const fs::path& dest);
-
-// Lowercase hex SHA-256 of a file
-Result<std::string> sha256_file(const fs::path& path);
-
-// <0, 0 or >0, like strcmp, for semantic versions ("1.10.0" > "1.9.0" > "1.9.0-beta")
-int compare_versions(const std::string_view a, const std::string_view b);
-
-// Whether this oshot can load the version (ABI, ImGui and oshot version) and
-// install it on this platform (a prebuilt file for OSHOT_TARGET, or a source)
+/**
+ * Check whether this oshot can load a version (ABI, ImGui and oshot version) and
+ * install it on this platform (a prebuilt file for OSHOT_TARGET, or a source)
+ * @param v The version
+ * @param why_not Set to the reason it can't, if not null
+ **/
 bool is_installable(const index_version_t& v, std::string* why_not = nullptr);
 
-// The newest installable version that isn't yanked
+/**
+ * Pick the newest installable version that isn't yanked
+ * @param plugin The plugin
+ * @param why_not Set to why none can be installed, if not null
+ * @return The version, or nullptr
+ **/
 const index_version_t* pick_version(const index_plugin_t& plugin, std::string* why_not = nullptr);
+
+// ------------------------------
+// Helpers
+// ------------------------------
+
+/**
+ * Download a file with the curl program
+ * @param url The URL
+ * @param dest Where to write the file
+ **/
+Result<> download_file(const std::string& url, const fs::path& dest);
+
+/**
+ * Hash a file with SHA-256
+ * @param path The file
+ * @return The hash in lowercase hex
+ **/
+Result<std::string> sha256_file(const fs::path& path);
+
+/**
+ * Compare two semantic versions, like strcmp ("1.10.0" > "1.9.0" > "1.9.0-beta")
+ * @param a The first version
+ * @param b The second version
+ * @return <0, 0 or >0
+ **/
+int compare_versions(const std::string_view a, const std::string_view b);
 
 #endif

@@ -1,10 +1,5 @@
-# Thin Makefile wrapper around CMake.
-#
-# This file does NOT compile anything itself. All build logic (sources,
-# per-platform deps, flags, library targets) lives in CMakeLists.txt. This
-# exists purely so `make`/`make clean`/`make distclean`/etc. keep working
-# for people and CI used to that interface, without maintaining a second,
-# independently-drifting set of compile rules alongside CMakeLists.txt.
+# Wrapper around CMake, so `make`, `make install` and friends keep working.
+# The build itself is defined in CMakeLists.txt.
 #
 # GNU make only: on the BSDs run it as `gmake`.
 
@@ -40,10 +35,8 @@ CMAKE_CONFIGURE_FLAGS := \
 
 all: build
 
-# Re-configure whenever CMakeLists.txt changes or the build dir doesn't
-# exist yet. CMake re-configures itself as needed beyond this too (e.g. if
-# a referenced file changes), this just guarantees a fresh checkout works
-# with a single `make`.
+# Configure on the first build and when CMakeLists.txt changes. CMake
+# re-configures itself for anything else
 $(BUILDDIR)/CMakeCache.txt: CMakeLists.txt
 	$(CMAKE) $(CMAKE_CONFIGURE_FLAGS)
 
@@ -52,14 +45,11 @@ configure: $(BUILDDIR)/CMakeCache.txt
 build: configure
 	$(CMAKE) --build $(BUILDDIR) --parallel $(JOBS)
 
-# Generates version info ahead of time; CMakeLists.txt also runs this at
-# configure time, so this target is mainly for manual/CI use outside a
-# full configure+build cycle.
+# Generates include/version.h, which the build also does before compiling
 genver:
 	./scripts/generateVersion.sh
 
-# Removes built artifacts but keeps the CMake cache/config, so the next
-# `make` is a fast incremental rebuild rather than a full re-configure.
+# Keeps the CMake cache, so the next build doesn't re-configure
 clean:
 	$(CMAKE) --build $(BUILDDIR) --target clean
 

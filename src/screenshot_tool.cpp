@@ -69,8 +69,6 @@
 #  define GL_NO_ERROR 0
 #endif
 
-std::deque<monitor_t> wl_get_monitors();
-
 using namespace std::chrono_literals;
 
 constexpr rgba_t::rgba_t(ImVec4 vec)
@@ -125,8 +123,7 @@ static bool get_filtered_filenames(const std::string&                           
 }
 
 // https://github.com/pthom/imgui/blob/808272622f52d2f36124629c29994d2a5a7eb2f2/imgui_demo.cpp#L273
-// Helper to display a little (?) mark which shows a tooltip when hovered.
-// In your own code you may want to display an actual icon if you are using a merged icon fonts (see docs/FONTS.md)
+// A little (?) mark which shows a tooltip when hovered
 static void HelpMarker(const char* desc)
 {
     ImGui::TextDisabled("(?)");
@@ -403,7 +400,6 @@ void apply_imgui_theme()
     const auto& ov    = g_config->theme_overrides;
     const auto& cmap  = color_name_map();
 
-    // Apply color overrides
     for (const auto& [name, hex] : ov.colors)
     {
         auto it = cmap.find(name);
@@ -414,7 +410,7 @@ void apply_imgui_theme()
             style.Colors[it->second] = col;
     }
 
-    // Apply style var overrides (-1 means "not set")
+    // -1 means "not set"
     if (ov.window_rounding >= 0.f)
         style.WindowRounding = ov.window_rounding;
     if (ov.frame_rounding >= 0.f)
@@ -521,7 +517,7 @@ Result<> ScreenshotTool::StartWindow()
 
     m_texture_id = res.get();
 
-    // Since the creation of the screenshot texture was fine, suppose the other too
+    // The screenshot texture worked, so assume these do too
     m_tool_textures[idx(ToolType::Rectangle)] = CreateTexture(0, ICON_SQUARE_RGBA, ICON_SQUARE_W, ICON_SQUARE_H).get();
     m_tool_textures[idx(ToolType::RectangleFilled)] =
         CreateTexture(0, ICON_RECT_FILLED_RGBA, ICON_RECT_FILLED_W, ICON_RECT_FILLED_H).get();
@@ -543,7 +539,7 @@ Result<> ScreenshotTool::StartWindow()
 #endif
 
 #ifndef DISABLE_PLUGINS
-    // Placeholders for not crashing when used but not needed
+    // No-ops for PluginManager calls made before any StartPluginTask(): an empty std::function throws
     PluginCallbacks cb;
     cb.on_status  = [](const std::string_view) {};
     cb.on_success = [](const std::string_view) {};
@@ -593,8 +589,7 @@ void ScreenshotTool::RenderOverlay()
     if (ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear)
         ImGui::GetBackgroundDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
 
-    // If we requested a save/copy image in the previous frame,
-    // do nothing else than rendering annotations
+    // Save/copy requested: this frame is read back as the image, so draw only the annotations
     if (IsCompleted())
     {
         DrawAnnotations();
@@ -784,9 +779,8 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
         // Check if we're starting to resize from a handle
         if (sel.handle_hover != HandleHovered::kNone)
         {
-            // Normalize before storing the drag anchor so HandleResizeInput
-            // always starts from a canonical (start <= end) selection.
-            // Skipped for direction-significant annotations (Line/Arrow).
+            // HandleResizeInput() expects start <= end, except for Line/Arrow,
+            // where the order is the direction
             if (!sel.preserve_direction)
                 NormalizeSelection(sel);
             sel.dragging_handle      = sel.handle_hover;
@@ -845,9 +839,7 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
     const ImVec2& mouse_pos    = ImGui::GetMousePos();
     const bool    was_dragging = (m_anno_sel.dragging_handle != HandleHovered::kNone);
 
-    // Don't let a click meant for the annotation toolbar/settings window
-    // also be interpreted as a canvas click; otherwise it re-selects/
-    // deselects whatever annotation happens to sit underneath that window.
+    // A click on the toolbar or a window must not (de)select the annotation under it
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ui_blocks_selection())
     {
         bool found = false;
@@ -868,8 +860,7 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
                     case ToolType::CounterBubble:
                     case ToolType::Text:
                     {
-                        // Sync from the same padded box that gets drawn, so the
-                        // handles you see and the ones you can click line up.
+                        // The padded box that gets drawn, so the handles line up with it
                         const ImRect handle_box = GetAnnotationHandleBox(*ann);
                         m_anno_sel.selection    = { .start = { .x = handle_box.Min.x, .y = handle_box.Min.y },
                                                     .end   = { .x = handle_box.Max.x, .y = handle_box.Max.y } };
@@ -877,16 +868,15 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
                     }
 
                     case ToolType::Pencil:
-                        // Use the tight point-cloud bbox as the drag box; the
-                        // actual geometry (ann.points) is transformed separately
-                        // below, start/end are never read for drawing a pencil.
+                        // The points' bounds: they're scaled below, and start/end
+                        // aren't used to draw a pencil
                         m_anno_sel.selection = { .start = { .x = bbox.Min.x, .y = bbox.Min.y },
                                                  .end   = { .x = bbox.Max.x, .y = bbox.Max.y } };
                         break;
 
                     default:  // Rectangle, RectangleFilled, Line, Arrow
-                        // Keep native, direction-preserving start/end for dragging;
-                        // only the *drawn border* uses the padded/normalized bbox.
+                        // start/end as they are, since they give Line/Arrow their
+                        // direction. Only the drawn border is normalized
                         m_anno_sel.selection = { .start = ann->start, .end = ann->end };
                         break;
                 }
@@ -898,11 +888,8 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
             }
         }
 
-        // We once clicked on annotation, but now we clicked an empty area.
-        // De-select the previous annotation, but swallow
-        // this click so it doesn't also get handed to HandleSelectionInput(m_main_sel)
-        // this same frame, i.e. don't start/move the main selection on the
-        // exact click that only meant to leave the annotation.
+        // Clicked outside the selected annotation: deselect it, and swallow the
+        // click so it doesn't also start or move the main selection
         if (!found)
         {
             m_state       = ToolState::Selected;
@@ -912,11 +899,8 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
         }
     }
 
-    // Snapshot the pencil's points right before a drag might start, so the
-    // scale transform below always maps from an un-mutated baseline instead
-    // of compounding onto its own output frame after frame. Frozen for the
-    // duration of the drag (was_dragging becomes true), refreshed again once
-    // the mouse is released and dragging_handle resets to kNone.
+    // The pencil's points before the drag, which the scaling below starts from
+    // every frame. Kept for the whole drag
     if (ann && ann->type == ToolType::Pencil && !was_dragging)
         m_anno_sel.drag_start_points = ann->points;
 
@@ -926,8 +910,7 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
     {
         HandleResizeInput(m_anno_sel);
 
-        // Type read fresh again here, same reasoning as above: ann may have
-        // just changed this very frame.
+        // Read again: HandleSelectionInput() may have changed ann
         const ToolType type  = ann->type;
         const float    sel_x = m_anno_sel.selection.get_x();
         const float    sel_y = m_anno_sel.selection.get_y();
@@ -940,9 +923,8 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
             case ToolType::CircleFilled:
             case ToolType::CounterBubble:
             {
-                // Un-pad back to the logical (unpadded) box before converting
-                // to center+radius, since m_anno_sel.selection was synced from
-                // GetAnnotationHandleBox() (padded), not GetAnnotationBBox().
+                // The selection is the padded GetAnnotationHandleBox(): remove
+                // the padding before converting it to center + radius
                 constexpr float PIXEL   = 1.0f;
                 const float     padding = ann->thickness - PIXEL;
                 const float     box_x   = sel_x + padding;
@@ -958,10 +940,8 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
 
             case ToolType::Text:
             {
-                // Same un-padding as above; text has no native width/height
-                // (its box comes from font size and thickness), so only the
-                // position can meaningfully change here. Dragging a corner
-                // handle will move it but won't resize the glyphs.
+                // Same padding as above. The box comes from the font size,
+                // so dragging a handle only moves the text
                 constexpr float PIXEL   = 1.0f;
                 const float     padding = ann->thickness - PIXEL;
                 ann->start              = { .x = sel_x + padding, .y = sel_y + padding };
@@ -970,12 +950,8 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
 
             case ToolType::Pencil:
             {
-                // Scale every point from the drag-start snapshot into the new
-                // box. Guarded on was_dragging (captured before
-                // HandleSelectionInput() reset dragging_handle on release) so
-                // this only runs during/at the end of an actual drag, never on
-                // a plain idle/hover frame where drag_start_selection may be
-                // stale from a previous, unrelated drag.
+                // Scale the points from the drag-start snapshot into the new box.
+                // Only while dragging: drag_start_selection is stale otherwise
                 if (was_dragging && !m_anno_sel.drag_start_points.empty())
                 {
                     const selection_rect_t& old_box = m_anno_sel.drag_start_selection;
@@ -1007,10 +983,6 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
         }
     }
 
-    // Only the deselect branch above ever needs to suppress the main
-    // selection for a frame; every other path here is either "still
-    // resizing an annotation" (already excluded via m_current_annotation_resize)
-    // or "nothing happened", neither of which needs to swallow a click.
     return false;
 }
 
@@ -1078,13 +1050,9 @@ void ScreenshotTool::HandleAnnotationInput()
 {
     const ImVec2& mouse_pos = ImGui::GetMousePos();
 
-    // If the user switched away from the Text tool while a text annotation was
-    // in progress (but not yet committed), cancel it so the placement position
-    // is not left stale.
-    // Without this, the generic drawing code can later
-    // overwrite m_current_annotation (including start.x/y = 0) while
-    // m_is_text_placing stays true, causing the input window to reappear at
-    // position (0, 0) the next time Text is selected.
+    // Switched away from the Text tool while placing a text: cancel it, or the
+    // drawing code below resets its position and the text input reappears at
+    // (0, 0) the next time Text is selected
     if (m_current_actions.Has(CurrentAction::IsTextPlacing) && m_current_tool != ToolType::Text)
     {
         m_current_annotation = {};
@@ -1195,7 +1163,7 @@ void ScreenshotTool::HandleAnnotationInput()
 
         if (m_current_tool == ToolType::Pencil)
         {
-            // Add point if it's far enough from the last one
+            // Add a point only if it's more than 2px from the last one
             if (!m_current_annotation.points.empty())
             {
                 const point_t& last = m_current_annotation.points.back();
@@ -1213,8 +1181,7 @@ void ScreenshotTool::HandleAnnotationInput()
 
         float dx         = m_current_annotation.end.x - m_current_annotation.start.x;
         float dy         = m_current_annotation.end.y - m_current_annotation.start.y;
-        bool  should_add = (m_current_tool == ToolType::Pencil ||
-                            (dx * dx + dy * dy) > 25.0f);  // Either we are using a pencil or Minimum 5px distance
+        bool  should_add = (m_current_tool == ToolType::Pencil || (dx * dx + dy * dy) > 25.0f);  // at least 5px long
         if (should_add)
             m_annotations.push_back(m_current_annotation);
 
@@ -1275,7 +1242,7 @@ void ScreenshotTool::HandleColorPickerInput()
         const size_t off = (size_t(py) * m_screenshot.w + px) * 4;
         const rgba_t c   = load_rgba(m_screenshot.data.data() + off);
 
-        // Compute UV window for the zoomed region
+        // UVs of the zoomed region
         const float half_src_px_x = (k_loupe_px / k_zoom) * 0.5f / float(m_screenshot.w);
         const float half_src_px_y = (k_loupe_px / k_zoom) * 0.5f / float(m_screenshot.h);
         const float uv_cx         = (float(px) + 0.5f) / float(m_screenshot.w);
@@ -1297,7 +1264,7 @@ void ScreenshotTool::HandleColorPickerInput()
         if (platform_io.DrawCallback_SetSamplerLinear)
             dl->AddCallback(platform_io.DrawCallback_SetSamplerLinear, nullptr);
 
-        // Draw crosshair over the loupe
+        // Crosshair
         const ImVec2    ctr = ImVec2(loupe_origin.x + k_loupe_px * 0.5f, loupe_origin.y + k_loupe_px * 0.5f);
         constexpr float arm = 10.0f;
         constexpr float gap = 3.0f;  // gap around the centre dot
@@ -1517,16 +1484,10 @@ void ScreenshotTool::DrawDarkOverlay()
 
     constexpr ImU32 dark_color = (0x00000080_rgba).to_abgr();
 
-    // Top rectangle
+    // Above, below, left and right of the selection
     draw_list->AddRectFilled(m_image_origin, ImVec2(m_image_end.x, sel_y), dark_color);
-
-    // Bottom rectangle
     draw_list->AddRectFilled(ImVec2(m_image_origin.x, sel_y + sel_h), m_image_end, dark_color);
-
-    // Left rectangle
     draw_list->AddRectFilled(ImVec2(m_image_origin.x, sel_y), ImVec2(sel_x, sel_y + sel_h), dark_color);
-
-    // Right rectangle
     draw_list->AddRectFilled(ImVec2(sel_x + sel_w, sel_y), ImVec2(m_image_end.x, sel_y + sel_h), dark_color);
 }
 
@@ -1583,7 +1544,7 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
 
         auto color = Colors::WHITE;
         if (sel.handle_hover == type || sel.dragging_handle == type)
-            color.b = 0;  // Yellow
+            color.b = 0;  // yellow
 
         draw_list->AddRectFilled(min, max, color.to_abgr());
         draw_list->AddRect(min, max, Colors::WHITE.to_abgr(), 0.0f, 2.0f, ImDrawFlags_None);
@@ -1604,9 +1565,7 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
     if (sel.is_ann)
         return;
 
-    // Selection size window
-    // Show it when interacting with selections and if less
-    // than 2 seconds are passed
+    // Selection size, shown while the selection changes and for 2 seconds after
     static double last_change_time = ImGui::GetTime();
     if (m_input_owner == InputOwner::Selection)
         last_change_time = ImGui::GetTime();
@@ -1695,7 +1654,6 @@ void ScreenshotTool::DrawMenuItems()
 {
     if (ImGui::BeginMenuBar())
     {
-        // Now draw the menus
         if (ImGui::BeginMenu("File"))
         {
             if (ImGui::MenuItem("Open Image..."))
@@ -2843,20 +2801,16 @@ void ScreenshotTool::DrawPreferencesWindow()
     ImGui::SetNextWindowSize(ImVec2(500, 440), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Preferences", &window_open, ImGuiWindowFlags_NoSavedSettings))
     {
-        // [x] or Esc was clicked this frame: either close cleanly or ask first.
-        // OpenPopup must be called inside Begin/End, so we handle it here
-        // before rendering any content.
+        // [x] or Esc: close, or ask first if there are unsaved changes.
+        // OpenPopup() must be called between Begin() and End()
         if (!window_open || ImGui::IsKeyPressed(ImGuiKey_Escape))
         {
             if (prefs_modified)
                 ImGui::OpenPopup("Unsaved changes##pref");
             else
                 m_show_window.Clear(SubWindow::Preferences);
-            // Either way, don't propagate to show_preferences_window yet,
-            // the window_open local resets to true next frame automatically.
         }
 
-        // Left
         ImGui::BeginChild("##left_panel", ImVec2(150, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX);
         for (size_t i = 0; i < items.size(); i++)
             if (ImGui::Selectable(items[i], selected_tab == toe<PrefTab>(i)))
@@ -2865,7 +2819,6 @@ void ScreenshotTool::DrawPreferencesWindow()
 
         ImGui::SameLine();
 
-        // Right
         ImGui::BeginGroup();
         ImGui::BeginChild("##right_panel", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()));
         switch (selected_tab)
@@ -2916,7 +2869,6 @@ void ScreenshotTool::DrawPreferencesWindow()
             ImGui::SameLine();
             if (ImGui::Button("Cancel", ImVec2(80, 0)))
             {
-                // Do nothing
                 ImGui::CloseCurrentPopup();
             }
 
@@ -2937,7 +2889,7 @@ void ScreenshotTool::DrawPreferencesWindow()
     }
     ImGui::End();
 
-    // Clean up tracking state after a confirmed close so the next open is fresh.
+    // Closed: the next open starts fresh
     if (!m_show_window.Has(SubWindow::Preferences))
     {
         prev_window_open = false;
@@ -3879,7 +3831,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         if (is_downloading)
             ImGui::EndDisabled();
 
-        // URL preview when both field are filled
+        // URL preview when both fields are filled
         if (!m_inputs.ocr_download_repo.empty() && !model_to_get.empty())
         {
             ImGui::Spacing();
@@ -4192,7 +4144,7 @@ void ScreenshotTool::DrawAnnotations()
     for (const annotation_t& ann : m_annotations)
         draw_annotation(ann);
 
-    // Render current annotation being drawn on top of committed ones
+    // The one being drawn, on top
     if (m_current_actions.Has(CurrentAction::IsDrawing))
         draw_annotation(m_current_annotation);
 }
@@ -4281,7 +4233,7 @@ void ScreenshotTool::Cancel()
     for (auto& tex : m_tool_textures)
         delete_texture(tex);
 
-    // (just clears our references, not the actual ImGui fonts)
+    // Only our references: the fonts stay in ImGui's atlas
     m_font_cache.clear();
 
     if (m_on_cancel)
@@ -4316,8 +4268,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     m_texture_id = r.get();
 #endif
 
-    // Reset interactions.
-    // some are already reset from previous calls
+    // Reset interactions
     m_state                    = ToolState::Selecting;
     m_current_tool             = ToolType::kNone;
     m_main_sel.handle_hover    = HandleHovered::kNone;
@@ -4347,7 +4298,7 @@ capture_result_t ScreenshotTool::GetFinalImage(bool)
     const int src_width = m_screenshot.w;
     const int dst_width = region.w;
 
-    // Calculate bounds
+    // The part of the region inside the screenshot
     const int start_y = std::max(0, -region.y);
     const int end_y   = std::min(region.h, m_screenshot.h - region.y);
     const int start_x = std::max(0, -region.x);
@@ -4438,7 +4389,7 @@ void ScreenshotTool::UpdateAnnsToolbarPos()
     // Tools that never draw a button must not take a slot
     auto has_button = [](ToolType t) { return t != ToolType::kNone && t != ToolType::COUNT && t != ToolType::Logo; };
 
-    const size_t end  = idx(ToolType::COUNT) - 1;  // same upper bound as before
+    const size_t end  = idx(ToolType::COUNT) - 1;
     size_t       next = idx(ToolType::kNone) + 1;
 
     ToolType last_tool;
@@ -4482,7 +4433,7 @@ Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const 
     TRY_MSG(r, "Failed to recreate texture after crop: {}");
     m_texture_id = r.get();
 
-    UpdateWindowBg();  // re-center image_origin/image_end for the new, smaller size
+    UpdateWindowBg();  // re-center for the new size
 
     return Ok();
 }
@@ -4626,7 +4577,6 @@ void ScreenshotTool::SyncRuntimeFromConfig()
     m_inputs.ocr_model = g_config->File.ocr_model;
     RefreshOcrModels();
 
-    // Sync annotation font
     m_inputs.ann_font               = g_config->File.fonts.empty() ? "" : g_config->File.fonts[0];
     m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string();
 
@@ -4643,7 +4593,6 @@ void ScreenshotTool::RefreshOcrModels()
         return;
     }
 
-    // Path doesn't exist
     if (!get_filtered_filenames(
             m_inputs.ocr_path,
             m_ocr_models_list,

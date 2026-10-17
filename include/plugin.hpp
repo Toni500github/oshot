@@ -45,55 +45,86 @@ class StateManager;
 // is the oshot_ctx_t the plugin gets, so it must never move.
 struct plugin_runtime_t
 {
-    std::string           id;
-    fs::path              dir;                    // ~/.config/oshot/plugins/<id>: library, config.toml, plugin data
-    const oshot_plugin_t* plugin      = nullptr;  // static in the library, per the ABI contract
-    void*                 state       = nullptr;  // owned by the plugin, released by plugin->destroy()
-    bool                  initialized = false;
-    dylib::library        lib;
+    // Declared first so it's destroyed last: the library is unloaded after everything else here
+    dylib::library lib;
 
-    TomlAPI  config;  // the plugin's config.toml
-    fs::path config_path;
-    bool     config_dirty = false;
+    // ~/.config/oshot/plugins/<id>: library, config.toml, plugin data
+    fs::path dir;
 
-    std::mutex                                     tasks_mutex;  // run_on_ui_thread() queue
+    // Static in the library, per the ABI contract
+    const oshot_plugin_t* plugin = nullptr;
+
+    // Owned by the plugin, released by plugin->destroy()
+    void* state = nullptr;
+
+    // The plugin's config.toml, written to config_path by SaveConfig() when config_dirty
+    TomlAPI config;
+
+    // run_on_ui_thread() queue, emptied by RunUiTasks()
+    std::mutex                                     tasks_mutex;
     std::vector<std::pair<void (*)(void*), void*>> tasks;
 
+    std::string id;
+    fs::path    config_path;
+    bool        initialized  = false;
+    bool        config_dirty = false;
+
     plugin_runtime_t(std::string id, fs::path dir, const oshot_plugin_t* plugin, dylib::library lib)
-        : id(std::move(id)), dir(std::move(dir)), plugin(plugin), lib(std::move(lib))
+        : lib(std::move(lib)), dir(std::move(dir)), plugin(plugin), id(std::move(id))
     {}
 
+    // Calls plugin->destroy() if it was initialized, then SaveConfig()
     ~plugin_runtime_t();
 
     plugin_runtime_t(const plugin_runtime_t&)            = delete;
     plugin_runtime_t& operator=(const plugin_runtime_t&) = delete;
 
-    void SaveConfig();
+    // Runs the queued run_on_ui_thread() tasks. Call it on the UI thread
     void RunUiTasks();
+
+    void SaveConfig();
 };
 
-extern std::map<std::string, plugin_runtime_t> g_plugins;
-extern const oshot_host_t                      g_oshot_host;
-
+// What inspect_plugin_library() read from a plugin's descriptor
 struct plugin_info_t
 {
     std::string id;
     std::string name;
 };
 
+// The loaded plugins, by ID
+extern std::map<std::string, plugin_runtime_t> g_plugins;
+
+// The host function table every plugin gets in init()
+extern const oshot_host_t g_oshot_host;
+
+/**
+ * Get the directory plugins are installed in
+ * @return get_config_dir() / "plugins"
+ **/
 fs::path get_plugins_dir();
 
-// Checks a descriptor against what this oshot supports (ABI, ImGui version, ID)
+/**
+ * Check a plugin descriptor against what this oshot supports (ABI, ImGui version, ID)
+ * @param plugin The descriptor oshot_plugin_entry() returned
+ **/
 Result<> validate_plugin_descriptor(const oshot_plugin_t* plugin);
 
-// Loads the library without initializing it and returns what its descriptor
-// says, after validate_plugin_descriptor(). Used by oshotpm before installing.
+/**
+ * Load a plugin library without initializing it, and read its descriptor after
+ * validate_plugin_descriptor(). Used by oshotpm before installing
+ * @param path The plugin library
+ **/
 Result<plugin_info_t> inspect_plugin_library(const fs::path& path);
 
-// Loads every enabled plugin in state.toml, on the thread that will draw them
+/**
+ * Load every enabled plugin in state.toml into g_plugins.
+ * Call it on the thread that will draw them, which becomes their UI thread
+ * @param state The installed plugins
+ **/
 void load_plugins(const StateManager& state);
 
-// Whether the caller is on the thread plugins were loaded on (their UI thread)
+/* Check whether the caller is on the thread plugins were loaded on (their UI thread) */
 bool on_plugin_ui_thread();
 
 #endif

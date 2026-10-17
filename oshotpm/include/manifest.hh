@@ -35,6 +35,7 @@
 #include "platform.hpp"
 #include "toml_api.hpp"
 
+// Platform name in manifests: build-steps-<platform>, dependencies.<platform>, platforms
 #if OSHOT_LINUX
 #  define OSHOT_PLATFORM "linux"
 #elif defined(__FreeBSD__)
@@ -82,6 +83,7 @@ enum class RepoSource : std::uint8_t
     Index,  // the plugin index: its plugins are tracked one by one, by version
 };
 
+// A plugin, as declared in a manifest's [<plugin name>] table
 struct plugin_t
 {
     // The plugin name, the manifest's table name. See Manifest::IsValidName()
@@ -89,8 +91,6 @@ struct plugin_t
 
     // The plugin ID, the same as the one compiled into the library. See Manifest::IsValidID()
     std::string id;
-
-    std::string description;
 
     // Source builds: the directory, relative to the repository, where the
     // build steps leave the library. Exactly one library must be in it.
@@ -101,8 +101,6 @@ struct plugin_t
 
     // SPDX license identifiers (MIT, GPL-2.0, ...). Not validated.
     std::vector<std::string> licenses;
-
-    std::vector<std::string> authors;
 
     // Commands that build the plugin, already picked for this platform
     // ("build-steps-<platform>" over "build-steps")
@@ -116,8 +114,12 @@ struct plugin_t
     std::string version;  // installed from the plugin index only
     fs::path    library;
     bool        enabled = true;
+
+    std::string              description;
+    std::vector<std::string> authors;
 };
 
+// A plugin repository: its manifest, or its entry in state.toml once installed
 struct manifest_t
 {
     // The repository name. See Manifest::IsValidName()
@@ -129,26 +131,24 @@ struct manifest_t
     // The installed commit. Only for RepoSource::GitRepository
     std::string git_hash;
 
-    RepoSource source = RepoSource::GitRepository;
-
-    std::vector<plugin_t> plugins;
-
     // Packages needed to build the plugins here, for "all" and this platform.
     // Only shown to the person, never installed.
     std::vector<std::string> dependencies;
+
+    RepoSource            source = RepoSource::GitRepository;
+    std::vector<plugin_t> plugins;
 };
 
 constexpr char const MANIFEST_NAME[] = "oshot-plugin.toml";  // NOLINT
 
+// An oshot-plugin.toml
 class Manifest
 {
 public:
     Manifest(fs::path path);
 
+    // Parses and validates the manifest into GetRepo(). Does nothing once it succeeded
     Result<> ParseManifest();
-
-    [[nodiscard]] const manifest_t& GetRepo() const { return m_repo; }
-    [[nodiscard]] bool              IsParsed() const { return m_is_parsed; }
 
     // Letters, digits, '-', '_' and '=', 1-64 characters
     static bool IsValidName(const std::string_view name);
@@ -156,16 +156,22 @@ public:
     // Lowercase letters, digits, '-', '_' and '.', at least one '.', 1-64
     // characters, starting and ending with a letter or digit, no ".."
     static bool IsValidID(const std::string_view id);
+
+    // Whether the plugin lists this platform, or "all", or none at all
     static bool IsSupported(const plugin_t& plugin);
 
-private:
-    [[nodiscard]] Result<plugin_t> GetPlugin(const std::string_view name) const;
+    [[nodiscard]] const manifest_t& GetRepo() const { return m_repo; }
+    [[nodiscard]] bool              IsParsed() const { return m_is_parsed; }
 
+private:
     fs::path   m_path;
     TomlAPI    m_toml;
     manifest_t m_repo;
 
     bool m_is_parsed{};
+
+    // Reads and validates the plugin table `name`
+    [[nodiscard]] Result<plugin_t> GetPlugin(const std::string_view name) const;
 };
 
-#endif  // !_MANIFEST_HH_;
+#endif  // !_MANIFEST_HH_

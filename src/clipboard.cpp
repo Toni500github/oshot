@@ -42,8 +42,8 @@
 #  include <csignal>
 #endif
 
-// Starts wlcopy/xclip in the background, forgetting it.
-// Sets wlcopy_pid/xclip_pid, and returns an stdin pipe on success.
+// Starts wl-copy/xclip in the background, stopping the one started before,
+// and returns the write end of its stdin pipe
 Result<int> start_linux_copy(SessionType session, const std::string& mime_type)
 {
 #if OSHOT_FREEDESKTOP
@@ -55,7 +55,7 @@ Result<int> start_linux_copy(SessionType session, const std::string& mime_type)
 
     signal(SIGPIPE, SIG_IGN);
 
-    // stop if already launched wlcopy
+    // stop the one already launched
     if (clip_pid > 0)
     {
         kill(clip_pid, SIGINT);

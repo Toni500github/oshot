@@ -35,13 +35,16 @@
 #include "platform.hpp"
 #include "util.hpp"
 
-// System-wide shortcut that starts a capture from the tray instance.
-// Registration is only implemented on Windows and macOS: on Linux the
-// WM/DE owns global keybinds, so users bind `oshot --gui` there instead.
+/**
+ * System-wide shortcut that starts a capture from the tray instance.
+ * Registration is only implemented on Windows and macOS: on Linux the
+ * WM/DE owns global keybinds, so users bind `oshot --gui` there instead.
+ **/
 #define OSHOT_HAS_GLOBAL_HOTKEY (OSHOT_WINDOWS || OSHOT_MACOS)
 
 namespace hotkey
 {
+// Bit flags, combined in hotkey_t::mods
 enum Mod : std::uint8_t
 {
     kNone = 0,
@@ -60,22 +63,40 @@ struct hotkey_t
     bool               operator==(const hotkey_t&) const = default;
 };
 
-// Parse e.g. "Ctrl+Shift+S", "Cmd+Shift+2", "Alt+PrintScreen" (case insensitive).
-// An empty string or "none" gives an empty (disabled) hotkey.
+/**
+ * Parse a hotkey from the config, e.g. "Ctrl+Shift+S", "Cmd+Shift+2", "Alt+PrintScreen" (case insensitive)
+ * @param str The hotkey string. Empty or "none" gives an empty (disabled) hotkey
+ **/
 Result<hotkey_t> parse(std::string_view str);
 
-// Canonical config string, e.g. "Alt+Shift+S". Empty hotkey gives "".
+/**
+ * Convert a hotkey to its canonical config string. The opposite of parse()
+ * @param hk The hotkey
+ * @return e.g. "Alt+Shift+S", or "" for an empty hotkey
+ **/
 std::string to_string(const hotkey_t& hk);
 
-// Whether `key` can be the non-modifier part of a hotkey on this platform
+/**
+ * Check whether a key can be the non-modifier part of a hotkey on this platform
+ * @param key The key
+ **/
 bool is_supported_key(ImGuiKey key);
 
-// Register `hk` system-wide, replacing the previous one. `on_pressed` runs on
-// the tray thread. Must be called after the tray has been initialized.
+/**
+ * Register a hotkey system-wide, replacing the previous one.
+ * Must be called after the tray has been initialized
+ * @param hk The hotkey. An empty one only unregisters the previous one
+ * @param on_pressed What to run when it's pressed, on the tray thread
+ **/
 Result<> enable(const hotkey_t& hk, std::function<void()> on_pressed);
-void     disable();
 
-// Registration state for the Preferences window, empty if this process never registered one
+/* Unregister the hotkey registered by enable(), if any */
+void disable();
+
+/**
+ * Get the registration state, for the Preferences window
+ * @return e.g. "Active: Alt+Shift+S", or empty if this process never registered one
+ **/
 const std::string& status();
 }  // namespace hotkey
 

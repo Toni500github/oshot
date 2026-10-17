@@ -23,15 +23,15 @@ if(NOT MSVC AND NOT CMAKE_CXX_FLAGS_RELEASE MATCHES "-O")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 endif()
 
-# LTO helper
-# Disabled entirely on Windows/mingw: mixing LTO and non-LTO objects in the
-# same link (which happens as soon as any one target opts out, e.g.
-# oshot_common needing -Wl,--export-all-symbols to coexist with LTO, or
-# being an OBJECT library merged straight into oshot.exe) hits GCC/mingw
-# bugs folding weak COMDAT symbols (thread_local statics in spdlog,
-# template instantiations in general). Simplest reliable fix is no LTO on
-# this platform at all, rather than chasing which target needs to be
-# excluded next.
+# -----------------------------
+# Helpers
+# -----------------------------
+
+# Enable LTO for a target in Release builds.
+# Never on Windows: one link mixing LTO and non-LTO objects (oshot_common
+# needs -Wl,--export-all-symbols, or is an OBJECT library merged into
+# oshot.exe) hits GCC/MinGW bugs folding weak COMDAT symbols, like spdlog's
+# thread_local statics and template instantiations.
 function(enable_lto target)
     if(WIN32)
         return()
@@ -54,16 +54,15 @@ function(enable_lto target)
     endif()
 endfunction()
 
+# option() that an environment variable of the same name can override.
+# With DEFINE_OPTION, an enabled option adds OPTION_NAME=1 to
+# OSHOT_OPTION_DEFINITIONS, which only oshot_common gets: add_definitions()
+# would leak it into the vendored libraries too.
 # https://github.com/libcpr/cpr/blob/5f475522597b8f3721e2440daddeced7a969f24c/CMakeLists.txt#L39
-# NOTE: definitions are collected into OSHOT_OPTION_DEFINITIONS instead of
-# using add_definitions(), which is directory-scoped and would otherwise leak
-# into every target declared afterward.
-# They're applied to just ${PROJECT_NAME} once it exists (see below).
 set(OSHOT_OPTION_DEFINITIONS "")
 macro(add_option OPTION_NAME OPTION_TEXT OPTION_DEFAULT DEFINE_OPTION)
     option(${OPTION_NAME} ${OPTION_TEXT} ${OPTION_DEFAULT})
     if(DEFINED ENV{${OPTION_NAME}})
-        # Allow overriding the option through an environment variable
         set(${OPTION_NAME} $ENV{${OPTION_NAME}})
     endif()
     if(${OPTION_NAME} AND ${DEFINE_OPTION})
@@ -72,17 +71,18 @@ macro(add_option OPTION_NAME OPTION_TEXT OPTION_DEFAULT DEFINE_OPTION)
     message(STATUS "  ${OPTION_NAME}: ${${OPTION_NAME}}")
 endmacro()
 
+# -----------------------------
 # Options
+# -----------------------------
 add_option(DISABLE_PLUGINS "Disable plugins support" ON ON)
 
-# When plugins are enabled, oshot_common becomes a SHARED library (see
-# below) instead of an OBJECT library, so anything that needs to find it at
-# runtime via rpath needs an extra rpath entry for it.
-if(NOT DISABLE_PLUGINS)
-    set(OSHOT_COMMON_RPATH_ENTRY ";$<TARGET_FILE_DIR:oshot_common>")
-else()
-    set(OSHOT_COMMON_RPATH_ENTRY "")
-endif()
+# Arch-style default; Debian sets it empty, as the license goes into
+# /usr/share/doc/oshot/copyright there
+set(OSHOT_INSTALL_LICENSEDIR
+    "${CMAKE_INSTALL_DATAROOTDIR}/licenses/${PROJECT_NAME}"
+    CACHE STRING
+    "Where to install the LICENSE file, relative to the prefix (empty to skip)"
+)
 
 # -----------------------------
 # Dependencies
@@ -108,10 +108,9 @@ pkg_check_modules(ZBAR REQUIRED IMPORTED_TARGET zbar)
 # Where tesseract was installed to, one of the places to look for its models
 pkg_get_variable(TESSERACT_DATADIR tesseract datadir)
 
-# Homebrew's lept.pc points Cflags at .../include/leptonica directly (its
-# own convention is `#include <allheaders.h>`), but our code uses
-# `#include <leptonica/allheaders.h>`, which needs the parent dir on the
-# include path too.
+# Homebrew's lept.pc points Cflags at .../include/leptonica (its own
+# convention is `#include <allheaders.h>`), while we include
+# <leptonica/allheaders.h>, which needs the parent directory too
 message(STATUS "LEPTONICA_INCLUDE_DIRS before: ${LEPTONICA_INCLUDE_DIRS}")
 foreach(_lept_dir ${LEPTONICA_INCLUDE_DIRS})
     get_filename_component(_lept_parent_dir "${_lept_dir}" DIRECTORY)
@@ -149,17 +148,10 @@ if(UNIX AND NOT APPLE)
 endif()
 
 # -----------------------------
-# Main executable
+# Generated sources
 # -----------------------------
-add_executable(
-    ${PROJECT_NAME}
-    src/main.cpp
-    src/main_tool_opengl3.cpp
-    src/libs/getopt_port/getopt.c
-)
 
-enable_lto(${PROJECT_NAME})
-
+# include/version.h, with the git commit, branch and tag
 set(VERSION_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/version.h)
 set(VERSION_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generateVersion.sh)
 add_custom_command(
@@ -170,61 +162,50 @@ add_custom_command(
     COMMENT "Generating version header"
 )
 add_custom_target(generate_version DEPENDS ${VERSION_HEADER})
-add_dependencies(${PROJECT_NAME} generate_version)
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG=1>)
-target_compile_options(
-    ${PROJECT_NAME}
-    PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-        -Wno-unused-parameter
-        $<$<CONFIG:Debug>:-ggdb3;-fno-omit-frame-pointer>
-)
-target_include_directories(
-    ${PROJECT_NAME}
-    PUBLIC include/ include/libs ${LEPTONICA_INCLUDE_DIRS}
-)
-target_compile_definitions(
-    ${PROJECT_NAME}
-    PUBLIC VERSION="${PROJECT_VERSION}" TOML_HEADER_ONLY=0
-)
+# The Wayland xdg-output protocol, for the monitors' logical geometry (wl_get_monitors.cpp)
+if(UNIX AND NOT APPLE)
+    set(PROTOCOL_BASE_NAME xdg-output-unstable-v1)
+    set(PROTOCOL_HEADER
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/${PROTOCOL_BASE_NAME}-client-protocol.h
+    )
+    set(PROTOCOL_SOURCE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/${PROTOCOL_BASE_NAME}-protocol.c
+    )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE oshot_common)
+    pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
+    pkg_get_variable(WAYLAND_SCANNER wayland-scanner wayland_scanner)
+    set(XDG_OUTPUT_XML
+        "${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-output/${PROTOCOL_BASE_NAME}.xml"
+    )
 
-if(WIN32)
-    set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
-    # WinMain() loads the DPI awareness functions at runtime
-    target_link_libraries(${PROJECT_NAME} PRIVATE dylib)
-endif()
-
-# Embed the icon and version info so Explorer, the taskbar and the installer
-# show them, instead of the generic .exe icon
-if(WIN32)
-    enable_language(RC)
-    set(OSHOT_ICO_PATH ${CMAKE_CURRENT_SOURCE_DIR}/assets/windows/oshot.ico)
-    set(OSHOT_MANIFEST_PATH ${CMAKE_CURRENT_SOURCE_DIR}/assets/windows/oshot.manifest)
-    configure_file(assets/windows/oshot.rc.in ${CMAKE_CURRENT_BINARY_DIR}/oshot.rc @ONLY)
-    configure_file(assets/windows/manifest.rc.in ${CMAKE_CURRENT_BINARY_DIR}/manifest.rc @ONLY)
-    target_sources(
-        ${PROJECT_NAME}
-        PRIVATE
-            ${CMAKE_CURRENT_BINARY_DIR}/oshot.rc
-            ${CMAKE_CURRENT_BINARY_DIR}/manifest.rc
+    add_custom_command(
+        OUTPUT ${PROTOCOL_HEADER}
+        COMMAND
+            ${WAYLAND_SCANNER} client-header ${XDG_OUTPUT_XML}
+            ${PROTOCOL_HEADER}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        DEPENDS ${XDG_OUTPUT_XML}
+        COMMENT "Generating Wayland ${PROTOCOL_BASE_NAME} header"
+    )
+    add_custom_command(
+        OUTPUT ${PROTOCOL_SOURCE}
+        COMMAND
+            ${WAYLAND_SCANNER} private-code ${XDG_OUTPUT_XML} ${PROTOCOL_SOURCE}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        DEPENDS ${XDG_OUTPUT_XML}
+        COMMENT "Generating Wayland ${PROTOCOL_BASE_NAME} private code"
+    )
+    add_custom_target(
+        generate_protocol
+        DEPENDS ${PROTOCOL_HEADER} ${PROTOCOL_SOURCE}
     )
 endif()
 
-if(UNIX AND NOT APPLE)
-    target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
-endif()
-
-if(NOT APPLE)
-    target_link_libraries(${PROJECT_NAME} PRIVATE OpenGL::GL)
-endif()
-
+# -----------------------------
+# rpath
+# -----------------------------
 if(APPLE)
-    target_sources(${PROJECT_NAME} PRIVATE src/main_tool_metal.mm)
     set(_rpath_origin "@loader_path")
 else()
     set(_rpath_origin "$ORIGIN")
@@ -240,29 +221,22 @@ file(
 )
 set(OSHOT_INSTALL_RPATH "${_rpath_origin}/${_bin_to_lib}")
 
-set_target_properties(
-    ${PROJECT_NAME}
-    PROPERTIES
-        BUILD_RPATH
-            "${_rpath_origin}/../lib;$<TARGET_FILE_DIR:imgui>${OSHOT_COMMON_RPATH_ENTRY}"
-        INSTALL_RPATH "${OSHOT_INSTALL_RPATH}"
-)
+# With plugins, oshot_common is a shared library that the executables
+# have to find in the build tree too
+if(NOT DISABLE_PLUGINS)
+    set(OSHOT_COMMON_RPATH_ENTRY ";$<TARGET_FILE_DIR:oshot_common>")
+else()
+    set(OSHOT_COMMON_RPATH_ENTRY "")
+endif()
 
 # -----------------------------
-# Common library for shared code
+# oshot_common: everything but main()
 # -----------------------------
-# With plugins enabled, oshot_common is linked into more than one shared
-# library that can end up loaded in the same process at once (oshot_plugin,
-# liboshotpm). An OBJECT library gets its object files copied into each
-# consumer that links it directly, so globals defined in globals.cpp
-# (g_ss_tool, g_config, g_cache, ...) would end up duplicated - one copy per
-# consumer - causing state divergence and double-destruction crashes.
-# Making it a SHARED library instead means there's exactly one copy of those
-# globals, and everything that links it (directly or transitively) resolves
-# to the same symbols.
-# When plugins are disabled there's only a single consumer (the oshot
-# executable itself), so the duplication problem doesn't exist and OBJECT
-# stays the simpler, lighter-weight choice.
+# With plugins it's a SHARED library: oshot, oshotpm and the libraries they
+# load must share one copy of the globals in globals.cpp (g_ss_tool,
+# g_config, g_cache, ...), and an OBJECT library would copy them into each
+# of its users, making the copies drift apart and get destroyed twice.
+# Without plugins oshot is its only user, so the simpler OBJECT library is enough.
 if(NOT DISABLE_PLUGINS)
     set(OSHOT_COMMON_LIB_TYPE SHARED)
 else()
@@ -281,15 +255,9 @@ set(OSHOT_COMMON_SOURCES
     src/util.cpp
 )
 
-# globals.cpp constructs a StateManager directly, and screenshot_tool.cpp
-# calls load_plugins()/oshot_str_new()/oshot_str_free(). Those used to live
-# in the separate oshot_plugin and liboshotpm SHARED libraries, but both of
-# those link oshot_common - so once oshot_common itself became SHARED, that
-# was a genuine link cycle (oshot_common needs symbols only they define,
-# they need oshot_common). Folding their sources in here instead makes
-# oshot_common self-contained: one shared library, no cycle. There's
-# nothing left to justify oshot_plugin/liboshotpm as separate targets, so
-# they're gone; oshot and oshotpm now link oshot_common directly.
+# The plugin and oshotpm sources are compiled in too: globals.cpp makes a
+# StateManager and screenshot_tool.cpp loads plugins, while they need
+# oshot_common, so as libraries of their own they'd form a link cycle
 if(NOT DISABLE_PLUGINS)
     list(
         APPEND OSHOT_COMMON_SOURCES
@@ -303,13 +271,6 @@ if(NOT DISABLE_PLUGINS)
 endif()
 
 if(UNIX AND NOT APPLE)
-    set(PROTOCOL_BASE_NAME xdg-output-unstable-v1)
-    set(PROTOCOL_HEADER
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/${PROTOCOL_BASE_NAME}-client-protocol.h
-    )
-    set(PROTOCOL_SOURCE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/${PROTOCOL_BASE_NAME}-protocol.c
-    )
     list(APPEND OSHOT_COMMON_SOURCES src/wl_get_monitors.cpp ${PROTOCOL_SOURCE})
     set_source_files_properties(
         src/wl_get_monitors.cpp
@@ -319,6 +280,10 @@ if(UNIX AND NOT APPLE)
 endif()
 
 add_library(oshot_common ${OSHOT_COMMON_LIB_TYPE} ${OSHOT_COMMON_SOURCES})
+enable_lto(oshot_common)
+
+# util.hpp includes version.h
+add_dependencies(oshot_common generate_version)
 
 if(OSHOT_OPTION_DEFINITIONS)
     target_compile_definitions(oshot_common PUBLIC ${OSHOT_OPTION_DEFINITIONS})
@@ -338,8 +303,6 @@ if(NOT DISABLE_PLUGINS)
         PUBLIC ${CMAKE_SOURCE_DIR}/oshotpm/include
     )
 endif()
-
-enable_lto(oshot_common)
 
 if(WIN32)
     target_link_libraries(oshot_common PRIVATE ws2_32 shcore d3d11 dxgi)
@@ -376,34 +339,6 @@ else()
             PkgConfig::GIO
             PkgConfig::XRANDR
             PkgConfig::WAYLAND
-    )
-
-    pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
-    pkg_get_variable(WAYLAND_SCANNER wayland-scanner wayland_scanner)
-    set(XDG_OUTPUT_XML
-        "${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-output/${PROTOCOL_BASE_NAME}.xml"
-    )
-
-    add_custom_command(
-        OUTPUT ${PROTOCOL_HEADER}
-        COMMAND
-            ${WAYLAND_SCANNER} client-header ${XDG_OUTPUT_XML}
-            ${PROTOCOL_HEADER}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        DEPENDS ${XDG_OUTPUT_XML}
-        COMMENT "Generating Wayland ${PROTOCOL_BASE_NAME} header"
-    )
-    add_custom_command(
-        OUTPUT ${PROTOCOL_SOURCE}
-        COMMAND
-            ${WAYLAND_SCANNER} private-code ${XDG_OUTPUT_XML} ${PROTOCOL_SOURCE}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        DEPENDS ${XDG_OUTPUT_XML}
-        COMMENT "Generating Wayland ${PROTOCOL_BASE_NAME} private code"
-    )
-    add_custom_target(
-        generate_protocol
-        DEPENDS ${PROTOCOL_HEADER} ${PROTOCOL_SOURCE}
     )
     add_dependencies(oshot_common generate_protocol)
 endif()
@@ -443,18 +378,81 @@ if(TESSERACT_DATADIR)
     )
 endif()
 
-# NOTE: PkgConfig::TESSERACT / PkgConfig::ZBAR already propagate their own
-# include dirs, link dirs, and compile options as usage requirements via
-# target_link_libraries() above.
-# LEPTONICA_INCLUDE_DIRS is the one exception: it was patched earlier in this
-# file to add the parent directory for Homebrew's lept.pc convention, which
-# PkgConfig::LEPTONICA's own interface include dirs don't have.
+# PkgConfig::LEPTONICA's include dirs lack the parent directory added above
 target_include_directories(
     oshot_common
     PUBLIC include/ include/libs ${LEPTONICA_INCLUDE_DIRS}
 )
-if(NOT DISABLE_PLUGINS)
-    target_include_directories(oshot_common PUBLIC oshotpm/include/)
+
+# -----------------------------
+# oshot executable
+# -----------------------------
+add_executable(
+    ${PROJECT_NAME}
+    src/main.cpp
+    src/main_tool_opengl3.cpp
+    src/libs/getopt_port/getopt.c
+)
+enable_lto(${PROJECT_NAME})
+add_dependencies(${PROJECT_NAME} generate_version)
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG=1>)
+target_compile_options(
+    ${PROJECT_NAME}
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wno-unused-parameter
+        $<$<CONFIG:Debug>:-ggdb3;-fno-omit-frame-pointer>
+)
+target_include_directories(
+    ${PROJECT_NAME}
+    PUBLIC include/ include/libs ${LEPTONICA_INCLUDE_DIRS}
+)
+target_compile_definitions(
+    ${PROJECT_NAME}
+    PUBLIC VERSION="${PROJECT_VERSION}" TOML_HEADER_ONLY=0
+)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE oshot_common)
+
+set_target_properties(
+    ${PROJECT_NAME}
+    PROPERTIES
+        BUILD_RPATH
+            "${_rpath_origin}/../lib;$<TARGET_FILE_DIR:imgui>${OSHOT_COMMON_RPATH_ENTRY}"
+        INSTALL_RPATH "${OSHOT_INSTALL_RPATH}"
+)
+
+if(WIN32)
+    set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
+    # WinMain() loads the DPI awareness functions at runtime
+    target_link_libraries(${PROJECT_NAME} PRIVATE dylib)
+
+    # The icon and version info, for Explorer, the taskbar and the installer,
+    # and the manifest that sets the UTF-8 code page
+    enable_language(RC)
+    set(OSHOT_ICO_PATH ${CMAKE_CURRENT_SOURCE_DIR}/assets/windows/oshot.ico)
+    set(OSHOT_MANIFEST_PATH ${CMAKE_CURRENT_SOURCE_DIR}/assets/windows/oshot.manifest)
+    configure_file(assets/windows/oshot.rc.in ${CMAKE_CURRENT_BINARY_DIR}/oshot.rc @ONLY)
+    configure_file(assets/windows/manifest.rc.in ${CMAKE_CURRENT_BINARY_DIR}/manifest.rc @ONLY)
+    target_sources(
+        ${PROJECT_NAME}
+        PRIVATE
+            ${CMAKE_CURRENT_BINARY_DIR}/oshot.rc
+            ${CMAKE_CURRENT_BINARY_DIR}/manifest.rc
+    )
+endif()
+
+if(UNIX AND NOT APPLE)
+    target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
+endif()
+
+if(APPLE)
+    target_sources(${PROJECT_NAME} PRIVATE src/main_tool_metal.mm)
+else()
+    target_link_libraries(${PROJECT_NAME} PRIVATE OpenGL::GL)
 endif()
 
 # -----------------------------
@@ -476,6 +474,9 @@ if(NOT DISABLE_PLUGINS)
     endif()
 endif()
 
+# -----------------------------
+# Vendor libraries
+# -----------------------------
 # -----------------------------
 # fmt library
 # -----------------------------
@@ -520,8 +521,15 @@ if(DISABLE_PLUGINS)
     add_library(imgui STATIC ${IMGUI_SOURCES})
 else()
     add_library(imgui SHARED ${IMGUI_SOURCES})
+    set_target_properties(
+        imgui
+        PROPERTIES
+            VERSION 1.92.9
+            SOVERSION 1
+            WINDOWS_EXPORT_ALL_SYMBOLS ON
+            POSITION_INDEPENDENT_CODE ON
+    )
 endif()
-
 enable_lto(imgui)
 
 target_include_directories(imgui PUBLIC include/libs/imgui)
@@ -544,17 +552,6 @@ if(APPLE)
     )
 endif()
 
-if(NOT DISABLE_PLUGINS)
-    set_target_properties(
-        imgui
-        PROPERTIES
-            VERSION 1.92.9
-            SOVERSION 1
-            WINDOWS_EXPORT_ALL_SYMBOLS ON
-            POSITION_INDEPENDENT_CODE ON
-    )
-endif()
-
 # -----------------------------
 # cimgui library (C-ABI plugins only)
 # -----------------------------
@@ -572,40 +569,6 @@ if(NOT DISABLE_PLUGINS)
             WINDOWS_EXPORT_ALL_SYMBOLS ON
             POSITION_INDEPENDENT_CODE ON
     )
-
-    # The plugin SDK in the build tree: what packages ship next to oshot and
-    # what oshotpm passes to plugin builds as OSHOT_SDK. Windows plugins also
-    # need cimgui's import library.
-    set(OSHOT_SDK_DIR "${CMAKE_BINARY_DIR}/sdk")
-    add_custom_command(
-        TARGET cimgui
-        POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${OSHOT_SDK_DIR}/include/oshot"
-        COMMAND
-            ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/src/plugins/oshot_plugin.h"
-            "${CMAKE_SOURCE_DIR}/include/libs/cimgui/cimgui.h" "${OSHOT_SDK_DIR}/include/oshot/"
-        COMMENT "Copying the plugin SDK headers to ${OSHOT_SDK_DIR}"
-    )
-    if(WIN32)
-        add_custom_command(
-            TARGET cimgui
-            POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${OSHOT_SDK_DIR}/lib"
-            COMMAND
-                ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_LINKER_FILE:cimgui>" "${OSHOT_SDK_DIR}/lib/"
-        )
-    endif()
-
-    # The example plugin, built so CI checks it compiles everywhere. Not installed.
-    add_library(oshot_example_uppercase MODULE examples/plugins/uppercase/uppercase.c)
-    target_include_directories(oshot_example_uppercase PRIVATE "${OSHOT_SDK_DIR}/include")
-    set_target_properties(oshot_example_uppercase PROPERTIES C_VISIBILITY_PRESET hidden)
-    add_dependencies(oshot_example_uppercase cimgui)
-    if(WIN32)
-        target_link_libraries(oshot_example_uppercase PRIVATE cimgui)
-    elseif(APPLE)
-        target_link_options(oshot_example_uppercase PRIVATE -undefined dynamic_lookup)
-    endif()
 endif()
 
 # -----------------------------
@@ -614,15 +577,11 @@ endif()
 
 if(WIN32)
     list(APPEND TRAY_SOURCES src/libs/tray/tray_windows.cpp)
-else()
-    if(UNIX)
-        if(APPLE)
-            find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
-            list(APPEND TRAY_SOURCES src/libs/tray/tray_darwin.mm)
-        else()
-            list(APPEND TRAY_SOURCES src/libs/tray/tray_linux.cpp)
-        endif()
-    endif()
+elseif(APPLE)
+    find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
+    list(APPEND TRAY_SOURCES src/libs/tray/tray_darwin.mm)
+elseif(UNIX)
+    list(APPEND TRAY_SOURCES src/libs/tray/tray_linux.cpp)
 endif()
 
 add_library(tray STATIC ${TRAY_SOURCES})
@@ -632,19 +591,15 @@ if(WIN32)
         tray
         PRIVATE TRAY_WINAPI=1 WIN32_LEAN_AND_MEAN NOMINMAX
     )
-else()
-    if(UNIX)
-        if(APPLE)
-            target_compile_definitions(tray PRIVATE TRAY_APPKIT=1)
-            target_link_libraries(tray PRIVATE ${COCOA_FRAMEWORK})
-        else()
-            target_compile_definitions(tray PRIVATE TRAY_APPINDICATOR=1)
-            target_link_libraries(
-                tray
-                PRIVATE PkgConfig::GTK PkgConfig::APPINDICATOR
-            )
-        endif()
-    endif()
+elseif(APPLE)
+    target_compile_definitions(tray PRIVATE TRAY_APPKIT=1)
+    target_link_libraries(tray PRIVATE ${COCOA_FRAMEWORK})
+elseif(UNIX)
+    target_compile_definitions(tray PRIVATE TRAY_APPINDICATOR=1)
+    target_link_libraries(
+        tray
+        PRIVATE PkgConfig::GTK PkgConfig::APPINDICATOR
+    )
 endif()
 
 target_include_directories(tray PUBLIC include/libs)
@@ -666,14 +621,15 @@ if(WIN32)
 elseif(APPLE)
     target_sources(clip PRIVATE src/libs/clip/clip_osx.mm)
 else()
+    # X11 and Wayland go through xclip/wl-copy instead (clipboard.cpp)
     target_sources(clip PRIVATE src/libs/clip/clip_none.cpp)
 endif()
 
 if(MSVC)
     target_compile_definitions(clip PRIVATE _CRT_SECURE_NO_WARNINGS)
+elseif(MINGW)
     # MinGW requires the windowscodecs just because CLSIDs are defined
     # in the windowscodecs.a file instead of the wincodec.h file (?!)
-elseif(MINGW)
     target_link_libraries(clip PUBLIC shlwapi windowscodecs)
 endif()
 
@@ -774,7 +730,7 @@ if(WIN32)
         tiny-process-library
         PRIVATE "src/libs/tiny-process-library/process_win.cpp"
     )
-    # If compiled using MSYS2, use sh to run commands
+    # MSYS2 builds run commands with sh
     if(MSYS)
         target_compile_definitions(
             tiny-process-library
@@ -796,17 +752,47 @@ target_include_directories(
 enable_lto(tiny-process-library)
 
 # -----------------------------
+# Plugin SDK and example plugin
+# -----------------------------
+if(NOT DISABLE_PLUGINS)
+    # The plugin SDK in the build tree: what packages ship next to oshot and
+    # what oshotpm passes to plugin builds as OSHOT_SDK. Windows plugins also
+    # need cimgui's import library.
+    set(OSHOT_SDK_DIR "${CMAKE_BINARY_DIR}/sdk")
+    add_custom_command(
+        TARGET cimgui
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${OSHOT_SDK_DIR}/include/oshot"
+        COMMAND
+            ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/src/plugins/oshot_plugin.h"
+            "${CMAKE_SOURCE_DIR}/include/libs/cimgui/cimgui.h" "${OSHOT_SDK_DIR}/include/oshot/"
+        COMMENT "Copying the plugin SDK headers to ${OSHOT_SDK_DIR}"
+    )
+    if(WIN32)
+        add_custom_command(
+            TARGET cimgui
+            POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${OSHOT_SDK_DIR}/lib"
+            COMMAND
+                ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_LINKER_FILE:cimgui>" "${OSHOT_SDK_DIR}/lib/"
+        )
+    endif()
+
+    # The example plugin, built so CI checks it compiles everywhere. Not installed.
+    add_library(oshot_example_uppercase MODULE examples/plugins/uppercase/uppercase.c)
+    target_include_directories(oshot_example_uppercase PRIVATE "${OSHOT_SDK_DIR}/include")
+    set_target_properties(oshot_example_uppercase PROPERTIES C_VISIBILITY_PRESET hidden)
+    add_dependencies(oshot_example_uppercase cimgui)
+    if(WIN32)
+        target_link_libraries(oshot_example_uppercase PRIVATE cimgui)
+    elseif(APPLE)
+        target_link_options(oshot_example_uppercase PRIVATE -undefined dynamic_lookup)
+    endif()
+endif()
+
+# -----------------------------
 # Install
 # -----------------------------
-
-# Arch-style default; Debian sets it empty, as the license goes into
-# /usr/share/doc/oshot/copyright there
-set(OSHOT_INSTALL_LICENSEDIR
-    "${CMAKE_INSTALL_DATAROOTDIR}/licenses/${PROJECT_NAME}"
-    CACHE STRING
-    "Where to install the LICENSE file, relative to the prefix (empty to skip)"
-)
-
 if(DISABLE_PLUGINS)
     install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 else()
@@ -817,6 +803,7 @@ else()
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     )
 
+    # The plugin SDK headers
     install(
         FILES
             "${CMAKE_CURRENT_SOURCE_DIR}/src/plugins/oshot_plugin.h"

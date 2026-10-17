@@ -30,13 +30,18 @@
 
 #include "screen_capture.hpp"
 
+// The system clipboard. On X11 and Wayland it goes through xclip/wl-copy,
+// which keep serving the copied data after oshot exits; elsewhere through the clip library
 class Clipboard
 {
 public:
     Clipboard(SessionType session) : m_session(session) {}
+
+    // On X11/Wayland the image is encoded as `ext` and offered as image/<image-out-type>
+    Result<> CopyImage(const capture_result_t& cap, ImageExt ext);
+
     void     SetSession(SessionType session) { m_session = session; }
     Result<> CopyText(const std::string& text);
-    Result<> CopyImage(const capture_result_t& cap, ImageExt ext);
 
 private:
     SessionType m_session;

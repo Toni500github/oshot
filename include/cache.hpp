@@ -32,28 +32,25 @@
 #include "toml_api.hpp"
 #include "util.hpp"
 
-// util.hpp
-std::string expand_var(std::string ret);
-
+// Values remembered between runs, in cache.toml
 enum class CacheEntry : uint8_t
 {
-    AnnColor,
-    ImgSavePath,
+    AnnColor,     // last color picked for annotations
+    ImgSavePath,  // folder the save dialog last saved to
     COUNT
 };
 
+// cache.toml in the cache directory, under the [cache] table.
+// Loaded on construction and written back on destruction
 class Cache : public TomlAPI
 {
 public:
     Cache(const std::string& cache_dir);
     ~Cache() override;
 
-    Result<> LoadCacheFile();
-
     using TomlAPI::GetValue;
     using TomlAPI::SetValue;
 
-    // CacheEntry convenience overloads are the ONLY thing Cache needs to add now
     template <typename T>
     T GetValue(CacheEntry e, const T& fallback, bool dont_expand_var = false)
     {
@@ -66,6 +63,8 @@ public:
         SetValue<T>(mk_cache_entries.at(idx(e)), value);
     }
 
+    Result<> LoadCacheFile();
+
 protected:
     [[nodiscard]] std::string BuildKey(const std::string_view key) const override
     {
@@ -73,15 +72,18 @@ protected:
     }
 
 private:
-    void                         CreateFile();
-    static constexpr const char* mk_file_path = "cache.toml";
-
-    std::string m_cache_dir_path;
-
+    // Keys of the CacheEntry values, in the same order
     static constexpr std::array<std::string_view, idx(CacheEntry::COUNT)> mk_cache_entries = {
         "default-color-picker-color",
         "last-saved-dir"
     };
+
+    static constexpr const char* mk_file_path = "cache.toml";
+
+    std::string m_cache_dir_path;
+
+    // Writes the table to cache.toml
+    void CreateFile();
 };
 
 extern std::unique_ptr<Cache> g_cache;

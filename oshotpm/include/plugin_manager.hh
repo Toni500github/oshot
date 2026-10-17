@@ -37,35 +37,52 @@
 #include "state_manager.hh"
 #include "util.hpp"
 
-// options
-inline struct operations_t
+// oshotpm's command line options
+struct operations_t
 {
-    bool install_force   = false;
+    // -f: reinstall plugins that are already installed
+    bool install_force = false;
+
+    // -y: don't ask for confirmations
     bool install_shut_up = false;
-    bool list_verbose    = false;
+
+    // -v: more details in `list`
+    bool list_verbose = false;
 
     std::vector<std::string> arguments;
-} options;
+};
 
-// ----- notifications / confirmation -----
+// How PluginManager reports progress and asks questions: on the terminal in
+// oshotpm, in the install status window in the GUI
 struct PluginCallbacks
 {
-    std::function<void(const std::string_view)> on_status;
-    std::function<void(const std::string_view)> on_success;
-    std::function<void(const std::string_view)> on_warning;
-    std::function<void(const std::string_view)> on_error;
-    std::function<void(const std::string_view)> on_info;
     // Raw output of git and of build steps, as it arrives. Optional.
     std::function<void(const std::string_view)> on_output;
 
     // `default_answer` is both what a CLI prompt should suggest AND what a
     // non-interactive caller (--yes) should assume without asking.
     std::function<bool(const std::string_view prompt, bool default_answer)> confirm;
+
+    std::function<void(const std::string_view)> on_status;
+    std::function<void(const std::string_view)> on_success;
+    std::function<void(const std::string_view)> on_warning;
+    std::function<void(const std::string_view)> on_error;
+    std::function<void(const std::string_view)> on_info;
 };
 
+inline operations_t options;
+
+// Installs, updates, uninstalls and enables plugins, keeping state.toml up to date.
+// Used by oshotpm and by the GUI's plugin windows
 class PluginManager
 {
 public:
+    /**
+     * @param state_manager The installed plugins
+     * @param callbacks Where progress and questions go
+     * @param is_cli oshotpm: warnings are printed before a short prompt, instead of
+     *               all going in the confirmation like in the GUI
+     **/
     PluginManager(StateManager&& state_manager, PluginCallbacks& callbacks, bool is_cli)
         : m_is_cli(is_cli), m_state_manager(std::move(state_manager)), m_callbacks(callbacks)
     {}
@@ -95,11 +112,11 @@ public:
     // called while an operation runs on another thread.
     void SetCallbacks(PluginCallbacks callbacks) { m_callbacks = std::move(callbacks); }
 
-    StateManager& GetStateManager() { return m_state_manager; }
-
     // The plugin SDK (include/oshot/*.h, and lib/ on Windows) that came with
     // this oshot, or empty if there's none. $OSHOT_SDK overrides it.
     static fs::path FindSdk();
+
+    StateManager& GetStateManager() { return m_state_manager; }
 
 private:
     enum class Origin : std::uint8_t
@@ -116,37 +133,45 @@ private:
         std::string git_hash;  // GitClone only
     };
 
-    Result<> InstallGit(const std::string& url);
-    Result<> InstallIndexVersion(const index_plugin_t& plugin, const index_version_t& version, bool is_update);
-    Result<> UpdateIndexPlugins(const manifest_t& repo);
-    Result<> InstallArchive(const fs::path& archive);
-    Result<> UpdateRepo(const manifest_t& repo);
-
-    // Builds (or, for archives, finds) and installs every plugin of the
-    // manifest in `dir`. Sets `out_name` to the repository name once known.
-    Result<> InstallFromDir(const fs::path& dir, const repo_source_t& src, bool is_update, std::string& out_name);
-
-    Result<fs::path>    BuildPlugin(const plugin_t& plugin, const fs::path& dir, const manifest_t& repo);
-    Result<fs::path>    FindPrebuilt(const plugin_t& plugin, const fs::path& dir);
-    Result<std::string> CopyLibrary(const std::string& id, const fs::path& library);
-
-    // `notice`: more to warn about, e.g. that the plugin uses the network
-    Result<> ConfirmTrust(std::string_view notice = {});
-    Result<> ConfirmDependencies(const manifest_t& repo);
-
-    Result<std::string> Git(const std::vector<std::string>& args, const fs::path& cwd);
-    Result<>            CheckGit();
-
-    void     RemoveStaleWorkDirs();
-    fs::path NewWorkDir(std::string_view prefix);
-    void     RemovePluginDir(const std::string& id);
-
     bool            m_is_cli;
     StateManager    m_state_manager;
     PluginCallbacks m_callbacks;
 
     fs::path m_plugins_path{ get_config_dir() / "plugins" };
     fs::path m_cache_path{ get_home_cache_dir() / "oshotpm" };
+
+    // Builds (or, for archives, finds) and installs every plugin of the
+    // manifest in `dir`. Sets `out_name` to the repository name once known.
+    Result<> InstallFromDir(const fs::path& dir, const repo_source_t& src, bool is_update, std::string& out_name);
+
+    // Copies the library into the plugin's directory and returns its file name
+    Result<std::string> CopyLibrary(const std::string& id, const fs::path& library);
+
+    // Asks whether to trust the plugin. `notice`: more to warn about, e.g. that the plugin uses the network
+    Result<> ConfirmTrust(std::string_view notice = {});
+
+    // Lists the packages the manifest needs and asks whether they're installed
+    Result<> ConfirmDependencies(const manifest_t& repo);
+
+    // Runs git in `cwd` and returns its trimmed output
+    Result<std::string> Git(const std::vector<std::string>& args, const fs::path& cwd);
+
+    // Deletes the work dirs older than an hour, left by an oshotpm that got killed or interrupted
+    void RemoveStaleWorkDirs();
+
+    Result<> InstallGit(const std::string& url);
+    Result<> InstallIndexVersion(const index_plugin_t& plugin, const index_version_t& version, bool is_update);
+    Result<> InstallArchive(const fs::path& archive);
+    Result<> UpdateIndexPlugins(const manifest_t& repo);
+    Result<> UpdateRepo(const manifest_t& repo);
+
+    Result<fs::path> BuildPlugin(const plugin_t& plugin, const fs::path& dir, const manifest_t& repo);
+    Result<fs::path> FindPrebuilt(const plugin_t& plugin, const fs::path& dir);
+
+    Result<> CheckGit();
+
+    fs::path NewWorkDir(std::string_view prefix);
+    void     RemovePluginDir(const std::string& id);
 };
 
 #endif

@@ -51,10 +51,6 @@
 void apply_imgui_theme();
 void glfw_error_callback(int error, const char* description);
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
-void register_window_callbacks(void (*minimize_fn)(),
-                               void (*maximize_fn)(),
-                               void (*_extern_glfwTerminate)(),
-                               void (*_extern_glfwSwapInterval)(int));
 
 GLFWwindow* window = nullptr;
 
@@ -140,9 +136,7 @@ int run_main_tool()
         g_ss_tool.SetBackendTexture((__bridge void*)newTex);
     });
 
-    // Setup Screenshot Tool
-    // Calling it before starting the window so that
-    // we can capture at the exact moment we launch
+    // Before the window exists, so the screenshot is taken right away and without the overlay
     MUST_OK(g_ss_tool.Start(), {
         error("Failed to start capture: {}", _r.error_v());
         return EXIT_FAILURE;
@@ -167,12 +161,8 @@ int run_main_tool()
     GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
 
-    // Pass nullptr as the monitor to get a borderless windowed overlay
-    // instead of exclusive fullscreen. This ensures GLFW_DECORATED,
-    // GLFW_FLOATING, and GLFW_AUTO_ICONIFY hints actually take effect
-    // (they are silently ignored for exclusive fullscreen windows), and
-    // keeps mouse/keyboard events scoped to this monitor so they don't
-    // bleed in from the other display on multi-monitor setups.
+    // No monitor: a borderless window instead of exclusive fullscreen, which
+    // ignores the window hints and gets input from the other monitors too
     window = glfwCreateWindow(mode->width, mode->height, "oshot", nullptr, nullptr);
     if (!window)
     {
@@ -323,10 +313,8 @@ int run_main_tool()
         [enc popDebugGroup];
         [enc endEncoding];
 
-        // Run just another frame so that ScreenshotTool::DrawDarkOverlay() and
-        // ScreenshotTool::DrawASelectionBorder() are not baked into the image,
-        // since the on-complete handler blits raw pixels straight off this
-        // frame's drawable texture once it's actually been drawn.
+        // Save/copy requested: render one more frame without the dark overlay and the
+        // selection border, which the on-complete callback blits off the drawable
         if (force_fire_frame)
         {
             [cb commit];

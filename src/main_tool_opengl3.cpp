@@ -58,14 +58,9 @@ GLFWwindow* window = nullptr;
 void apply_imgui_theme();
 void glfw_error_callback(int i_error, const char* description);
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
-void register_window_callbacks(void (*minimize_fn)(),
-                               void (*maximize_fn)(),
-                               void (*_extern_glfwTerminate)(),
-                               void (*_extern_glfwSwapInterval)(int));
 
-// Returns the GLFW monitor that currently contains the cursor.
-// Falls back to the primary monitor if the cursor position cannot be
-// determined (e.g. on a pure Wayland session without XWayland).
+// The GLFW monitor under the cursor, or the primary one if the cursor can't
+// be found (e.g. on Wayland without XWayland)
 static GLFWmonitor* get_monitor_at_cursor()
 {
     int  cursor_x = 0, cursor_y = 0;
@@ -137,9 +132,7 @@ int run_main_tool()
 
     register_window_callbacks(minimize_window_, maximize_window_, glfwTerminate, glfwSwapInterval);
 
-    // Setup Screenshot Tool
-    // Calling it before starting the window so that
-    // we can capture at the exact moment we launch
+    // Before the window exists, so the screenshot is taken right away and without the overlay
     g_ss_tool.SetOnCancel([&]() {
         spdlog::info("Canceled screenshot");
         glfwSwapInterval(0);  // Disable vsync
@@ -246,12 +239,8 @@ int run_main_tool()
     GLFWerrorfun error_callback = glfwSetErrorCallback(
         [](int i_error, const char* description) { spdlog::warn("GLFW Error {}: {}", i_error, description); });
 
-    // Pass nullptr as the monitor to get a borderless windowed overlay
-    // instead of exclusive fullscreen. This ensures GLFW_DECORATED,
-    // GLFW_FLOATING, and GLFW_AUTO_ICONIFY hints actually take effect
-    // (they are silently ignored for exclusive fullscreen windows), and
-    // keeps mouse/keyboard events scoped to this monitor so they don't
-    // bleed in from the other display on multi-monitor setups.
+    // No monitor: a borderless window instead of exclusive fullscreen, which
+    // ignores the window hints and gets input from the other monitors too
     window = glfwCreateWindow(mode->width, mode->height, "oshot", fullscreen ? monitor : nullptr, nullptr);
 #  if !OSHOT_MACOS && !defined(IMGUI_IMPL_OPENGL_ES2) && !defined(IMGUI_IMPL_OPENGL_ES3)
     if (!window)
@@ -339,12 +328,12 @@ int run_main_tool()
         ImGui::Render();
         glfwGetFramebufferSize(window, &display_w, &display_h);
         glViewport(0, 0, display_w, display_h);
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);  // dark background
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-        // Run just another frame so that only the annotations are not being rendered into
-        // the image because of glReadPixels() reading raw pixels from the screen
+        // Save/copy requested: render one more frame with only the screenshot and the
+        // annotations, which the on-complete callback reads back with glReadPixels()
         if (force_fire_frame)
         {
             g_ss_tool.FireOnComplete();

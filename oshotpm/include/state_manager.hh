@@ -35,6 +35,7 @@
 // state.toml: what's installed. One [repositories.<name>] table per source
 // (git URL, local folder or archive) and one [plugins."<id>"] table per
 // installed plugin, which points back at its repository.
+// Changes stay in memory until SaveState()
 class StateManager
 {
 public:
@@ -49,26 +50,30 @@ public:
 
     // Grouped by repository, plugins sorted by ID
     [[nodiscard]] const std::vector<manifest_t>& GetAllRepos() const;
-    [[nodiscard]] std::optional<manifest_t>      FindRepo(std::string_view name) const;
-    [[nodiscard]] std::optional<plugin_t>        FindPlugin(std::string_view id) const;
 
     // Adds or replaces a plugin, keeping its enabled state if it was installed
     void SetPlugin(const std::string& repo, const plugin_t& plugin, const std::string& library_file);
 
+    // Adds or replaces a repository, without its plugins
+    void SetRepo(const manifest_t& repo);
+
     // Removes the repository and the plugins it installed
     void RemoveRepo(const std::string_view name);
-    void RemovePlugin(const std::string_view id);
 
-    void     SetRepo(const manifest_t& repo);
+    [[nodiscard]] std::optional<manifest_t> FindRepo(std::string_view name) const;
+    [[nodiscard]] std::optional<plugin_t>   FindPlugin(std::string_view id) const;
+
+    void     RemovePlugin(const std::string_view id);
     Result<> SetEnabled(const std::string_view id, bool enabled);
     Result<> SaveState();
 
 private:
-    const fs::path m_path{ get_config_dir() / "plugins" / "state.toml" };
-    TomlAPI        m_toml;
-
+    // GetAllRepos()'s result, rebuilt when m_is_changed
     mutable std::vector<manifest_t> m_manifests_cache;
     mutable bool                    m_is_changed{ true };
+
+    const fs::path m_path{ get_config_dir() / "plugins" / "state.toml" };
+    TomlAPI        m_toml;
 
     toml::table& Repos() { return TomlAPI::EnsureTable(m_toml.GetTbl(), "repositories"); }
     toml::table& Plugins() { return TomlAPI::EnsureTable(m_toml.GetTbl(), "plugins"); }

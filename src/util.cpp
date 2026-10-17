@@ -126,6 +126,19 @@ static const std::unordered_map<std::string, std::string>& get_xdg_user_dirs()
     return cache;
 }
 
+GlfwGuard::~GlfwGuard()
+{
+    extern_glfwTerminate();
+}
+
+CdGuard::CdGuard(const fs::path& p) : saved(fs::current_path())
+{
+    if (!fs::exists(p))
+        die("CdGuard: Path {} doesn't exist", p.string());
+    if (!p.empty())
+        fs::current_path(p);
+}
+
 constexpr ImVec4 rgba_t::to_imvec4() const
 {
     return { float(r) / 255.0f, float(g) / 255.0f, float(b) / 255.0f, float(a) / 255.0f };
@@ -645,8 +658,7 @@ static std::optional<fs::path> get_known_dir(REFKNOWNFOLDERID rfid, const char* 
         WideCharToMultiByte(CP_UTF8, 0, widePath, -1, &narrowPath[0], size, nullptr, nullptr);
         CoTaskMemFree(widePath);
 
-        // Remove null terminator from string
-        narrowPath.pop_back();
+        narrowPath.pop_back();  // the NUL
         return narrowPath;
     }
 
@@ -975,7 +987,7 @@ fs::path get_font_path(const std::string& font)
     if (fs::exists(font_path))
         return font_path;
 
-    // Direct join (fast)
+    // A file directly in a font directory
     for (const std::string_view root_sv : default_search_paths)
     {
         const fs::path& root      = expand_var(std::string(root_sv));
@@ -985,7 +997,7 @@ fs::path get_font_path(const std::string& font)
             return candidate;
     }
 
-    // Recursive filename match (correct)
+    // Anywhere under one, by file name
     for (const std::string_view root_sv : default_search_paths)
     {
         const fs::path& root = expand_var(std::string(root_sv));
@@ -1046,9 +1058,8 @@ void build_font_atlas(ImGuiIO& io)
         if (!first)
         {
             first = f;
-            // this value is false by default, and we can't set it to true without adding at least one font first.
-            // so, after we add the first font, this will be true (and will stay true).
-            // MergeMode fills the gap in previous fonts with glyphs from this font, for example, adding Arabic glyphs to a non-Arabic font.
+            // MergeMode needs a font added first. The next fonts then fill in the glyphs
+            // the first one lacks, e.g. Arabic glyphs for a font without them
             font_cfg.MergeMode = true;
         }
     }
