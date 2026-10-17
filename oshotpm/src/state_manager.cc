@@ -79,11 +79,13 @@ const std::vector<manifest_t>& StateManager::GetAllRepos() const
             continue;
 
         manifest_t manifest;
-        manifest.name     = repo_name.str();
-        manifest.url      = (*repo_tbl)["url"].value_or(std::string());
-        manifest.git_hash = (*repo_tbl)["git-hash"].value_or(std::string());
-        manifest.source   = (*repo_tbl)["source"].value_or(std::string("git")) == "git" ? RepoSource::GitRepository
-                                                                                        : RepoSource::LocalPlugin;
+        manifest.name            = repo_name.str();
+        manifest.url             = (*repo_tbl)["url"].value_or(std::string());
+        manifest.git_hash        = (*repo_tbl)["git-hash"].value_or(std::string());
+        const std::string source = (*repo_tbl)["source"].value_or(std::string("git"));
+        manifest.source          = source == "git"     ? RepoSource::GitRepository
+                                   : source == "index" ? RepoSource::Index
+                                                       : RepoSource::LocalPlugin;
         m_manifests_cache.push_back(std::move(manifest));
     }
 
@@ -109,6 +111,7 @@ const std::vector<manifest_t>& StateManager::GetAllRepos() const
             plugin.licenses    = str_array(*tbl, "licenses");
             plugin.platforms   = str_array(*tbl, "platforms");
             plugin.repository  = repo;
+            plugin.version     = (*tbl)["version"].value_or(std::string());
 
             const std::string library = (*tbl)["library"].value_or(std::string());
             if (!library.empty())
@@ -146,7 +149,10 @@ void StateManager::SetRepo(const manifest_t& repo)
     toml::table& tbl = TomlAPI::EnsureTable(Repos(), repo.name);
     tbl.insert_or_assign("url", repo.url);
     tbl.insert_or_assign("git-hash", repo.git_hash);
-    tbl.insert_or_assign("source", repo.source == RepoSource::LocalPlugin ? "local" : "git");
+    tbl.insert_or_assign("source",
+                         repo.source == RepoSource::LocalPlugin ? "local"
+                         : repo.source == RepoSource::Index     ? "index"
+                                                                : "git");
     m_is_changed = true;
 }
 
@@ -158,15 +164,17 @@ void StateManager::SetPlugin(const std::string& repo, const plugin_t& plugin, co
     if (const toml::table* old = plugins[plugin.id].as_table())
         enabled = (*old)["enabled"].value_or(true);
 
-    plugins.insert_or_assign(plugin.id,
-                             toml::table{ { "repository", repo },
-                                          { "name", plugin.name },
-                                          { "description", plugin.description },
-                                          { "authors", TomlAPI::VectorToArray(plugin.authors) },
-                                          { "licenses", TomlAPI::VectorToArray(plugin.licenses) },
-                                          { "platforms", TomlAPI::VectorToArray(plugin.platforms) },
-                                          { "library", library_file },
-                                          { "enabled", enabled } });
+    toml::table entry{ { "repository", repo },
+                       { "name", plugin.name },
+                       { "description", plugin.description },
+                       { "authors", TomlAPI::VectorToArray(plugin.authors) },
+                       { "licenses", TomlAPI::VectorToArray(plugin.licenses) },
+                       { "platforms", TomlAPI::VectorToArray(plugin.platforms) },
+                       { "library", library_file },
+                       { "enabled", enabled } };
+    if (!plugin.version.empty())
+        entry.insert_or_assign("version", plugin.version);
+    plugins.insert_or_assign(plugin.id, std::move(entry));
     m_is_changed = true;
 }
 

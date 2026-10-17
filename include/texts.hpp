@@ -33,8 +33,9 @@ inline constexpr std::string_view oshotpm_help = (R"(Usage: oshotpm [-h|-V] <COM
 Install and manage oshot plugins.
 
 Commands:
-    install [-f] [-y] <SOURCE>...     Install the plugins from a git URL, a local folder or a prebuilt archive.
-    update [-y]                       Update the plugins installed from git URLs.
+    search [<WORD>...]                List the plugins in the plugin index, or the ones matching all WORDs.
+    install [-f] [-y] <SOURCE>...     Install plugins from the plugin index, a git URL, a folder or an archive.
+    update [-y]                       Update the plugins installed from the index and from git URLs.
     uninstall <NAME>...               Uninstall a plugin (by ID) or a repository with all its plugins.
     enable <PLUGIN>...                Enable installed plugins.
     disable <PLUGIN>...               Disable installed plugins.
@@ -43,12 +44,15 @@ Commands:
     help [<COMMAND>]                  Show the help of a command.
 
 Terms:
-    SOURCE      A git URL (https://..., git@..., or ending in .git), a folder with an oshot-plugin.toml,
-                or a prebuilt archive (.zip, .tar.gz/.tgz, .tar.xz/.txz) with one.
+    SOURCE      A plugin ID from the plugin index (see `oshotpm search`), a git URL (https://..., git@...,
+                or ending in .git), a folder with an oshot-plugin.toml, or a prebuilt archive
+                (.zip, .tar.gz/.tgz, .tar.xz/.txz) with one.
     REPOSITORY  Everything one oshot-plugin.toml installs, named after its [repository] name.
     PLUGIN      A plugin ID like io.github.user.plugin, or <REPOSITORY>/<plugin name>.
 
 Examples:
+    oshotpm search translate
+    oshotpm install io.github.user.translate
     oshotpm install https://github.com/user/oshot-plugins
     oshotpm install ./my-plugin
     oshotpm disable io.github.user.translate
@@ -59,10 +63,22 @@ Options:
     -V, --version       Show version and build information.
 
 Plugins are installed in the "plugins" folder of oshot's config folder, and take effect the next time oshot starts.
+The plugin index is https://github.com/Toni500github/oshot-plugin-index ($OSHOT_PLUGIN_INDEX replaces its URL).
+)");
+
+inline constexpr std::string_view oshotpm_help_search = (R"(Usage: oshotpm search [<WORD>...]
+List the plugins in the plugin index (https://github.com/Toni500github/oshot-plugin-index), or only the ones
+whose ID, name, description or tags contain every WORD. Install one with `oshotpm install <ID>`.
+
+Options:
+    -v, --verbose      Also show every version, the owners, the license and the homepage.
+    -h, --help         Show this help.
 )");
 
 inline constexpr std::string_view oshotpm_help_install = (R"(Usage: oshotpm install [OPTIONS] <SOURCE>...
 Install the plugins from each SOURCE:
+    - a plugin ID from the plugin index: its newest version that works here, prebuilt for this computer if
+      available (checked against the index's SHA-256), else built from the reviewed source;
     - a git URL: cloned, then built with the build steps in its oshot-plugin.toml (needs git and the build tools);
     - a local folder with an oshot-plugin.toml: built in place;
     - a prebuilt archive (.zip, .tar.gz/.tgz, .tar.xz/.txz): its libraries are installed, nothing is built.
@@ -74,7 +90,8 @@ Options:
 )");
 
 inline constexpr std::string_view oshotpm_help_update = (R"(Usage: oshotpm update [OPTIONS]
-Fetch every repository installed from a git URL and rebuild the ones that changed.
+Install newer versions of the plugins from the plugin index (and warn about withdrawn ones), then fetch every
+repository installed from a git URL and rebuild the ones that changed.
 Plugins installed from a folder or an archive are updated by installing them again.
 
 Options:

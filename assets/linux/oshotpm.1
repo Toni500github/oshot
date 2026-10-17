@@ -16,15 +16,23 @@ A \fIrepository\fR is everything one manifest describes; each plugin in it has a
 Changes apply the next time oshot starts.
 .SH COMMANDS
 .TP
+.BR search " [\fB\-v\fR] [\fIWORD\fR]..."
+List the plugins in the plugin index, or the ones matching every \fIWORD\fR.
+\fB\-v\fR adds every version, the owners, the license and the homepage.
+.TP
 .BR install " [\fB\-f\fR] [\fB\-y\fR] \fISOURCE\fR..."
-Install the plugins from each \fISOURCE\fR: a git URL (cloned, then built with the
-manifest's build steps), a local folder with a manifest (built in place), or a
-prebuilt archive (\fI.zip\fR, \fI.tar.gz\fR/\fI.tgz\fR, \fI.tar.xz\fR/\fI.txz\fR).
+Install the plugins from each \fISOURCE\fR: a plugin ID from the plugin index (its
+newest version that works here, prebuilt for this computer when available, checked
+against the index's SHA\-256), a git URL (cloned, then built with the manifest's
+build steps), a local folder with a manifest (built in place), or a prebuilt archive
+(\fI.zip\fR, \fI.tar.gz\fR/\fI.tgz\fR, \fI.tar.xz\fR/\fI.txz\fR).
 \fB\-f\fR, \fB\-\-force\fR reinstalls a repository that is already installed.
 \fB\-y\fR, \fB\-\-yes\fR answers every question with its default.
 .TP
 .BR update " [\fB\-y\fR]"
-Fetch every repository installed from a git URL and rebuild the ones that changed.
+Install newer versions of the plugins from the plugin index, warning about withdrawn
+ones, and fetch every repository installed from a git URL and rebuild the ones that
+changed.
 .TP
 .BI uninstall " NAME" ...
 Uninstall the plugin with the ID \fINAME\fR, or the repository named \fINAME\fR with
@@ -57,6 +65,10 @@ Print the version and other information about the build.
 The plugin SDK (a folder with \fIinclude/oshot/oshot_plugin.h\fR) passed to plugin
 builds, instead of the one next to oshot.
 .TP
+.B OSHOT_PLUGIN_INDEX
+URL of the plugin index (any URL curl takes), instead of
+https://toni500github.github.io/oshot\-plugin\-index/index.toml.
+.TP
 .B NO_COLOR
 Don't color the output.
 .SH FILES
@@ -68,11 +80,13 @@ Installed plugins, one folder per ID with the library and its \fIconfig.toml\fR.
 What is installed.
 .TP
 .I ~/.cache/oshotpm/
-Clones of the repositories installed from git.
+Clones of the repositories installed from git, and the last downloaded plugin index.
 .SH EXIT STATUS
 0 on success, 1 if anything failed.
 .SH EXAMPLES
 .nf
+oshotpm search translate
+oshotpm install io.github.user.translate
 oshotpm install https://github.com/user/oshot\-plugins
 oshotpm install ./my\-plugin
 oshotpm disable io.github.user.translate

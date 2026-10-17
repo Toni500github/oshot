@@ -104,11 +104,6 @@ std::string trim(std::string s)
     return s;
 }
 
-bool looks_like_git_url(const std::string& source)
-{
-    return source.find("://") != source.npos || source.starts_with("git@") || source.ends_with(".git");
-}
-
 bool is_archive(const fs::path& path)
 {
     std::string name = path.filename().string();
@@ -302,8 +297,11 @@ void PluginManager::RemovePluginDir(const std::string& id)
 }
 
 // ----- confirmations -----
-Result<> PluginManager::ConfirmTrust()
+Result<> PluginManager::ConfirmTrust(std::string_view notice)
 {
+    // The GUI shows it in the confirmation
+    if (!notice.empty() && m_is_cli)
+        m_callbacks.on_warning(notice);
     if (options.install_shut_up)
         return Ok();
 
@@ -314,8 +312,9 @@ Result<> PluginManager::ConfirmTrust()
     // The GUI shows it in the confirmation itself
     if (m_is_cli)
         m_callbacks.on_warning(disclaimer);
-    const std::string prompt =
-        m_is_cli ? "Continue installing?" : fmt::format("{}\n\nContinue installing?", disclaimer);
+    const std::string prompt = m_is_cli         ? std::string("Continue installing?")
+                               : notice.empty() ? fmt::format("{}\n\nContinue installing?", disclaimer)
+                                                : fmt::format("{}\n\n{}\n\nContinue installing?", notice, disclaimer);
     if (!m_callbacks.confirm(prompt, true))
         return Err("Cancelled");
     return Ok();
@@ -622,16 +621,227 @@ Result<> PluginManager::Install(const std::string& source)
         std::string name;
         return InstallFromDir(path, { .origin = Origin::UserFolder, .git_url = {}, .git_hash = {} }, false, name);
     }
-
-    // A URL, or a local bare repository
-    const bool bare_repo = fs::exists(path / "HEAD", ec) && fs::is_directory(path / "objects", ec);
-    if (looks_like_git_url(source) || bare_repo)
-        return InstallGit(bare_repo ? path.string() : source);
-
     if (fs::is_regular_file(path, ec) && is_archive(path))
         return InstallArchive(path);
 
-    return Err("'{}' is not a git URL, a folder with an {}, or a .zip/.tar.gz/.tar.xz archive", source, MANIFEST_NAME);
+    // A URL, or a local bare repository
+    const bool bare_repo = fs::exists(path / "HEAD", ec) && fs::is_directory(path / "objects", ec);
+    if (source.find("://") != source.npos || source.starts_with("git@") || bare_repo)
+        return InstallGit(bare_repo ? path.string() : source);
+
+    if (Manifest::IsValidID(source))
+        return InstallFromIndex(source);
+    if (source.ends_with(".git"))
+        return InstallGit(source);
+
+    return Err("'{}' is not a plugin ID, a git URL, a folder with an {}, or a .zip/.tar.gz/.tar.xz archive",
+               source,
+               MANIFEST_NAME);
+}
+
+// ----- the plugin index -----
+Result<plugin_index_t> PluginManager::FetchIndex(bool allow_cached, bool* stale)
+{
+    return fetch_plugin_index(get_home_cache_dir() / "oshotpm" / "index.toml", allow_cached, stale);
+}
+
+Result<> PluginManager::InstallFromIndex(const std::string& id, bool is_update)
+{
+    m_callbacks.on_status("Downloading the plugin index");
+    Result<plugin_index_t> index = FetchIndex(/*allow_cached=*/false);
+    TRY(index);
+
+    const index_plugin_t* plugin = index.get().Find(id);
+    if (!plugin)
+        return Err("There's no plugin with the ID '{}' in the plugin index (see `oshotpm search`)", id);
+
+    if (const auto installed = m_state_manager.FindPlugin(id))
+    {
+        if (installed->repository != INDEX_REPO_NAME)
+            return Err("'{}' is already installed from '{}'. Uninstall it first: oshotpm uninstall {}",
+                       id,
+                       installed->repository,
+                       id);
+        if (!is_update && !options.install_force &&
+            !m_callbacks.confirm(
+                fmt::format("'{}' {} is already installed. Install it again?", plugin->name, installed->version),
+                false))
+            return Err(
+                "'{}' is already installed. Use `oshotpm update` to update it, or `oshotpm install --force` "
+                "to reinstall it",
+                id);
+    }
+
+    std::string                  why;
+    const index_version_t* const version = pick_version(*plugin, &why);
+    if (!version)
+        return Err("No version of '{}' can be installed here: {}", id, why);
+
+    return InstallIndexVersion(*plugin, *version, is_update);
+}
+
+Result<> PluginManager::InstallIndexVersion(const index_plugin_t&  plugin,
+                                            const index_version_t& version,
+                                            bool                   is_update)
+{
+    const std::string notice =
+        plugin.network ? fmt::format("'{}' connects to the internet, according to its author.", plugin.name) : "";
+    TRY(ConfirmTrust(notice));
+
+    WorkDirGuard work(NewWorkDir("index"));
+    fs::path     library;
+
+    const auto artifact = version.artifacts.find(OSHOT_TARGET);
+    if (artifact != version.artifacts.end())
+    {
+        // Prebuilt: nothing to build, only to check
+        const index_artifact_t& art  = artifact->second;
+        const fs::path          file = work.path / fs::path(art.url).filename();
+        m_callbacks.on_status(fmt::format("Downloading {} {} for {}", plugin.name, version.version, OSHOT_TARGET));
+        TRY(download_file(art.url, file));
+
+        Result<std::string> digest = sha256_file(file);
+        TRY(digest);
+        if (digest.get() != art.sha256)
+            return Err(
+                "{} doesn't match the plugin index (SHA-256 {}, expected {}): it changed after it was "
+                "listed, so it's not installed",
+                file.filename().string(),
+                digest.get(),
+                art.sha256);
+
+        library = file;
+        if (is_archive(file))
+        {
+            const fs::path  dir = work.path / "extracted";
+            std::error_code ec;
+            fs::create_directories(dir, ec);
+            TRY(extract_archive(file, dir));
+
+            fs::path root = dir;
+            if (!fs::exists(root / MANIFEST_NAME, ec))
+                for (const fs::directory_entry& entry : fs::directory_iterator(dir, ec))
+                    if (fs::exists(entry.path() / MANIFEST_NAME, ec))
+                        root = entry.path();
+
+            Manifest manifest(root / MANIFEST_NAME);
+            TRY_MSG(manifest.ParseManifest(), "The archive's oshot-plugin.toml: {}");
+            const auto& plugins = manifest.GetRepo().plugins;
+            auto        it      = std::ranges::find(plugins, plugin.id, &plugin_t::id);
+            if (it == plugins.end())
+                return Err("The archive has no plugin with the ID '{}'", plugin.id);
+
+            Result<fs::path> lib = FindPrebuilt(*it, root);
+            TRY(lib);
+            library = lib.get();
+        }
+    }
+    else
+    {
+        // Build the reviewed commit
+        const index_source_t& src = *version.source;
+        TRY(CheckGit());
+        const fs::path clone = work.path / "source";
+        m_callbacks.on_status(fmt::format("Cloning {} at {}", src.git, src.tag));
+        TRY(Git({ "clone", "--quiet", src.git, clone.string() }, work.path));
+        TRY(Git({ "-c", "advice.detachedHead=false", "checkout", "--quiet", src.commit }, clone));
+        TRY(Git({ "submodule", "update", "--init", "--recursive" }, clone));
+
+        const fs::path dir = clone / src.subdir;
+        if (!is_inside(clone, dir))
+            return Err("The plugin index gives a folder outside the repository: '{}'", src.subdir);
+
+        Manifest manifest(dir / MANIFEST_NAME);
+        TRY_MSG(manifest.ParseManifest(), "{}");
+        const manifest_t& repo = manifest.GetRepo();
+        auto              it   = std::ranges::find(repo.plugins, plugin.id, &plugin_t::id);
+        if (it == repo.plugins.end())
+            return Err("{} at {} has no plugin with the ID '{}'", MANIFEST_NAME, src.tag, plugin.id);
+
+        TRY(ConfirmDependencies(repo));
+        Result<fs::path> lib = BuildPlugin(*it, dir, repo);
+        TRY(lib);
+        library = lib.get();
+    }
+
+    Result<plugin_info_t> info = inspect_plugin_library(library);
+    if (!info.ok())
+        return Err("{} can't be used: {}", library.filename().string(), info.error_v());
+    if (info.get().id != plugin.id)
+        return Err("the library's ID is '{}', but the plugin index says '{}'", info.get().id, plugin.id);
+
+    Result<std::string> file = CopyLibrary(plugin.id, library);
+    TRY(file);
+
+    plugin_t entry;
+    entry.id          = plugin.id;
+    entry.name        = plugin.name;
+    entry.description = plugin.description;
+    entry.authors     = plugin.authors.empty() ? plugin.owners : plugin.authors;
+    entry.licenses    = { plugin.license };
+    entry.version     = version.version;
+    m_state_manager.SetPlugin(INDEX_REPO_NAME, entry, file.get());
+
+    manifest_t repo;
+    repo.name   = INDEX_REPO_NAME;
+    repo.url    = plugin_index_url();
+    repo.source = RepoSource::Index;
+    m_state_manager.SetRepo(repo);
+    TRY(m_state_manager.SaveState());
+
+    m_callbacks.on_success(
+        fmt::format("{} '{}' {}", is_update ? "Updated" : "Installed", plugin.name, version.version));
+    return Ok();
+}
+
+Result<> PluginManager::UpdateIndexPlugins(const manifest_t& repo)
+{
+    m_callbacks.on_status("Checking the plugin index for updates");
+    Result<plugin_index_t> index = FetchIndex(/*allow_cached=*/false);
+    TRY(index);
+
+    std::vector<std::string> failed;
+    for (const plugin_t& installed : repo.plugins)
+    {
+        const index_plugin_t* plugin = index.get().Find(installed.id);
+        if (!plugin)
+        {
+            m_callbacks.on_warning(fmt::format("'{}' isn't in the plugin index anymore", installed.id));
+            continue;
+        }
+
+        const index_version_t* current = plugin->FindVersion(installed.version);
+        if (current && current->yanked)
+            m_callbacks.on_warning(fmt::format("{} {} was withdrawn{}{}",
+                                               plugin->name,
+                                               installed.version,
+                                               current->yanked_reason.empty() ? "" : ": ",
+                                               current->yanked_reason));
+
+        std::string            why;
+        const index_version_t* best = pick_version(*plugin, &why);
+        if (!best || compare_versions(best->version, installed.version) <= 0)
+        {
+            if (current && current->yanked)
+                m_callbacks.on_warning(
+                    fmt::format("No newer version of '{}' can be installed: consider uninstalling it", plugin->name));
+            else
+                m_callbacks.on_info(fmt::format("{} {} is up to date", plugin->name, installed.version));
+            continue;
+        }
+
+        m_callbacks.on_info(fmt::format("{}: {} -> {}", plugin->name, installed.version, best->version));
+        Result<> r = InstallIndexVersion(*plugin, *best, /*is_update=*/true);
+        if (!r.ok())
+        {
+            m_callbacks.on_error(fmt::format("{}: {}", plugin->name, r.error_v()));
+            failed.push_back(plugin->name);
+        }
+    }
+
+    if (!failed.empty())
+        return Err("Failed to update: {}", fmt::join(failed, ", "));
+    return Ok();
 }
 
 Result<> PluginManager::UpdateRepo(const manifest_t& repo)
@@ -706,6 +916,14 @@ Result<> PluginManager::UpdateAll()
         {
             m_callbacks.on_info(
                 fmt::format("{} was installed from a folder or an archive: install it again to update it", repo.name));
+            continue;
+        }
+
+        if (repo.source == RepoSource::Index)
+        {
+            // Each failed plugin was already reported
+            if (!UpdateIndexPlugins(repo).ok())
+                failed.push_back("plugins from the index");
             continue;
         }
 
