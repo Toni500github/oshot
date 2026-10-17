@@ -32,7 +32,6 @@
 #  include "imgui/imgui_impl_opengl3.h"
 #  include "screen_capture.hpp"
 #  include "screenshot_tool.hpp"
-#  include "stb_image_write.h"
 #  include "util.hpp"
 #  if defined(IMGUI_IMPL_OPENGL_ES2)
 #    include <GLES2/gl2.h>
@@ -49,6 +48,8 @@
 #  elif OSHOT_FREEDESKTOP
 #    include <X11/Xlib.h>
 #  endif
+
+#  include <algorithm>
 
 using namespace std::chrono_literals;
 
@@ -155,17 +156,22 @@ int run_main_tool()
         const int rx = region.x + int(std::lround(o.x * k));
         const int ry = fb_h - (region.y + int(std::lround(o.y * k))) - region.h;
 
-        std::vector<unsigned char> pixels(size_t(region.w) * region.h * 4);
+        const size_t               row = size_t(region.w) * 4;
+        std::vector<unsigned char> pixels(row * region.h);
         glReadPixels(rx, ry, region.w, region.h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
-        // glReadPixels() gives from end to top screeen, instead of swapping
-        // the pixels and costing more CPU power, just tell STBI to read from
-        // bottom to top, thus flip the pixels to write. No overhead.
-        stbi_flip_vertically_on_write(1);
+        // glReadPixels() returns the rows bottom to top. Flip them here rather than
+        // with stbi_flip_vertically_on_write(): the clipboard on Windows takes the
+        // raw pixels and never goes through stb
+        for (int y = 0; y < region.h / 2; ++y)
+        {
+            unsigned char* top = pixels.data() + (size_t(y) * row);
+            std::swap_ranges(top, top + row, pixels.data() + (size_t(region.h - 1 - y) * row));
+        }
+
         capture_result_t res{ .data = std::move(pixels), .w = region.w, .h = region.h };
         MUST_OK(save_image(op, res, ext),
                 error("Failed to save as {}: {}", g_config->File.image_out_type.first, _r.error_v()));
-        stbi_flip_vertically_on_write(0);
 
         glfwSwapInterval(0);  // Disable vsync
         glfwSetWindowShouldClose(window, GLFW_TRUE);
