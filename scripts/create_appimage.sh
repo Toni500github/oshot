@@ -77,11 +77,15 @@ main() {
         check_file "$BUILD_DIR/libcimgui.so.1"
         cp -f "$BUILD_DIR/oshotpm" AppDir/usr/bin/
         DEPLOY_ARGS+=(--executable AppDir/usr/bin/oshotpm --library "$BUILD_DIR/libcimgui.so.1")
+        # The plugin SDK headers: oshotpm passes usr/ as OSHOT_SDK to plugin builds
+        check_file "$BUILD_DIR/sdk/include/oshot/oshot_plugin.h"
+        mkdir -p AppDir/usr/include
+        cp -rf "$BUILD_DIR/sdk/include/oshot" AppDir/usr/include/
     fi
 
     # "<AppImage> oshotpm ..." or a symlink named oshotpm runs the plugin manager.
     # oshotpm finds the bundled libs through its RUNPATH, so the build steps it runs
-    # (git, bash, compilers) keep the host's LD_LIBRARY_PATH
+    # (git, sh, compilers) keep the host's LD_LIBRARY_PATH
     cat > AppDir/AppRun << 'EOF'
 #!/bin/sh
 HERE="$(dirname "$(readlink -f "$0")")"
