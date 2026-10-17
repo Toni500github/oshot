@@ -127,9 +127,25 @@ bool is_inside(const fs::path& base, const fs::path& path)
     return !ec && !rel.empty() && *rel.begin() != "..";
 }
 
+// File extensions of plugin libraries. On macOS, CMake names MODULE libraries
+// .so, and dlopen() loads those as well as .dylib
+bool is_library_file(const fs::path& path)
+{
+    const fs::path ext = path.extension();
+#if OSHOT_MACOS
+    return ext == ".dylib" || ext == ".so";
+#else
+    return ext == dylib::decorations::os_default().suffix;
+#endif
+}
+
 std::string library_suffix()
 {
+#if OSHOT_MACOS
+    return ".dylib or .so";
+#else
     return dylib::decorations::os_default().suffix;
+#endif
 }
 
 // The one library in `dir`
@@ -138,7 +154,7 @@ Result<fs::path> find_library_in(const fs::path& dir)
     std::error_code       ec;
     std::vector<fs::path> libs;
     for (const fs::directory_entry& entry : fs::directory_iterator(dir, ec))
-        if (entry.is_regular_file(ec) && entry.path().extension() == library_suffix())
+        if (entry.is_regular_file(ec) && is_library_file(entry.path()))
             libs.push_back(entry.path());
 
     if (ec)
@@ -420,7 +436,7 @@ Result<std::string> PluginManager::CopyLibrary(const std::string& id, const fs::
 
     // Libraries of an older version with another file name
     for (const fs::directory_entry& entry : fs::directory_iterator(dir, ec))
-        if (entry.path().extension() == library_suffix() && entry.path() != dest)
+        if (is_library_file(entry.path()) && entry.path() != dest)
             fs::remove(entry.path(), ec);
 
     return Ok(dest.filename().string());
