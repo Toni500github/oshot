@@ -589,13 +589,14 @@ void ScreenshotTool::RenderOverlay()
     if (ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear)
         ImGui::GetBackgroundDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
 
-    // Save/copy requested: this frame is read back as the image, so draw only the annotations
-    if (IsCompleted())
+    // Save/copy or scan requested: this frame is read back as the image, so draw only the annotations
+    if (WantsCleanFrame())
     {
         DrawAnnotations();
         ImGui::End();
         ImGui::PopStyleVar();
-        m_state = ToolState::Idle;
+        if (IsCompleted())
+            m_state = ToolState::Idle;
         return;
     }
 
@@ -1934,38 +1935,7 @@ void ScreenshotTool::DrawOcrTools()
     if (!invalid_path && !invalid_model && !need_to_scan)
     {
         if (ImGui::Button("Extract Text"))
-        {
-            const Result<>& configure_res = m_ocr_api.Configure(ocr_path.c_str(), ocr_model.c_str());
-            if (!configure_res.ok())
-            {
-                SetError(ectx, OcrError::FailedToOCR, configure_res.error_v());
-            }
-            else
-            {
-                Result<ocr_result_t> result = m_ocr_api.ExtractTextCapture(GetFinalImage(true));
-                if (result.ok())
-                {
-                    ClearError(ectx, OcrError::FailedToOCR);
-                    m_inputs.ocr_results = std::move(result.get());
-#ifndef DISABLE_PLUGINS
-                    // Copied: a plugin may call set_text(OSHOT_TEXT_OCR) from on_ocr_done()
-                    const std::string        text = m_inputs.ocr_results.data;
-                    const oshot_ocr_result_t ocr{
-                        .text       = { .p = text.c_str(), .len = text.length() },
-                        .confidence = m_inputs.ocr_results.confidence,
-                        .psm        = m_inputs.ocr_results.psm,
-                    };
-                    for (auto& [id, rt] : g_plugins)
-                        if (rt.plugin->on_ocr_done)
-                            rt.plugin->on_ocr_done(rt.state, &ocr);
-#endif
-                }
-                else
-                {
-                    SetError(ectx, OcrError::FailedToOCR, result.error_v());
-                }
-            }
-        }
+            RequestScan(ScanType::Ocr);
 
         ImGui::SameLine();
 
@@ -2009,6 +1979,88 @@ void ScreenshotTool::DrawOcrTools()
     ImGui::PopID();
 }
 
+void ScreenshotTool::RequestScan(ScanType type)
+{
+    if (g_config->File.render_anns && !m_annotations.empty() && m_read_pixels)
+    {
+        m_pending_scan = type;
+        return;
+    }
+
+    const capture_result_t& img = GetFinalImage();
+    if (type == ScanType::Ocr)
+        RunOcr(img);
+    else
+        RunBarcodeScan(img);
+}
+
+void ScreenshotTool::RunOcr(const capture_result_t& img)
+{
+    ErrorContext<OcrError>& ectx = m_ocr_errors;
+
+    const Result<>& configure_res = m_ocr_api.Configure(m_inputs.ocr_path.c_str(), m_inputs.ocr_model.c_str());
+    if (!configure_res.ok())
+    {
+        SetError(ectx, OcrError::FailedToOCR, configure_res.error_v());
+        return;
+    }
+
+    Result<ocr_result_t> result = m_ocr_api.ExtractTextCapture(img);
+    if (!result.ok())
+    {
+        SetError(ectx, OcrError::FailedToOCR, result.error_v());
+        return;
+    }
+
+    ClearError(ectx, OcrError::FailedToOCR);
+    m_inputs.ocr_results = std::move(result.get());
+#ifndef DISABLE_PLUGINS
+    // Copied: a plugin may call set_text(OSHOT_TEXT_OCR) from on_ocr_done()
+    const std::string        text = m_inputs.ocr_results.data;
+    const oshot_ocr_result_t ocr{
+        .text       = { .p = text.c_str(), .len = text.length() },
+        .confidence = m_inputs.ocr_results.confidence,
+        .psm        = m_inputs.ocr_results.psm,
+    };
+    for (auto& [id, rt] : g_plugins)
+        if (rt.plugin->on_ocr_done)
+            rt.plugin->on_ocr_done(rt.state, &ocr);
+#endif
+}
+
+void ScreenshotTool::RunBarcodeScan(const capture_result_t& img)
+{
+    ErrorContext<ZbarError>& ectx = m_zbar_errors;
+
+    Result<zbar_result_t> scan = m_zbar_api.ExtractTextsCapture(img);
+    if (!scan.ok())
+    {
+        SetError(ectx, ZbarError::FailedToScan, scan.error_v());
+        return;
+    }
+
+    ClearError(ectx, ZbarError::FailedToScan);
+    m_inputs.zbar_scan_result = std::move(scan.get());
+    m_inputs.barcode_text.clear();
+    for (const std::string& data : m_inputs.zbar_scan_result.datas)
+        m_inputs.barcode_text += data + "\n\n";
+}
+
+void ScreenshotTool::OnCleanFrame()
+{
+    const capture_result_t& img = m_read_pixels ? m_read_pixels(GetActiveRegion()) : GetFinalImage();
+
+    const ScanType scan = std::exchange(m_pending_scan, ScanType::kNone);
+    if (scan == ScanType::Ocr)
+        RunOcr(img);
+    else if (scan == ScanType::Barcode)
+        RunBarcodeScan(img);
+
+    const SavingOp op = std::exchange(m_completed_op, SavingOp::kNone);
+    if (op != SavingOp::kNone && m_on_complete)
+        m_on_complete(op, img, g_config->File.image_out_type.second);
+}
+
 void ScreenshotTool::DrawBarDecodeTools()
 {
     ErrorContext<ZbarError>& ectx = m_zbar_errors;
@@ -2017,21 +2069,7 @@ void ScreenshotTool::DrawBarDecodeTools()
     ImGui::SeparatorText("QR/Bar Decode");
 
     if (ImGui::Button("Extract Text"))
-    {
-        Result<zbar_result_t> scan = m_zbar_api.ExtractTextsCapture(GetFinalImage(true));
-        if (!scan.ok())
-        {
-            SetError(ectx, ZbarError::FailedToScan, scan.error_v());
-        }
-        else
-        {
-            ClearError(ectx, ZbarError::FailedToScan);
-            m_inputs.zbar_scan_result = std::move(scan.get());
-            m_inputs.barcode_text.clear();
-            for (const std::string& data : m_inputs.zbar_scan_result.datas)
-                m_inputs.barcode_text += data + "\n\n";
-        }
-    }
+        RequestScan(ScanType::Barcode);
 
     if (HasError(ectx, ZbarError::FailedToScan))
     {
@@ -4284,7 +4322,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     return true;
 }
 
-capture_result_t ScreenshotTool::GetFinalImage(bool)
+capture_result_t ScreenshotTool::GetFinalImage()
 {
     UpdateWindowBg();
 

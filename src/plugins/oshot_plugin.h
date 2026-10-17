@@ -215,9 +215,9 @@ typedef struct
     bool (*set_text)(oshot_ctx_t* ctx, const char* id, oshot_str_t value);
 
     /**
-     * A copy of the current selection, annotations included. rgba is NULL if
-     * there's no selection. It copies the whole image: don't call it every
-     * frame. UI thread only.
+     * A copy of the screenshot inside the selection, or of the whole screenshot
+     * without one. Annotations aren't included. rgba is NULL if it couldn't be
+     * copied. It copies the whole image: don't call it every frame. UI thread only.
      **/
     oshot_capture_t (*get_capture)(oshot_ctx_t* ctx);
     void (*capture_free)(oshot_capture_t* cap);

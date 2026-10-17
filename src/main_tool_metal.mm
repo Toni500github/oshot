@@ -96,7 +96,7 @@ int run_main_tool()
         spdlog::info("Canceled screenshot");
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
-    g_ss_tool.SetOnComplete([&](SavingOp op, const region_t& region, ImageExt ext) {
+    g_ss_tool.SetReadPixels([&](const region_t& region) {
         const point_t    o             = g_ss_tool.GetImageOrigin();
         const NSUInteger bytes_per_row = NSUInteger(region.w) * 4;
         const NSUInteger buffer_size   = bytes_per_row * NSUInteger(region.h);
@@ -123,8 +123,10 @@ int run_main_tool()
         for (size_t i = 0; i + 3 < pixels.size(); i += 4)
             std::swap(pixels[i], pixels[i + 2]);  // BGRA -> RGBA
 
-        capture_result_t res{ .data = std::move(pixels), .w = region.w, .h = region.h };
-        MUST_OK(save_image(op, res, ext),
+        return capture_result_t{ .data = std::move(pixels), .w = region.w, .h = region.h };
+    });
+    g_ss_tool.SetOnComplete([&](SavingOp op, const capture_result_t& img, ImageExt ext) {
+        MUST_OK(save_image(op, img, ext),
                 error("Failed to save as {}: {}", g_config->File.image_out_type.first, _r.error_v()));
 
         glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -268,8 +270,8 @@ int run_main_tool()
                              (__bridge void*)create_metal_texture(device, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H));
 
     // Render loop
-    MTLRenderPassDescriptor* rpd              = [MTLRenderPassDescriptor new];
-    bool                     force_fire_frame = false;
+    MTLRenderPassDescriptor* rpd         = [MTLRenderPassDescriptor new];
+    bool                     clean_frame = false;
     // app_quitting(): tray Quit or a signal while capturing
     while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive() && !app_quitting())
     {
@@ -313,17 +315,18 @@ int run_main_tool()
         [enc popDebugGroup];
         [enc endEncoding];
 
-        // Save/copy requested: render one more frame without the dark overlay and the
-        // selection border, which the on-complete callback blits off the drawable
-        if (force_fire_frame)
+        // Save/copy or scan requested: render one more frame with only the screenshot
+        // and the annotations, blit it off the drawable, and never present it
+        if (clean_frame)
         {
             [cb commit];
             [cb waitUntilCompleted];
-            g_ss_tool.FireOnComplete();
+            clean_frame = false;
+            g_ss_tool.OnCleanFrame();
         }
-        else if (g_ss_tool.IsCompleted())
+        else if (g_ss_tool.WantsCleanFrame())
         {
-            force_fire_frame = true;
+            clean_frame = true;
             continue;  // this frame still has the overlay baked in; drop it unpresented
         }
         else

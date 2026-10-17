@@ -138,7 +138,7 @@ int run_main_tool()
         glfwSwapInterval(0);  // Disable vsync
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
-    g_ss_tool.SetOnComplete([&](SavingOp op, const region_t& region, ImageExt ext) {
+    g_ss_tool.SetReadPixels([&](const region_t& region) {
         // region is in screenshot pixels, the origin in screen units: on a scaled
         // output the framebuffer has GetImageScale() pixels per screen unit
         const point_t o = g_ss_tool.GetImageOrigin();
@@ -162,8 +162,10 @@ int run_main_tool()
             std::swap_ranges(top, top + row, pixels.data() + (size_t(region.h - 1 - y) * row));
         }
 
-        capture_result_t res{ .data = std::move(pixels), .w = region.w, .h = region.h };
-        MUST_OK(save_image(op, res, ext),
+        return capture_result_t{ .data = std::move(pixels), .w = region.w, .h = region.h };
+    });
+    g_ss_tool.SetOnComplete([&](SavingOp op, const capture_result_t& img, ImageExt ext) {
+        MUST_OK(save_image(op, img, ext),
                 error("Failed to save as {}: {}", g_config->File.image_out_type.first, _r.error_v()));
 
         glfwSwapInterval(0);  // Disable vsync
@@ -297,8 +299,8 @@ int run_main_tool()
         return EXIT_FAILURE;
     });
 
-    bool force_fire_frame = false;
-    bool dialogs_inited   = false;
+    bool clean_frame    = false;
+    bool dialogs_inited = false;
     // app_quitting(): tray Quit or a signal while capturing
     while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive() && !app_quitting())
     {
@@ -332,15 +334,17 @@ int run_main_tool()
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-        // Save/copy requested: render one more frame with only the screenshot and the
-        // annotations, which the on-complete callback reads back with glReadPixels()
-        if (force_fire_frame)
+        // Save/copy or scan requested: render one more frame with only the screenshot
+        // and the annotations, read it back with glReadPixels(), and never show it
+        if (clean_frame)
         {
-            g_ss_tool.FireOnComplete();
+            clean_frame = false;
+            g_ss_tool.OnCleanFrame();
+            continue;
         }
-        else if (g_ss_tool.IsCompleted())
+        if (g_ss_tool.WantsCleanFrame())
         {
-            force_fire_frame = true;
+            clean_frame = true;
             continue;
         }
 

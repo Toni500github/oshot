@@ -153,6 +153,14 @@ enum class ColorPickerAlpha : std::uint8_t
     Bar,       // alpha editable via a dedicated alpha bar, too
 };
 
+// A text tools scan waiting for a frame with the annotations, see RequestScan()
+enum class ScanType : std::uint8_t
+{
+    kNone,
+    Ocr,
+    Barcode
+};
+
 // Interactions in progress, which e.g. keep Esc from cancelling the capture
 enum class CurrentAction : std::uint8_t
 {
@@ -448,9 +456,8 @@ public:
     // Called by OpenImage() on macOS, so the backend recreates the screenshot texture
     void SetOnImageReload(std::function<void(const capture_result_t&)> fn) { m_on_image_reload = std::move(fn); }
 
-    // A copy of the active region of the screenshot, without annotations.
-    // `is_text_tools` is unused
-    capture_result_t GetFinalImage(bool is_text_tools = false);
+    // A copy of the active region of the screenshot, without annotations
+    capture_result_t GetFinalImage();
 
     // The selection in screenshot pixels, or the whole screenshot without one
     [[nodiscard]] region_t GetActiveRegion() const;
@@ -470,21 +477,26 @@ public:
     // Applies oshot's default ImGui colors
     static void StyleDefaultColor();
 
-    // Called by FireOnComplete() with what to do, the active region and the image format
-    void SetOnComplete(const auto& cb) { m_on_complete = cb; }
+    // Called by OnCleanFrame() with what to do, the active region with its annotations, and the image format
+    void SetOnComplete(std::function<void(SavingOp, const capture_result_t&, ImageExt)> cb)
+    {
+        m_on_complete = std::move(cb);
+    }
+
+    // Reads a region (in screenshot pixels) of the frame the backend just rendered
+    void SetReadPixels(std::function<capture_result_t(const region_t&)> fn) { m_read_pixels = std::move(fn); }
 
     // Marks that the user asked to save/copy; the actual work is deferred
-    // until FireOnComplete() is called after the frame has been rendered.
+    // until OnCleanFrame() is called after the frame has been rendered.
     void RequestComplete(SavingOp op) { m_completed_op = op; }
 
-    // Called by the backend once a frame without the selection overlay has been
-    // rendered, so the callback can read the image back from the framebuffer
-    void FireOnComplete()
-    {
-        if (m_on_complete)
-            m_on_complete(m_completed_op, GetActiveRegion(), g_config->File.image_out_type.second);
-        m_completed_op = SavingOp::kNone;
-    }
+    // Whether the next frame must be drawn with only the screenshot and the annotations,
+    // for OnCleanFrame() to read back. Such a frame isn't presented
+    [[nodiscard]] bool WantsCleanFrame() const { return IsCompleted() || m_pending_scan != ScanType::kNone; }
+
+    // Called by the backend once the frame WantsCleanFrame() asked for has been
+    // rendered: reads the active region from it, for the pending scan and save/copy
+    void OnCleanFrame();
 
     [[nodiscard]] bool IsActive() const { return m_state != ToolState::Idle; }
     [[nodiscard]] bool IsCompleted() const { return m_completed_op != SavingOp::kNone; }
@@ -569,8 +581,11 @@ private:
     // All the toolbar buttons fit around the selection
     bool m_fill_tools_complete{};
 
-    // Set by RequestComplete(), until FireOnComplete()
+    // Set by RequestComplete(), until OnCleanFrame()
     SavingOp m_completed_op = SavingOp::kNone;
+
+    // Set by RequestScan(), until OnCleanFrame()
+    ScanType m_pending_scan = ScanType::kNone;
 
     // The annotation selected for moving or resizing, in m_annotations
     annotation_t* m_current_annotation_resize = nullptr;
@@ -584,34 +599,35 @@ private:
     // Outputs for the output picker (Wayland)
     std::deque<monitor_t> m_wayland_monitors;
 
-    OcrAPI                                                   m_ocr_api;
-    ZbarAPI                                                  m_zbar_api;
-    capture_result_t                                         m_screenshot;
-    ImTextureRef                                             m_texture_id;
-    ToolState                                                m_state       = ToolState::Idle;
-    InputOwner                                               m_input_owner = InputOwner::kNone;
-    ErrorContext<OcrDownloadError>                           m_download_errors;
-    ErrorContext<OcrError>                                   m_ocr_errors;
-    ErrorContext<ZbarError>                                  m_zbar_errors;
-    ErrorContext<GeneralError>                               m_general_errors;
-    inputs_results_t                                         m_inputs;
-    float                                                    m_image_scale    = 1.0f;
-    bool                                                     m_full_res_image = false;
-    std::shared_ptr<ocr_download_t>                          m_ocr_download;
-    std::vector<std::string>                                 m_ocr_models_list;
-    std::map<std::pair<std::string, float>, font_cache_t>    m_font_cache;
-    std::function<void()>                                    m_on_cancel;
-    std::function<void(const capture_result_t&)>             m_on_image_reload;
-    std::function<void(SavingOp, const region_t&, ImageExt)> m_on_complete;
-    SessionType                                              m_session;
-    GeneralContext<SubWindow>                                m_show_window;
-    GeneralContext<CurrentAction>                            m_current_actions;
-    std::array<ImTextureRef, idx(ToolType::COUNT)>           m_tool_textures;
-    ToolType                                                 m_current_tool = ToolType::kNone;
-    std::vector<annotation_t>                                m_annotations;
-    annotation_t                                             m_current_annotation;
-    rgba_t                                                   m_current_color;
-    std::array<float, idx(ToolType::COUNT)>                  m_tool_thickness;
+    OcrAPI                                                           m_ocr_api;
+    ZbarAPI                                                          m_zbar_api;
+    capture_result_t                                                 m_screenshot;
+    ImTextureRef                                                     m_texture_id;
+    ToolState                                                        m_state       = ToolState::Idle;
+    InputOwner                                                       m_input_owner = InputOwner::kNone;
+    ErrorContext<OcrDownloadError>                                   m_download_errors;
+    ErrorContext<OcrError>                                           m_ocr_errors;
+    ErrorContext<ZbarError>                                          m_zbar_errors;
+    ErrorContext<GeneralError>                                       m_general_errors;
+    inputs_results_t                                                 m_inputs;
+    float                                                            m_image_scale    = 1.0f;
+    bool                                                             m_full_res_image = false;
+    std::shared_ptr<ocr_download_t>                                  m_ocr_download;
+    std::vector<std::string>                                         m_ocr_models_list;
+    std::map<std::pair<std::string, float>, font_cache_t>            m_font_cache;
+    std::function<void()>                                            m_on_cancel;
+    std::function<void(const capture_result_t&)>                     m_on_image_reload;
+    std::function<void(SavingOp, const capture_result_t&, ImageExt)> m_on_complete;
+    std::function<capture_result_t(const region_t&)>                 m_read_pixels;
+    SessionType                                                      m_session;
+    GeneralContext<SubWindow>                                        m_show_window;
+    GeneralContext<CurrentAction>                                    m_current_actions;
+    std::array<ImTextureRef, idx(ToolType::COUNT)>                   m_tool_textures;
+    ToolType                                                         m_current_tool = ToolType::kNone;
+    std::vector<annotation_t>                                        m_annotations;
+    annotation_t                                                     m_current_annotation;
+    rgba_t                                                           m_current_color;
+    std::array<float, idx(ToolType::COUNT)>                          m_tool_thickness;
 
     selection_info_t m_main_sel{ false, InputOwner::Selection, ToolState::Resizing, ToolState::Selected };
     selection_info_t m_anno_sel{ true, InputOwner::AnnSelection, ToolState::AnnResizing, ToolState::AnnResizing };
@@ -683,6 +699,14 @@ private:
     // click line up exactly. Only used for Circle/CircleFilled/CounterBubble/Text;
     // Line/Arrow keep their raw, un-normalized start/end to preserve direction.
     [[nodiscard]] ImRect GetAnnotationHandleBox(const annotation_t& ann) const;
+
+    // Runs an OCR or barcode scan of the active region. With the annotations-in-text-tools
+    // option and annotations drawn, it waits for OnCleanFrame() to read them back with the image
+    void RequestScan(ScanType type);
+
+    // Scan `img` and show the results in the text tools
+    void RunOcr(const capture_result_t& img);
+    void RunBarcodeScan(const capture_result_t& img);
 
     // A button that copies `text_copy` and says "Copied!" for a moment
     void CreateCopyTextButton(const std::string& text_copy, const std::string_view label1 = "Copy Text");
