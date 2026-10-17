@@ -866,6 +866,21 @@ fs::path get_exe_dir()
     return get_exe_path().parent_path();
 }
 
+bool remove_tree(const fs::path& path) noexcept
+{
+    std::error_code ec;
+#if OSHOT_WINDOWS
+    // git marks its object files read-only, and Windows won't delete those
+    for (fs::recursive_directory_iterator it(path, ec), end; !ec && it != end; it.increment(ec))
+        fs::permissions(it->path(), fs::perms::owner_write, fs::perm_options::add, ec);
+    ec.clear();
+#endif
+    fs::remove_all(path, ec);
+    if (ec)
+        spdlog::warn("Failed to remove '{}': {}", path.string(), ec.message());
+    return !ec;
+}
+
 fs::path get_bundled_models_dir()
 {
     const fs::path& exe_dir = get_exe_dir();

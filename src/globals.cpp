@@ -51,8 +51,7 @@ std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_imgui_log_sink;
 static StateManager _s;
 ScreenshotTool      g_ss_tool(std::move(_s));
 
-std::unordered_map<std::string, plugin_runtime_t> g_plugins;
-plugin_runtime_t*                                 g_current_plugin;
+std::map<std::string, plugin_runtime_t> g_plugins;
 #else
 ScreenshotTool g_ss_tool;
 #endif

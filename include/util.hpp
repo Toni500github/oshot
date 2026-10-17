@@ -406,6 +406,8 @@ fs::path get_exe_path();
 fs::path get_exe_dir();
 // OCR models shipped next to the executable (Windows zip/installer, macOS .app), empty if none
 fs::path get_bundled_models_dir();
+// fs::remove_all() that also deletes read-only files (on Windows) and only logs on failure
+bool remove_tree(const fs::path& path) noexcept;
 // Where the system's tesseract models are, which differs per distro. Only the default ocr-path
 std::string get_default_ocr_path();
 
@@ -524,9 +526,13 @@ inline bool ask_user_yn(bool def, const std::string_view fmt, Args&&... args)
     if (!init_dialogs())
     {
 #if OSHOT_WINDOWS
-        int result = MessageBox(NULL, str.c_str(), "Confirmation", MB_YESNO | MB_ICONQUESTION);
-        return (result == IDYES);
-#else
+        // oshot.exe has no console; oshotpm.exe (and oshot run from one) does
+        if (!GetConsoleWindow())
+        {
+            int result = MessageBox(NULL, str.c_str(), "Confirmation", MB_YESNO | MB_ICONQUESTION);
+            return (result == IDYES);
+        }
+#endif
         const std::string_view inputs_str = def ? "[Y/n]" : "[y/N]";
         std::string            result;
         fmt::print("{} {}: ", str, inputs_str);
@@ -537,8 +543,12 @@ inline bool ask_user_yn(bool def, const std::string_view fmt, Args&&... args)
             fmt::print("{} {}: ", str, inputs_str);
         }
 
+        // CTRL-D or no input left: a "no", so callers can cancel and clean up
         if (std::cin.eof())
-            die("Exiting due to CTRL-D or EOF");
+        {
+            fmt::print("\n");
+            return false;
+        }
 
         if (result.empty())
             return def;
@@ -547,7 +557,6 @@ inline bool ask_user_yn(bool def, const std::string_view fmt, Args&&... args)
             return def;
 
         return !def;
-#endif
     }
     else
     {

@@ -26,164 +26,141 @@
 #include "plugin_manager.hh"
 
 #include <algorithm>
-#include <optional>
+#include <chrono>
+#include <cstdlib>
+#include <mutex>
 #include <random>
 
 #include "dylib.hpp"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
+#include "plugin.hpp"
 #include "tiny-process-library/process.hpp"
-
-using namespace TinyProcessLib;
 
 namespace
 {
-// Replaces the four repeated `fs::remove_all(working_dir)` calls scattered
-// across the old BuildPlugins' early-return paths. Cleans up on any early
-// return unless dismissed, i.e. once working_dir has been renamed away by
-// FinalizeRepoDirectory, there's nothing left to clean up.
-struct WorkingDirCleanupGuard
+// Deletes a work dir on every early return, unless dismissed
+struct WorkDirGuard
 {
     fs::path path;
     bool     dismissed = false;
 
-    WorkingDirCleanupGuard(fs::path p) : path(std::move(p)) {}
-
-    ~WorkingDirCleanupGuard()
+    WorkDirGuard(fs::path p) : path(std::move(p)) {}
+    ~WorkDirGuard()
     {
         if (!dismissed)
-            fs::remove_all(path);
+            remove_tree(path);  // noexcept: a failure only gets logged
     }
+    WorkDirGuard(const WorkDirGuard&)            = delete;
+    WorkDirGuard& operator=(const WorkDirGuard&) = delete;
 
     void Dismiss() { dismissed = true; }
 };
 
-bool is_platform_supported(const plugin_t& plugin)
+struct proc_result_t
 {
-    if (plugin.platforms.empty() || plugin.platforms.at(0) == "all")
-        return true;
-    return std::ranges::find(plugin.platforms, OSHOT_PLATFORM) != plugin.platforms.end();
+    int         status = -1;
+    std::string output;  // stdout and stderr, interleaved
+};
+
+template <typename Cmd>
+proc_result_t run_process(const Cmd& cmd, const fs::path& cwd, const std::function<void(std::string_view)>& on_output)
+{
+    proc_result_t r;
+    std::mutex    mtx;
+    // stdout and stderr are read on two threads
+    auto collect = [&](const char* buf, size_t n) {
+        std::scoped_lock lock(mtx);
+        r.output.append(buf, n);
+        if (r.output.size() > 256 * 1024)
+            r.output.erase(0, r.output.size() - 128 * 1024);
+        if (on_output)
+            on_output(std::string_view(buf, n));
+    };
+
+    TinyProcessLib::Process proc(cmd, cwd.string(), collect, collect);
+    r.status = proc.get_exit_status();
+    return r;
+}
+
+// The last `n` lines of a command's output, for error messages
+std::string tail(std::string_view out, size_t n = 30)
+{
+    while (!out.empty() && (out.back() == '\n' || out.back() == '\r'))
+        out.remove_suffix(1);
+
+    size_t pos = out.size();
+    for (size_t i = 0; i < n && pos != out.npos && pos > 0; ++i)
+        pos = out.rfind('\n', pos - 1);
+    return std::string(pos == out.npos ? out : out.substr(pos + 1));
+}
+
+std::string trim(std::string s)
+{
+    const auto is_space = [](unsigned char c) { return std::isspace(c); };
+    s.erase(s.begin(), std::ranges::find_if_not(s, is_space));
+    while (!s.empty() && is_space(s.back()))
+        s.pop_back();
+    return s;
 }
 
 bool looks_like_git_url(const std::string& source)
 {
     return source.find("://") != source.npos || source.starts_with("git@") || source.ends_with(".git");
 }
-}  // namespace
 
-// ----- GitClient -----
-Result<> GitClient::Clone(const std::string& url, const fs::path& dest_dir) const
+bool is_archive(const fs::path& path)
 {
-    std::string str_stderr;
-
-    if (Process({ "git", "clone", "--recursive", url, dest_dir.string() }, "", nullptr, [&](const char* p, size_t n) {
-            str_stderr.append(p, n);
-        }).get_exit_status() != 0)
-        return Err("Failed to clone at directory '{}': {}", dest_dir.string(), str_stderr);
-
-    return Ok();
+    std::string name = path.filename().string();
+    std::ranges::transform(name, name.begin(), [](unsigned char c) { return std::tolower(c); });
+    for (const std::string_view ext : { ".zip", ".tgz", ".tar.gz", ".txz", ".tar.xz" })
+        if (name.ends_with(ext))
+            return true;
+    return false;
 }
 
-Result<> GitClient::PullRebase(const fs::path& repo_dir) const
+// Whether `path` is `base` or inside it, after resolving "..", symlinks and the like
+bool is_inside(const fs::path& base, const fs::path& path)
 {
-    std::string output;
-    auto        func = [&](const char* buf, size_t len) { output.assign(buf, len); };
-
-    CdGuard guard(repo_dir);
-    if (Process({ "git", "pull", "--rebase" }, "", func, func).get_exit_status() != 0)
-        return Err("Failed to 'git pull --rebase' repository at '{}': {}", repo_dir.string(), output);
-
-    spdlog::debug("git output = {}", output);
-    return Ok();
+    std::error_code ec;
+    const fs::path  rel = fs::weakly_canonical(path, ec).lexically_relative(fs::weakly_canonical(base, ec));
+    return !ec && !rel.empty() && *rel.begin() != "..";
 }
 
-Result<> GitClient::RevParseUpstream(const fs::path& repo_dir, std::string& out_hash) const
+std::string library_suffix()
 {
-    std::string str_stderr;
-    auto        err_func = [&](const char* buf, size_t len) { str_stderr.append(buf, len); };
-
-    CdGuard guard(repo_dir);
-    if (Process(
-            { "git", "rev-parse", "@{u}" },
-            "",
-            [&](const char* buf, size_t len) { out_hash.assign(buf, len); },
-            err_func)
-            .get_exit_status() != 0)
-        return Err("Failed to retrieve upstream hash from repository at '{}': {}", repo_dir.string(), str_stderr);
-
-    return Ok();
+    return dylib::decorations::os_default().suffix;
 }
 
-Result<> GitClient::LsRemoteHead(const std::string& url, std::string& out_hash) const
+// The one library in `dir`
+Result<fs::path> find_library_in(const fs::path& dir)
 {
-    auto func = [&](const char* buf, size_t len) { out_hash.assign(buf, len); };
+    std::error_code       ec;
+    std::vector<fs::path> libs;
+    for (const fs::directory_entry& entry : fs::directory_iterator(dir, ec))
+        if (entry.is_regular_file(ec) && entry.path().extension() == library_suffix())
+            libs.push_back(entry.path());
 
-    if (Process({ "git", "ls-remote", url, "HEAD" }, "", func, func).get_exit_status() != 0)
-        return Err("Failed to retrieve latest commit from url {}", url);
-
-    return Ok();
-}
-
-// ----- PluginBuilder -----
-Result<PluginBuildResult> PluginBuilder::Build(const plugin_t&                             plugin,
-                                               bool                                        is_update,
-                                               const std::function<bool(const plugin_t&)>& is_conflicting) const
-{
-    std::string str_stderr;
-    auto        err_func = [&](const char* buf, size_t len) { str_stderr.append(buf, len); };
-
-    if (!is_platform_supported(plugin))
+    if (ec)
+        return Err("Can't read '{}': {}", dir.string(), ec.message());
+    if (libs.empty())
+        return Err("No {} library in '{}'", library_suffix(), dir.string());
+    if (libs.size() > 1)
     {
-        m_callbacks.on_warning(
-            fmt::format("Plugin '{}' doesn't support the platform '{}'. Skipping", plugin.name, OSHOT_PLATFORM));
-        return Ok(PluginBuildResult::SkippedUnsupportedPlatform);
+        std::vector<std::string> names;
+        for (const fs::path& lib : libs)
+            names.push_back(lib.filename().string());
+        return Err("'{}' has more than one library ({}), it must only have the plugin's",
+                   dir.string(),
+                   fmt::join(names, ", "));
     }
-
-    if (is_conflicting(plugin) && !is_update)
-        return Err(
-            "Plugin '{}' has conflicting ID with other plugins.\n"
-            "Check with 'oshotpm list' the plugins that have an equal ID and uninstall it",
-            plugin.id);
-
-    m_callbacks.on_status(fmt::format("Trying to build plugin '{}'", plugin.name));
-    Process process(
-        { "bash", "-c", fmt::format("set -e; {}", fmt::join(plugin.build_steps, " && ")) }, "", nullptr, err_func);
-    if (process.get_exit_status() != 0)
-        return Err("Failed to build plugin '{}': {}", plugin.name, str_stderr);
-
-    m_callbacks.on_success(fmt::format("Successfully built '{}' into '{}'", plugin.name, plugin.output_dir));
-    return Ok(PluginBuildResult::Built);
+    return Ok(libs.front());
 }
 
-// ----- Archiver -----
-bool Archiver::IsArchive(const fs::path& archive)
+Result<> extract_archive(const fs::path& archive, const fs::path& dest_dir)
 {
-    return GetArchiveType(archive) != ArchiveType::None;
-}
-
-ArchiveType Archiver::GetArchiveType(const fs::path& archive)
-{
-    if (!archive.has_extension() || !fs::is_regular_file(archive))
-        return ArchiveType::None;
-
-    const std::string& ext = archive.extension().string();
-    if (ext == ".zip")
-        return ArchiveType::Zip;
-    if (ext == ".tgz")
-        return ArchiveType::Targz;
-    if (ext == ".txz")
-        return ArchiveType::Tarxz;
-
-    return ArchiveType::None;
-}
-
-Result<> Archiver::Extract(const fs::path& archive, const fs::path& dest_dir)
-{
-    fs::create_directories(dest_dir);
-    std::string str_stderr;
-    auto        func = [&](const char* p, size_t n) { str_stderr.append(p, n); };
-
-#if CF_WINDOWS || CF_MACOS
+#if OSHOT_WINDOWS || OSHOT_MACOS
+    // bsdtar, which also reads zip files
     std::vector<std::string> cmd{ "tar", "-xf", archive.string(), "-C", dest_dir.string() };
 #else
     std::vector<std::string> cmd;
@@ -193,413 +170,617 @@ Result<> Archiver::Extract(const fs::path& archive, const fs::path& dest_dir)
         cmd = { "tar", "-xf", archive.string(), "-C", dest_dir.string() };
 #endif
 
-    Process proc(cmd, "", nullptr, func);
-    if (proc.get_exit_status() != 0)
-        return Err("Failed to extract archive '{}': {}", archive.filename().string(), str_stderr);
+    const proc_result_t r = run_process(cmd, dest_dir, nullptr);
+    if (r.status != 0)
+        return Err("Failed to extract '{}' with {} (exit code {}): {}",
+                   archive.filename().string(),
+                   cmd.front(),
+                   r.status,
+                   tail(r.output));
     return Ok();
 }
 
-// ----- PluginInstaller -----
-Result<fs::path> PluginInstaller::InstallLibrary(const plugin_t& plugin,
-                                                 const fs::path& library_dir,
-                                                 const fs::path& manifest_config_path,
-                                                 bool            force,
-                                                 bool            is_update) const
+// Sets the variables build steps can use, once
+void export_build_env()
 {
-    for (const auto& library : fs::directory_iterator{ library_dir })
-    {
-        const fs::path library_config_path = manifest_config_path / library.path().filename();
+    static std::once_flag once;
+    std::call_once(once, [] {
+        auto set = [](const char* name, const std::string& value) {
+#if OSHOT_WINDOWS
+            _putenv_s(name, value.c_str());
+#else
+            setenv(name, value.c_str(), 1);
+#endif
+        };
+        set("OSHOT_PLATFORM", OSHOT_PLATFORM);
+        set("OSHOT_ARCH", OSHOT_ARCH);
+        set("OSHOT_TARGET", OSHOT_TARGET);
+        set("OSHOT_VERSION", VERSION);
+        const fs::path sdk = PluginManager::FindSdk();
+        if (!sdk.empty())
+            set("OSHOT_SDK", sdk.string());
+    });
+}
+}  // namespace
 
-        if (fs::exists(library_config_path) && (!force || !is_update))
-        {
-            if (!m_callbacks.confirm(
-                    fmt::format("Plugin '{}' already exists. Replace it?", library_config_path.string()), true))
-                continue;
-            fs::remove_all(library_config_path);
-        }
+fs::path PluginManager::FindSdk()
+{
+    const auto valid = [](const fs::path& dir) {
+        std::error_code ec;
+        return !dir.empty() && fs::exists(dir / "include" / "oshot" / "oshot_plugin.h", ec);
+    };
 
-        // Must be a file (library.so) and have the library extension of the OS
-        if (library.is_regular_file() && library.path().has_extension() &&
-            library.path().extension().string() == dylib::decorations::os_default().suffix)
-        {
-            std::error_code er;
-            fs::rename(fs::canonical(library), library_config_path, er);
-            if (er)
-            {
-                m_callbacks.on_error(fmt::format("Failed to move '{}' to '{}': {}",
-                                                 fs::canonical(library).string(),
-                                                 library_config_path.string(),
-                                                 er.message()));
-                continue;
-            }
-            return Ok(library_config_path);
-        }
-        else
-        {
-            m_callbacks.on_error(fmt::format("Built library '{}' is not a regular file", library.path().string()));
-        }
-    }
+    if (const char* env = std::getenv("OSHOT_SDK"); env && valid(env))
+        return env;
 
-    return Err("Didn't find any library in '{}'", library_dir.string());
+    const fs::path exe_dir = get_exe_dir();
+    if (exe_dir.empty())
+        return {};
+
+    // Windows zip/installer and the build tree; macOS .app; Linux prefix (zip, .deb, AppImage's usr/)
+    for (const fs::path& dir : { exe_dir / "sdk", exe_dir / ".." / "Resources" / "sdk", exe_dir / ".." })
+        if (valid(dir))
+            return fs::weakly_canonical(dir);
+    return {};
 }
 
-// ----- PluginManager -----
-bool PluginManager::IsPluginConflicting(const plugin_t& pending_plugin) const
+// ----- git -----
+Result<> PluginManager::CheckGit()
 {
-    for (const manifest_t& manifest : m_state_manager.GetAllRepos())
-        for (const plugin_t& plugin : manifest.plugins)
-            if (pending_plugin.id == plugin.id)
-                return true;
-    return false;
+    if (run_process(std::vector<std::string>{ "git", "--version" }, m_cache_path, nullptr).status != 0)
+        return Err(
+            "git isn't installed or isn't in PATH. Install it (https://git-scm.com) to install plugins from "
+            "a git URL, or install a prebuilt plugin archive instead");
+    return Ok();
 }
 
-Result<> PluginManager::AddPluginRepo(const std::string& repo, bool is_update)
+Result<std::string> PluginManager::Git(const std::vector<std::string>& args, const fs::path& cwd)
+{
+    std::vector<std::string> cmd{ "git" };
+    cmd.insert(cmd.end(), args.begin(), args.end());
+
+    const proc_result_t r = run_process(cmd, cwd, nullptr);
+    if (r.status != 0)
+        return Err("'git {}' failed (exit code {}): {}", fmt::join(args, " "), r.status, tail(r.output));
+    return Ok(trim(r.output));
+}
+
+// ----- work dirs -----
+fs::path PluginManager::NewWorkDir(std::string_view prefix)
 {
     static std::mt19937                    gen(std::random_device{}());
     static std::uniform_int_distribution<> dist(0, 999999);
 
-    WorkingDirCleanupGuard working_dir{ m_cache_path / ("plugin_" + fmt::to_string(dist(gen))) };
-    fs::create_directories(working_dir.path);
-
-    m_callbacks.on_status(fmt::format("Cloning repository '{}' at '{}'", repo, working_dir.path.string()));
-    TRY(m_git.Clone(repo, working_dir.path));
-    m_callbacks.on_success(
-        fmt::format("Successfully cloned. Changing current directory to '{}'", working_dir.path.string()));
-    working_dir.Dismiss();
-
-    return BuildPlugins(working_dir.path, is_update, WorkingDirOrigin::GitClone);
-}
-
-Result<> PluginManager::UpdateRepos()
-{
-    for (const manifest_t& repo : m_state_manager.GetAllRepos())
-    {
-        if (repo.source == RepoSource::LocalPlugin)
-        {
-            // Installed from a local folder or a prebuilt archive: there's
-            // no git history here to pull or compare against. Automatic
-            // updates for these aren't implemented yet (see the
-            // release_url roadmap item).
-            m_callbacks.on_info(fmt::format("'{}' was installed locally, skipping automatic update", repo.name));
-            continue;
-        }
-
-        if (fs::exists(m_cache_path / repo.name))
-        {
-            spdlog::debug("Repo '{}' cache path exists", repo.name);
-            const fs::path repo_path = m_cache_path / repo.name;
-            TRY(m_git.PullRebase(repo_path));
-
-            std::string remote_hash;
-            TRY(m_git.RevParseUpstream(repo_path, remote_hash));
-
-            spdlog::debug("remote = {} && git_hash = {}", remote_hash, repo.git_hash);
-            if (remote_hash.starts_with(repo.git_hash))
-            {
-                m_callbacks.on_info(fmt::format("{} is already up-to-date.", repo.name));
-                continue;
-            }
-
-            m_callbacks.on_status(fmt::format("Updating {}", repo.name));
-            TRY(BuildPlugins(repo_path, /*is_update=*/true, WorkingDirOrigin::GitClone));
-        }
-        else
-        {
-            // Cache dir got deleted but the repo is still tracked in state.toml.
-            spdlog::debug("Repo '{}' cache path got deleted/not found", repo.name);
-            std::string latest_hash;
-            TRY(m_git.LsRemoteHead(repo.url, latest_hash));
-
-            if (latest_hash.starts_with(repo.git_hash))
-            {
-                m_callbacks.on_info(fmt::format("{} is already up-to-date.", repo.name));
-                continue;
-            }
-
-            m_callbacks.on_status(fmt::format("Cloning and then updating {}", repo.name));
-            // is_update = true matters here: without it, plugins in this
-            // manifest get flagged as "conflicting" against the state entries
-            // this same repo already owns. The original only got this right
-            // because the file-scope `is_update` global was already true from
-            // earlier in this function.
-            TRY(AddPluginRepo(repo.url, /*is_update=*/true));
-        }
-    }
-    return Ok();
-}
-
-Result<> PluginManager::RemoveRepo(const std::string& repo_name)
-{
-    const std::vector<manifest_t>& repos = m_state_manager.GetAllRepos();
-
+    fs::path        dir = m_cache_path / fmt::format("tmp-{}-{}", prefix, dist(gen));
     std::error_code ec;
-    fs::remove_all(m_cache_path / repo_name, ec);
-    if (ec)
-        return Err("Failed to remove plugin repository cache path '{}'", (m_cache_path / repo_name).string());
-
-    fs::remove_all(m_config_path / repo_name, ec);
-    if (ec)
-        return Err("Failed to remove plugin repository config path '{}'", (m_config_path / repo_name).string());
-
-    auto it = std::ranges::find_if(repos, [&](const manifest_t& m) { return m.name == repo_name; });
-    if (it != repos.end())
-    {
-        for (const plugin_t& pl : it->plugins)
-        {
-            std::error_code ec;
-            fs::remove_all(m_config_path / pl.id, ec);
-            if (ec)
-                return Err("Failed to remove plugin config path '{}'", (m_config_path / pl.id).string());
-        }
-    }
-
-    TRY(m_state_manager.RemoveRepo(repo_name));
-    m_callbacks.on_success(fmt::format("Removed plugin repository '{}'", repo_name));
-    return Ok();
+    fs::create_directories(dir, ec);
+    return dir;
 }
 
-Result<> PluginManager::ConfirmTrustDisclaimer() const
+// Work dirs of an oshotpm that got killed or interrupted
+void PluginManager::RemoveStaleWorkDirs()
+{
+    std::error_code ec;
+    const auto      now = fs::file_time_type::clock::now();
+    for (const fs::directory_entry& entry : fs::directory_iterator(m_cache_path, ec))
+    {
+        if (!entry.path().filename().string().starts_with("tmp-"))
+            continue;
+        const auto mtime = entry.last_write_time(ec);
+        if (!ec && now - mtime > std::chrono::hours(1))
+            remove_tree(entry.path());
+    }
+}
+
+void PluginManager::RemovePluginDir(const std::string& id)
+{
+    if (!Manifest::IsValidID(id))
+        return;
+
+    const fs::path  dir = m_plugins_path / id;
+    std::error_code ec;
+    if (fs::exists(dir, ec) && !remove_tree(dir))
+        m_callbacks.on_warning(fmt::format(
+            "Couldn't delete everything in '{}' (is oshot running?). oshot removes it the next time it starts",
+            dir.string()));
+}
+
+// ----- confirmations -----
+Result<> PluginManager::ConfirmTrust()
 {
     if (options.install_shut_up)
         return Ok();
 
-#ifndef poem
-#  define poem                                                                                      \
-      "You should never blindly trust anyone.\n"                                                    \
-      "It's best to vet repositories yourself, even if they've been vetted by someone you trust.\n" \
-      "You are solely responsible for any damage to your machine.\n"                                \
-      "Plugins run with the same privileges as oshot, which may include full file system access.\n"
-#endif
+    static constexpr std::string_view disclaimer =
+        "Plugins are native code: they run with the same permissions as oshot, and can read and change your "
+        "files. Only install plugins from people you trust, and check the repository first if you can.";
 
-    m_callbacks.on_warning(poem);
+    // The GUI shows it in the confirmation itself
+    if (m_is_cli)
+        m_callbacks.on_warning(disclaimer);
+    const std::string prompt =
+        m_is_cli ? "Continue installing?" : fmt::format("{}\n\nContinue installing?", disclaimer);
+    if (!m_callbacks.confirm(prompt, true))
+        return Err("Cancelled");
+    return Ok();
+}
 
-    if (!m_is_cli)
+Result<> PluginManager::ConfirmDependencies(const manifest_t& repo)
+{
+    if (repo.dependencies.empty() || options.install_shut_up)
+        return Ok();
+
+    const std::string deps = fmt::format("Building '{}' needs: {}", repo.name, fmt::join(repo.dependencies, ", "));
+    m_callbacks.on_info(deps);
+
+    const std::string prompt = m_is_cli ? std::string("Are they installed?") : deps + "\n\nAre they installed?";
+    if (!m_callbacks.confirm(prompt, true))
+        return Err("Cancelled: install the dependencies, then try again");
+    return Ok();
+}
+
+// ----- building and installing -----
+Result<fs::path> PluginManager::BuildPlugin(const plugin_t& plugin, const fs::path& dir, const manifest_t& repo)
+{
+    if (plugin.output_dir.empty())
+        return Err("'{}' has no output-dir in {}", plugin.name, MANIFEST_NAME);
+
+    const fs::path output_dir = dir / plugin.output_dir;
+    if (!is_inside(dir, output_dir))
+        return Err("'{}' has an output-dir outside the repository: '{}'", plugin.name, plugin.output_dir);
+
+    export_build_env();
+    if (const char* sdk = std::getenv("OSHOT_SDK"); !sdk || !*sdk)
+        m_callbacks.on_warning(
+            "oshot's plugin SDK (headers) wasn't found next to oshot. Set OSHOT_SDK if the "
+            "build can't find oshot/oshot_plugin.h");
+
+    for (const std::string& step : plugin.build_steps)
     {
-        if (!m_callbacks.confirm(poem "Do you want to continue installing these plugins?", true))
-            return Err("Operation cancelled from the user");
+        m_callbacks.on_status(fmt::format("Building '{}': {}", plugin.name, step));
+#if OSHOT_WINDOWS
+        // /s: cmd strips the outer quotes and runs the rest as is
+        const proc_result_t r = run_process(fmt::format("cmd.exe /d /s /c \"{}\"", step), dir, m_callbacks.on_output);
+        const bool          not_found = r.status == 9009;
+#else
+        const proc_result_t r = run_process(std::vector<std::string>{ "sh", "-c", step }, dir, m_callbacks.on_output);
+        const bool          not_found = r.status == 127;
+#endif
+        if (r.status != 0)
+        {
+            std::string hint;
+            if (not_found)
+                hint = repo.dependencies.empty()
+                           ? "\nA program it runs isn't installed or isn't in PATH."
+                           : fmt::format("\nA program it runs isn't installed or isn't in PATH. '{}' needs: {}",
+                                         repo.name,
+                                         fmt::join(repo.dependencies, ", "));
+            return Err("Build step '{}' failed (exit code {}){}\n{}", step, r.status, hint, tail(r.output));
+        }
+    }
+
+    return find_library_in(output_dir);
+}
+
+Result<fs::path> PluginManager::FindPrebuilt(const plugin_t& plugin, const fs::path& dir)
+{
+    if (!plugin.prebuilt.empty())
+    {
+        const auto it = plugin.prebuilt.find(OSHOT_TARGET);
+        if (it == plugin.prebuilt.end())
+        {
+            std::vector<std::string> targets;
+            for (const auto& [target, _] : plugin.prebuilt)
+                targets.push_back(target);
+            return Err("'{}' has no library for {} (only for {})", plugin.name, OSHOT_TARGET, fmt::join(targets, ", "));
+        }
+
+        const fs::path  lib = dir / it->second;
+        std::error_code ec;
+        if (!is_inside(dir, lib) || !fs::is_regular_file(lib, ec))
+            return Err("'{}': prebuilt library '{}' isn't in the archive", plugin.name, it->second);
+        return Ok(lib);
+    }
+
+    // No [prebuilt] table: the library sits in output-dir, or next to the manifest
+    const fs::path lib_dir = dir / plugin.output_dir;
+    if (!is_inside(dir, lib_dir))
+        return Err("'{}' has an output-dir outside the archive: '{}'", plugin.name, plugin.output_dir);
+    return find_library_in(lib_dir);
+}
+
+// Copies the library into the plugin's directory and returns its file name.
+// Copied, not moved: the source may be the person's own folder or an
+// archive, and the plugins dir can be on another filesystem than the cache.
+Result<std::string> PluginManager::CopyLibrary(const std::string& id, const fs::path& library)
+{
+    const fs::path  dir  = m_plugins_path / id;
+    const fs::path  dest = dir / library.filename();
+    const fs::path  tmp  = fs::path(dest).concat(".new");
+    const fs::path  old  = fs::path(dest).concat(".old");
+    std::error_code ec;
+
+    fs::create_directories(dir, ec);
+    if (!fs::copy_file(library, tmp, fs::copy_options::overwrite_existing, ec))
+        return Err("Failed to copy '{}' to '{}': {}", library.string(), tmp.string(), ec.message());
+
+    // A loaded library can't be overwritten or deleted on Windows, but it can
+    // be renamed. The .old file goes away the next time oshot starts.
+    if (fs::exists(dest, ec))
+    {
+        fs::remove(old, ec);
+        fs::rename(dest, old, ec);
+        if (ec)
+            return Err("Failed to replace '{}': {}", dest.string(), ec.message());
+    }
+    fs::rename(tmp, dest, ec);
+    if (ec)
+        return Err("Failed to rename '{}' to '{}': {}", tmp.string(), dest.string(), ec.message());
+    fs::remove(old, ec);
+
+    // Libraries of an older version with another file name
+    for (const fs::directory_entry& entry : fs::directory_iterator(dir, ec))
+        if (entry.path().extension() == library_suffix() && entry.path() != dest)
+            fs::remove(entry.path(), ec);
+
+    return Ok(dest.filename().string());
+}
+
+Result<> PluginManager::InstallFromDir(const fs::path&      dir,
+                                       const repo_source_t& src,
+                                       bool                 is_update,
+                                       std::string&         out_name)
+{
+    Manifest manifest(dir / MANIFEST_NAME);
+    TRY_MSG(manifest.ParseManifest(), "{}");
+
+    manifest_t repo = manifest.GetRepo();
+    out_name        = repo.name;
+    if (src.origin == Origin::GitClone)
+    {
+        repo.source   = RepoSource::GitRepository;
+        repo.url      = src.git_url;  // where updates come from, whatever the manifest says
+        repo.git_hash = src.git_hash;
     }
     else
     {
-        if (!m_callbacks.confirm("Do you want to continue installing these plugins?", true))
-            return Err("Operation cancelled from the user");
+        repo.source = RepoSource::LocalPlugin;
+        repo.git_hash.clear();
     }
 
-    return Ok();
-}
+    const std::optional<manifest_t> installed = m_state_manager.FindRepo(repo.name);
+    if (installed && !is_update && !options.install_force &&
+        !m_callbacks.confirm(fmt::format("'{}' is already installed. Reinstall it?", repo.name), false))
+        return Err(
+            "'{}' is already installed. Use `oshotpm update` to update it, or `oshotpm install --force` to "
+            "reinstall it",
+            repo.name);
 
-Result<> PluginManager::ConfirmDependencies(const manifest_t& repo) const
-{
-    if (repo.dependencies.empty())
-        return Ok();
-
-    std::string str(fmt::format(
-        "The plugin repository {} requires the following dependencies, check if you have them installed:\n    {}",
-        repo.name,
-        fmt::join(repo.dependencies, ", ")));
-    m_callbacks.on_info(str);
-
-    if (m_is_cli)
-        str.clear();
-
-    if (!m_callbacks.confirm(str + "\nAre these dependencies installed?", true))
-        return Err("Balling out, re-install the repository again after installing all dependencies.");
-
-    return Ok();
-}
-
-Result<> PluginManager::BuildAllPlugins(const manifest_t& repo, bool is_update, std::vector<std::string>& out_skipped)
-{
+    std::vector<const plugin_t*> plugins;
     for (const plugin_t& plugin : repo.plugins)
     {
-        auto result = m_builder.Build(plugin, is_update, [this](const plugin_t& p) { return IsPluginConflicting(p); });
-        TRY(result);
+        if (!Manifest::IsSupported(plugin))
+        {
+            m_callbacks.on_warning(fmt::format("'{}' doesn't support {}, skipping it", plugin.name, OSHOT_PLATFORM));
+            continue;
+        }
 
-        if (result.get() == PluginBuildResult::SkippedUnsupportedPlatform)
-            out_skipped.push_back(plugin.name);
+        if (const auto owner = m_state_manager.FindPlugin(plugin.id); owner && owner->repository != repo.name)
+            return Err("The plugin ID '{}' is already installed from '{}'. Uninstall it first: oshotpm uninstall {}",
+                       plugin.id,
+                       owner->repository,
+                       plugin.id);
+        plugins.push_back(&plugin);
     }
-    return Ok();
-}
+    if (plugins.empty())
+        return Err("None of the plugins in '{}' support {}", repo.name, OSHOT_PLATFORM);
 
-Result<> PluginManager::FinalizeRepoDirectory(const fs::path& working_dir, const fs::path& repo_cache_path) const
-{
-    m_callbacks.on_status(fmt::format("Renaming working directory to '{}'", repo_cache_path.string()));
-    fs::remove_all(repo_cache_path);
-    fs::create_directories(repo_cache_path);
+    TRY(ConfirmTrust());
+    if (src.origin != Origin::Archive)
+        TRY(ConfirmDependencies(repo));
 
-    std::error_code ec;
-    fs::rename(working_dir, repo_cache_path, ec);
-    if (ec)
-        return Err("Failed to rename '{}' to '{}': {}", working_dir.string(), repo_cache_path.string(), ec.message());
-
-    return Ok();
-}
-
-Result<> PluginManager::InstallAllPlugins(const manifest_t&               repo,
-                                          const std::vector<std::string>& skipped,
-                                          bool                            is_update,
-                                          bool                            built_from_source)
-{
     std::vector<std::string> failed;
-
-    for (const plugin_t& plugin : repo.plugins)
+    size_t                   installed_count = 0;
+    for (const plugin_t* plugin : plugins)
     {
-        if (std::ranges::find(skipped, plugin.name) != skipped.end())
-            continue;
+        Result<fs::path> lib =
+            src.origin == Origin::Archive ? FindPrebuilt(*plugin, dir) : BuildPlugin(*plugin, dir, repo);
 
-        const fs::path manifest_config_path = m_config_path / plugin.id;
-        fs::create_directories(manifest_config_path);
-        m_callbacks.on_status(fmt::format("Moving each built plugin to '{}'", manifest_config_path.string()));
+        Result<plugin_info_t> info = Err("");
+        if (lib.ok())
+            info = inspect_plugin_library(lib.get());
 
-        // output-dir is where build_steps left the library. A prebuilt
-        // archive never ran build_steps, so its library sits wherever the
-        // manifest itself was extracted to instead.
-        const fs::path library_dir = built_from_source ? fs::path(plugin.output_dir) : fs::path(".");
+        std::string error;
+        if (!lib.ok())
+            error = lib.error_v();
+        else if (!info.ok())
+            error = fmt::format("{} can't be used: {}", lib.get().filename().string(), info.error_v());
+        else if (info.get().id != plugin->id)
+            error = fmt::format("the library's ID is '{}', but {} says '{}'", info.get().id, MANIFEST_NAME, plugin->id);
 
-        if (!fs::exists(library_dir))
+        Result<std::string> file = Err("");
+        if (error.empty())
         {
-            m_callbacks.on_error(
-                fmt::format("Plugin '{}' library directory '{}' doesn't exist", plugin.name, library_dir.string()));
-            failed.push_back(plugin.name);
+            file = CopyLibrary(plugin->id, lib.get());
+            if (!file.ok())
+                error = file.error_v();
+        }
+
+        if (!error.empty())
+        {
+            m_callbacks.on_error(fmt::format("'{}': {}", plugin->name, error));
+            failed.push_back(plugin->name);
             continue;
         }
 
-        Result<fs::path> library =
-            m_installer.InstallLibrary(plugin, library_dir, manifest_config_path, options.install_force, is_update);
-        if (!library.ok())
-        {
-            m_callbacks.on_error(fmt::format("Failed to install plugin '{}': {}", plugin.name, library.error_v()));
-            failed.push_back(plugin.name);
-            continue;
-        }
+        m_state_manager.SetPlugin(repo.name, *plugin, file.get());
+        m_callbacks.on_success(fmt::format("Installed '{}' ({})", plugin->name, plugin->id));
+        ++installed_count;
+    }
 
-        Result<> updated = m_state_manager.UpdatePlugin(repo.name, plugin.name, "library", library.get().string());
-        if (!updated.ok() || !m_state_manager.SaveState())
+    // Keeps the old state (and git hash) when nothing could be built, so the
+    // next update tries again
+    if (installed_count == 0)
+        return Err("Nothing from '{}' was installed", repo.name);
+
+    // Plugins this repository no longer has
+    if (installed)
+    {
+        for (const plugin_t& old : installed->plugins)
         {
-            m_callbacks.on_error(fmt::format("Failed to save state for plugin '{}'", plugin.name));
-            failed.push_back(plugin.name);
+            if (std::ranges::find(repo.plugins, old.id, &plugin_t::id) != repo.plugins.end())
+                continue;
+            m_callbacks.on_info(fmt::format("'{}' isn't in '{}' anymore, removing it", old.id, repo.name));
+            RemovePluginDir(old.id);
+            m_state_manager.RemovePlugin(old.id);
         }
     }
+
+    m_state_manager.SetRepo(repo);
+    TRY(m_state_manager.SaveState());
 
     if (!failed.empty())
         return Err("Failed to install: {}", fmt::join(failed, ", "));
     return Ok();
 }
 
-Result<> PluginManager::FinalizeInstall(const manifest_t&               repo,
-                                        const std::vector<std::string>& skipped,
-                                        bool                            is_update,
-                                        bool                            built_from_source)
+Result<> PluginManager::InstallGit(const std::string& url)
 {
-    TRY(InstallAllPlugins(repo, skipped, is_update, built_from_source));
-    m_callbacks.on_success(fmt::format("Enjoy the new plugins from {}", repo.name));
+    TRY(CheckGit());
+
+    WorkDirGuard work(NewWorkDir("git"));
+    m_callbacks.on_status(fmt::format("Cloning {}", url));
+    TRY(Git({ "clone", "--recursive", url, work.path.string() }, m_cache_path));
+    m_callbacks.on_success("Cloned");
+
+    Result<std::string> hash = Git({ "rev-parse", "HEAD" }, work.path);
+    TRY(hash);
+
+    std::string name;
+    TRY(InstallFromDir(work.path, { .origin = Origin::GitClone, .git_url = url, .git_hash = hash.get() }, false, name));
+
+    // Keep the clone, so `update` can fetch into it
+    const fs::path  cache_dir = m_cache_path / name;
+    std::error_code ec;
+    if (fs::exists(cache_dir, ec))
+        remove_tree(cache_dir);
+    fs::rename(work.path, cache_dir, ec);
+    if (!ec)
+        work.Dismiss();
+    else
+        spdlog::warn("Failed to move '{}' to '{}': {}", work.path.string(), cache_dir.string(), ec.message());
     return Ok();
 }
 
-Result<> PluginManager::BuildPlugins(const fs::path& working_dir, bool is_update, WorkingDirOrigin origin)
+Result<> PluginManager::InstallArchive(const fs::path& archive)
 {
-    // Only a dir oshotpm created itself (a git clone) is safe to delete on
-    // failure or rename into the cache on success. A UserFolder is the
-    // person's own directory: touching it beyond building in place would
-    // silently relocate or wipe their source tree.
-    std::optional<WorkingDirCleanupGuard> cleanup;
-    if (origin == WorkingDirOrigin::GitClone)
-        cleanup.emplace(working_dir);
+    WorkDirGuard work(NewWorkDir("archive"));
+    m_callbacks.on_status(fmt::format("Extracting {}", archive.filename().string()));
+    TRY(extract_archive(archive, work.path));
 
-    CdGuard  guard(working_dir);
-    Manifest manifest(working_dir / MANIFEST_NAME);
-    TRY_MSG(manifest.ParseManifest(), "Failed to parse manifest: {}");
-
-    // A mutable copy: Manifest has no way to know it's being cloned by us
-    // vs. just pointed at, so PluginManager stamps the source itself.
-    manifest_t repo = manifest.GetRepo();
-    repo.source     = origin == WorkingDirOrigin::GitClone ? RepoSource::GitRepository : RepoSource::LocalPlugin;
-
-    // Only meaningful for a git clone: a UserFolder never gets a cache
-    // entry, so there's nothing here to collide with.
-    const fs::path repo_cache_path = m_cache_path / repo.name;
-    if (origin == WorkingDirOrigin::GitClone && fs::exists(repo_cache_path) && !is_update && !options.install_force)
+    // The manifest may be in a single top-level folder
+    fs::path        root = work.path;
+    std::error_code ec;
+    if (!fs::exists(root / MANIFEST_NAME, ec))
     {
-        m_callbacks.on_warning(
-            fmt::format("Repository '{}' already exists in '{}'", repo.name, repo_cache_path.string()));
+        std::vector<fs::path> entries;
+        for (const fs::directory_entry& entry : fs::directory_iterator(root, ec))
+            entries.push_back(entry.path());
+        if (entries.size() == 1 && fs::exists(entries.front() / MANIFEST_NAME, ec))
+            root = entries.front();
+    }
+
+    std::string name;
+    return InstallFromDir(root, { .origin = Origin::Archive, .git_url = {}, .git_hash = {} }, false, name);
+}
+
+Result<> PluginManager::Install(const std::string& source)
+{
+    std::error_code ec;
+    fs::create_directories(m_cache_path, ec);
+    RemoveStaleWorkDirs();
+
+    const fs::path path = fs::absolute(source, ec);
+    if (fs::is_directory(path, ec) && fs::exists(path / MANIFEST_NAME, ec))
+    {
+        std::string name;
+        return InstallFromDir(path, { .origin = Origin::UserFolder, .git_url = {}, .git_hash = {} }, false, name);
+    }
+
+    // A URL, or a local bare repository
+    const bool bare_repo = fs::exists(path / "HEAD", ec) && fs::is_directory(path / "objects", ec);
+    if (looks_like_git_url(source) || bare_repo)
+        return InstallGit(bare_repo ? path.string() : source);
+
+    if (fs::is_regular_file(path, ec) && is_archive(path))
+        return InstallArchive(path);
+
+    return Err("'{}' is not a git URL, a folder with an {}, or a .zip/.tar.gz/.tar.xz archive", source, MANIFEST_NAME);
+}
+
+Result<> PluginManager::UpdateRepo(const manifest_t& repo)
+{
+    const fs::path  dir = m_cache_path / repo.name;
+    std::error_code ec;
+    std::string     name;
+
+    // The clone is gone (cache cleared): clone it again
+    if (!fs::exists(dir / ".git", ec))
+    {
+        std::string         remote;
+        Result<std::string> ls = Git({ "ls-remote", repo.url, "HEAD" }, m_cache_path);
+        TRY(ls);
+        remote = ls.get().substr(0, ls.get().find_first_of(" \t"));
+        if (!remote.empty() && remote == repo.git_hash)
+        {
+            m_callbacks.on_info(fmt::format("{} is up to date", repo.name));
+            return Ok();
+        }
+
+        WorkDirGuard work(NewWorkDir("git"));
+        m_callbacks.on_status(fmt::format("Cloning {}", repo.url));
+        TRY(Git({ "clone", "--recursive", repo.url, work.path.string() }, m_cache_path));
+        Result<std::string> hash = Git({ "rev-parse", "HEAD" }, work.path);
+        TRY(hash);
+        TRY(InstallFromDir(
+            work.path, { .origin = Origin::GitClone, .git_url = repo.url, .git_hash = hash.get() }, true, name));
+
+        fs::rename(work.path, m_cache_path / name, ec);
+        if (!ec)
+            work.Dismiss();
         return Ok();
     }
 
-    TRY(ConfirmTrustDisclaimer());
-
-    if (repo.plugins.empty())
-        return Err("Looks like there are no plugins to build in '{}'", repo.name);
-
-    TRY(ConfirmDependencies(repo));
-
-    std::vector<std::string> skipped_plugins;
-    TRY(BuildAllPlugins(repo, is_update, skipped_plugins));
-
-    TRY(m_state_manager.AddNewRepo(repo));
-    m_callbacks.on_success("Plugins are successfully built!");
-
-    if (cleanup)  // set only for a git clone
+    m_callbacks.on_status(fmt::format("Checking {} for updates", repo.name));
+    TRY(Git({ "fetch", "--quiet" }, dir));
+    Result<std::string> upstream = Git({ "rev-parse", "@{u}" }, dir);
+    TRY(upstream);
+    if (upstream.get() == repo.git_hash)
     {
-        TRY(FinalizeRepoDirectory(working_dir, repo_cache_path));
-        cleanup->Dismiss();
+        m_callbacks.on_info(fmt::format("{} is up to date", repo.name));
+        return Ok();
     }
 
-    return FinalizeInstall(repo, skipped_plugins, is_update, /*built_from_source=*/true);
+    // oshotpm owns this clone: drop anything a previous build changed or left
+    // in it. Build folders can't be reused anyway: the first build ran in a
+    // temporary folder, and CMake caches refuse to move.
+    TRY(Git({ "reset", "--hard", "--quiet", "@{u}" }, dir));
+    TRY(Git({ "clean", "-ffdxq" }, dir));
+    TRY(Git({ "submodule", "update", "--init", "--recursive" }, dir));
+    TRY(Git({ "submodule", "foreach", "--quiet", "--recursive", "git clean -ffdxq" }, dir));
+
+    m_callbacks.on_status(fmt::format("Updating {} to {:.7}", repo.name, upstream.get()));
+    return InstallFromDir(
+        dir, { .origin = Origin::GitClone, .git_url = repo.url, .git_hash = upstream.get() }, true, name);
 }
 
-Result<> PluginManager::InstallPrebuilt(const fs::path& archive, bool is_update)
+Result<> PluginManager::UpdateAll()
 {
-    static std::mt19937                    gen(std::random_device{}());
-    static std::uniform_int_distribution<> dist(0, 999999);
+    std::error_code ec;
+    fs::create_directories(m_cache_path, ec);
+    RemoveStaleWorkDirs();
 
-    // We own this extraction dir (we created it), so it's safe to clean up
-    // on failure. Unlike a git clone though, it's discarded once
-    // InstallAllPlugins has copied the libraries out of it: there's no
-    // upstream to track, so nothing needs to live under m_cache_path
-    // long-term the way BuildPlugins()'s git clones do.
-    WorkingDirCleanupGuard extract_dir{ m_cache_path / fmt::format("prebuilt_{}", dist(gen)) };
-    fs::create_directories(extract_dir.path);
-
-    m_callbacks.on_status(fmt::format("Extracting archive '{}'", archive.filename().string()));
-    TRY(Archiver::Extract(archive, extract_dir.path));
-    m_callbacks.on_success("Archive extracted");
-
-    CdGuard  guard(extract_dir.path);
-    Manifest manifest(extract_dir.path / MANIFEST_NAME);
-    TRY_MSG(manifest.ParseManifest(), "Failed to parse manifest: {}");
-
-    manifest_t repo = manifest.GetRepo();
-    repo.source     = RepoSource::LocalPlugin;
-
-    TRY(ConfirmTrustDisclaimer());
-
-    if (repo.plugins.empty())
-        return Err("Looks like there are no plugins in archive '{}'", archive.filename().string());
-
-    std::vector<std::string> skipped_plugins;
-    for (const plugin_t& plugin : repo.plugins)
+    std::vector<std::string> failed;
+    bool                     checked_git = false;
+    // A copy: updating changes the state
+    const std::vector<manifest_t> repos = m_state_manager.GetAllRepos();
+    for (const manifest_t& repo : repos)
     {
-        if (is_platform_supported(plugin))
+        if (repo.source == RepoSource::LocalPlugin)
+        {
+            m_callbacks.on_info(
+                fmt::format("{} was installed from a folder or an archive: install it again to update it", repo.name));
             continue;
-        m_callbacks.on_warning(
-            fmt::format("Plugin '{}' doesn't support the platform '{}'. Skipping", plugin.name, OSHOT_PLATFORM));
-        skipped_plugins.push_back(plugin.name);
+        }
+
+        if (!checked_git)
+        {
+            TRY(CheckGit());
+            checked_git = true;
+        }
+
+        Result<> r = UpdateRepo(repo);
+        if (!r.ok())
+        {
+            m_callbacks.on_error(fmt::format("{}: {}", repo.name, r.error_v()));
+            failed.push_back(repo.name);
+        }
     }
 
-    TRY(m_state_manager.AddNewRepo(repo));
-
-    return FinalizeInstall(repo, skipped_plugins, is_update, /*built_from_source=*/false);
+    if (!failed.empty())
+        return Err("Failed to update: {}", fmt::join(failed, ", "));
+    return Ok();
 }
 
-Result<> PluginManager::Install(const std::string& source, bool is_update)
+Result<> PluginManager::Uninstall(const std::string& name)
 {
-    if (looks_like_git_url(source))
-        return AddPluginRepo(source, is_update);
+    // Plugin IDs always have a dot, repository names never do
+    if (name.find('.') != name.npos)
+    {
+        const std::optional<plugin_t> plugin = m_state_manager.FindPlugin(name);
+        if (!plugin)
+            return Err("No plugin with the ID '{}' is installed (see `oshotpm list`)", name);
 
-    const fs::path path(source);
-    if (fs::is_directory(path))
-        return BuildPlugins(path, is_update, WorkingDirOrigin::UserFolder);
-    if (Archiver::IsArchive(path))
-        return InstallPrebuilt(path, is_update);
+        RemovePluginDir(plugin->id);
+        m_state_manager.RemovePlugin(plugin->id);
 
-    return Err("'{}' is not a git URL, a local folder, or a recognized archive (.zip/.tgz/.txz)", source);
+        // The last plugin of its repository takes the repository with it
+        const std::optional<manifest_t> repo = m_state_manager.FindRepo(plugin->repository);
+        if (repo && repo->plugins.empty())
+        {
+            if (repo->source == RepoSource::GitRepository && Manifest::IsValidName(repo->name))
+                remove_tree(m_cache_path / repo->name);
+            m_state_manager.RemoveRepo(repo->name);
+        }
+
+        TRY(m_state_manager.SaveState());
+        m_callbacks.on_success(fmt::format("Uninstalled '{}'", plugin->id));
+        return Ok();
+    }
+
+    const std::optional<manifest_t> repo =
+        Manifest::IsValidName(name) ? m_state_manager.FindRepo(name) : std::optional<manifest_t>();
+    if (!repo)
+        return Err("No repository named '{}' is installed (see `oshotpm list`)", name);
+
+    for (const plugin_t& plugin : repo->plugins)
+        RemovePluginDir(plugin.id);
+    if (repo->source == RepoSource::GitRepository)
+        remove_tree(m_cache_path / repo->name);
+
+    m_state_manager.RemoveRepo(repo->name);
+    TRY(m_state_manager.SaveState());
+    m_callbacks.on_success(fmt::format("Uninstalled '{}' and its {} plugin(s)", repo->name, repo->plugins.size()));
+    return Ok();
+}
+
+Result<> PluginManager::SetEnabled(const std::string& name, bool enabled)
+{
+    std::string id = name;
+    if (const size_t slash = name.find('/'); slash != name.npos)
+    {
+        const std::optional<manifest_t> repo = m_state_manager.FindRepo(name.substr(0, slash));
+        if (!repo)
+            return Err("No repository named '{}' is installed", name.substr(0, slash));
+
+        const std::string plugin_name = name.substr(slash + 1);
+        auto              it          = std::ranges::find(repo->plugins, plugin_name, &plugin_t::name);
+        if (it == repo->plugins.end())
+            return Err("'{}' has no plugin named '{}'", repo->name, plugin_name);
+        id = it->id;
+    }
+
+    const std::optional<plugin_t> plugin = m_state_manager.FindPlugin(id);
+    if (!plugin)
+        return Err("No plugin with the ID '{}' is installed (see `oshotpm list`)", id);
+    if (plugin->enabled == enabled)
+    {
+        m_callbacks.on_info(fmt::format("'{}' is already {}", id, enabled ? "enabled" : "disabled"));
+        return Ok();
+    }
+
+    TRY(m_state_manager.SetEnabled(id, enabled));
+    TRY(m_state_manager.SaveState());
+    m_callbacks.on_success(fmt::format("{} '{}'", enabled ? "Enabled" : "Disabled", id));
+    return Ok();
 }

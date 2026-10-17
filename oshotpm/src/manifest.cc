@@ -26,39 +26,49 @@
 #include "manifest.hh"
 
 #include <algorithm>
-#include <cctype>
+#include <array>
 #include <filesystem>
 #include <vector>
 
-#include "tiny-process-library/process.hpp"
+#include "fmt/ranges.h"
 #include "util.hpp"
+
+static constexpr auto PLATFORMS = std::to_array<std::string_view>(
+    { "all", "linux", "macos", "windows", "freebsd", "openbsd", "netbsd", "dragonfly" });
 
 bool Manifest::IsValidName(const std::string_view name)
 {
-    return (!name.empty() || std::ranges::all_of(name, [](const unsigned char c) {
-        return (isalnum(c) || c == '-' || c == '_' || c == '=');
-    }));
+    return !name.empty() && name.size() <= 64 && std::ranges::all_of(name, [](const unsigned char c) {
+        return (std::isalnum(c) || c == '-' || c == '_' || c == '=');
+    });
 }
 
-// Taken from geode-sdk's ModMetadata::validateID()
-// But we allow multiple dots instead of one
+// Based on geode-sdk's ModMetadata::validateID(), but allows more than one dot
 bool Manifest::IsValidID(const std::string_view id)
 {
-    // IDs may not be empty nor exceed 64 characters
-    if (id.size() == 0 || id.size() > 64)
+    if (id.empty() || id.size() > 64)
+        return false;
+
+    const auto is_alnum = [](const char c) { return ('a' <= c && c <= 'z') || ('0' <= c && c <= '9'); };
+    if (!is_alnum(id.front()) || !is_alnum(id.back()) || id.find("..") != id.npos)
         return false;
 
     bool found_dot = false;
     for (const char c : id)
     {
-        if (!(('a' <= c && c <= 'z') || ('0' <= c && c <= '9') || (c == '-' || c == '_' || c == '.')))
+        if (!(is_alnum(c) || c == '-' || c == '_' || c == '.'))
             return false;
         if (c == '.')
             found_dot = true;
     }
 
-    // At least one dot required
     return found_dot;
+}
+
+bool Manifest::IsSupported(const plugin_t& plugin)
+{
+    return plugin.platforms.empty() || std::ranges::find(plugin.platforms, "all") != plugin.platforms.end() ||
+           std::ranges::find(plugin.platforms, OSHOT_PLATFORM) != plugin.platforms.end();
 }
 
 Manifest::Manifest(fs::path path) : m_path(std::move(path))
@@ -69,82 +79,95 @@ Result<> Manifest::ParseManifest()
     if (IsParsed())
         return Ok();
 
-    if (!fs::exists(m_path))
-        return Err("Path '{}' doesn't exist", m_path.string());
+    std::error_code ec;
+    if (!fs::exists(m_path, ec))
+        return Err("'{}' not found", m_path.string());
 
     TRY(m_toml.LoadFile(m_path.string()));
-    static std::string str_stderr;
 
-    m_repo.name = m_toml.GetValue<std::string>("repository.name", UNKNOWN);
-    m_repo.url  = m_toml.GetValue<std::string>("repository.url", "");
-    if (m_repo.name.empty() || m_repo.name == UNKNOWN)
-        return Err("Couldn't find manifest repository name");
+    m_repo.name = m_toml.GetValue<std::string>("repository.name", "", true);
+    m_repo.url  = m_toml.GetValue<std::string>("repository.url", "", true);
+    if (m_repo.name.empty())
+        return Err("The manifest has no [repository] name");
     if (!IsValidName(m_repo.name))
-        return Err(
-            "Manifest repository name '{}' is invalid. Only alphanumeric and '-', '_', '=' are allowed in the name",
-            m_repo.name);
-
-    // Only a git checkout (a repo cloned by AddPluginRepo, or a person's own
-    // git-tracked source folder) has a hash to read. A prebuilt release
-    // archive extraction, or a local folder that's just source code without
-    // git, legitimately has none: leave git_hash empty rather than failing
-    // the whole parse over it. Downstream, an empty git_hash is what tells
-    // UpdateRepos() there's nothing to `git pull`/`git ls-remote` here.
-    if (fs::exists(m_path.parent_path() / ".git"))
-    {
-        TinyProcessLib::Process proc(
-            fmt::format("git -C {} rev-parse HEAD", m_path.parent_path().string()),
-            "",
-            [&](const char* buf, size_t len) { m_repo.git_hash.assign(buf, len); },
-            [&](const char* buf, size_t len) { str_stderr.append(buf, len); });
-        if (proc.get_exit_status() != 0)
-            return Err("Failed to get manifest git repository hash: {}", str_stderr);
-        std::erase(m_repo.git_hash, '\n');
-    }
+        return Err("Repository name '{}' is invalid: use 1-64 letters, digits, '-', '_' or '='", m_repo.name);
 
     const auto& deps_all  = m_toml.GetValueArrayStr("dependencies.all", {});
     const auto& deps_plat = m_toml.GetValueArrayStr("dependencies." OSHOT_PLATFORM, {});
     m_repo.dependencies.insert(m_repo.dependencies.end(), deps_all.begin(), deps_all.end());
     m_repo.dependencies.insert(m_repo.dependencies.end(), deps_plat.begin(), deps_plat.end());
 
-    Result<> invalidated_err = Ok();
-    for (const auto& [name, _] : m_toml.GetTbl())
+    std::vector<std::string> errors;
+    for (const auto& [key, node] : m_toml.GetTbl())
     {
-        if (name.str() == "repository" || name.str() == "dependencies")
+        const std::string_view name = key.str();
+        if (name == "repository" || name == "dependencies")
             continue;
-
-        if (!IsValidName(name.str()))
+        if (!node.is_table())
         {
-            invalidated_err =
-                Err("Plugin '{}' has an invalid name. Only alphanumeric and '-', '_', '=' are allowed in the name",
-                    name.str());
+            errors.push_back(fmt::format("'{}' is not a table", name));
             continue;
         }
 
-        plugin_t plugin = GetPlugin(name);
-        if (!IsValidID(plugin.id))
+        Result<plugin_t> plugin = GetPlugin(name);
+        if (!plugin.ok())
         {
-            invalidated_err =
-                Err("Plugin '{}' has an invalid ID. Only alphanumeric and '-', '_', '=', '.' are allowed in the ID",
-                    plugin.id);
+            errors.push_back(plugin.error_v());
             continue;
         }
 
-        m_repo.plugins.emplace_back(std::move(plugin));
+        if (std::ranges::find(m_repo.plugins, plugin.get().id, &plugin_t::id) != m_repo.plugins.end())
+        {
+            errors.push_back(fmt::format("plugin ID '{}' is used twice", plugin.get().id));
+            continue;
+        }
+
+        m_repo.plugins.push_back(std::move(plugin.get()));
     }
 
-    return invalidated_err;
+    if (!errors.empty())
+        return Err("Invalid {}:\n  {}", MANIFEST_NAME, fmt::join(errors, "\n  "));
+    if (m_repo.plugins.empty())
+        return Err("{} doesn't declare any plugin", MANIFEST_NAME);
+
+    m_is_parsed = true;
+    return Ok();
 }
 
-plugin_t Manifest::GetPlugin(const std::string_view name) const
+Result<plugin_t> Manifest::GetPlugin(const std::string_view name) const
 {
-    return { .name        = std::string(name),
-             .id          = m_toml.GetValueFromTable<std::string>(name, "id", UNKNOWN),
-             .description = m_toml.GetValueFromTable<std::string>(name, "description", UNKNOWN),
-             .output_dir  = m_toml.GetValueFromTable<std::string>(name, "output-dir", UNKNOWN),
-             .licenses    = m_toml.GetValueArrayStr(name, "licenses", {}),
-             .library     = {},  // MUST be populated only in StateManager
-             .authors     = m_toml.GetValueArrayStr(name, "authors", {}),
-             .build_steps = m_toml.GetValueArrayStr(name, "build-steps", {}),
-             .platforms   = m_toml.GetValueArrayStr(name, "platforms", {}) };
+    if (!IsValidName(name))
+        return Err("plugin name '{}' is invalid: use 1-64 letters, digits, '-', '_' or '='", name);
+
+    const toml::table& tbl = *m_toml.GetTbl()[name].as_table();
+    const TomlAPI      api(tbl);
+
+    plugin_t plugin;
+    plugin.name        = std::string(name);
+    plugin.id          = tbl["id"].value_or(std::string());
+    plugin.description = tbl["description"].value_or(std::string());
+    plugin.output_dir  = tbl["output-dir"].value_or(std::string());
+    plugin.licenses    = api.GetValueArrayStr("licenses", {});
+    plugin.authors     = api.GetValueArrayStr("authors", {});
+    plugin.platforms   = api.GetValueArrayStr("platforms", {});
+    plugin.build_steps = api.GetValueArrayStr("build-steps-" OSHOT_PLATFORM, api.GetValueArrayStr("build-steps", {}));
+
+    if (const toml::table* prebuilt = tbl["prebuilt"].as_table())
+        for (const auto& [target, path] : *prebuilt)
+            if (const auto* str = path.as_string())
+                plugin.prebuilt.emplace(target.str(), str->get());
+
+    if (!IsValidID(plugin.id))
+        return Err(
+            "plugin '{}' has an invalid ID '{}': use lowercase letters, digits, '-', '_' and at least one "
+            "'.', like \"io.github.user.plugin\"",
+            name,
+            plugin.id);
+
+    for (const std::string& platform : plugin.platforms)
+        if (std::ranges::find(PLATFORMS, platform) == PLATFORMS.end())
+            return Err(
+                "plugin '{}' lists the unknown platform '{}' (known: {})", name, platform, fmt::join(PLATFORMS, ", "));
+
+    return Ok(std::move(plugin));
 }
