@@ -99,28 +99,9 @@ inline rgba_t blend(rgba_t src, rgba_t dst)
                    uint8_t(float(src.a + dst.a) * ia) };
 }
 
-static constexpr bool is_annotation_tool(ToolType t)
-{
-    return idx(t) > idx(ToolType::kNone) && idx(t) <= idx(ToolType::Pencil);
-};
-
-static bool get_filtered_filenames(const std::string&                                 dir,
-                                   std::vector<std::string>&                          list,
-                                   const std::function<bool(const fs::path&)>&        filter,
-                                   const std::function<std::string(const fs::path&)>& value_push)
-{
-    if (!fs::exists(dir))
-        return false;
-
-    for (const auto& entry : fs::recursive_directory_iterator(
-             dir, fs::directory_options::follow_directory_symlink | fs::directory_options::skip_permission_denied))
-    {
-        if (filter(entry.path()))
-            list.emplace_back(value_push(entry.path()));
-    }
-
-    return true;
-}
+// ------------------------------
+// Helpers
+// ------------------------------
 
 // https://github.com/pthom/imgui/blob/808272622f52d2f36124629c29994d2a5a7eb2f2/imgui_demo.cpp#L273
 // A little (?) mark which shows a tooltip when hovered
@@ -134,89 +115,6 @@ static void HelpMarker(const char* desc)
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
     }
-}
-
-#if OSHOT_HAS_GLOBAL_HOTKEY
-// Button that records the next key combination into `hotkey_str`
-static void draw_hotkey_recorder(std::string& hotkey_str, bool window_just_opened)
-{
-    static bool recording = false;
-    if (window_just_opened)
-        recording = false;
-
-    const ImGuiIO& io = ImGui::GetIO();
-
-    ImGui::Text("Global capture hotkey");
-    ImGui::SameLine();
-    HelpMarker(
-        "System-wide shortcut that starts a capture while oshot is running in the tray.\n"
-        "Click the button, then press the key combination. Click it again to cancel.");
-
-    const std::string& label = recording ? "Press keys..." : (hotkey_str.empty() ? "Not set" : hotkey_str);
-    if (ImGui::Button(fmt::format("{}##config_hotkey", label).c_str(), ImVec2(ImGui::GetFontSize() * 12, 0)))
-        recording = !recording;
-
-    ImGui::SameLine();
-    ImGui::BeginDisabled(hotkey_str.empty());
-    if (ImGui::Button("Clear##config_hotkey_clear"))
-    {
-        hotkey_str.clear();
-        recording = false;
-    }
-    ImGui::EndDisabled();
-
-    bool missing_mod = false;
-    if (recording)
-    {
-        for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; ++k)
-        {
-            const auto key = toe<ImGuiKey>(k);
-            if (!hotkey::is_supported_key(key) || !ImGui::IsKeyDown(key))
-                continue;
-
-            // ImGui swaps Cmd and Ctrl on macOS, undo it to get the physical keys
-            const bool       swapped = io.ConfigMacOSXBehaviors;
-            hotkey::hotkey_t hk{ .mods = hotkey::Mod::kNone, .key = key };
-            if (swapped ? io.KeySuper : io.KeyCtrl)
-                hk.mods |= hotkey::Mod::Ctrl;
-            if (swapped ? io.KeyCtrl : io.KeySuper)
-                hk.mods |= hotkey::Mod::Super;
-            if (io.KeyShift)
-                hk.mods |= hotkey::Mod::Shift;
-            if (io.KeyAlt)
-                hk.mods |= hotkey::Mod::Alt;
-
-            // A bare letter/digit/etc. would swallow normal typing system-wide
-            const bool standalone_ok = (key >= ImGuiKey_F1 && key <= ImGuiKey_F12) || key == ImGuiKey_PrintScreen ||
-                                       key == ImGuiKey_Pause || key == ImGuiKey_Insert;
-            if (hk.mods == hotkey::Mod::kNone && !standalone_ok)
-            {
-                missing_mod = true;
-                continue;
-            }
-
-            hotkey_str = hotkey::to_string(hk);
-            recording  = false;
-            break;
-        }
-    }
-
-    if (missing_mod)
-        ImGui::TextDisabled("Hold Ctrl, Shift, Alt or %s too", OSHOT_MACOS ? "Cmd" : "Win");
-    else if (!hotkey::status().empty())
-        ImGui::TextDisabled("%s", hotkey::status().c_str());
-    else
-        ImGui::TextDisabled("Applied by the tray instance (oshot --tray, or started at sign-in)");
-}
-#endif
-
-// How many buttons of size `btn` separated by `spacing` fit in `length` px:
-// n * btn + (n - 1) * spacing <= length
-static size_t fit_count(float length, float btn, float spacing)
-{
-    if (length < btn)
-        return 0;
-    return static_cast<size_t>((length + spacing) / (btn + spacing));
 }
 
 template <size_t N>
@@ -301,57 +199,6 @@ static void draw_input_text_folder(const char*                  label,
     draw_input_text_path<0>(label, input_id, false, {}, if_edited, path, flags);
 }
 
-static HandleHovered flip_handle_x(HandleHovered handle)
-{
-    switch (handle)
-    {
-        case HandleHovered::TopLeft:     return HandleHovered::TopRight;
-        case HandleHovered::TopRight:    return HandleHovered::TopLeft;
-        case HandleHovered::BottomLeft:  return HandleHovered::BottomRight;
-        case HandleHovered::BottomRight: return HandleHovered::BottomLeft;
-        case HandleHovered::Left:        return HandleHovered::Right;
-        case HandleHovered::Right:       return HandleHovered::Left;
-        default:                         return handle;
-    }
-}
-
-static HandleHovered flip_handle_y(HandleHovered handle)
-{
-    switch (handle)
-    {
-        case HandleHovered::TopLeft:     return HandleHovered::BottomLeft;
-        case HandleHovered::TopRight:    return HandleHovered::BottomRight;
-        case HandleHovered::BottomLeft:  return HandleHovered::TopLeft;
-        case HandleHovered::BottomRight: return HandleHovered::TopRight;
-        case HandleHovered::Top:         return HandleHovered::Bottom;
-        case HandleHovered::Bottom:      return HandleHovered::Top;
-        default:                         return handle;
-    }
-}
-
-static bool ui_blocks_selection()
-{
-    static ImGuiWindow* overlay_window = nullptr;
-
-    ImGuiContext* ctx = ImGui::GetCurrentContext();
-    if (!ctx)
-        return false;
-
-    if (!overlay_window)
-        overlay_window = ImGui::FindWindowByName("Screenshot Tool");
-
-    ImGuiWindow* hovered = ctx->HoveredWindow;
-    if (!hovered || !overlay_window)
-        return false;
-
-    // Allow selection when hovering the overlay window itself
-    if (hovered->RootWindow == overlay_window)
-        return false;
-
-    // Anything else (Text tools, menu popups, etc.) blocks starting selection
-    return true;
-}
-
 static bool create_timed_button(const std::string_view label1,
                                 const std::string_view label2,
                                 bool&                  armed,  // caller controls arming
@@ -371,16 +218,6 @@ static bool create_timed_button(const std::string_view label1,
     return false;
 }
 
-static std::unordered_map<std::string, int>& color_name_map()
-{
-    static std::unordered_map<std::string, int> map;
-    if (map.empty())
-        for (int i = 0; i < ImGuiCol_COUNT; ++i)
-            map[ImGui::GetStyleColorName(i)] = i;
-
-    return map;
-}
-
 // ImGuiCond_Appearing, plus again whenever the display size changes: on Wayland
 // the overlay only becomes fullscreen after its first frame has been drawn
 static ImGuiCond center_cond(ImVec2& last_display)
@@ -390,6 +227,16 @@ static ImGuiCond center_cond(ImVec2& last_display)
         return ImGuiCond_Appearing;
     last_display = display;
     return ImGuiCond_Always;
+}
+
+static std::unordered_map<std::string, int>& color_name_map()
+{
+    static std::unordered_map<std::string, int> map;
+    if (map.empty())
+        for (int i = 0; i < ImGuiCol_COUNT; ++i)
+            map[ImGui::GetStyleColorName(i)] = i;
+
+    return map;
 }
 
 void apply_imgui_theme()
@@ -424,6 +271,10 @@ void apply_imgui_theme()
     if (ov.frame_border >= 0.f)
         style.FrameBorderSize = ov.frame_border;
 }
+
+// ------------------------------
+// Lifecycle
+// ------------------------------
 
 Result<> ScreenshotTool::Start()
 {
@@ -717,119 +568,369 @@ void ScreenshotTool::RenderOverlay()
         Cancel();
 }
 
-void ScreenshotTool::NormalizeSelection(selection_info_t& sel)
+void ScreenshotTool::Cancel()
 {
-    if (sel.selection.start.x > sel.selection.end.x)
-        std::swap(sel.selection.start.x, sel.selection.end.x);
-    if (sel.selection.start.y > sel.selection.end.y)
-        std::swap(sel.selection.start.y, sel.selection.end.y);
+    m_state = ToolState::Idle;
+
+    auto delete_texture = [](ImTextureRef& tex) {
+#if OSHOT_MACOS
+        tex = ImTextureRef{};
+#else
+        if (tex._TexID)
+        {
+            auto texture = GLuint(intptr_t(tex._TexID));
+            glDeleteTextures(1, &texture);
+            tex = ImTextureRef{};
+        }
+#endif
+    };
+
+    delete_texture(m_texture_id);
+    for (auto& tex : m_tool_textures)
+        delete_texture(tex);
+
+    // Only our references: the fonts stay in ImGui's atlas
+    m_font_cache.clear();
+
+    if (m_on_cancel)
+        m_on_cancel();
 }
 
-void ScreenshotTool::HandleShortcutsInput()
+bool ScreenshotTool::OpenImage(const std::string& path)
 {
-    if (ImGui::Shortcut(ImGuiKey_E | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
-    {
-        g_config->File.allow_out_edit = !g_config->File.allow_out_edit;
-        ImGui::ClearActiveID();
-    }
+    Result<capture_result_t> cap = load_image_rgba(path);
+    MUST_OK(cap, {
+        error("Failed to load image: {}", cap.error_v());
+        return false;
+    });
 
-    if (ImGui::Shortcut(ImGuiKey_A | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
-    {
-        m_main_sel.selection.start = point_t{ .x = m_image_origin.x, .y = m_image_origin.y };
-        m_main_sel.selection.end   = point_t{ .x = m_image_end.x, .y = m_image_end.y };
-        m_state                    = ToolState::Selected;
-    }
+    m_screenshot = std::move(cap.get());
+    fit_to_screen(m_screenshot);
 
-    if (ImGui::Shortcut(ImGuiKey_Z | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal) && !m_annotations.empty())
-        m_annotations.pop_back();
+#if OSHOT_MACOS
+    // Tell backend to recreate Metal texture
+    if (m_on_image_reload)
+        m_on_image_reload(m_screenshot);
+#else
 
-    if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
-        g_config->Runtime.enable_handles = !g_config->Runtime.enable_handles;
+    // Recreate texture (CreateTexture() already deletes the old ones)
+    const Result<ImTextureRef>& r =
+        CreateTexture(m_texture_id._TexID, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
+    MUST_OK(r, {
+        error("Failed to create openGL texture: {}", r.error_v());
+        return false;
+    });
 
-    if (ImGui::Shortcut(ImGuiKey_S | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
-        RequestComplete(SavingOp::File);
+    m_texture_id = r.get();
+#endif
 
-    if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl | (g_config->File.ctrl_c_copy_img ? 0 : ImGuiMod_Shift),
-                        ImGuiInputFlags_RouteGlobal) &&
-        !ui_blocks_selection())
-        RequestComplete(SavingOp::Clipboard);
+    // Reset interactions
+    m_state                    = ToolState::Selecting;
+    m_current_tool             = ToolType::kNone;
+    m_main_sel.handle_hover    = HandleHovered::kNone;
+    m_main_sel.dragging_handle = HandleHovered::kNone;
+    m_input_owner              = InputOwner::kNone;
+
+    m_main_sel.selection            = {};
+    m_main_sel.drag_start_selection = {};
+    m_main_sel.drag_start_mouse     = {};
+    m_image_origin                  = {};
+    m_image_end                     = {};
+
+    return true;
 }
 
-void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
+Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const monitor_t& target, int transform)
 {
-    // Only block new interactions. Never block an ongoing drag/resize.
-    if ((m_input_owner != sel.main_input_owner && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-         ui_blocks_selection()) ||
-        m_current_tool != ToolType::kNone)
+    const capture_result_t&  full    = m_uncropped.data.empty() ? m_screenshot : m_uncropped;
+    Result<capture_result_t> cropped = crop_to_monitor(full, layout, target.geo);
+    TRY_MSG(cropped, "Failed to crop capture to focused monitor: {}");
+
+    m_screenshot = std::move(cropped.get());
+    m_uncropped  = {};
+
+    spdlog::debug("target.transform = {}", target.transform);
+    if (transform >= 1 && transform <= 3)
+        m_screenshot = rotate_rgba(m_screenshot, 4 - transform);  // swap 1 (90) and 3 (270)
+    fit_to_screen(m_screenshot);
+
+    const Result<ImTextureRef>& r =
+        CreateTexture(m_texture_id._TexID, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
+    TRY_MSG(r, "Failed to recreate texture after crop: {}");
+    m_texture_id = r.get();
+
+    UpdateWindowBg();  // re-center for the new size
+
+    return Ok();
+}
+
+// ------------------------------
+// Frame read-back
+// ------------------------------
+
+void ScreenshotTool::OnCleanFrame()
+{
+    const capture_result_t& img = m_read_pixels ? m_read_pixels(GetActiveRegion()) : GetFinalImage();
+
+    const ScanType scan = std::exchange(m_pending_scan, ScanType::kNone);
+    if (scan == ScanType::Ocr)
+        RunOcr(img);
+    else if (scan == ScanType::Barcode)
+        RunBarcodeScan(img);
+
+    const SavingOp op = std::exchange(m_completed_op, SavingOp::kNone);
+    if (op != SavingOp::kNone && m_on_complete)
+        m_on_complete(op, img, g_config->File.image_out_type.second);
+}
+
+// ------------------------------
+// Getters
+// ------------------------------
+
+capture_result_t ScreenshotTool::GetFinalImage()
+{
+    UpdateWindowBg();
+
+    const region_t& region = GetActiveRegion();
+
+    capture_result_t result;
+    result.w = region.w;
+    result.h = region.h;
+    result.data.resize(size_t(region.w) * region.h * 4);
+
+    const int src_width = m_screenshot.w;
+    const int dst_width = region.w;
+
+    // The part of the region inside the screenshot
+    const int start_y = std::max(0, -region.y);
+    const int end_y   = std::min(region.h, m_screenshot.h - region.y);
+    const int start_x = std::max(0, -region.x);
+    const int end_x   = std::min(region.w, m_screenshot.w - region.x);
+
+    int width = end_x - start_x;
+
+    // Copy only the valid region
+    const size_t bytes_to_copy = (width > 0) ? size_t(width) * 4 : 0;
+
+    if (bytes_to_copy > 0)
     {
-        m_input_owner = InputOwner::Tools;
-        return;
-    }
-
-    const ImVec2& mouse_pos = ImGui::GetMousePos();
-    const float   sel_x     = sel.selection.get_x();
-    const float   sel_y     = sel.selection.get_y();
-    const float   sel_w     = sel.selection.get_width();
-    const float   sel_h     = sel.selection.get_height();
-    const ImRect  selection_rect(ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h));
-
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && m_input_owner != sel.main_input_owner)
-    {
-        m_input_owner = sel.main_input_owner;
-
-        // Check if we're starting to resize from a handle
-        if (sel.handle_hover != HandleHovered::kNone)
+        for (int y = start_y; y < end_y; ++y)
         {
-            // HandleResizeInput() expects start <= end, except for Line/Arrow,
-            // where the order is the direction
-            if (!sel.preserve_direction)
-                NormalizeSelection(sel);
-            sel.dragging_handle      = sel.handle_hover;
-            sel.drag_start_mouse     = mouse_pos;
-            sel.drag_start_selection = sel.selection;
-            m_state                  = sel.resizing_state;
-        }
-        // Check if we're clicking inside the selection to move it
-        else if (selection_rect.Contains(mouse_pos))
-        {
-            if (!sel.preserve_direction)
-                NormalizeSelection(sel);
-            sel.dragging_handle      = HandleHovered::Move;
-            sel.drag_start_mouse     = mouse_pos;
-            sel.drag_start_selection = sel.selection;
-            m_state                  = sel.resizing_state;
-        }
-        // Start new selection if not an annotation one
-        else if (!sel.is_ann)
-        {
-            sel.selection.start = { .x = mouse_pos.x, .y = mouse_pos.y };
-            sel.selection.end   = sel.selection.start;
-            m_state             = ToolState::Selecting;
+            const int    src_y         = region.y + y;
+            const size_t src_row_start = (size_t(src_y) * src_width + (region.x + start_x)) * 4;
+            const size_t dst_row_start = (size_t(y) * dst_width + start_x) * 4;
+
+            std::memcpy(result.data.data() + dst_row_start, m_screenshot.view().data() + src_row_start, bytes_to_copy);
         }
     }
 
-    if (m_input_owner == sel.main_input_owner && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+    return result;
+}
+
+region_t ScreenshotTool::GetActiveRegion() const
+{
+    bool has_selection = m_main_sel.selection.get_width() > 0 && m_main_sel.selection.get_height() > 0;
+
+    if (!has_selection)
     {
-        if (m_state == sel.resizing_state)
-            HandleResizeInput(sel);
-        else  // ToolState::Selecting
-            sel.selection.end = { .x = mouse_pos.x, .y = mouse_pos.y };
+        // Full screenshot (visible area)
+        return region_t{ .x = 0, .y = 0, .w = m_screenshot.w, .h = m_screenshot.h };
     }
 
-    if (m_input_owner == sel.main_input_owner && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+    const auto  img_w = float(m_screenshot.w);
+    const auto  img_h = float(m_screenshot.h);
+    const auto& s     = m_main_sel.selection;
+    const float k     = m_image_scale;  // screen units -> screenshot pixels
+
+    const int x0 = int(std::round(std::clamp((s.get_x() - m_image_origin.x) * k, 0.0f, img_w)));
+    const int y0 = int(std::round(std::clamp((s.get_y() - m_image_origin.y) * k, 0.0f, img_h)));
+    const int x1 = int(std::round(std::clamp((s.get_x() + s.get_width() - m_image_origin.x) * k, 0.0f, img_w)));
+    const int y1 = int(std::round(std::clamp((s.get_y() + s.get_height() - m_image_origin.y) * k, 0.0f, img_h)));
+
+    return region_t{ .x = x0, .y = y0, .w = x1 - x0, .h = y1 - y0 };
+}
+
+// ------------------------------
+// Textures, fonts and style
+// ------------------------------
+
+Result<ImTextureRef> ScreenshotTool::CreateTexture(ImTextureID tex, std::span<const uint8_t> data, int w, int h)
+{
+#if OSHOT_MACOS
+    // Metal backend handles textures separately
+    return Ok(ImTextureRef{});
+#else
+    if (tex)
     {
-        sel.dragging_handle = HandleHovered::kNone;
-        m_input_owner       = InputOwner::kNone;
-
-        if (sel.is_ann || (sel.selection.get_width() > 10 && sel.selection.get_height() > 10))
-            m_state = sel.idle_state;
-
-        if (!sel.preserve_direction)
-            NormalizeSelection(sel);
-
-        if (!sel.is_ann)
-            UpdateAnnsToolbarPos();
+        const auto old_texture = static_cast<GLuint>(tex);
+        glDeleteTextures(1, &old_texture);
     }
+
+    GLuint texture;
+    glGenTextures(1, &texture);
+
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data.data());
+
+    ImTextureRef ref;
+    ref._TexID = static_cast<ImTextureID>(texture);
+
+    return Ok(ref);
+#endif
+}
+
+ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const float font_size)
+{
+    ImFont* font = GetCachedFont(font_path, font_size);
+    if (font)
+    {
+        ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
+        return font;
+    }
+
+    font = ImGui::GetIO().Fonts->AddFontFromFileTTF(
+        font_path.c_str(), font_size, nullptr, ImGui::GetIO().Fonts->GetGlyphRangesDefault());
+
+    const float safe_size = std::max(font_size, 16.0f);
+    std::pair   key(font_path, safe_size);
+    m_font_cache[key] = { .font_path = font_path, .font = font, .loaded = true };
+    if (font)
+        ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
+
+    return font;
+}
+
+ImFont* ScreenshotTool::GetCachedFont(const std::string& font_path, const float font_size) const
+{
+    if (font_path.empty())
+        return ImGui::GetDefaultFont();
+
+    const float safe_size = std::max(font_size, 16.0f);
+    std::pair   key(font_path, safe_size);
+    auto        it = m_font_cache.find(key);
+    if (it != m_font_cache.end())
+        return it->second.font;
+
+    return nullptr;
+}
+
+void ScreenshotTool::StyleDefaultColor()
+{
+    // clang-format off
+    static const std::unordered_map<ImGuiCol, rgba_t> theme_colors = {
+        { ImGuiCol_Text,          0xDCDDE1FF_rgba },
+        { ImGuiCol_TextDisabled,  0x666870FF_rgba },
+        { ImGuiCol_WindowBg,      0x0D1015FF_rgba },
+        { ImGuiCol_ChildBg,       0x0D1015FF_rgba },
+        { ImGuiCol_PopupBg,       0x10131AFF_rgba },
+
+        { ImGuiCol_Border,        0x242933FF_rgba },
+
+        { ImGuiCol_TitleBg,       0x090B0FFF_rgba },
+        { ImGuiCol_TitleBgActive, 0x5274F0FF_rgba },
+
+        { ImGuiCol_FrameBg,       0x151920FF_rgba },
+        { ImGuiCol_FrameBgHovered,0x202630FF_rgba },
+        { ImGuiCol_FrameBgActive, 0x29313EFF_rgba },
+
+        { ImGuiCol_Button,        0x294CC7FF_rgba },
+        { ImGuiCol_ButtonHovered, 0x385DE0FF_rgba },
+        { ImGuiCol_ButtonActive,  0x203CA6FF_rgba },
+
+        { ImGuiCol_Header,        0x1A1F28FF_rgba },
+        { ImGuiCol_HeaderHovered, 0x252C38FF_rgba },
+        { ImGuiCol_HeaderActive,  0x303946FF_rgba },
+
+        { ImGuiCol_Tab,           0x10141BFF_rgba },
+        { ImGuiCol_TabHovered,    0x252E42FF_rgba },
+        { ImGuiCol_TabSelected,   0x294CC7FF_rgba },
+
+        { ImGuiCol_SliderGrab,    0x294CC7FF_rgba },
+        { ImGuiCol_SliderGrabActive, 0x5274F0FF_rgba },
+
+        { ImGuiCol_ScrollbarBg,   0x07090CFF_rgba },
+        { ImGuiCol_ScrollbarGrab, 0x2A303AFF_rgba },
+
+        { ImGuiCol_CheckMark,     0x5274F0FF_rgba },
+        { ImGuiCol_MenuBarBg,     0x090B0FFF_rgba },
+        { ImGuiCol_PlotHistogram, 0x5274F0FF_rgba },
+    };
+    // clang-format on
+
+    ImGui::StyleColorsDark();
+
+    auto& style = ImGui::GetStyle();
+
+    style.WindowRounding = 4.0f;
+    style.FrameRounding  = 4.0f;
+    style.GrabRounding   = 1.5f;
+    style.TabRounding    = 2.0f;
+
+    style.WindowBorderSize = 1.0f;
+    style.FrameBorderSize  = 0.0f;
+
+    for (const auto& [color, rgba] : theme_colors)
+        style.Colors[color] = rgba;
+}
+
+// ------------------------------
+// Input
+// ------------------------------
+
+static HandleHovered flip_handle_x(HandleHovered handle)
+{
+    switch (handle)
+    {
+        case HandleHovered::TopLeft:     return HandleHovered::TopRight;
+        case HandleHovered::TopRight:    return HandleHovered::TopLeft;
+        case HandleHovered::BottomLeft:  return HandleHovered::BottomRight;
+        case HandleHovered::BottomRight: return HandleHovered::BottomLeft;
+        case HandleHovered::Left:        return HandleHovered::Right;
+        case HandleHovered::Right:       return HandleHovered::Left;
+        default:                         return handle;
+    }
+}
+
+static HandleHovered flip_handle_y(HandleHovered handle)
+{
+    switch (handle)
+    {
+        case HandleHovered::TopLeft:     return HandleHovered::BottomLeft;
+        case HandleHovered::TopRight:    return HandleHovered::BottomRight;
+        case HandleHovered::BottomLeft:  return HandleHovered::TopLeft;
+        case HandleHovered::BottomRight: return HandleHovered::TopRight;
+        case HandleHovered::Top:         return HandleHovered::Bottom;
+        case HandleHovered::Bottom:      return HandleHovered::Top;
+        default:                         return handle;
+    }
+}
+
+static bool ui_blocks_selection()
+{
+    static ImGuiWindow* overlay_window = nullptr;
+
+    ImGuiContext* ctx = ImGui::GetCurrentContext();
+    if (!ctx)
+        return false;
+
+    if (!overlay_window)
+        overlay_window = ImGui::FindWindowByName("Screenshot Tool");
+
+    ImGuiWindow* hovered = ctx->HoveredWindow;
+    if (!hovered || !overlay_window)
+        return false;
+
+    // Allow selection when hovering the overlay window itself
+    if (hovered->RootWindow == overlay_window)
+        return false;
+
+    // Anything else (Text tools, menu popups, etc.) blocks starting selection
+    return true;
 }
 
 bool ScreenshotTool::HandleAnnotationSelectionInput()
@@ -985,6 +1086,113 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
     }
 
     return false;
+}
+
+void ScreenshotTool::HandleShortcutsInput()
+{
+    if (ImGui::Shortcut(ImGuiKey_E | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
+    {
+        g_config->File.allow_out_edit = !g_config->File.allow_out_edit;
+        ImGui::ClearActiveID();
+    }
+
+    if (ImGui::Shortcut(ImGuiKey_A | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
+    {
+        m_main_sel.selection.start = point_t{ .x = m_image_origin.x, .y = m_image_origin.y };
+        m_main_sel.selection.end   = point_t{ .x = m_image_end.x, .y = m_image_end.y };
+        m_state                    = ToolState::Selected;
+    }
+
+    if (ImGui::Shortcut(ImGuiKey_Z | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal) && !m_annotations.empty())
+        m_annotations.pop_back();
+
+    if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
+        g_config->Runtime.enable_handles = !g_config->Runtime.enable_handles;
+
+    if (ImGui::Shortcut(ImGuiKey_S | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
+        RequestComplete(SavingOp::File);
+
+    if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl | (g_config->File.ctrl_c_copy_img ? 0 : ImGuiMod_Shift),
+                        ImGuiInputFlags_RouteGlobal) &&
+        !ui_blocks_selection())
+        RequestComplete(SavingOp::Clipboard);
+}
+
+void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
+{
+    // Only block new interactions. Never block an ongoing drag/resize.
+    if ((m_input_owner != sel.main_input_owner && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+         ui_blocks_selection()) ||
+        m_current_tool != ToolType::kNone)
+    {
+        m_input_owner = InputOwner::Tools;
+        return;
+    }
+
+    const ImVec2& mouse_pos = ImGui::GetMousePos();
+    const float   sel_x     = sel.selection.get_x();
+    const float   sel_y     = sel.selection.get_y();
+    const float   sel_w     = sel.selection.get_width();
+    const float   sel_h     = sel.selection.get_height();
+    const ImRect  selection_rect(ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h));
+
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && m_input_owner != sel.main_input_owner)
+    {
+        m_input_owner = sel.main_input_owner;
+
+        // Check if we're starting to resize from a handle
+        if (sel.handle_hover != HandleHovered::kNone)
+        {
+            // HandleResizeInput() expects start <= end, except for Line/Arrow,
+            // where the order is the direction
+            if (!sel.preserve_direction)
+                NormalizeSelection(sel);
+            sel.dragging_handle      = sel.handle_hover;
+            sel.drag_start_mouse     = mouse_pos;
+            sel.drag_start_selection = sel.selection;
+            m_state                  = sel.resizing_state;
+        }
+        // Check if we're clicking inside the selection to move it
+        else if (selection_rect.Contains(mouse_pos))
+        {
+            if (!sel.preserve_direction)
+                NormalizeSelection(sel);
+            sel.dragging_handle      = HandleHovered::Move;
+            sel.drag_start_mouse     = mouse_pos;
+            sel.drag_start_selection = sel.selection;
+            m_state                  = sel.resizing_state;
+        }
+        // Start new selection if not an annotation one
+        else if (!sel.is_ann)
+        {
+            sel.selection.start = { .x = mouse_pos.x, .y = mouse_pos.y };
+            sel.selection.end   = sel.selection.start;
+            m_state             = ToolState::Selecting;
+        }
+    }
+
+    if (m_input_owner == sel.main_input_owner && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+    {
+        if (m_state == sel.resizing_state)
+            HandleResizeInput(sel);
+        else  // ToolState::Selecting
+            sel.selection.end = { .x = mouse_pos.x, .y = mouse_pos.y };
+    }
+
+    if (m_input_owner == sel.main_input_owner && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+    {
+        sel.dragging_handle = HandleHovered::kNone;
+        m_input_owner       = InputOwner::kNone;
+
+        if (sel.is_ann || (sel.selection.get_width() > 10 && sel.selection.get_height() > 10))
+            m_state = sel.idle_state;
+
+        if (!sel.preserve_direction)
+            NormalizeSelection(sel);
+
+        if (!sel.is_ann)
+            UpdateAnnsToolbarPos();
+    }
 }
 
 void ScreenshotTool::HandleResizeInput(selection_info_t& sel)
@@ -1329,6 +1537,154 @@ void ScreenshotTool::HandleColorPickerInput()
     }
 }
 
+// ------------------------------
+// State updates
+// ------------------------------
+
+// How many buttons of size `btn` separated by `spacing` fit in `length` px:
+// n * btn + (n - 1) * spacing <= length
+static size_t fit_count(float length, float btn, float spacing)
+{
+    if (length < btn)
+        return 0;
+    return static_cast<size_t>((length + spacing) / (btn + spacing));
+}
+
+static bool get_filtered_filenames(const std::string&                                 dir,
+                                   std::vector<std::string>&                          list,
+                                   const std::function<bool(const fs::path&)>&        filter,
+                                   const std::function<std::string(const fs::path&)>& value_push)
+{
+    if (!fs::exists(dir))
+        return false;
+
+    for (const auto& entry : fs::recursive_directory_iterator(
+             dir, fs::directory_options::follow_directory_symlink | fs::directory_options::skip_permission_denied))
+    {
+        if (filter(entry.path()))
+            list.emplace_back(value_push(entry.path()));
+    }
+
+    return true;
+}
+
+void ScreenshotTool::UpdateWindowBg()
+{
+    // Calculate where the screenshot will be drawn (centered)
+    // clang-format off
+    auto* vp = ImGui::GetMainViewport();
+    m_image_scale = m_full_res_image ? std::max(1.0f, ImGui::GetIO().DisplayFramebufferScale.x) : 1.0f;
+    ImVec2 image_size(
+        float(m_screenshot.w) / m_image_scale,
+        float(m_screenshot.h) / m_image_scale
+    );
+
+    m_image_origin = ImVec2(
+        vp->Pos.x + std::floor((vp->Size.x - image_size.x) * 0.5f),
+        vp->Pos.y + std::floor((vp->Size.y - image_size.y) * 0.5f)
+    );
+
+    m_image_end = ImVec2(
+        m_image_origin.x + image_size.x,
+        m_image_origin.y + image_size.y
+    );
+    // clang-format on
+}
+
+void ScreenshotTool::UpdateAnnsToolbarPos()
+{
+    m_fill_tools_complete = false;
+
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const ImVec2      btn   = GetToolButtonSize();
+
+    const float sel_w = m_main_sel.selection.get_width();
+    const float sel_h = m_main_sel.selection.get_height();
+
+    // Tools that never draw a button must not take a slot
+    auto has_button = [](ToolType t) { return t != ToolType::kNone && t != ToolType::COUNT && t != ToolType::Logo; };
+
+    const size_t end  = idx(ToolType::COUNT) - 1;
+    size_t       next = idx(ToolType::kNone) + 1;
+
+    ToolType last_tool;
+    for (size_t i = 0; i < m_tools_borders.size(); ++i)
+    {
+        std::vector<ToolType>& tools = m_tools_borders[i];
+        tools.clear();
+
+        const bool   is_side = i % 2 != 0;  // Bottom/Top = horizontal, Right/Left = vertical
+        const size_t capacity =
+            is_side ? fit_count(sel_h, btn.y, style.ItemSpacing.y) : fit_count(sel_w, btn.x, style.ItemSpacing.x);
+
+        for (; next < end && tools.size() < capacity; ++next)
+        {
+            last_tool = toe<ToolType>(next);
+            if (has_button(last_tool))
+                tools.emplace_back(last_tool);
+        }
+    }
+
+    if (last_tool == ToolType::SaveImage)  // NOTE: Update if modifying enum class ToolType
+        m_fill_tools_complete = true;
+}
+
+void ScreenshotTool::NormalizeSelection(selection_info_t& sel)
+{
+    if (sel.selection.start.x > sel.selection.end.x)
+        std::swap(sel.selection.start.x, sel.selection.end.x);
+    if (sel.selection.start.y > sel.selection.end.y)
+        std::swap(sel.selection.start.y, sel.selection.end.y);
+}
+
+void ScreenshotTool::SyncRuntimeFromConfig()
+{
+    m_inputs.ocr_path  = g_config->File.ocr_path;
+    m_inputs.ocr_model = g_config->File.ocr_model;
+    RefreshOcrModels();
+
+    m_inputs.ann_font               = g_config->File.fonts.empty() ? "" : g_config->File.fonts[0];
+    m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string();
+
+    extern_glfwSwapInterval(int(g_config->File.enable_vsync));
+}
+
+void ScreenshotTool::RefreshOcrModels()
+{
+    ErrorContext<OcrError>& ectx = m_ocr_errors;
+
+    if (m_inputs.ocr_path == m_last_scanned_ocr_path)
+    {
+        ClearError(ectx, OcrError::NeedToScanDir);
+        return;
+    }
+
+    if (!get_filtered_filenames(
+            m_inputs.ocr_path,
+            m_ocr_models_list,
+            [](const fs::path& entry) { return entry.extension().string() == ".traineddata"; },
+            [](const fs::path& entry) { return entry.stem().string(); }))
+    {
+        m_ocr_models_list.clear();
+    }
+
+    m_last_scanned_ocr_path = m_inputs.ocr_path;
+    ClearError(ectx, OcrError::NeedToScanDir);
+
+    if (m_ocr_models_list.empty())
+    {
+        SetError(ectx, OcrError::InvalidPath, "Doesn't exist or is empty");
+    }
+    else
+    {
+        ClearError(ectx, OcrError::InvalidPath);
+        if (std::ranges::find(m_ocr_models_list, m_inputs.ocr_model) == m_ocr_models_list.end())
+            SetError(ectx, OcrError::InvalidModel);
+        else
+            ClearError(ectx, OcrError::InvalidModel);
+    }
+}
+
 void ScreenshotTool::UpdateHandleHoverState(selection_info_t& sel)
 {
     const ImVec2& mouse_pos = ImGui::GetMousePos();
@@ -1474,49 +1830,166 @@ void ScreenshotTool::UpdateCursor(const selection_info_t& sel)
     }
 }
 
-void ScreenshotTool::DrawDarkOverlay()
+// ------------------------------
+// Geometry
+// ------------------------------
+
+ImRect ScreenshotTool::GetAnnotationBBox(const annotation_t& ann) const
 {
-    ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
+    switch (ann.type)
+    {
+        case ToolType::Circle:
+        case ToolType::CircleFilled:
+        case ToolType::CounterBubble:
+        {
+            // start = center, end = a point on the circumference
+            const float dx     = ann.end.x - ann.start.x;
+            const float dy     = ann.end.y - ann.start.y;
+            const float radius = std::sqrt(dx * dx + dy * dy);
+            return { ann.start.x - radius, ann.start.y - radius, ann.start.x + radius, ann.start.y + radius };
+        }
 
-    const float sel_x = m_main_sel.selection.get_x();
-    const float sel_y = m_main_sel.selection.get_y();
-    const float sel_w = m_main_sel.selection.get_width();
-    const float sel_h = m_main_sel.selection.get_height();
+        case ToolType::Line:
+        case ToolType::Arrow:
+        {
+            // start/end are directional endpoints, not corners, so normalize
+            // them, and pad by half the stroke so thin/axis-aligned segments
+            // stay clickable.
+            const float half_t = std::max(ann.thickness, 4.0f) * 0.5f;
+            return { std::min(ann.start.x, ann.end.x) - half_t,
+                     std::min(ann.start.y, ann.end.y) - half_t,
+                     std::max(ann.start.x, ann.end.x) + half_t,
+                     std::max(ann.start.y, ann.end.y) + half_t };
+        }
 
-    constexpr ImU32 dark_color = (0x00000080_rgba).to_abgr();
+        case ToolType::Text:
+        {
+            const float font_size = ann.thickness > 8.0f ? ann.thickness : ImGui::GetFontSize();
+            ImFont*     font      = GetCachedFont(m_inputs.resolved_ann_font_path, font_size);
+            if (font)
+                ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
+            const ImVec2 size = font ? font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, ann.text.c_str())
+                                     : ImGui::CalcTextSize(ann.text.c_str());
+            return { ann.start.x, ann.start.y, ann.start.x + size.x, ann.start.y + size.y };
+        }
 
-    // Above, below, left and right of the selection
-    draw_list->AddRectFilled(m_image_origin, ImVec2(m_image_end.x, sel_y), dark_color);
-    draw_list->AddRectFilled(ImVec2(m_image_origin.x, sel_y + sel_h), m_image_end, dark_color);
-    draw_list->AddRectFilled(ImVec2(m_image_origin.x, sel_y), ImVec2(sel_x, sel_y + sel_h), dark_color);
-    draw_list->AddRectFilled(ImVec2(sel_x + sel_w, sel_y), ImVec2(m_image_end.x, sel_y + sel_h), dark_color);
+        case ToolType::Pencil:
+        {
+            if (ann.points.empty())
+                return { ann.start.x, ann.start.y, ann.start.x, ann.start.y };
+            ImVec2 min(ann.points.front().x, ann.points.front().y);
+            ImVec2 max = min;
+            for (const point_t& p : ann.points)
+            {
+                min.x = std::min(min.x, p.x);
+                min.y = std::min(min.y, p.y);
+                max.x = std::max(max.x, p.x);
+                max.y = std::max(max.y, p.y);
+            }
+            return { min, max };
+        }
+
+        case ToolType::Rectangle:
+        case ToolType::RectangleFilled:
+        default:
+            // Leave as-is: start/end are already corners.
+            return { ann.start.x, ann.start.y, ann.end.x, ann.end.y };
+    }
 }
 
-void ScreenshotTool::DrawSelectionBorder()
+ImRect ScreenshotTool::GetAnnotationHandleBox(const annotation_t& ann) const
 {
-    const float sel_x = m_main_sel.selection.get_x();
-    const float sel_y = m_main_sel.selection.get_y();
-    const float sel_w = m_main_sel.selection.get_width();
-    const float sel_h = m_main_sel.selection.get_height();
-
-    DrawASelectionBorder(m_main_sel, sel_x, sel_y, sel_w, sel_h);
+    constexpr float PIXEL   = 1.0f;
+    const float     padding = ann.thickness - PIXEL;
+    const ImRect    bbox    = GetAnnotationBBox(ann);
+    return { bbox.Min.x - padding, bbox.Min.y - padding, bbox.Max.x + padding, bbox.Max.y + padding };
 }
 
-void ScreenshotTool::DrawAnnotationResizeBorder()
+ImVec2 ScreenshotTool::GetToolButtonSize()
 {
-    const annotation_t* ann = m_current_annotation_resize;
-    if (!ann)
+    const ImGuiStyle& style = ImGui::GetStyle();
+    return { TOOL_BUTTON_SIZE + style.FramePadding.x * 2.0f, TOOL_BUTTON_SIZE + style.FramePadding.y * 2.0f };
+}
+
+// ------------------------------
+// Scans
+// ------------------------------
+
+void ScreenshotTool::RequestScan(ScanType type)
+{
+    if (g_config->File.render_anns && !m_annotations.empty() && m_read_pixels)
+    {
+        m_pending_scan = type;
         return;
+    }
 
-    constexpr float PIXEL = 1.0f;
-
-    const float padding = ann->thickness - PIXEL;
-    if (padding == 0.0f)
-        return;
-
-    const ImRect box = GetAnnotationHandleBox(*ann);
-    DrawASelectionBorder(m_anno_sel, box.Min.x, box.Min.y, box.GetWidth() - PIXEL, box.GetHeight() - PIXEL);
+    const capture_result_t& img = GetFinalImage();
+    if (type == ScanType::Ocr)
+        RunOcr(img);
+    else
+        RunBarcodeScan(img);
 }
+
+void ScreenshotTool::RunOcr(const capture_result_t& img)
+{
+    ErrorContext<OcrError>& ectx = m_ocr_errors;
+
+    const Result<>& configure_res = m_ocr_api.Configure(m_inputs.ocr_path.c_str(), m_inputs.ocr_model.c_str());
+    if (!configure_res.ok())
+    {
+        SetError(ectx, OcrError::FailedToOCR, configure_res.error_v());
+        return;
+    }
+
+    Result<ocr_result_t> result = m_ocr_api.ExtractTextCapture(img);
+    if (!result.ok())
+    {
+        SetError(ectx, OcrError::FailedToOCR, result.error_v());
+        return;
+    }
+
+    ClearError(ectx, OcrError::FailedToOCR);
+    m_inputs.ocr_results = std::move(result.get());
+#ifndef DISABLE_PLUGINS
+    // Copied: a plugin may call set_text(OSHOT_TEXT_OCR) from on_ocr_done()
+    const std::string        text = m_inputs.ocr_results.data;
+    const oshot_ocr_result_t ocr{
+        .text       = { .p = text.c_str(), .len = text.length() },
+        .confidence = m_inputs.ocr_results.confidence,
+        .psm        = m_inputs.ocr_results.psm,
+    };
+    for (auto& [id, rt] : g_plugins)
+        if (rt.plugin->on_ocr_done)
+            rt.plugin->on_ocr_done(rt.state, &ocr);
+#endif
+}
+
+void ScreenshotTool::RunBarcodeScan(const capture_result_t& img)
+{
+    ErrorContext<ZbarError>& ectx = m_zbar_errors;
+
+    Result<zbar_result_t> scan = m_zbar_api.ExtractTextsCapture(img);
+    if (!scan.ok())
+    {
+        SetError(ectx, ZbarError::FailedToScan, scan.error_v());
+        return;
+    }
+
+    ClearError(ectx, ZbarError::FailedToScan);
+    m_inputs.zbar_scan_result = std::move(scan.get());
+    m_inputs.barcode_text.clear();
+    for (const std::string& data : m_inputs.zbar_scan_result.datas)
+        m_inputs.barcode_text += data + "\n\n";
+}
+
+// ------------------------------
+// Drawing
+// ------------------------------
+
+static constexpr bool is_annotation_tool(ToolType t)
+{
+    return idx(t) > idx(ToolType::kNone) && idx(t) <= idx(ToolType::Pencil);
+};
 
 void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
                                           const float       sel_x,
@@ -1651,448 +2124,231 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
     }
 }
 
-void ScreenshotTool::DrawMenuItems()
+void ScreenshotTool::CreateCopyTextButton(const std::string& text_copy, const std::string_view label1)
 {
-    if (ImGui::BeginMenuBar())
+    ErrorContext<GeneralError>& ectx = m_general_errors;
+
+    static bool armed = false;
+    if (create_timed_button(label1, "Copied!", armed))
     {
-        if (ImGui::BeginMenu("File"))
+        const Result<>& res = g_clipboard.CopyText(text_copy);
+        if (res.ok())
         {
-            if (ImGui::MenuItem("Open Image..."))
-            {
-                minimize_window();
-
-                static constexpr auto filter    = std::to_array({ "*.png", "*.jpeg", "*.jpg", "*.bmp" });
-                const char*           open_path = tinyfd_openFileDialog("Open Image",
-                                                                        "",             // default path
-                                                                        filter.size(),  // number of filter patterns
-                                                                        filter.data(),  // file filters
-                                                                        "Images",       // filter description
-                                                                        false           // allow multiple selections
-                );
-
-                maximize_window();
-
-                if (open_path)
-                    OpenImage(open_path);
-            }
-
-            ImGui::Separator();
-
-            if (ImGui::MenuItem("Save Image", "CTRL+S"))
-                RequestComplete(SavingOp::File);
-
-            if (ImGui::MenuItem("Copy Image", g_config->File.ctrl_c_copy_img ? "CTRL+C" : "CTRL+SHIFT+C"))
-                RequestComplete(SavingOp::Clipboard);
-
-            ImGui::Separator();
-
-            if (ImGui::MenuItem("Quit", "ESC"))
-                Cancel();
-
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("Edit"))
-        {
-            if (ImGui::BeginMenu("Optimize OCR for..."))
-            {
-                if (ImGui::RadioButton("Automatic", g_config->Runtime.preferred_psm == 0))
-                    g_config->Runtime.preferred_psm = 0;
-                ImGui::RadioButton("Single Word", &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_WORD);
-                ImGui::RadioButton("Single Line", &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_LINE);
-                ImGui::RadioButton("Paragraph", &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_BLOCK);
-                ImGui::RadioButton("Automatic (Layout)", &g_config->Runtime.preferred_psm, tesseract::PSM_AUTO);
-                ImGui::EndMenu();
-            }
-
-            ImGui::Separator();
-            ImGui::MenuItem("View Handles", "CTRL+G", &g_config->Runtime.enable_handles);
-            ImGui::MenuItem("Anns. in image scans", "", &g_config->File.render_anns);
-            if (ImGui::MenuItem("Enable vsync", "", &g_config->File.enable_vsync))
-                extern_glfwSwapInterval(int(g_config->File.enable_vsync));
-            if (ImGui::MenuItem("Allow text edit", "CTRL+E", &g_config->File.allow_out_edit))
-                ImGui::ClearActiveID();
-
-            ImGui::Separator();
-            if (ImGui::MenuItem("Preferences..."))
-                m_show_window.Set(SubWindow::Preferences);
-
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("Tools"))
-        {
-            if (ImGui::MenuItem("Download OCR model"))
-                m_show_window.Set(SubWindow::OcrDownload);
-            ImGui::Separator();
-
-#ifndef DISABLE_PLUGINS
-            if (ImGui::MenuItem("Browse Plugins..."))
-                m_show_window.Set(SubWindow::BrowsePlugins);
-            if (ImGui::MenuItem("Manage Plugins"))
-                m_show_window.Set(SubWindow::ManagePlugins);
-            if (ImGui::MenuItem("Install Plugins..."))
-                m_show_window.Set(SubWindow::InstallPlugins);
-            ImGui::Separator();
-#endif
-
-            if (ImGui::MenuItem("View Logs"))
-                m_show_window.Set(SubWindow::Logs);
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("Help"))
-        {
-            if (ImGui::MenuItem("About"))
-                m_show_window.Set(SubWindow::About);
-            ImGui::EndMenu();
-        }
-
-        ImGui::EndMenuBar();
-    }
-}
-
-void ScreenshotTool::DrawAboutWindow()
-{
-    bool open = m_show_window.Has(SubWindow::About);
-    if (!open)
-        return;
-
-    ImGui::SetNextWindowSize(ImVec2(350, 250), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("About", &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings))
-    {
-        const char* text_display;
-        const float window_width  = ImGui::GetWindowSize().x;
-        auto        centered_text = [&](const char* text) {
-            float name_width = ImGui::CalcTextSize(text).x;
-            ImGui::SetCursorPosX((window_width - name_width) / 2);
-            return text;
-        };
-
-        // Centered image
-        ImGui::SetCursorPosX((window_width - 24.0f) / 2);
-        ImGui::Image(m_tool_textures[idx(ToolType::Logo)], ImVec2(32, 32));
-
-        // Centered labels
-        text_display = centered_text("oshot v" VERSION);
-        ImGui::TextUnformatted(text_display);
-        ImGui::Spacing();
-
-        text_display = centered_text("Screenshot tool for extracting text on the fly");
-        ImGui::TextUnformatted(text_display);
-        ImGui::Spacing();
-
-#ifdef DISABLE_PLUGINS
-        text_display = centered_text("!!! NO PLUGINS SUPPORT !!!");
-        ImGui::TextColored(Colors::RED, "%s", text_display);
-        ImGui::Spacing();
-#endif
-
-        // More version details
-        text_display = "More Details:";
-        if (ImGui::TreeNode(text_display))
-        {
-            ImGui::BeginChild("##scrollable_region", ImVec2(0, 100), false, ImGuiWindowFlags_HorizontalScrollbar);
-            ImGui::TextUnformatted(version_infos.c_str());
-            CreateCopyTextButton(version_infos);
-            ImGui::EndChild();
-            ImGui::TreePop();
-        }
-
-        ImGui::TextUnformatted("Version: v" VERSION);
-        ImGui::TextUnformatted("Created by: Toni500");
-        ImGui::TextUnformatted("Copyright © 2026");
-        ImGui::Spacing();
-
-        ImGui::TextUnformatted("Support the project at ");
-        ImGui::SameLine(0, 1);
-        if (ImGui::TextLinkOpenURL("Toni500github/oshot", "https://github.com/Toni500github/oshot"))
-            minimize_window();
-
-        if (ImGui::Button("Close"))
-            open = false;
-        ImGui::End();
-    }
-    m_show_window.Set(SubWindow::About, open);
-}
-
-void ScreenshotTool::DrawOcrTools()
-{
-    ErrorContext<OcrError>& ectx = m_ocr_errors;
-
-    std::string& ocr_path  = m_inputs.ocr_path;
-    std::string& ocr_model = m_inputs.ocr_model;
-
-    static size_t item_selected_idx = 0;
-
-    auto push_error_style = [](bool cond) {
-        if (cond)
-            ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
-    };
-    auto pop_error_label = [](bool cond, const char* label) {
-        if (cond)
-        {
-            ImGui::PopStyleColor();
-            ImGui::SameLine();
-            ImGui::TextColored(Colors::RED, "%s", label);
-        }
-    };
-
-    ImGui::PushID("OcrTools");
-    ImGui::SeparatorText("OCR");
-
-    const bool need_to_scan  = HasError(ectx, OcrError::NeedToScanDir);
-    const bool invalid_path  = HasError(ectx, OcrError::InvalidPath);
-    const bool invalid_model = HasError(ectx, OcrError::InvalidModel);
-
-    // --- Path input ---
-    push_error_style(invalid_path);
-    push_error_style(need_to_scan);
-    draw_input_text_folder("Path", "##ocr_path", [&] { SetError(ectx, OcrError::NeedToScanDir); }, ocr_path);
-    if (need_to_scan && ImGui::Button("Scan"))
-        RefreshOcrModels();
-    ImGui::SameLine();
-    const auto& it    = std::ranges::find(m_ocr_models_list, ocr_model);
-    item_selected_idx = (it != m_ocr_models_list.end()) ? std::distance(m_ocr_models_list.begin(), it) : 0;
-    pop_error_label(invalid_path, "Invalid!");
-    pop_error_label(need_to_scan, "Need to scan new directory");
-    ImGui::SameLine();
-    HelpMarker("Full path to the OCR models (.traineddata). Supports drag-and-drop");
-
-    if (invalid_path)
-    {
-        ImGui::Spacing();
-        ImGui::TextColored((0x0AEFFFF_rgba), "Suggestions:");
-        ImGui::Indent();
-
-        if (g_is_nix)
-        {
-            constexpr const char* cmd = "nix build --no-link --print-out-paths nixpkgs#tesseract";
-            ImGui::TextWrapped(
-                "Run the following command in your terminal, then update the OCR path in the Preferences window:");
-            ImGui::TextColored((0xFFCC33FF_rgba), cmd);
-            CreateCopyTextButton(cmd, "Copy command");
-            ImGui::Spacing();
-        }
-
-#if !OSHOT_WINDOWS
-        if (!g_is_flatpak)
-            ImGui::BulletText(
-                "Install one of the tesseract language packages (e.g. tesseract-data-eng on Arch, tesseract-ocr-eng on "
-                "Debian/Ubuntu, tesseract-langpack-eng on Fedora).");
-#endif
-        ImGui::BulletText("Download a tesseract language model via 'Tools -> Download OCR Model'.");
-        ImGui::Unindent();
-    }
-
-    // --- Model combo (only shown when path is valid and isn't changed) ---
-    if (!invalid_path && !need_to_scan)
-    {
-        push_error_style(invalid_model);
-
-        const bool combo_open = ImGui::BeginCombo("Model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge);
-
-        // Don't infect the whole list of red
-        if (invalid_model)
-            ImGui::PopStyleColor();
-
-        if (combo_open)
-        {
-            static ImGuiTextFilter filter;
-            if (ImGui::IsWindowAppearing())
-            {
-                ImGui::SetKeyboardFocusHere();
-                filter.Clear();
-            }
-
-            ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F);
-            filter.Draw("##Filter", -FLT_MIN);
-
-            for (size_t i = 0; i < m_ocr_models_list.size(); ++i)
-            {
-                if (filter.PassFilter(m_ocr_models_list[i].c_str()))
-                {
-                    const bool is_selected = (item_selected_idx == i);
-                    if (ImGui::Selectable(m_ocr_models_list[i].c_str(), is_selected))
-                    {
-                        item_selected_idx = i;
-                        ocr_model         = m_ocr_models_list[i];
-                        ClearError(ectx, OcrError::InvalidModel);
-                    }
-                }
-            }
-            ImGui::EndCombo();
-        }
-
-        if (invalid_model)
-        {
-            ImGui::SameLine();
-            ImGui::TextColored(Colors::RED, "Invalid!");
-        }
-    }
-
-    // --- Extract button + result details ---
-    if (!invalid_path && !invalid_model && !need_to_scan)
-    {
-        if (ImGui::Button("Extract Text"))
-            RequestScan(ScanType::Ocr);
-
-        ImGui::SameLine();
-
-        if (HasError(ectx, OcrError::FailedToOCR))
-        {
-            ImGui::SameLine();
-            ImGui::TextColored(
-                Colors::RED, "Failed to initialize OCR: %s", GetError(ectx, OcrError::FailedToOCR).c_str());
+            ClearError(ectx, GeneralError::FailedToCopyText);
+            armed = true;
         }
         else
         {
-            ImGui::SameLine();
-            HelpMarker("If results seem off, try Edit > Optimize OCR for...");
-        }
-
-        if (m_inputs.ocr_results.confidence > 0 && ImGui::TreeNode("Details"))
-        {
-            ImGui::BulletText("Confidence:");
-            ImGui::SameLine();
-            ImVec4 confidence_color(Colors::GREEN);
-            if (m_inputs.ocr_results.confidence <= 45)
-                confidence_color = Colors::RED;
-            else if (m_inputs.ocr_results.confidence <= 70)
-                confidence_color = Colors::YELLOW;
-
-            ImGui::TextColored(confidence_color, "%d%%", m_inputs.ocr_results.confidence);
-
-            ImGui::BulletText("PSM: %s", m_inputs.ocr_results.psm_str.c_str());
-            ImGui::TreePop();
+            SetError(ectx, GeneralError::FailedToCopyText, res.error_v());
         }
     }
 
-    ImGui::InputTextMultiline("##" OSHOT_TEXT_OCR,
-                              &m_inputs.ocr_results.data,
-                              ImVec2(-1, ImGui::GetTextLineHeight() * 8),
-                              g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
-
-    if (!m_inputs.ocr_results.data.empty())
-        CreateCopyTextButton(m_inputs.ocr_results.data);
-
-    ImGui::PopID();
-}
-
-void ScreenshotTool::RequestScan(ScanType type)
-{
-    if (g_config->File.render_anns && !m_annotations.empty() && m_read_pixels)
-    {
-        m_pending_scan = type;
-        return;
-    }
-
-    const capture_result_t& img = GetFinalImage();
-    if (type == ScanType::Ocr)
-        RunOcr(img);
-    else
-        RunBarcodeScan(img);
-}
-
-void ScreenshotTool::RunOcr(const capture_result_t& img)
-{
-    ErrorContext<OcrError>& ectx = m_ocr_errors;
-
-    const Result<>& configure_res = m_ocr_api.Configure(m_inputs.ocr_path.c_str(), m_inputs.ocr_model.c_str());
-    if (!configure_res.ok())
-    {
-        SetError(ectx, OcrError::FailedToOCR, configure_res.error_v());
-        return;
-    }
-
-    Result<ocr_result_t> result = m_ocr_api.ExtractTextCapture(img);
-    if (!result.ok())
-    {
-        SetError(ectx, OcrError::FailedToOCR, result.error_v());
-        return;
-    }
-
-    ClearError(ectx, OcrError::FailedToOCR);
-    m_inputs.ocr_results = std::move(result.get());
-#ifndef DISABLE_PLUGINS
-    // Copied: a plugin may call set_text(OSHOT_TEXT_OCR) from on_ocr_done()
-    const std::string        text = m_inputs.ocr_results.data;
-    const oshot_ocr_result_t ocr{
-        .text       = { .p = text.c_str(), .len = text.length() },
-        .confidence = m_inputs.ocr_results.confidence,
-        .psm        = m_inputs.ocr_results.psm,
-    };
-    for (auto& [id, rt] : g_plugins)
-        if (rt.plugin->on_ocr_done)
-            rt.plugin->on_ocr_done(rt.state, &ocr);
-#endif
-}
-
-void ScreenshotTool::RunBarcodeScan(const capture_result_t& img)
-{
-    ErrorContext<ZbarError>& ectx = m_zbar_errors;
-
-    Result<zbar_result_t> scan = m_zbar_api.ExtractTextsCapture(img);
-    if (!scan.ok())
-    {
-        SetError(ectx, ZbarError::FailedToScan, scan.error_v());
-        return;
-    }
-
-    ClearError(ectx, ZbarError::FailedToScan);
-    m_inputs.zbar_scan_result = std::move(scan.get());
-    m_inputs.barcode_text.clear();
-    for (const std::string& data : m_inputs.zbar_scan_result.datas)
-        m_inputs.barcode_text += data + "\n\n";
-}
-
-void ScreenshotTool::OnCleanFrame()
-{
-    const capture_result_t& img = m_read_pixels ? m_read_pixels(GetActiveRegion()) : GetFinalImage();
-
-    const ScanType scan = std::exchange(m_pending_scan, ScanType::kNone);
-    if (scan == ScanType::Ocr)
-        RunOcr(img);
-    else if (scan == ScanType::Barcode)
-        RunBarcodeScan(img);
-
-    const SavingOp op = std::exchange(m_completed_op, SavingOp::kNone);
-    if (op != SavingOp::kNone && m_on_complete)
-        m_on_complete(op, img, g_config->File.image_out_type.second);
-}
-
-void ScreenshotTool::DrawBarDecodeTools()
-{
-    ErrorContext<ZbarError>& ectx = m_zbar_errors;
-
-    ImGui::PushID("BarDecodeTools");
-    ImGui::SeparatorText("QR/Bar Decode");
-
-    if (ImGui::Button("Extract Text"))
-        RequestScan(ScanType::Barcode);
-
-    if (HasError(ectx, ZbarError::FailedToScan))
+    if (HasError(ectx, GeneralError::FailedToCopyText))
     {
         ImGui::SameLine();
-        ImGui::TextColored(Colors::RED, "Failed to decode: %s", GetError(ectx, ZbarError::FailedToScan).c_str());
+        ImGui::TextColored(
+            Colors::RED, "Failed to copy text: %s", GetError(ectx, GeneralError::FailedToCopyText).c_str());
     }
-    else if (!m_inputs.zbar_scan_result.datas.empty() && ImGui::TreeNode("Details"))
-    {
-        ImGui::Text("Detected barcodes:");
-        for (const auto& [sym, count] : m_inputs.zbar_scan_result.symbologies)
-            ImGui::BulletText("%s (x%d)", sym.c_str(), count);
-        ImGui::TreePop();
-    }
+}
 
-    ImGui::InputTextMultiline("##" OSHOT_TEXT_BARCODE,
-                              &m_inputs.barcode_text,
-                              ImVec2(-1, ImGui::GetTextLineHeight() * 8),
-                              g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+void ScreenshotTool::DrawDarkOverlay()
+{
+    ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
 
-    if (!m_inputs.barcode_text.empty())
-        CreateCopyTextButton(m_inputs.barcode_text);
+    const float sel_x = m_main_sel.selection.get_x();
+    const float sel_y = m_main_sel.selection.get_y();
+    const float sel_w = m_main_sel.selection.get_width();
+    const float sel_h = m_main_sel.selection.get_height();
 
-    ImGui::PopID();
+    constexpr ImU32 dark_color = (0x00000080_rgba).to_abgr();
+
+    // Above, below, left and right of the selection
+    draw_list->AddRectFilled(m_image_origin, ImVec2(m_image_end.x, sel_y), dark_color);
+    draw_list->AddRectFilled(ImVec2(m_image_origin.x, sel_y + sel_h), m_image_end, dark_color);
+    draw_list->AddRectFilled(ImVec2(m_image_origin.x, sel_y), ImVec2(sel_x, sel_y + sel_h), dark_color);
+    draw_list->AddRectFilled(ImVec2(sel_x + sel_w, sel_y), ImVec2(m_image_end.x, sel_y + sel_h), dark_color);
+}
+
+void ScreenshotTool::DrawAnnotations()
+{
+    static_assert(sizeof(point_t) == sizeof(ImVec2) && alignof(point_t) == alignof(ImVec2),
+                  "point_t and ImVec2 layout mismatch");
+
+    ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
+    const float dpi       = ImGui::GetIO().DisplayFramebufferScale.x;
+
+    auto draw_line = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
+        draw_list->AddLine(p1, p2, ann.color.to_abgr(), t);
+    };
+
+    auto draw_text = [&](const annotation_t& ann, const ImVec2& p1) {
+        const float font_size = ann.thickness > 8.0f ? ann.thickness : ImGui::GetFontSize();
+        ImFont*     font      = CacheAndGetFont(m_inputs.resolved_ann_font_path, font_size);
+        draw_list->AddText(font, font_size, p1, ann.color.to_abgr(), ann.text.c_str());
+    };
+
+    auto draw_rectangle_or_filled =
+        [&](const bool filled, const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
+            ImVec2 min(std::min(p1.x, p2.x), std::min(p1.y, p2.y));
+            ImVec2 max(std::max(p1.x, p2.x), std::max(p1.y, p2.y));
+            filled ? draw_list->AddRectFilled(min, max, ann.color.to_abgr(), 0.0f, ImDrawFlags_None)
+                   : draw_list->AddRect(min, max, ann.color.to_abgr(), 0.0f, t, ImDrawFlags_None);
+        };
+
+    auto draw_circle_or_filled =
+        [&](const bool filled, const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
+            float dx     = p2.x - p1.x;
+            float dy     = p2.y - p1.y;
+            float radius = std::sqrt(dx * dx + dy * dy);
+            filled ? draw_list->AddCircleFilled(p1, radius, ann.color.to_abgr(), 0)
+                   : draw_list->AddCircle(p1, radius, ann.color.to_abgr(), 0, t);
+        };
+
+    auto draw_counter_bubble = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
+        // Draw the circle outline
+        draw_circle_or_filled(false, ann, p1, p2, t);
+
+        const std::string& label = fmt::to_string(ann.count);
+
+        // Pick a font size that fits comfortably inside the circle
+        const float dx     = p2.x - p1.x;
+        const float dy     = p2.y - p1.y;
+        const float radius = std::sqrt(dx * dx + dy * dy);
+        // Use ~70 % of the diameter so the number has breathing room
+        const float font_size = std::max(8.0f, radius * 1.4f);
+        ImFont*     font      = CacheAndGetFont(m_inputs.resolved_ann_font_path, font_size);
+
+        // Measure the rendered label so we can center it
+        const ImVec2 text_size =
+            font ? font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, label.c_str()) : ImGui::CalcTextSize(label.c_str());
+
+        const ImVec2 text_pos(p1.x - text_size.x * 0.5f, p1.y - text_size.y * 0.5f);
+        draw_list->AddText(font, font_size, text_pos, ann.color.to_abgr(), label.c_str());
+    };
+
+    auto draw_pencil = [&](const annotation_t& ann, const float t) {
+        if (ann.points.empty())
+            return;
+
+        const ImU32 col     = ann.color.to_abgr();
+        const float r       = std::max(t * 0.5f, 0.5f);
+        const float step    = std::max(r * 0.6f, 1.0f);  // spacing between stamps
+        const float step_sq = step * step;
+        const int   segs    = r < 4.0f ? 8 : 0;  // 0 = ImGui picks based on radius
+
+        ImVec2 last(ann.points[0].x, ann.points[0].y);
+        draw_list->AddCircleFilled(last, r, col, segs);
+
+        for (size_t i = 1; i < ann.points.size(); ++i)
+        {
+            const float dx   = ann.points[i].x - last.x;
+            const float dy   = ann.points[i].y - last.y;
+            const float d_sq = dx * dx + dy * dy;
+            if (d_sq < step_sq)
+                continue;  // too close to the last stamp, skip
+
+            const float d  = std::sqrt(d_sq);
+            const int   n  = static_cast<int>(d / step);
+            const float sx = dx / d * step;
+            const float sy = dy / d * step;
+
+            for (int k = 0; k < n; ++k)
+            {
+                last.x += sx;
+                last.y += sy;
+                draw_list->AddCircleFilled(last, r, col, segs);
+            }
+        }
+
+        // make sure the stroke ends exactly where the mouse ended
+        const ImVec2 end(ann.points.back().x, ann.points.back().y);
+        if (end.x != last.x || end.y != last.y)
+            draw_list->AddCircleFilled(end, r, col, segs);
+    };
+
+    auto draw_arrow = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
+        ImVec2 v(p2.x - p1.x, p2.y - p1.y);
+        float  len = std::sqrt(v.x * v.x + v.y * v.y);
+        if (len < 1.0f)
+            return;
+
+        ImVec2 dir(v.x / len, v.y / len);
+        ImVec2 perp(-dir.y, dir.x);  // unit perpendicular
+
+        float head_len = 6.0f * t;
+        float head_w   = 4.0f * t;
+
+        head_len = std::min(head_len, len * 0.6f);
+
+        ImVec2 base(p2.x - dir.x * head_len, p2.y - dir.y * head_len);
+        ImVec2 left(base.x + perp.x * (head_w * 0.5f), base.y + perp.y * (head_w * 0.5f));
+        ImVec2 right(base.x - perp.x * (head_w * 0.5f), base.y - perp.y * (head_w * 0.5f));
+
+        // shaft
+        draw_list->AddLine(p1, base, ann.color.to_abgr(), t);
+
+        // head
+        draw_list->AddTriangleFilled(p2, left, right, ann.color.to_abgr());
+    };
+
+    auto draw_annotation = [&](const annotation_t& ann) {
+        const ImVec2 p1(ann.start.x, ann.start.y);
+        const ImVec2 p2(ann.end.x, ann.end.y);
+        const float  t = ann.thickness * dpi;
+
+        switch (ann.type)
+        {
+            case ToolType::Line:            draw_line(ann, p1, p2, t); break;
+            case ToolType::Arrow:           draw_arrow(ann, p1, p2, t); break;
+            case ToolType::Rectangle:       draw_rectangle_or_filled(false, ann, p1, p2, t); break;
+            case ToolType::RectangleFilled: draw_rectangle_or_filled(true, ann, p1, p2, t); break;
+            case ToolType::Circle:          draw_circle_or_filled(false, ann, p1, p2, t); break;
+            case ToolType::CircleFilled:    draw_circle_or_filled(true, ann, p1, p2, t); break;
+            case ToolType::CounterBubble:   draw_counter_bubble(ann, p1, p2, t); break;
+            case ToolType::Text:            draw_text(ann, p1); break;
+            case ToolType::Pencil:          draw_pencil(ann, t); break;
+
+            case ToolType::kNone:
+            case ToolType::ToggleTextTools:
+            case ToolType::CopyImage:
+            case ToolType::SaveImage:
+            case ToolType::Logo:
+            case ToolType::COUNT:           break;
+        }
+    };
+
+    for (const annotation_t& ann : m_annotations)
+        draw_annotation(ann);
+
+    // The one being drawn, on top
+    if (m_current_actions.Has(CurrentAction::IsDrawing))
+        draw_annotation(m_current_annotation);
+}
+
+void ScreenshotTool::DrawSelectionBorder()
+{
+    const float sel_x = m_main_sel.selection.get_x();
+    const float sel_y = m_main_sel.selection.get_y();
+    const float sel_w = m_main_sel.selection.get_width();
+    const float sel_h = m_main_sel.selection.get_height();
+
+    DrawASelectionBorder(m_main_sel, sel_x, sel_y, sel_w, sel_h);
+}
+
+void ScreenshotTool::DrawAnnotationResizeBorder()
+{
+    const annotation_t* ann = m_current_annotation_resize;
+    if (!ann)
+        return;
+
+    constexpr float PIXEL = 1.0f;
+
+    const float padding = ann->thickness - PIXEL;
+    if (padding == 0.0f)
+        return;
+
+    const ImRect box = GetAnnotationHandleBox(*ann);
+    DrawASelectionBorder(m_anno_sel, box.Min.x, box.Min.y, box.GetWidth() - PIXEL, box.GetHeight() - PIXEL);
 }
 
 void ScreenshotTool::DrawAnnotationToolbar()
@@ -2277,6 +2533,446 @@ void ScreenshotTool::DrawAnnotationToolbar()
         ImGui::End();
     }
 }
+
+void ScreenshotTool::DrawMenuItems()
+{
+    if (ImGui::BeginMenuBar())
+    {
+        if (ImGui::BeginMenu("File"))
+        {
+            if (ImGui::MenuItem("Open Image..."))
+            {
+                minimize_window();
+
+                static constexpr auto filter    = std::to_array({ "*.png", "*.jpeg", "*.jpg", "*.bmp" });
+                const char*           open_path = tinyfd_openFileDialog("Open Image",
+                                                                        "",             // default path
+                                                                        filter.size(),  // number of filter patterns
+                                                                        filter.data(),  // file filters
+                                                                        "Images",       // filter description
+                                                                        false           // allow multiple selections
+                );
+
+                maximize_window();
+
+                if (open_path)
+                    OpenImage(open_path);
+            }
+
+            ImGui::Separator();
+
+            if (ImGui::MenuItem("Save Image", "CTRL+S"))
+                RequestComplete(SavingOp::File);
+
+            if (ImGui::MenuItem("Copy Image", g_config->File.ctrl_c_copy_img ? "CTRL+C" : "CTRL+SHIFT+C"))
+                RequestComplete(SavingOp::Clipboard);
+
+            ImGui::Separator();
+
+            if (ImGui::MenuItem("Quit", "ESC"))
+                Cancel();
+
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Edit"))
+        {
+            if (ImGui::BeginMenu("Optimize OCR for..."))
+            {
+                if (ImGui::RadioButton("Automatic", g_config->Runtime.preferred_psm == 0))
+                    g_config->Runtime.preferred_psm = 0;
+                ImGui::RadioButton("Single Word", &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_WORD);
+                ImGui::RadioButton("Single Line", &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_LINE);
+                ImGui::RadioButton("Paragraph", &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_BLOCK);
+                ImGui::RadioButton("Automatic (Layout)", &g_config->Runtime.preferred_psm, tesseract::PSM_AUTO);
+                ImGui::EndMenu();
+            }
+
+            ImGui::Separator();
+            ImGui::MenuItem("View Handles", "CTRL+G", &g_config->Runtime.enable_handles);
+            ImGui::MenuItem("Anns. in image scans", "", &g_config->File.render_anns);
+            if (ImGui::MenuItem("Enable vsync", "", &g_config->File.enable_vsync))
+                extern_glfwSwapInterval(int(g_config->File.enable_vsync));
+            if (ImGui::MenuItem("Allow text edit", "CTRL+E", &g_config->File.allow_out_edit))
+                ImGui::ClearActiveID();
+
+            ImGui::Separator();
+            if (ImGui::MenuItem("Preferences..."))
+                m_show_window.Set(SubWindow::Preferences);
+
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Tools"))
+        {
+            if (ImGui::MenuItem("Download OCR model"))
+                m_show_window.Set(SubWindow::OcrDownload);
+            ImGui::Separator();
+
+#ifndef DISABLE_PLUGINS
+            if (ImGui::MenuItem("Browse Plugins..."))
+                m_show_window.Set(SubWindow::BrowsePlugins);
+            if (ImGui::MenuItem("Manage Plugins"))
+                m_show_window.Set(SubWindow::ManagePlugins);
+            if (ImGui::MenuItem("Install Plugins..."))
+                m_show_window.Set(SubWindow::InstallPlugins);
+            ImGui::Separator();
+#endif
+
+            if (ImGui::MenuItem("View Logs"))
+                m_show_window.Set(SubWindow::Logs);
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Help"))
+        {
+            if (ImGui::MenuItem("About"))
+                m_show_window.Set(SubWindow::About);
+            ImGui::EndMenu();
+        }
+
+        ImGui::EndMenuBar();
+    }
+}
+
+void ScreenshotTool::DrawOcrTools()
+{
+    ErrorContext<OcrError>& ectx = m_ocr_errors;
+
+    std::string& ocr_path  = m_inputs.ocr_path;
+    std::string& ocr_model = m_inputs.ocr_model;
+
+    static size_t item_selected_idx = 0;
+
+    auto push_error_style = [](bool cond) {
+        if (cond)
+            ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
+    };
+    auto pop_error_label = [](bool cond, const char* label) {
+        if (cond)
+        {
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+            ImGui::TextColored(Colors::RED, "%s", label);
+        }
+    };
+
+    ImGui::PushID("OcrTools");
+    ImGui::SeparatorText("OCR");
+
+    const bool need_to_scan  = HasError(ectx, OcrError::NeedToScanDir);
+    const bool invalid_path  = HasError(ectx, OcrError::InvalidPath);
+    const bool invalid_model = HasError(ectx, OcrError::InvalidModel);
+
+    // --- Path input ---
+    push_error_style(invalid_path);
+    push_error_style(need_to_scan);
+    draw_input_text_folder("Path", "##ocr_path", [&] { SetError(ectx, OcrError::NeedToScanDir); }, ocr_path);
+    if (need_to_scan && ImGui::Button("Scan"))
+        RefreshOcrModels();
+    ImGui::SameLine();
+    const auto& it    = std::ranges::find(m_ocr_models_list, ocr_model);
+    item_selected_idx = (it != m_ocr_models_list.end()) ? std::distance(m_ocr_models_list.begin(), it) : 0;
+    pop_error_label(invalid_path, "Invalid!");
+    pop_error_label(need_to_scan, "Need to scan new directory");
+    ImGui::SameLine();
+    HelpMarker("Full path to the OCR models (.traineddata). Supports drag-and-drop");
+
+    if (invalid_path)
+    {
+        ImGui::Spacing();
+        ImGui::TextColored((0x0AEFFFF_rgba), "Suggestions:");
+        ImGui::Indent();
+
+        if (g_is_nix)
+        {
+            constexpr const char* cmd = "nix build --no-link --print-out-paths nixpkgs#tesseract";
+            ImGui::TextWrapped(
+                "Run the following command in your terminal, then update the OCR path in the Preferences window:");
+            ImGui::TextColored((0xFFCC33FF_rgba), cmd);
+            CreateCopyTextButton(cmd, "Copy command");
+            ImGui::Spacing();
+        }
+
+#if !OSHOT_WINDOWS
+        if (!g_is_flatpak)
+            ImGui::BulletText(
+                "Install one of the tesseract language packages (e.g. tesseract-data-eng on Arch, tesseract-ocr-eng on "
+                "Debian/Ubuntu, tesseract-langpack-eng on Fedora).");
+#endif
+        ImGui::BulletText("Download a tesseract language model via 'Tools -> Download OCR Model'.");
+        ImGui::Unindent();
+    }
+
+    // --- Model combo (only shown when path is valid and isn't changed) ---
+    if (!invalid_path && !need_to_scan)
+    {
+        push_error_style(invalid_model);
+
+        const bool combo_open = ImGui::BeginCombo("Model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge);
+
+        // Don't infect the whole list of red
+        if (invalid_model)
+            ImGui::PopStyleColor();
+
+        if (combo_open)
+        {
+            static ImGuiTextFilter filter;
+            if (ImGui::IsWindowAppearing())
+            {
+                ImGui::SetKeyboardFocusHere();
+                filter.Clear();
+            }
+
+            ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F);
+            filter.Draw("##Filter", -FLT_MIN);
+
+            for (size_t i = 0; i < m_ocr_models_list.size(); ++i)
+            {
+                if (filter.PassFilter(m_ocr_models_list[i].c_str()))
+                {
+                    const bool is_selected = (item_selected_idx == i);
+                    if (ImGui::Selectable(m_ocr_models_list[i].c_str(), is_selected))
+                    {
+                        item_selected_idx = i;
+                        ocr_model         = m_ocr_models_list[i];
+                        ClearError(ectx, OcrError::InvalidModel);
+                    }
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        if (invalid_model)
+        {
+            ImGui::SameLine();
+            ImGui::TextColored(Colors::RED, "Invalid!");
+        }
+    }
+
+    // --- Extract button + result details ---
+    if (!invalid_path && !invalid_model && !need_to_scan)
+    {
+        if (ImGui::Button("Extract Text"))
+            RequestScan(ScanType::Ocr);
+
+        ImGui::SameLine();
+
+        if (HasError(ectx, OcrError::FailedToOCR))
+        {
+            ImGui::SameLine();
+            ImGui::TextColored(
+                Colors::RED, "Failed to initialize OCR: %s", GetError(ectx, OcrError::FailedToOCR).c_str());
+        }
+        else
+        {
+            ImGui::SameLine();
+            HelpMarker("If results seem off, try Edit > Optimize OCR for...");
+        }
+
+        if (m_inputs.ocr_results.confidence > 0 && ImGui::TreeNode("Details"))
+        {
+            ImGui::BulletText("Confidence:");
+            ImGui::SameLine();
+            ImVec4 confidence_color(Colors::GREEN);
+            if (m_inputs.ocr_results.confidence <= 45)
+                confidence_color = Colors::RED;
+            else if (m_inputs.ocr_results.confidence <= 70)
+                confidence_color = Colors::YELLOW;
+
+            ImGui::TextColored(confidence_color, "%d%%", m_inputs.ocr_results.confidence);
+
+            ImGui::BulletText("PSM: %s", m_inputs.ocr_results.psm_str.c_str());
+            ImGui::TreePop();
+        }
+    }
+
+    ImGui::InputTextMultiline("##" OSHOT_TEXT_OCR,
+                              &m_inputs.ocr_results.data,
+                              ImVec2(-1, ImGui::GetTextLineHeight() * 8),
+                              g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+
+    if (!m_inputs.ocr_results.data.empty())
+        CreateCopyTextButton(m_inputs.ocr_results.data);
+
+    ImGui::PopID();
+}
+
+void ScreenshotTool::DrawBarDecodeTools()
+{
+    ErrorContext<ZbarError>& ectx = m_zbar_errors;
+
+    ImGui::PushID("BarDecodeTools");
+    ImGui::SeparatorText("QR/Bar Decode");
+
+    if (ImGui::Button("Extract Text"))
+        RequestScan(ScanType::Barcode);
+
+    if (HasError(ectx, ZbarError::FailedToScan))
+    {
+        ImGui::SameLine();
+        ImGui::TextColored(Colors::RED, "Failed to decode: %s", GetError(ectx, ZbarError::FailedToScan).c_str());
+    }
+    else if (!m_inputs.zbar_scan_result.datas.empty() && ImGui::TreeNode("Details"))
+    {
+        ImGui::Text("Detected barcodes:");
+        for (const auto& [sym, count] : m_inputs.zbar_scan_result.symbologies)
+            ImGui::BulletText("%s (x%d)", sym.c_str(), count);
+        ImGui::TreePop();
+    }
+
+    ImGui::InputTextMultiline("##" OSHOT_TEXT_BARCODE,
+                              &m_inputs.barcode_text,
+                              ImVec2(-1, ImGui::GetTextLineHeight() * 8),
+                              g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+
+    if (!m_inputs.barcode_text.empty())
+        CreateCopyTextButton(m_inputs.barcode_text);
+
+    ImGui::PopID();
+}
+
+// ------------------------------
+// Windows
+// ------------------------------
+
+void ScreenshotTool::DrawAboutWindow()
+{
+    bool open = m_show_window.Has(SubWindow::About);
+    if (!open)
+        return;
+
+    ImGui::SetNextWindowSize(ImVec2(350, 250), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("About", &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings))
+    {
+        const char* text_display;
+        const float window_width  = ImGui::GetWindowSize().x;
+        auto        centered_text = [&](const char* text) {
+            float name_width = ImGui::CalcTextSize(text).x;
+            ImGui::SetCursorPosX((window_width - name_width) / 2);
+            return text;
+        };
+
+        // Centered image
+        ImGui::SetCursorPosX((window_width - 24.0f) / 2);
+        ImGui::Image(m_tool_textures[idx(ToolType::Logo)], ImVec2(32, 32));
+
+        // Centered labels
+        text_display = centered_text("oshot v" VERSION);
+        ImGui::TextUnformatted(text_display);
+        ImGui::Spacing();
+
+        text_display = centered_text("Screenshot tool for extracting text on the fly");
+        ImGui::TextUnformatted(text_display);
+        ImGui::Spacing();
+
+#ifdef DISABLE_PLUGINS
+        text_display = centered_text("!!! NO PLUGINS SUPPORT !!!");
+        ImGui::TextColored(Colors::RED, "%s", text_display);
+        ImGui::Spacing();
+#endif
+
+        // More version details
+        text_display = "More Details:";
+        if (ImGui::TreeNode(text_display))
+        {
+            ImGui::BeginChild("##scrollable_region", ImVec2(0, 100), false, ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::TextUnformatted(version_infos.c_str());
+            CreateCopyTextButton(version_infos);
+            ImGui::EndChild();
+            ImGui::TreePop();
+        }
+
+        ImGui::TextUnformatted("Version: v" VERSION);
+        ImGui::TextUnformatted("Created by: Toni500");
+        ImGui::TextUnformatted("Copyright © 2026");
+        ImGui::Spacing();
+
+        ImGui::TextUnformatted("Support the project at ");
+        ImGui::SameLine(0, 1);
+        if (ImGui::TextLinkOpenURL("Toni500github/oshot", "https://github.com/Toni500github/oshot"))
+            minimize_window();
+
+        if (ImGui::Button("Close"))
+            open = false;
+        ImGui::End();
+    }
+    m_show_window.Set(SubWindow::About, open);
+}
+
+#if OSHOT_HAS_GLOBAL_HOTKEY
+// Button that records the next key combination into `hotkey_str`
+static void draw_hotkey_recorder(std::string& hotkey_str, bool window_just_opened)
+{
+    static bool recording = false;
+    if (window_just_opened)
+        recording = false;
+
+    const ImGuiIO& io = ImGui::GetIO();
+
+    ImGui::Text("Global capture hotkey");
+    ImGui::SameLine();
+    HelpMarker(
+        "System-wide shortcut that starts a capture while oshot is running in the tray.\n"
+        "Click the button, then press the key combination. Click it again to cancel.");
+
+    const std::string& label = recording ? "Press keys..." : (hotkey_str.empty() ? "Not set" : hotkey_str);
+    if (ImGui::Button(fmt::format("{}##config_hotkey", label).c_str(), ImVec2(ImGui::GetFontSize() * 12, 0)))
+        recording = !recording;
+
+    ImGui::SameLine();
+    ImGui::BeginDisabled(hotkey_str.empty());
+    if (ImGui::Button("Clear##config_hotkey_clear"))
+    {
+        hotkey_str.clear();
+        recording = false;
+    }
+    ImGui::EndDisabled();
+
+    bool missing_mod = false;
+    if (recording)
+    {
+        for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; ++k)
+        {
+            const auto key = toe<ImGuiKey>(k);
+            if (!hotkey::is_supported_key(key) || !ImGui::IsKeyDown(key))
+                continue;
+
+            // ImGui swaps Cmd and Ctrl on macOS, undo it to get the physical keys
+            const bool       swapped = io.ConfigMacOSXBehaviors;
+            hotkey::hotkey_t hk{ .mods = hotkey::Mod::kNone, .key = key };
+            if (swapped ? io.KeySuper : io.KeyCtrl)
+                hk.mods |= hotkey::Mod::Ctrl;
+            if (swapped ? io.KeyCtrl : io.KeySuper)
+                hk.mods |= hotkey::Mod::Super;
+            if (io.KeyShift)
+                hk.mods |= hotkey::Mod::Shift;
+            if (io.KeyAlt)
+                hk.mods |= hotkey::Mod::Alt;
+
+            // A bare letter/digit/etc. would swallow normal typing system-wide
+            const bool standalone_ok = (key >= ImGuiKey_F1 && key <= ImGuiKey_F12) || key == ImGuiKey_PrintScreen ||
+                                       key == ImGuiKey_Pause || key == ImGuiKey_Insert;
+            if (hk.mods == hotkey::Mod::kNone && !standalone_ok)
+            {
+                missing_mod = true;
+                continue;
+            }
+
+            hotkey_str = hotkey::to_string(hk);
+            recording  = false;
+            break;
+        }
+    }
+
+    if (missing_mod)
+        ImGui::TextDisabled("Hold Ctrl, Shift, Alt or %s too", OSHOT_MACOS ? "Cmd" : "Win");
+    else if (!hotkey::status().empty())
+        ImGui::TextDisabled("%s", hotkey::status().c_str());
+    else
+        ImGui::TextDisabled("Applied by the tray instance (oshot --tray, or started at sign-in)");
+}
+#endif
 
 static void draw_preference_edit_config(const std::function<void()>& refresh_models_func, bool window_just_opened)
 {
@@ -2935,877 +3631,6 @@ void ScreenshotTool::DrawPreferencesWindow()
     }
 }
 
-#ifndef DISABLE_PLUGINS
-// A small rounded label, e.g. a license or a status
-static void draw_tag(const char* label, const rgba_t col)
-{
-    const ImVec2 text_size = ImGui::CalcTextSize(label);
-    const ImVec2 pad(6.0f, 2.0f);
-    const ImVec2 p0 = ImGui::GetCursorScreenPos();
-    const ImVec2 size(text_size.x + pad.x * 2, text_size.y + pad.y * 2);
-
-    ImDrawList* draw_list = ImGui::GetWindowDrawList();
-    draw_list->AddRectFilled(p0, ImVec2(p0.x + size.x, p0.y + size.y), col.to_abgr(), 4.0f);
-    draw_list->AddText(ImVec2(p0.x + pad.x, p0.y + pad.y), Colors::WHITE.to_abgr(), label);
-
-    ImGui::Dummy(size);
-}
-
-// Right-aligns the next item of width `w` on the current line
-static void align_right(const float w)
-{
-    ImGui::SameLine(ImGui::GetContentRegionAvail().x - w + ImGui::GetCursorPosX());
-}
-
-static float button_width(const char* label)
-{
-    return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2;
-}
-
-void ScreenshotTool::DrawManagePluginsWindow()
-{
-    static bool was_open = false;
-    bool        open     = m_show_window.Has(SubWindow::ManagePlugins);
-    if (!open)
-    {
-        was_open = false;
-        return;
-    }
-
-    const bool busy = m_install_state && m_install_state->running;
-
-    // oshotpm may have changed state.toml since oshot started
-    if (!was_open && !busy)
-        m_plugin_manager.GetStateManager().Reload();
-    was_open = true;
-
-    ImGui::SetNextWindowSize(ImVec2(620, 480), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Manage plugins##manage_plugins_window", &open, ImGuiWindowFlags_NoSavedSettings))
-    {
-        if (busy)
-        {
-            ImGui::TextDisabled("Working, see the Plugins status window. This list refreshes once it's done.");
-            ImGui::End();
-            m_show_window.Set(SubWindow::ManagePlugins, open);
-            return;
-        }
-
-        if (ImGui::Button("Browse plugins..."))
-            m_show_window.Set(SubWindow::BrowsePlugins);
-        ImGui::SameLine();
-        if (ImGui::Button("Install from a URL or file..."))
-            m_show_window.Set(SubWindow::InstallPlugins);
-        ImGui::SameLine();
-        if (ImGui::Button("Check for updates"))
-            StartPluginTask("Updating plugins", [](PluginManager& pm) { return pm.UpdateAll(); });
-
-        ImGui::PushStyleColor(ImGuiCol_Text, (0x999999FF_rgba));
-        ImGui::TextWrapped(
-            "Changes apply the next time oshot starts. If oshot runs in the tray, quit it from the tray menu first.");
-        ImGui::PopStyleColor();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        // Deferred until after the loops, which iterate the state they'd change
-        static std::string pending_uninstall;  // plugin ID or repository name
-        static std::string pending_label;
-        std::string        toggle_id;
-        bool               toggle_to       = false;
-        bool               request_confirm = false;
-
-        const std::vector<manifest_t>& repos = m_plugin_manager.GetStateManager().GetAllRepos();
-        if (repos.empty())
-            ImGui::TextDisabled("No plugins installed.");
-
-        for (const manifest_t& repo : repos)
-        {
-            ImGui::PushID(repo.name.c_str());
-
-            if (ImGui::CollapsingHeader(
-                    repo.name.c_str(),
-                    ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_SpanAvailWidth))
-            {
-                ImGui::Indent();
-
-                if (!repo.url.empty())
-                {
-                    ImGui::TextDisabled("Homepage:");
-                    ImGui::SameLine(0, 4);
-                    if (ImGui::TextLinkOpenURL(repo.url.c_str(), repo.url.c_str()))
-                        minimize_window();
-                }
-                if (repo.source == RepoSource::LocalPlugin)
-                    ImGui::TextDisabled("Installed from a folder or an archive: install it again to update it");
-                else if (!repo.git_hash.empty())
-                    ImGui::TextDisabled("Commit %.7s", repo.git_hash.c_str());
-
-                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
-                                     button_width("Uninstall all"));
-                if (ImGui::Button("Uninstall all"))
-                {
-                    pending_uninstall = repo.name;
-                    pending_label     = fmt::format("'{}' and its {} plugin(s)", repo.name, repo.plugins.size());
-                    request_confirm   = true;
-                }
-                ImGui::Spacing();
-
-                for (const plugin_t& plugin : repo.plugins)
-                {
-                    ImGui::PushID(plugin.id.c_str());
-
-                    std::error_code ec;
-                    const bool      missing = plugin.library.empty() || !fs::exists(plugin.library, ec);
-                    const bool      loaded  = g_plugins.contains(plugin.id);
-
-                    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
-                    ImGui::PushStyleColor(ImGuiCol_ChildBg, (0xffffff07_rgba));
-                    ImGui::PushStyleColor(ImGuiCol_Border, (0xffffff14_rgba));
-                    ImGui::BeginChild("card",
-                                      ImVec2(0, 0),
-                                      ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY,
-                                      ImGuiWindowFlags_NoScrollbar);
-
-                    ImGui::TextUnformatted(plugin.name.c_str());
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("(%s)", plugin.id.c_str());
-
-                    const char* tag     = "Disabled";
-                    rgba_t      tag_col = 0x725919FF_rgba;
-                    if (missing)
-                    {
-                        tag     = "Missing";
-                        tag_col = 0x8c2626FF_rgba;
-                    }
-                    else if (plugin.enabled)
-                    {
-                        tag     = loaded ? "Enabled" : "Not loaded";
-                        tag_col = loaded ? 0x197233FF_rgba : 0x3f3f3fFF_rgba;
-                    }
-                    align_right(ImGui::CalcTextSize(tag).x + 12.0f);
-                    draw_tag(tag, tag_col);
-
-                    if (!plugin.description.empty())
-                        ImGui::TextWrapped("%s", plugin.description.c_str());
-                    if (!plugin.authors.empty())
-                        ImGui::TextDisabled("By %s", fmt::format("{}", fmt::join(plugin.authors, ", ")).c_str());
-
-                    if (!plugin.licenses.empty())
-                    {
-                        ImGui::TextDisabled("License:");
-                        for (const std::string& license : plugin.licenses)
-                        {
-                            ImGui::SameLine();
-                            draw_tag(license.c_str(), 0x334c7fFF_rgba);
-                        }
-                    }
-
-                    if (missing)
-                        ImGui::TextColored(Colors::RED, "The library is missing: reinstall the plugin");
-                    else if (plugin.enabled && !loaded)
-                        ImGui::TextDisabled("Not loaded: restart oshot, or see View Logs if it failed to load");
-
-                    const char* toggle_label = plugin.enabled ? "Disable" : "Enable";
-                    align_right(button_width(toggle_label) + button_width("Uninstall") +
-                                ImGui::GetStyle().ItemSpacing.x);
-                    if (ImGui::Button(toggle_label))
-                    {
-                        toggle_id = plugin.id;
-                        toggle_to = !plugin.enabled;
-                    }
-                    ImGui::SameLine();
-                    ImGui::PushStyleColor(ImGuiCol_Button, (0x8C1F1FFF_rgba));
-                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (0xB23333FF_rgba));
-                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, (0x730F0FFF_rgba));
-                    if (ImGui::Button("Uninstall"))
-                    {
-                        pending_uninstall = plugin.id;
-                        pending_label     = fmt::format("'{}' ({})", plugin.name, plugin.id);
-                        request_confirm   = true;
-                    }
-                    ImGui::PopStyleColor(3);
-
-                    ImGui::EndChild();
-                    ImGui::PopStyleColor(2);
-                    ImGui::PopStyleVar();
-                    ImGui::Spacing();
-                    ImGui::PopID();
-                }
-
-                ImGui::Unindent();
-            }
-
-            ImGui::PopID();
-            ImGui::Spacing();
-        }
-
-        if (!toggle_id.empty())
-            MUST_OK(m_plugin_manager.SetEnabled(toggle_id, toggle_to), spdlog::error("{}", _r.error_v()));
-
-        // Outside every PushID, so it matches BeginPopupModal below
-        if (request_confirm)
-            ImGui::OpenPopup("Uninstall?##plugin_uninstall_confirm");
-
-        if (ImGui::BeginPopupModal("Uninstall?##plugin_uninstall_confirm", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
-        {
-            ImGui::Text("Uninstall %s?", pending_label.c_str());
-            ImGui::TextUnformatted("Their settings are deleted too.");
-            ImGui::Spacing();
-
-            if (ImGui::Button("Cancel"))
-                ImGui::CloseCurrentPopup();
-            ImGui::SameLine();
-            ImGui::PushStyleColor(ImGuiCol_Button, (0x8C1F1FFF_rgba));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (0xB23333FF_rgba));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, (0x730F0FFF_rgba));
-            if (ImGui::Button("Uninstall"))
-            {
-                StartPluginTask(fmt::format("Uninstalling {}", pending_uninstall),
-                                [name = pending_uninstall](PluginManager& pm) { return pm.Uninstall(name); });
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::PopStyleColor(3);
-            ImGui::EndPopup();
-        }
-    }
-    ImGui::End();
-
-    m_show_window.Set(SubWindow::ManagePlugins, open);
-}
-
-void ScreenshotTool::FetchIndexAsync()
-{
-    {
-        std::scoped_lock lock(m_index_state->mutex);
-        if (m_index_state->loading)
-            return;
-        m_index_state->loading = true;
-    }
-    if (m_index_thread.joinable())
-        m_index_thread.join();
-
-    m_index_thread = std::thread([state = m_index_state]() {
-        bool                   stale = false;
-        Result<plugin_index_t> index = PluginManager::FetchIndex(/*allow_cached=*/true, &stale);
-
-        std::scoped_lock lock(state->mutex);
-        state->loading = false;
-        state->loaded  = true;
-        state->stale   = stale;
-        if (index.ok())
-        {
-            state->index = std::move(index.get());
-            state->error.clear();
-        }
-        else
-        {
-            state->error = index.error_v();
-        }
-    });
-}
-
-void ScreenshotTool::DrawBrowsePluginsWindow()
-{
-    bool open = m_show_window.Has(SubWindow::BrowsePlugins);
-    if (!open)
-        return;
-
-    // Downloaded the first time the window opens, then on Refresh
-    bool fetch = false;
-    {
-        std::scoped_lock lock(m_index_state->mutex);
-        fetch = !m_index_state->loaded && !m_index_state->loading;
-    }
-    if (fetch)
-        FetchIndexAsync();
-
-    ImGui::SetNextWindowSize(ImVec2(640, 520), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Browse plugins##browse_plugins_window", &open, ImGuiWindowFlags_NoSavedSettings))
-    {
-        const bool busy = m_install_state && m_install_state->running;
-
-        std::unique_lock lock(m_index_state->mutex);
-        const bool       loading = m_index_state->loading;
-
-        if (loading)
-            ImGui::BeginDisabled();
-        fetch = ImGui::Button("Refresh");
-        if (loading)
-        {
-            ImGui::EndDisabled();
-            ImGui::SameLine();
-            ImGui::TextDisabled("Downloading the plugin index...");
-        }
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        ImGui::InputTextWithHint("##index_filter", "Search", &m_index_filter);
-
-        ImGui::PushStyleColor(ImGuiCol_Text, (0x999999FF_rgba));
-        ImGui::TextWrapped(
-            "Plugins listed in the oshot plugin index. Listed doesn't mean audited: plugins run with the same "
-            "permissions as oshot, so only install the ones you trust.");
-        ImGui::PopStyleColor();
-        if (!m_index_state->error.empty())
-            ImGui::TextColored(Colors::RED, "%s", m_index_state->error.c_str());
-        else if (m_index_state->stale)
-            ImGui::TextColored(0xFFCC33FF_rgba, "Offline: this is the last downloaded copy of the index.");
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        std::string filter = m_index_filter;
-        std::ranges::transform(filter, filter.begin(), [](unsigned char c) { return std::tolower(c); });
-
-        std::string install_id;
-        bool        install_update = false;
-        size_t      shown          = 0;
-        // state.toml changes under a running install: don't read it meanwhile
-        if (busy)
-            ImGui::TextDisabled("Working, see the Plugins status window.");
-        for (const index_plugin_t& p : m_index_state->index.plugins)
-        {
-            if (busy)
-                break;
-            if (!filter.empty())
-            {
-                std::string haystack = fmt::format("{} {} {} {}", p.id, p.name, p.description, fmt::join(p.tags, " "));
-                std::ranges::transform(haystack, haystack.begin(), [](unsigned char c) { return std::tolower(c); });
-                if (haystack.find(filter) == haystack.npos)
-                    continue;
-            }
-            ++shown;
-
-            std::string            why;
-            const index_version_t* best      = pick_version(p, &why);
-            const auto             installed = m_plugin_manager.GetStateManager().FindPlugin(p.id);
-            const index_version_t* current =
-                installed && !installed->version.empty() ? p.FindVersion(installed->version) : nullptr;
-
-            ImGui::PushID(p.id.c_str());
-            ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, (0xffffff07_rgba));
-            ImGui::PushStyleColor(ImGuiCol_Border, (0xffffff14_rgba));
-            ImGui::BeginChild("card",
-                              ImVec2(0, 0),
-                              ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY,
-                              ImGuiWindowFlags_NoScrollbar);
-
-            ImGui::TextUnformatted(p.name.c_str());
-            ImGui::SameLine();
-            ImGui::TextDisabled("(%s)", p.id.c_str());
-            if (best)
-            {
-                ImGui::SameLine();
-                ImGui::TextDisabled("%s", best->version.c_str());
-            }
-
-            if (!p.description.empty())
-                ImGui::TextWrapped("%s", p.description.c_str());
-            if (!p.owners.empty())
-                ImGui::TextDisabled(
-                    "By %s", fmt::format("{}", fmt::join(p.authors.empty() ? p.owners : p.authors, ", ")).c_str());
-
-            if (!p.license.empty())
-                draw_tag(p.license.c_str(), 0x334c7fFF_rgba);
-            if (p.network)
-            {
-                ImGui::SameLine();
-                draw_tag("Uses the internet", 0x725919FF_rgba);
-            }
-            for (const std::string& tag : p.tags)
-            {
-                ImGui::SameLine();
-                draw_tag(tag.c_str(), 0x3f3f3fFF_rgba);
-            }
-
-            if (!p.homepage.empty())
-            {
-                ImGui::TextDisabled("Homepage:");
-                ImGui::SameLine(0, 4);
-                if (ImGui::TextLinkOpenURL(p.homepage.c_str(), p.homepage.c_str()))
-                    minimize_window();
-            }
-
-            if (!best)
-                ImGui::TextColored(Colors::RED, "Can't be installed here: %s", why.c_str());
-            else if (best->artifacts.contains(OSHOT_TARGET))
-                ImGui::TextDisabled("Prebuilt for %s", OSHOT_TARGET);
-            else
-                ImGui::TextDisabled("Built from source when installed: needs git, CMake and a C compiler");
-
-            if (current && current->yanked)
-                ImGui::TextColored(Colors::RED,
-                                   "Your version (%s) was withdrawn%s%s",
-                                   current->version.c_str(),
-                                   current->yanked_reason.empty() ? "" : ": ",
-                                   current->yanked_reason.c_str());
-
-            // Right-aligned action
-            if (installed && installed->repository != INDEX_REPO_NAME)
-            {
-                ImGui::TextDisabled("Installed from %s", installed->repository.c_str());
-            }
-            else if (installed && best && compare_versions(best->version, installed->version) > 0)
-            {
-                const std::string label = fmt::format("Update {} -> {}", installed->version, best->version);
-                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
-                                     button_width(label.c_str()));
-                if (ImGui::Button(label.c_str()))
-                {
-                    install_id     = p.id;
-                    install_update = true;
-                }
-            }
-            else if (installed)
-            {
-                const std::string label = fmt::format("Installed {}", installed->version);
-                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
-                                     button_width(label.c_str()));
-                ImGui::BeginDisabled();
-                ImGui::Button(label.c_str());
-                ImGui::EndDisabled();
-            }
-            else if (best)
-            {
-                const std::string label = fmt::format("Install {}", best->version);
-                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
-                                     button_width(label.c_str()));
-                if (ImGui::Button(label.c_str()))
-                    install_id = p.id;
-            }
-
-            ImGui::EndChild();
-            ImGui::PopStyleColor(2);
-            ImGui::PopStyleVar();
-            ImGui::Spacing();
-            ImGui::PopID();
-        }
-
-        if (shown == 0 && !busy && !loading && m_index_state->error.empty())
-            ImGui::TextDisabled(m_index_filter.empty() ? "The plugin index is empty." : "No plugin matches.");
-
-        if (!install_id.empty())
-        {
-            const index_plugin_t* p     = m_index_state->index.Find(install_id);
-            const std::string     title = fmt::format("{} {}", install_update ? "Updating" : "Installing", p->name);
-            StartPluginTask(title, [install_id, install_update](PluginManager& pm) {
-                return pm.InstallFromIndex(install_id, install_update);
-            });
-        }
-
-        lock.unlock();
-        if (fetch)
-            FetchIndexAsync();
-    }
-    ImGui::End();
-
-    m_show_window.Set(SubWindow::BrowsePlugins, open);
-}
-
-void ScreenshotTool::StartPluginTask(std::string title, std::function<Result<>(PluginManager&)> task)
-{
-    // The buttons that start a task are disabled while one runs: just a safety net
-    if (m_install_state && m_install_state->running)
-        return;
-
-    if (m_install_thread.joinable())
-        m_install_thread.join();
-
-    auto state = std::make_shared<plugin_install_state_t>();
-
-    // Every on_* callback just appends to the shared queue. Nothing here
-    // touches ImGui, so it's safe to invoke from the worker thread.
-    auto push = [state](plugin_install_event_t::Kind kind) {
-        return [state, kind](const std::string_view msg) {
-            std::scoped_lock lock(state->events_mutex);
-            state->pending_events.push_back({ .kind = kind, .text = std::string(msg) });
-        };
-    };
-
-    PluginCallbacks cb;
-    cb.on_status  = push(plugin_install_event_t::Kind::Status);
-    cb.on_success = push(plugin_install_event_t::Kind::Success);
-    cb.on_warning = push(plugin_install_event_t::Kind::Warning);
-    cb.on_error   = push(plugin_install_event_t::Kind::Error);
-    cb.on_info    = push(plugin_install_event_t::Kind::Info);
-    cb.on_output  = push(plugin_install_event_t::Kind::Output);
-
-    // Blocks the worker thread until DrawPluginInstallStatus() answers the
-    // popup on the render thread and notifies confirm_cv.
-    cb.confirm = [state](const std::string_view prompt, bool) -> bool {
-        std::unique_lock lock(state->confirm_mutex);
-        state->confirm_prompt   = std::string(prompt);
-        state->confirm_pending  = true;
-        state->confirm_answered = false;
-        state->confirm_cv.wait(lock, [&] { return state->confirm_answered; });
-        state->confirm_pending = false;
-        return state->confirm_answer;
-    };
-    m_plugin_manager.SetCallbacks(cb);
-
-    m_install_events.clear();
-    m_install_state = state;
-    m_show_window.Set(SubWindow::PluginInstallStatus);
-
-    m_install_thread = std::thread([this, state, title = std::move(title), task = std::move(task)]() {
-        {
-            std::scoped_lock lock(state->events_mutex);
-            state->pending_events.push_back({ .kind = plugin_install_event_t::Kind::Info, .text = title });
-        }
-
-        Result<> r = task(m_plugin_manager);
-        {
-            std::scoped_lock lock(state->events_mutex);
-            if (r.ok())
-                state->pending_events.push_back({ .kind = plugin_install_event_t::Kind::Success,
-                                                  .text = "Done. Changes apply the next time oshot starts." });
-            else
-                state->pending_events.push_back({ .kind = plugin_install_event_t::Kind::Error, .text = r.error_v() });
-        }
-        state->running = false;
-    });
-}
-
-void ScreenshotTool::DrawInstallPluginsWindow()
-{
-    bool open = m_show_window.Has(SubWindow::InstallPlugins);
-    if (!open)
-        return;
-
-    const bool is_installing = m_install_state && m_install_state->running;
-
-    ImGui::SetNextWindowSize(ImVec2(560, 220), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Install plugins##install_plugins_window", &open, ImGuiWindowFlags_NoSavedSettings))
-    {
-        ImGui::TextWrapped(
-            "A git URL, a folder with an oshot-plugin.toml, or a prebuilt plugin archive (.zip, .tar.gz, .tar.xz). "
-            "From git or a folder, the plugin is built on this computer, which needs git and its build tools.");
-        ImGui::Spacing();
-        ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
-        ImGui::TextWrapped("Plugins run with the same permissions as oshot. Only install them from people you trust.");
-        ImGui::PopStyleColor();
-        ImGui::Spacing();
-
-        if (is_installing)
-            ImGui::BeginDisabled();
-
-        static constexpr auto filters = std::to_array({ "*.zip", "*.tar.gz", "*.tgz", "*.tar.xz", "*.txz" });
-        draw_input_text_file("Source", "##install_source", filters, nullptr, m_install_source);
-
-        const bool can_install = !is_installing && !m_install_source.empty();
-        if (!can_install)
-            ImGui::BeginDisabled();
-        if (ImGui::Button("Install"))
-            StartPluginTask(fmt::format("Installing {}", m_install_source),
-                            [source = m_install_source](PluginManager& pm) { return pm.Install(source); });
-        if (!can_install)
-            ImGui::EndDisabled();
-
-        if (is_installing)
-        {
-            ImGui::EndDisabled();
-            ImGui::SameLine();
-            ImGui::TextDisabled("Working, see the status window...");
-        }
-    }
-    ImGui::End();
-
-    m_show_window.Set(SubWindow::InstallPlugins, open);
-}
-
-void ScreenshotTool::DrawEventIcon(plugin_install_event_t::Kind kind)
-{
-    struct icon_t
-    {
-        const char* glyph;
-        rgba_t      color;
-    };
-    constexpr auto table = std::to_array<icon_t>({
-        { .glyph = "o", .color = 0x808080FF_rgba },  // Status (in progress)
-        { .glyph = "v", .color = 0x2ecc71FF_rgba },  // Success
-        { .glyph = "!", .color = 0xf1c40fFF_rgba },  // Warning
-        { .glyph = "x", .color = 0xe74c3cFF_rgba },  // Error
-        { .glyph = "i", .color = 0x3498dbFF_rgba },  // Info
-        { .glyph = ">", .color = 0x808080FF_rgba },  // Output
-    });
-    const icon_t&  icon  = table[idx(kind)];
-    ImGui::TextColored(icon.color, "%s", icon.glyph);
-}
-
-void ScreenshotTool::DrawPluginInstallStatus()
-{
-    bool open = m_show_window.Has(SubWindow::PluginInstallStatus);
-    if (!open || !m_install_state)
-        return;
-
-    // Drain the worker thread's queue into the UI-owned tree. This is the
-    // only place m_install_events gets mutated.
-    {
-        std::scoped_lock lock(m_install_state->events_mutex);
-        while (!m_install_state->pending_events.empty())
-        {
-            plugin_install_event_t ev = std::move(m_install_state->pending_events.front());
-            m_install_state->pending_events.pop_front();
-
-            // Build output belongs to the step that is running
-            if (ev.kind == plugin_install_event_t::Kind::Output)
-            {
-                if (m_install_events.empty())
-                    m_install_events.push_back({ .kind = ev.kind, .text = "Output", .in_progress = false });
-                std::string& out = m_install_events.back().output;
-                out += ev.text;
-                if (out.size() > 64 * 1024)
-                    out.erase(0, out.size() - 48 * 1024);
-                continue;
-            }
-
-            // A step followed by the next one finished fine
-            if (!m_install_events.empty() && m_install_events.back().in_progress &&
-                ev.kind == plugin_install_event_t::Kind::Status)
-            {
-                m_install_events.back().kind        = plugin_install_event_t::Kind::Success;
-                m_install_events.back().in_progress = false;
-            }
-
-            if (!m_install_events.empty() && m_install_events.back().in_progress &&
-                ev.kind != plugin_install_event_t::Kind::Status)
-            {
-                install_node_t& node = m_install_events.back();
-                node.kind            = ev.kind;
-                node.in_progress     = false;
-                node.details.push_back(ev.text);
-            }
-            else
-            {
-                m_install_events.push_back({ .kind        = ev.kind,
-                                             .text        = ev.text,
-                                             .details     = {},
-                                             .in_progress = ev.kind == plugin_install_event_t::Kind::Status });
-            }
-        }
-    }
-
-    ImGui::SetNextWindowSize(ImVec2(560, 420), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Plugins##plugin_install_status_window", &open, ImGuiWindowFlags_NoSavedSettings))
-    {
-        for (size_t i = 0; i < m_install_events.size(); i++)
-        {
-            const install_node_t& node = m_install_events[i];
-            ImGui::PushID(static_cast<int>(i));
-
-            DrawEventIcon(node.kind);
-            ImGui::SameLine();
-            const bool has_children = !node.details.empty() || !node.output.empty();
-            // Errors open by themselves: they're what the person needs to read
-            if (node.kind == plugin_install_event_t::Kind::Error && has_children)
-                ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-            if (ImGui::TreeNodeEx("##node",
-                                  has_children ? ImGuiTreeNodeFlags_None
-                                               : ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen,
-                                  "%s",
-                                  node.text.c_str()) &&
-                has_children)
-            {
-                for (const std::string& detail : node.details)
-                    ImGui::TextWrapped("%s", detail.c_str());
-                if (!node.output.empty())
-                {
-                    ImGui::BeginChild("##output",
-                                      ImVec2(0, ImGui::GetTextLineHeight() * 12),
-                                      ImGuiChildFlags_Borders,
-                                      ImGuiWindowFlags_HorizontalScrollbar);
-                    ImGui::TextUnformatted(node.output.c_str(), node.output.c_str() + node.output.size());
-                    if (m_install_state->running)
-                        ImGui::SetScrollHereY(1.0f);
-                    ImGui::EndChild();
-                }
-                ImGui::TreePop();
-            }
-
-            ImGui::PopID();
-        }
-
-        if (m_install_state->running)
-        {
-            ImGui::Spacing();
-            ImGui::TextDisabled("Working...");
-        }
-
-        // Pending confirmation from the worker thread, rendered as a modal
-        // inside this same window's frame.
-        bool has_confirm;
-        {
-            std::scoped_lock lock(m_install_state->confirm_mutex);
-            has_confirm = m_install_state->confirm_pending && !m_install_state->confirm_answered;
-        }
-        if (has_confirm)
-            ImGui::OpenPopup("Confirm##plugin_install_confirm");
-
-        ImGui::SetNextWindowSize(ImVec2(550, 220));
-        if (ImGui::BeginPopupModal("Confirm##plugin_install_confirm", nullptr, ImGuiWindowFlags_NoCollapse))
-        {
-            std::scoped_lock lock(m_install_state->confirm_mutex);
-            ImGui::TextWrapped("%s", m_install_state->confirm_prompt.c_str());
-            if (ImGui::Button("Yes"))
-            {
-                m_install_state->confirm_answer   = true;
-                m_install_state->confirm_answered = true;
-                m_install_state->confirm_cv.notify_all();
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("No"))
-            {
-                m_install_state->confirm_answer   = false;
-                m_install_state->confirm_answered = true;
-                m_install_state->confirm_cv.notify_all();
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
-        }
-
-        ImGui::End();
-    }
-
-    // Don't let the person close the window out from under a running
-    // install: the worker thread would keep pushing events into a queue
-    // nothing is draining, and a pending confirm would hang forever with no
-    // popup left to answer it from.
-    if (!open && m_install_state->running)
-        open = true;
-
-    m_show_window.Set(SubWindow::PluginInstallStatus, open);
-}
-#endif
-
-void ScreenshotTool::DrawLogsWindow()
-{
-    bool open = m_show_window.Has(SubWindow::Logs);
-    if (!open || !g_imgui_log_sink)
-        return;
-
-    auto level_color = [](spdlog::level::level_enum lvl) {
-        switch (lvl)
-        {
-            case spdlog::level::trace:    return 0x888888FF_rgba;  // gray
-            case spdlog::level::debug:    return 0x9999FFFF_rgba;  // periwinkle
-            case spdlog::level::info:     return 0x00AEFFFF_rgba;  // blueish
-            case spdlog::level::warn:     return 0xFFCC33FF_rgba;  // amber
-            case spdlog::level::err:      return 0xFF4D4DFF_rgba;  // red
-            case spdlog::level::critical: return Colors::RED;      // pure red
-
-            default: return Colors::WHITE;
-        }
-    };
-
-    auto level_tag = [](spdlog::level::level_enum lvl) {
-        switch (lvl)
-        {
-            case spdlog::level::trace:    return "TRACE";
-            case spdlog::level::debug:    return "DEBUG";
-            case spdlog::level::info:     return "INFO";
-            case spdlog::level::warn:     return "WARN";
-            case spdlog::level::err:      return "ERROR";
-            case spdlog::level::critical: return "CRITICAL";
-            default:                      return "OFF";
-        }
-    };
-
-    // Persistent UI state for this window
-    static ImGuiTextFilter               text_filter;
-    static spdlog::level::level_enum     min_level  = spdlog::level::debug;
-    static bool                          autoscroll = true;
-    static spdlog::log_clock::time_point cleared_before{};  // "soft clear" marker
-
-    ImGui::SetNextWindowSize(ImVec2(560, 400), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Logs##logs_window", &open, ImGuiWindowFlags_NoSavedSettings))
-    {
-        // --- Toolbar ---
-        if (ImGui::Button("Clear"))
-            cleared_before = spdlog::log_clock::now();
-
-        ImGui::SameLine();
-        bool copy_all = ImGui::Button("Copy All");
-        ImGui::SameLine();
-        ImGui::Checkbox("Auto-scroll", &autoscroll);
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(110);
-        if (ImGui::BeginCombo("##min_level", level_tag(min_level)))
-        {
-            for (int i = spdlog::level::trace; i < spdlog::level::off; ++i)
-            {
-                auto lvl      = toe<spdlog::level::level_enum>(i);
-                bool selected = (lvl == min_level);
-                if (ImGui::Selectable(level_tag(lvl), selected))
-                    min_level = lvl;
-                if (selected)
-                    ImGui::SetItemDefaultFocus();
-            }
-            ImGui::EndCombo();
-        }
-        ImGui::SameLine();
-        text_filter.Draw("Filter", 200);
-
-        ImGui::Separator();
-
-        // --- Build filtered view ---
-        const std::vector<spdlog::details::log_msg_buffer>& all = g_imgui_log_sink->last_raw();
-        std::vector<const spdlog::details::log_msg_buffer*> shown;
-        shown.reserve(all.size());
-        for (const auto& msg : all)
-        {
-            if (msg.level < min_level || msg.time <= cleared_before)
-                continue;
-            if (!text_filter.PassFilter(msg.payload.data(), msg.payload.data() + msg.payload.size()))
-                continue;
-            shown.push_back(&msg);
-        }
-
-        // --- Scrolling log region ---
-        ImGui::BeginChild("##log_scroll", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
-
-        ImGuiListClipper clipper;
-        clipper.Begin(static_cast<int>(shown.size()));
-        while (clipper.Step())
-        {
-            for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
-            {
-                const auto&        msg      = *shown[i];
-                auto               time_ms  = std::chrono::time_point_cast<std::chrono::milliseconds>(msg.time);
-                const std::string& time_fmt = fmt::format("{:%H:%M:%S}", time_ms);
-
-                ImGui::TextDisabled("%s", time_fmt.c_str());
-                ImGui::SameLine();
-                ImGui::TextColored(level_color(msg.level), "[%s]", level_tag(msg.level));
-                ImGui::SameLine();
-                ImGui::TextUnformatted(msg.payload.data(), msg.payload.data() + msg.payload.size());
-
-                if (ImGui::BeginPopupContextItem(fmt::format("ctx##{}", i).c_str()))
-                {
-                    if (ImGui::MenuItem("Copy line"))
-                        MUST_OK(g_clipboard.CopyText(std::string(msg.payload.data(), msg.payload.size())),
-                                error("Failed to copy line log: {}", _r.error_v()));
-                    ImGui::EndPopup();
-                }
-            }
-        }
-
-        if (copy_all)
-        {
-            std::string all_text;
-            for (const auto* msg : shown)
-                all_text += fmt::format("[{}] {}\n", level_tag(msg->level), msg->payload);
-            MUST_OK(g_clipboard.CopyText(all_text), error("Failed to copy logs: {}", _r.error_v()));
-        }
-
-        if (autoscroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
-            ImGui::SetScrollHereY(1.0f);
-
-        ImGui::EndChild();
-        ImGui::End();
-    }
-
-    m_show_window.Set(SubWindow::Logs, open);
-}
-
 void ScreenshotTool::DrawDownloadOCRWindow()
 {
     ErrorContext<OcrDownloadError>& ectx = m_download_errors;
@@ -4031,160 +3856,134 @@ void ScreenshotTool::DrawDownloadOCRWindow()
     m_show_window.Set(SubWindow::OcrDownload, open);
 }
 
-void ScreenshotTool::DrawAnnotations()
+void ScreenshotTool::DrawLogsWindow()
 {
-    static_assert(sizeof(point_t) == sizeof(ImVec2) && alignof(point_t) == alignof(ImVec2),
-                  "point_t and ImVec2 layout mismatch");
+    bool open = m_show_window.Has(SubWindow::Logs);
+    if (!open || !g_imgui_log_sink)
+        return;
 
-    ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
-    const float dpi       = ImGui::GetIO().DisplayFramebufferScale.x;
-
-    auto draw_line = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
-        draw_list->AddLine(p1, p2, ann.color.to_abgr(), t);
-    };
-
-    auto draw_text = [&](const annotation_t& ann, const ImVec2& p1) {
-        const float font_size = ann.thickness > 8.0f ? ann.thickness : ImGui::GetFontSize();
-        ImFont*     font      = CacheAndGetFont(m_inputs.resolved_ann_font_path, font_size);
-        draw_list->AddText(font, font_size, p1, ann.color.to_abgr(), ann.text.c_str());
-    };
-
-    auto draw_rectangle_or_filled =
-        [&](const bool filled, const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
-            ImVec2 min(std::min(p1.x, p2.x), std::min(p1.y, p2.y));
-            ImVec2 max(std::max(p1.x, p2.x), std::max(p1.y, p2.y));
-            filled ? draw_list->AddRectFilled(min, max, ann.color.to_abgr(), 0.0f, ImDrawFlags_None)
-                   : draw_list->AddRect(min, max, ann.color.to_abgr(), 0.0f, t, ImDrawFlags_None);
-        };
-
-    auto draw_circle_or_filled =
-        [&](const bool filled, const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
-            float dx     = p2.x - p1.x;
-            float dy     = p2.y - p1.y;
-            float radius = std::sqrt(dx * dx + dy * dy);
-            filled ? draw_list->AddCircleFilled(p1, radius, ann.color.to_abgr(), 0)
-                   : draw_list->AddCircle(p1, radius, ann.color.to_abgr(), 0, t);
-        };
-
-    auto draw_counter_bubble = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
-        // Draw the circle outline
-        draw_circle_or_filled(false, ann, p1, p2, t);
-
-        const std::string& label = fmt::to_string(ann.count);
-
-        // Pick a font size that fits comfortably inside the circle
-        const float dx     = p2.x - p1.x;
-        const float dy     = p2.y - p1.y;
-        const float radius = std::sqrt(dx * dx + dy * dy);
-        // Use ~70 % of the diameter so the number has breathing room
-        const float font_size = std::max(8.0f, radius * 1.4f);
-        ImFont*     font      = CacheAndGetFont(m_inputs.resolved_ann_font_path, font_size);
-
-        // Measure the rendered label so we can center it
-        const ImVec2 text_size =
-            font ? font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, label.c_str()) : ImGui::CalcTextSize(label.c_str());
-
-        const ImVec2 text_pos(p1.x - text_size.x * 0.5f, p1.y - text_size.y * 0.5f);
-        draw_list->AddText(font, font_size, text_pos, ann.color.to_abgr(), label.c_str());
-    };
-
-    auto draw_pencil = [&](const annotation_t& ann, const float t) {
-        if (ann.points.empty())
-            return;
-
-        const ImU32 col     = ann.color.to_abgr();
-        const float r       = std::max(t * 0.5f, 0.5f);
-        const float step    = std::max(r * 0.6f, 1.0f);  // spacing between stamps
-        const float step_sq = step * step;
-        const int   segs    = r < 4.0f ? 8 : 0;  // 0 = ImGui picks based on radius
-
-        ImVec2 last(ann.points[0].x, ann.points[0].y);
-        draw_list->AddCircleFilled(last, r, col, segs);
-
-        for (size_t i = 1; i < ann.points.size(); ++i)
+    auto level_color = [](spdlog::level::level_enum lvl) {
+        switch (lvl)
         {
-            const float dx   = ann.points[i].x - last.x;
-            const float dy   = ann.points[i].y - last.y;
-            const float d_sq = dx * dx + dy * dy;
-            if (d_sq < step_sq)
-                continue;  // too close to the last stamp, skip
+            case spdlog::level::trace:    return 0x888888FF_rgba;  // gray
+            case spdlog::level::debug:    return 0x9999FFFF_rgba;  // periwinkle
+            case spdlog::level::info:     return 0x00AEFFFF_rgba;  // blueish
+            case spdlog::level::warn:     return 0xFFCC33FF_rgba;  // amber
+            case spdlog::level::err:      return 0xFF4D4DFF_rgba;  // red
+            case spdlog::level::critical: return Colors::RED;      // pure red
 
-            const float d  = std::sqrt(d_sq);
-            const int   n  = static_cast<int>(d / step);
-            const float sx = dx / d * step;
-            const float sy = dy / d * step;
+            default: return Colors::WHITE;
+        }
+    };
 
-            for (int k = 0; k < n; ++k)
+    auto level_tag = [](spdlog::level::level_enum lvl) {
+        switch (lvl)
+        {
+            case spdlog::level::trace:    return "TRACE";
+            case spdlog::level::debug:    return "DEBUG";
+            case spdlog::level::info:     return "INFO";
+            case spdlog::level::warn:     return "WARN";
+            case spdlog::level::err:      return "ERROR";
+            case spdlog::level::critical: return "CRITICAL";
+            default:                      return "OFF";
+        }
+    };
+
+    // Persistent UI state for this window
+    static ImGuiTextFilter               text_filter;
+    static spdlog::level::level_enum     min_level  = spdlog::level::debug;
+    static bool                          autoscroll = true;
+    static spdlog::log_clock::time_point cleared_before{};  // "soft clear" marker
+
+    ImGui::SetNextWindowSize(ImVec2(560, 400), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Logs##logs_window", &open, ImGuiWindowFlags_NoSavedSettings))
+    {
+        // --- Toolbar ---
+        if (ImGui::Button("Clear"))
+            cleared_before = spdlog::log_clock::now();
+
+        ImGui::SameLine();
+        bool copy_all = ImGui::Button("Copy All");
+        ImGui::SameLine();
+        ImGui::Checkbox("Auto-scroll", &autoscroll);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110);
+        if (ImGui::BeginCombo("##min_level", level_tag(min_level)))
+        {
+            for (int i = spdlog::level::trace; i < spdlog::level::off; ++i)
             {
-                last.x += sx;
-                last.y += sy;
-                draw_list->AddCircleFilled(last, r, col, segs);
+                auto lvl      = toe<spdlog::level::level_enum>(i);
+                bool selected = (lvl == min_level);
+                if (ImGui::Selectable(level_tag(lvl), selected))
+                    min_level = lvl;
+                if (selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        text_filter.Draw("Filter", 200);
+
+        ImGui::Separator();
+
+        // --- Build filtered view ---
+        const std::vector<spdlog::details::log_msg_buffer>& all = g_imgui_log_sink->last_raw();
+        std::vector<const spdlog::details::log_msg_buffer*> shown;
+        shown.reserve(all.size());
+        for (const auto& msg : all)
+        {
+            if (msg.level < min_level || msg.time <= cleared_before)
+                continue;
+            if (!text_filter.PassFilter(msg.payload.data(), msg.payload.data() + msg.payload.size()))
+                continue;
+            shown.push_back(&msg);
+        }
+
+        // --- Scrolling log region ---
+        ImGui::BeginChild("##log_scroll", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+
+        ImGuiListClipper clipper;
+        clipper.Begin(static_cast<int>(shown.size()));
+        while (clipper.Step())
+        {
+            for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
+            {
+                const auto&        msg      = *shown[i];
+                auto               time_ms  = std::chrono::time_point_cast<std::chrono::milliseconds>(msg.time);
+                const std::string& time_fmt = fmt::format("{:%H:%M:%S}", time_ms);
+
+                ImGui::TextDisabled("%s", time_fmt.c_str());
+                ImGui::SameLine();
+                ImGui::TextColored(level_color(msg.level), "[%s]", level_tag(msg.level));
+                ImGui::SameLine();
+                ImGui::TextUnformatted(msg.payload.data(), msg.payload.data() + msg.payload.size());
+
+                if (ImGui::BeginPopupContextItem(fmt::format("ctx##{}", i).c_str()))
+                {
+                    if (ImGui::MenuItem("Copy line"))
+                        MUST_OK(g_clipboard.CopyText(std::string(msg.payload.data(), msg.payload.size())),
+                                error("Failed to copy line log: {}", _r.error_v()));
+                    ImGui::EndPopup();
+                }
             }
         }
 
-        // make sure the stroke ends exactly where the mouse ended
-        const ImVec2 end(ann.points.back().x, ann.points.back().y);
-        if (end.x != last.x || end.y != last.y)
-            draw_list->AddCircleFilled(end, r, col, segs);
-    };
-
-    auto draw_arrow = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
-        ImVec2 v(p2.x - p1.x, p2.y - p1.y);
-        float  len = std::sqrt(v.x * v.x + v.y * v.y);
-        if (len < 1.0f)
-            return;
-
-        ImVec2 dir(v.x / len, v.y / len);
-        ImVec2 perp(-dir.y, dir.x);  // unit perpendicular
-
-        float head_len = 6.0f * t;
-        float head_w   = 4.0f * t;
-
-        head_len = std::min(head_len, len * 0.6f);
-
-        ImVec2 base(p2.x - dir.x * head_len, p2.y - dir.y * head_len);
-        ImVec2 left(base.x + perp.x * (head_w * 0.5f), base.y + perp.y * (head_w * 0.5f));
-        ImVec2 right(base.x - perp.x * (head_w * 0.5f), base.y - perp.y * (head_w * 0.5f));
-
-        // shaft
-        draw_list->AddLine(p1, base, ann.color.to_abgr(), t);
-
-        // head
-        draw_list->AddTriangleFilled(p2, left, right, ann.color.to_abgr());
-    };
-
-    auto draw_annotation = [&](const annotation_t& ann) {
-        const ImVec2 p1(ann.start.x, ann.start.y);
-        const ImVec2 p2(ann.end.x, ann.end.y);
-        const float  t = ann.thickness * dpi;
-
-        switch (ann.type)
+        if (copy_all)
         {
-            case ToolType::Line:            draw_line(ann, p1, p2, t); break;
-            case ToolType::Arrow:           draw_arrow(ann, p1, p2, t); break;
-            case ToolType::Rectangle:       draw_rectangle_or_filled(false, ann, p1, p2, t); break;
-            case ToolType::RectangleFilled: draw_rectangle_or_filled(true, ann, p1, p2, t); break;
-            case ToolType::Circle:          draw_circle_or_filled(false, ann, p1, p2, t); break;
-            case ToolType::CircleFilled:    draw_circle_or_filled(true, ann, p1, p2, t); break;
-            case ToolType::CounterBubble:   draw_counter_bubble(ann, p1, p2, t); break;
-            case ToolType::Text:            draw_text(ann, p1); break;
-            case ToolType::Pencil:          draw_pencil(ann, t); break;
-
-            case ToolType::kNone:
-            case ToolType::ToggleTextTools:
-            case ToolType::CopyImage:
-            case ToolType::SaveImage:
-            case ToolType::Logo:
-            case ToolType::COUNT:           break;
+            std::string all_text;
+            for (const auto* msg : shown)
+                all_text += fmt::format("[{}] {}\n", level_tag(msg->level), msg->payload);
+            MUST_OK(g_clipboard.CopyText(all_text), error("Failed to copy logs: {}", _r.error_v()));
         }
-    };
 
-    for (const annotation_t& ann : m_annotations)
-        draw_annotation(ann);
+        if (autoscroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
+            ImGui::SetScrollHereY(1.0f);
 
-    // The one being drawn, on top
-    if (m_current_actions.Has(CurrentAction::IsDrawing))
-        draw_annotation(m_current_annotation);
+        ImGui::EndChild();
+        ImGui::End();
+    }
+
+    m_show_window.Set(SubWindow::Logs, open);
 }
 
 void ScreenshotTool::DrawOutputMenuSelection()
@@ -4250,498 +4049,748 @@ void ScreenshotTool::DrawOutputMenuSelection()
 #endif
 }
 
-void ScreenshotTool::Cancel()
+// ------------------------------
+// Plugins
+// ------------------------------
+
+#ifndef DISABLE_PLUGINS
+
+// A small rounded label, e.g. a license or a status
+static void draw_tag(const char* label, const rgba_t col)
 {
-    m_state = ToolState::Idle;
+    const ImVec2 text_size = ImGui::CalcTextSize(label);
+    const ImVec2 pad(6.0f, 2.0f);
+    const ImVec2 p0 = ImGui::GetCursorScreenPos();
+    const ImVec2 size(text_size.x + pad.x * 2, text_size.y + pad.y * 2);
 
-    auto delete_texture = [](ImTextureRef& tex) {
-#if OSHOT_MACOS
-        tex = ImTextureRef{};
-#else
-        if (tex._TexID)
-        {
-            auto texture = GLuint(intptr_t(tex._TexID));
-            glDeleteTextures(1, &texture);
-            tex = ImTextureRef{};
-        }
-#endif
-    };
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    draw_list->AddRectFilled(p0, ImVec2(p0.x + size.x, p0.y + size.y), col.to_abgr(), 4.0f);
+    draw_list->AddText(ImVec2(p0.x + pad.x, p0.y + pad.y), Colors::WHITE.to_abgr(), label);
 
-    delete_texture(m_texture_id);
-    for (auto& tex : m_tool_textures)
-        delete_texture(tex);
-
-    // Only our references: the fonts stay in ImGui's atlas
-    m_font_cache.clear();
-
-    if (m_on_cancel)
-        m_on_cancel();
+    ImGui::Dummy(size);
 }
 
-bool ScreenshotTool::OpenImage(const std::string& path)
+// Right-aligns the next item of width `w` on the current line
+static void align_right(const float w)
 {
-    Result<capture_result_t> cap = load_image_rgba(path);
-    MUST_OK(cap, {
-        error("Failed to load image: {}", cap.error_v());
-        return false;
-    });
-
-    m_screenshot = std::move(cap.get());
-    fit_to_screen(m_screenshot);
-
-#if OSHOT_MACOS
-    // Tell backend to recreate Metal texture
-    if (m_on_image_reload)
-        m_on_image_reload(m_screenshot);
-#else
-
-    // Recreate texture (CreateTexture() already deletes the old ones)
-    const Result<ImTextureRef>& r =
-        CreateTexture(m_texture_id._TexID, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
-    MUST_OK(r, {
-        error("Failed to create openGL texture: {}", r.error_v());
-        return false;
-    });
-
-    m_texture_id = r.get();
-#endif
-
-    // Reset interactions
-    m_state                    = ToolState::Selecting;
-    m_current_tool             = ToolType::kNone;
-    m_main_sel.handle_hover    = HandleHovered::kNone;
-    m_main_sel.dragging_handle = HandleHovered::kNone;
-    m_input_owner              = InputOwner::kNone;
-
-    m_main_sel.selection            = {};
-    m_main_sel.drag_start_selection = {};
-    m_main_sel.drag_start_mouse     = {};
-    m_image_origin                  = {};
-    m_image_end                     = {};
-
-    return true;
+    ImGui::SameLine(ImGui::GetContentRegionAvail().x - w + ImGui::GetCursorPosX());
 }
 
-capture_result_t ScreenshotTool::GetFinalImage()
+static float button_width(const char* label)
 {
-    UpdateWindowBg();
+    return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2;
+}
 
-    const region_t& region = GetActiveRegion();
-
-    capture_result_t result;
-    result.w = region.w;
-    result.h = region.h;
-    result.data.resize(size_t(region.w) * region.h * 4);
-
-    const int src_width = m_screenshot.w;
-    const int dst_width = region.w;
-
-    // The part of the region inside the screenshot
-    const int start_y = std::max(0, -region.y);
-    const int end_y   = std::min(region.h, m_screenshot.h - region.y);
-    const int start_x = std::max(0, -region.x);
-    const int end_x   = std::min(region.w, m_screenshot.w - region.x);
-
-    int width = end_x - start_x;
-
-    // Copy only the valid region
-    const size_t bytes_to_copy = (width > 0) ? size_t(width) * 4 : 0;
-
-    if (bytes_to_copy > 0)
+void ScreenshotTool::FetchIndexAsync()
+{
     {
-        for (int y = start_y; y < end_y; ++y)
-        {
-            const int    src_y         = region.y + y;
-            const size_t src_row_start = (size_t(src_y) * src_width + (region.x + start_x)) * 4;
-            const size_t dst_row_start = (size_t(y) * dst_width + start_x) * 4;
-
-            std::memcpy(result.data.data() + dst_row_start, m_screenshot.view().data() + src_row_start, bytes_to_copy);
-        }
+        std::scoped_lock lock(m_index_state->mutex);
+        if (m_index_state->loading)
+            return;
+        m_index_state->loading = true;
     }
+    if (m_index_thread.joinable())
+        m_index_thread.join();
 
-    return result;
-}
+    m_index_thread = std::thread([state = m_index_state]() {
+        bool                   stale = false;
+        Result<plugin_index_t> index = PluginManager::FetchIndex(/*allow_cached=*/true, &stale);
 
-region_t ScreenshotTool::GetActiveRegion() const
-{
-    bool has_selection = m_main_sel.selection.get_width() > 0 && m_main_sel.selection.get_height() > 0;
-
-    if (!has_selection)
-    {
-        // Full screenshot (visible area)
-        return region_t{ .x = 0, .y = 0, .w = m_screenshot.w, .h = m_screenshot.h };
-    }
-
-    const auto  img_w = float(m_screenshot.w);
-    const auto  img_h = float(m_screenshot.h);
-    const auto& s     = m_main_sel.selection;
-    const float k     = m_image_scale;  // screen units -> screenshot pixels
-
-    const int x0 = int(std::round(std::clamp((s.get_x() - m_image_origin.x) * k, 0.0f, img_w)));
-    const int y0 = int(std::round(std::clamp((s.get_y() - m_image_origin.y) * k, 0.0f, img_h)));
-    const int x1 = int(std::round(std::clamp((s.get_x() + s.get_width() - m_image_origin.x) * k, 0.0f, img_w)));
-    const int y1 = int(std::round(std::clamp((s.get_y() + s.get_height() - m_image_origin.y) * k, 0.0f, img_h)));
-
-    return region_t{ .x = x0, .y = y0, .w = x1 - x0, .h = y1 - y0 };
-}
-
-void ScreenshotTool::UpdateWindowBg()
-{
-    // Calculate where the screenshot will be drawn (centered)
-    // clang-format off
-    auto* vp = ImGui::GetMainViewport();
-    m_image_scale = m_full_res_image ? std::max(1.0f, ImGui::GetIO().DisplayFramebufferScale.x) : 1.0f;
-    ImVec2 image_size(
-        float(m_screenshot.w) / m_image_scale,
-        float(m_screenshot.h) / m_image_scale
-    );
-
-    m_image_origin = ImVec2(
-        vp->Pos.x + std::floor((vp->Size.x - image_size.x) * 0.5f),
-        vp->Pos.y + std::floor((vp->Size.y - image_size.y) * 0.5f)
-    );
-
-    m_image_end = ImVec2(
-        m_image_origin.x + image_size.x,
-        m_image_origin.y + image_size.y
-    );
-    // clang-format on
-}
-
-ImVec2 ScreenshotTool::GetToolButtonSize()
-{
-    const ImGuiStyle& style = ImGui::GetStyle();
-    return { TOOL_BUTTON_SIZE + style.FramePadding.x * 2.0f, TOOL_BUTTON_SIZE + style.FramePadding.y * 2.0f };
-}
-
-void ScreenshotTool::UpdateAnnsToolbarPos()
-{
-    m_fill_tools_complete = false;
-
-    const ImGuiStyle& style = ImGui::GetStyle();
-    const ImVec2      btn   = GetToolButtonSize();
-
-    const float sel_w = m_main_sel.selection.get_width();
-    const float sel_h = m_main_sel.selection.get_height();
-
-    // Tools that never draw a button must not take a slot
-    auto has_button = [](ToolType t) { return t != ToolType::kNone && t != ToolType::COUNT && t != ToolType::Logo; };
-
-    const size_t end  = idx(ToolType::COUNT) - 1;
-    size_t       next = idx(ToolType::kNone) + 1;
-
-    ToolType last_tool;
-    for (size_t i = 0; i < m_tools_borders.size(); ++i)
-    {
-        std::vector<ToolType>& tools = m_tools_borders[i];
-        tools.clear();
-
-        const bool   is_side = i % 2 != 0;  // Bottom/Top = horizontal, Right/Left = vertical
-        const size_t capacity =
-            is_side ? fit_count(sel_h, btn.y, style.ItemSpacing.y) : fit_count(sel_w, btn.x, style.ItemSpacing.x);
-
-        for (; next < end && tools.size() < capacity; ++next)
+        std::scoped_lock lock(state->mutex);
+        state->loading = false;
+        state->loaded  = true;
+        state->stale   = stale;
+        if (index.ok())
         {
-            last_tool = toe<ToolType>(next);
-            if (has_button(last_tool))
-                tools.emplace_back(last_tool);
-        }
-    }
-
-    if (last_tool == ToolType::SaveImage)  // NOTE: Update if modifying enum class ToolType
-        m_fill_tools_complete = true;
-}
-
-Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const monitor_t& target, int transform)
-{
-    const capture_result_t&  full    = m_uncropped.data.empty() ? m_screenshot : m_uncropped;
-    Result<capture_result_t> cropped = crop_to_monitor(full, layout, target.geo);
-    TRY_MSG(cropped, "Failed to crop capture to focused monitor: {}");
-
-    m_screenshot = std::move(cropped.get());
-    m_uncropped  = {};
-
-    spdlog::debug("target.transform = {}", target.transform);
-    if (transform >= 1 && transform <= 3)
-        m_screenshot = rotate_rgba(m_screenshot, 4 - transform);  // swap 1 (90) and 3 (270)
-    fit_to_screen(m_screenshot);
-
-    const Result<ImTextureRef>& r =
-        CreateTexture(m_texture_id._TexID, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
-    TRY_MSG(r, "Failed to recreate texture after crop: {}");
-    m_texture_id = r.get();
-
-    UpdateWindowBg();  // re-center for the new size
-
-    return Ok();
-}
-
-ImRect ScreenshotTool::GetAnnotationBBox(const annotation_t& ann) const
-{
-    switch (ann.type)
-    {
-        case ToolType::Circle:
-        case ToolType::CircleFilled:
-        case ToolType::CounterBubble:
-        {
-            // start = center, end = a point on the circumference
-            const float dx     = ann.end.x - ann.start.x;
-            const float dy     = ann.end.y - ann.start.y;
-            const float radius = std::sqrt(dx * dx + dy * dy);
-            return { ann.start.x - radius, ann.start.y - radius, ann.start.x + radius, ann.start.y + radius };
-        }
-
-        case ToolType::Line:
-        case ToolType::Arrow:
-        {
-            // start/end are directional endpoints, not corners, so normalize
-            // them, and pad by half the stroke so thin/axis-aligned segments
-            // stay clickable.
-            const float half_t = std::max(ann.thickness, 4.0f) * 0.5f;
-            return { std::min(ann.start.x, ann.end.x) - half_t,
-                     std::min(ann.start.y, ann.end.y) - half_t,
-                     std::max(ann.start.x, ann.end.x) + half_t,
-                     std::max(ann.start.y, ann.end.y) + half_t };
-        }
-
-        case ToolType::Text:
-        {
-            const float font_size = ann.thickness > 8.0f ? ann.thickness : ImGui::GetFontSize();
-            ImFont*     font      = GetCachedFont(m_inputs.resolved_ann_font_path, font_size);
-            if (font)
-                ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
-            const ImVec2 size = font ? font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, ann.text.c_str())
-                                     : ImGui::CalcTextSize(ann.text.c_str());
-            return { ann.start.x, ann.start.y, ann.start.x + size.x, ann.start.y + size.y };
-        }
-
-        case ToolType::Pencil:
-        {
-            if (ann.points.empty())
-                return { ann.start.x, ann.start.y, ann.start.x, ann.start.y };
-            ImVec2 min(ann.points.front().x, ann.points.front().y);
-            ImVec2 max = min;
-            for (const point_t& p : ann.points)
-            {
-                min.x = std::min(min.x, p.x);
-                min.y = std::min(min.y, p.y);
-                max.x = std::max(max.x, p.x);
-                max.y = std::max(max.y, p.y);
-            }
-            return { min, max };
-        }
-
-        case ToolType::Rectangle:
-        case ToolType::RectangleFilled:
-        default:
-            // Leave as-is: start/end are already corners.
-            return { ann.start.x, ann.start.y, ann.end.x, ann.end.y };
-    }
-}
-
-ImRect ScreenshotTool::GetAnnotationHandleBox(const annotation_t& ann) const
-{
-    constexpr float PIXEL   = 1.0f;
-    const float     padding = ann.thickness - PIXEL;
-    const ImRect    bbox    = GetAnnotationBBox(ann);
-    return { bbox.Min.x - padding, bbox.Min.y - padding, bbox.Max.x + padding, bbox.Max.y + padding };
-}
-
-ImFont* ScreenshotTool::GetCachedFont(const std::string& font_path, const float font_size) const
-{
-    if (font_path.empty())
-        return ImGui::GetDefaultFont();
-
-    const float safe_size = std::max(font_size, 16.0f);
-    std::pair   key(font_path, safe_size);
-    auto        it = m_font_cache.find(key);
-    if (it != m_font_cache.end())
-        return it->second.font;
-
-    return nullptr;
-}
-
-ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const float font_size)
-{
-    ImFont* font = GetCachedFont(font_path, font_size);
-    if (font)
-    {
-        ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
-        return font;
-    }
-
-    font = ImGui::GetIO().Fonts->AddFontFromFileTTF(
-        font_path.c_str(), font_size, nullptr, ImGui::GetIO().Fonts->GetGlyphRangesDefault());
-
-    const float safe_size = std::max(font_size, 16.0f);
-    std::pair   key(font_path, safe_size);
-    m_font_cache[key] = { .font_path = font_path, .font = font, .loaded = true };
-    if (font)
-        ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
-
-    return font;
-}
-
-void ScreenshotTool::CreateCopyTextButton(const std::string& text_copy, const std::string_view label1)
-{
-    ErrorContext<GeneralError>& ectx = m_general_errors;
-
-    static bool armed = false;
-    if (create_timed_button(label1, "Copied!", armed))
-    {
-        const Result<>& res = g_clipboard.CopyText(text_copy);
-        if (res.ok())
-        {
-            ClearError(ectx, GeneralError::FailedToCopyText);
-            armed = true;
+            state->index = std::move(index.get());
+            state->error.clear();
         }
         else
         {
-            SetError(ectx, GeneralError::FailedToCopyText, res.error_v());
+            state->error = index.error_v();
         }
-    }
-
-    if (HasError(ectx, GeneralError::FailedToCopyText))
-    {
-        ImGui::SameLine();
-        ImGui::TextColored(
-            Colors::RED, "Failed to copy text: %s", GetError(ectx, GeneralError::FailedToCopyText).c_str());
-    }
+    });
 }
 
-void ScreenshotTool::SyncRuntimeFromConfig()
+void ScreenshotTool::StartPluginTask(std::string title, std::function<Result<>(PluginManager&)> task)
 {
-    m_inputs.ocr_path  = g_config->File.ocr_path;
-    m_inputs.ocr_model = g_config->File.ocr_model;
-    RefreshOcrModels();
+    // The buttons that start a task are disabled while one runs: just a safety net
+    if (m_install_state && m_install_state->running)
+        return;
 
-    m_inputs.ann_font               = g_config->File.fonts.empty() ? "" : g_config->File.fonts[0];
-    m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string();
+    if (m_install_thread.joinable())
+        m_install_thread.join();
 
-    extern_glfwSwapInterval(int(g_config->File.enable_vsync));
+    auto state = std::make_shared<plugin_install_state_t>();
+
+    // Every on_* callback just appends to the shared queue. Nothing here
+    // touches ImGui, so it's safe to invoke from the worker thread.
+    auto push = [state](plugin_install_event_t::Kind kind) {
+        return [state, kind](const std::string_view msg) {
+            std::scoped_lock lock(state->events_mutex);
+            state->pending_events.push_back({ .kind = kind, .text = std::string(msg) });
+        };
+    };
+
+    PluginCallbacks cb;
+    cb.on_status  = push(plugin_install_event_t::Kind::Status);
+    cb.on_success = push(plugin_install_event_t::Kind::Success);
+    cb.on_warning = push(plugin_install_event_t::Kind::Warning);
+    cb.on_error   = push(plugin_install_event_t::Kind::Error);
+    cb.on_info    = push(plugin_install_event_t::Kind::Info);
+    cb.on_output  = push(plugin_install_event_t::Kind::Output);
+
+    // Blocks the worker thread until DrawPluginInstallStatus() answers the
+    // popup on the render thread and notifies confirm_cv.
+    cb.confirm = [state](const std::string_view prompt, bool) -> bool {
+        std::unique_lock lock(state->confirm_mutex);
+        state->confirm_prompt   = std::string(prompt);
+        state->confirm_pending  = true;
+        state->confirm_answered = false;
+        state->confirm_cv.wait(lock, [&] { return state->confirm_answered; });
+        state->confirm_pending = false;
+        return state->confirm_answer;
+    };
+    m_plugin_manager.SetCallbacks(cb);
+
+    m_install_events.clear();
+    m_install_state = state;
+    m_show_window.Set(SubWindow::PluginInstallStatus);
+
+    m_install_thread = std::thread([this, state, title = std::move(title), task = std::move(task)]() {
+        {
+            std::scoped_lock lock(state->events_mutex);
+            state->pending_events.push_back({ .kind = plugin_install_event_t::Kind::Info, .text = title });
+        }
+
+        Result<> r = task(m_plugin_manager);
+        {
+            std::scoped_lock lock(state->events_mutex);
+            if (r.ok())
+                state->pending_events.push_back({ .kind = plugin_install_event_t::Kind::Success,
+                                                  .text = "Done. Changes apply the next time oshot starts." });
+            else
+                state->pending_events.push_back({ .kind = plugin_install_event_t::Kind::Error, .text = r.error_v() });
+        }
+        state->running = false;
+    });
 }
 
-void ScreenshotTool::RefreshOcrModels()
+void ScreenshotTool::DrawManagePluginsWindow()
 {
-    ErrorContext<OcrError>& ectx = m_ocr_errors;
-
-    if (m_inputs.ocr_path == m_last_scanned_ocr_path)
+    static bool was_open = false;
+    bool        open     = m_show_window.Has(SubWindow::ManagePlugins);
+    if (!open)
     {
-        ClearError(ectx, OcrError::NeedToScanDir);
+        was_open = false;
         return;
     }
 
-    if (!get_filtered_filenames(
-            m_inputs.ocr_path,
-            m_ocr_models_list,
-            [](const fs::path& entry) { return entry.extension().string() == ".traineddata"; },
-            [](const fs::path& entry) { return entry.stem().string(); }))
-    {
-        m_ocr_models_list.clear();
-    }
+    const bool busy = m_install_state && m_install_state->running;
 
-    m_last_scanned_ocr_path = m_inputs.ocr_path;
-    ClearError(ectx, OcrError::NeedToScanDir);
+    // oshotpm may have changed state.toml since oshot started
+    if (!was_open && !busy)
+        m_plugin_manager.GetStateManager().Reload();
+    was_open = true;
 
-    if (m_ocr_models_list.empty())
+    ImGui::SetNextWindowSize(ImVec2(620, 480), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Manage plugins##manage_plugins_window", &open, ImGuiWindowFlags_NoSavedSettings))
     {
-        SetError(ectx, OcrError::InvalidPath, "Doesn't exist or is empty");
+        if (busy)
+        {
+            ImGui::TextDisabled("Working, see the Plugins status window. This list refreshes once it's done.");
+            ImGui::End();
+            m_show_window.Set(SubWindow::ManagePlugins, open);
+            return;
+        }
+
+        if (ImGui::Button("Browse plugins..."))
+            m_show_window.Set(SubWindow::BrowsePlugins);
+        ImGui::SameLine();
+        if (ImGui::Button("Install from a URL or file..."))
+            m_show_window.Set(SubWindow::InstallPlugins);
+        ImGui::SameLine();
+        if (ImGui::Button("Check for updates"))
+            StartPluginTask("Updating plugins", [](PluginManager& pm) { return pm.UpdateAll(); });
+
+        ImGui::PushStyleColor(ImGuiCol_Text, (0x999999FF_rgba));
+        ImGui::TextWrapped(
+            "Changes apply the next time oshot starts. If oshot runs in the tray, quit it from the tray menu first.");
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // Deferred until after the loops, which iterate the state they'd change
+        static std::string pending_uninstall;  // plugin ID or repository name
+        static std::string pending_label;
+        std::string        toggle_id;
+        bool               toggle_to       = false;
+        bool               request_confirm = false;
+
+        const std::vector<manifest_t>& repos = m_plugin_manager.GetStateManager().GetAllRepos();
+        if (repos.empty())
+            ImGui::TextDisabled("No plugins installed.");
+
+        for (const manifest_t& repo : repos)
+        {
+            ImGui::PushID(repo.name.c_str());
+
+            if (ImGui::CollapsingHeader(
+                    repo.name.c_str(),
+                    ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_SpanAvailWidth))
+            {
+                ImGui::Indent();
+
+                if (!repo.url.empty())
+                {
+                    ImGui::TextDisabled("Homepage:");
+                    ImGui::SameLine(0, 4);
+                    if (ImGui::TextLinkOpenURL(repo.url.c_str(), repo.url.c_str()))
+                        minimize_window();
+                }
+                if (repo.source == RepoSource::LocalPlugin)
+                    ImGui::TextDisabled("Installed from a folder or an archive: install it again to update it");
+                else if (!repo.git_hash.empty())
+                    ImGui::TextDisabled("Commit %.7s", repo.git_hash.c_str());
+
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
+                                     button_width("Uninstall all"));
+                if (ImGui::Button("Uninstall all"))
+                {
+                    pending_uninstall = repo.name;
+                    pending_label     = fmt::format("'{}' and its {} plugin(s)", repo.name, repo.plugins.size());
+                    request_confirm   = true;
+                }
+                ImGui::Spacing();
+
+                for (const plugin_t& plugin : repo.plugins)
+                {
+                    ImGui::PushID(plugin.id.c_str());
+
+                    std::error_code ec;
+                    const bool      missing = plugin.library.empty() || !fs::exists(plugin.library, ec);
+                    const bool      loaded  = g_plugins.contains(plugin.id);
+
+                    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
+                    ImGui::PushStyleColor(ImGuiCol_ChildBg, (0xffffff07_rgba));
+                    ImGui::PushStyleColor(ImGuiCol_Border, (0xffffff14_rgba));
+                    ImGui::BeginChild("card",
+                                      ImVec2(0, 0),
+                                      ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY,
+                                      ImGuiWindowFlags_NoScrollbar);
+
+                    ImGui::TextUnformatted(plugin.name.c_str());
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(%s)", plugin.id.c_str());
+
+                    const char* tag     = "Disabled";
+                    rgba_t      tag_col = 0x725919FF_rgba;
+                    if (missing)
+                    {
+                        tag     = "Missing";
+                        tag_col = 0x8c2626FF_rgba;
+                    }
+                    else if (plugin.enabled)
+                    {
+                        tag     = loaded ? "Enabled" : "Not loaded";
+                        tag_col = loaded ? 0x197233FF_rgba : 0x3f3f3fFF_rgba;
+                    }
+                    align_right(ImGui::CalcTextSize(tag).x + 12.0f);
+                    draw_tag(tag, tag_col);
+
+                    if (!plugin.description.empty())
+                        ImGui::TextWrapped("%s", plugin.description.c_str());
+                    if (!plugin.authors.empty())
+                        ImGui::TextDisabled("By %s", fmt::format("{}", fmt::join(plugin.authors, ", ")).c_str());
+
+                    if (!plugin.licenses.empty())
+                    {
+                        ImGui::TextDisabled("License:");
+                        for (const std::string& license : plugin.licenses)
+                        {
+                            ImGui::SameLine();
+                            draw_tag(license.c_str(), 0x334c7fFF_rgba);
+                        }
+                    }
+
+                    if (missing)
+                        ImGui::TextColored(Colors::RED, "The library is missing: reinstall the plugin");
+                    else if (plugin.enabled && !loaded)
+                        ImGui::TextDisabled("Not loaded: restart oshot, or see View Logs if it failed to load");
+
+                    const char* toggle_label = plugin.enabled ? "Disable" : "Enable";
+                    align_right(button_width(toggle_label) + button_width("Uninstall") +
+                                ImGui::GetStyle().ItemSpacing.x);
+                    if (ImGui::Button(toggle_label))
+                    {
+                        toggle_id = plugin.id;
+                        toggle_to = !plugin.enabled;
+                    }
+                    ImGui::SameLine();
+                    ImGui::PushStyleColor(ImGuiCol_Button, (0x8C1F1FFF_rgba));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (0xB23333FF_rgba));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, (0x730F0FFF_rgba));
+                    if (ImGui::Button("Uninstall"))
+                    {
+                        pending_uninstall = plugin.id;
+                        pending_label     = fmt::format("'{}' ({})", plugin.name, plugin.id);
+                        request_confirm   = true;
+                    }
+                    ImGui::PopStyleColor(3);
+
+                    ImGui::EndChild();
+                    ImGui::PopStyleColor(2);
+                    ImGui::PopStyleVar();
+                    ImGui::Spacing();
+                    ImGui::PopID();
+                }
+
+                ImGui::Unindent();
+            }
+
+            ImGui::PopID();
+            ImGui::Spacing();
+        }
+
+        if (!toggle_id.empty())
+            MUST_OK(m_plugin_manager.SetEnabled(toggle_id, toggle_to), spdlog::error("{}", _r.error_v()));
+
+        // Outside every PushID, so it matches BeginPopupModal below
+        if (request_confirm)
+            ImGui::OpenPopup("Uninstall?##plugin_uninstall_confirm");
+
+        if (ImGui::BeginPopupModal("Uninstall?##plugin_uninstall_confirm", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::Text("Uninstall %s?", pending_label.c_str());
+            ImGui::TextUnformatted("Their settings are deleted too.");
+            ImGui::Spacing();
+
+            if (ImGui::Button("Cancel"))
+                ImGui::CloseCurrentPopup();
+            ImGui::SameLine();
+            ImGui::PushStyleColor(ImGuiCol_Button, (0x8C1F1FFF_rgba));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (0xB23333FF_rgba));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, (0x730F0FFF_rgba));
+            if (ImGui::Button("Uninstall"))
+            {
+                StartPluginTask(fmt::format("Uninstalling {}", pending_uninstall),
+                                [name = pending_uninstall](PluginManager& pm) { return pm.Uninstall(name); });
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::PopStyleColor(3);
+            ImGui::EndPopup();
+        }
     }
-    else
-    {
-        ClearError(ectx, OcrError::InvalidPath);
-        if (std::ranges::find(m_ocr_models_list, m_inputs.ocr_model) == m_ocr_models_list.end())
-            SetError(ectx, OcrError::InvalidModel);
-        else
-            ClearError(ectx, OcrError::InvalidModel);
-    }
+    ImGui::End();
+
+    m_show_window.Set(SubWindow::ManagePlugins, open);
 }
 
-void ScreenshotTool::StyleDefaultColor()
+void ScreenshotTool::DrawBrowsePluginsWindow()
 {
-    // clang-format off
-    static const std::unordered_map<ImGuiCol, rgba_t> theme_colors = {
-        { ImGuiCol_Text,          0xDCDDE1FF_rgba },
-        { ImGuiCol_TextDisabled,  0x666870FF_rgba },
-        { ImGuiCol_WindowBg,      0x0D1015FF_rgba },
-        { ImGuiCol_ChildBg,       0x0D1015FF_rgba },
-        { ImGuiCol_PopupBg,       0x10131AFF_rgba },
+    bool open = m_show_window.Has(SubWindow::BrowsePlugins);
+    if (!open)
+        return;
 
-        { ImGuiCol_Border,        0x242933FF_rgba },
+    // Downloaded the first time the window opens, then on Refresh
+    bool fetch = false;
+    {
+        std::scoped_lock lock(m_index_state->mutex);
+        fetch = !m_index_state->loaded && !m_index_state->loading;
+    }
+    if (fetch)
+        FetchIndexAsync();
 
-        { ImGuiCol_TitleBg,       0x090B0FFF_rgba },
-        { ImGuiCol_TitleBgActive, 0x5274F0FF_rgba },
+    ImGui::SetNextWindowSize(ImVec2(640, 520), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Browse plugins##browse_plugins_window", &open, ImGuiWindowFlags_NoSavedSettings))
+    {
+        const bool busy = m_install_state && m_install_state->running;
 
-        { ImGuiCol_FrameBg,       0x151920FF_rgba },
-        { ImGuiCol_FrameBgHovered,0x202630FF_rgba },
-        { ImGuiCol_FrameBgActive, 0x29313EFF_rgba },
+        std::unique_lock lock(m_index_state->mutex);
+        const bool       loading = m_index_state->loading;
 
-        { ImGuiCol_Button,        0x294CC7FF_rgba },
-        { ImGuiCol_ButtonHovered, 0x385DE0FF_rgba },
-        { ImGuiCol_ButtonActive,  0x203CA6FF_rgba },
+        if (loading)
+            ImGui::BeginDisabled();
+        fetch = ImGui::Button("Refresh");
+        if (loading)
+        {
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextDisabled("Downloading the plugin index...");
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::InputTextWithHint("##index_filter", "Search", &m_index_filter);
 
-        { ImGuiCol_Header,        0x1A1F28FF_rgba },
-        { ImGuiCol_HeaderHovered, 0x252C38FF_rgba },
-        { ImGuiCol_HeaderActive,  0x303946FF_rgba },
+        ImGui::PushStyleColor(ImGuiCol_Text, (0x999999FF_rgba));
+        ImGui::TextWrapped(
+            "Plugins listed in the oshot plugin index. Listed doesn't mean audited: plugins run with the same "
+            "permissions as oshot, so only install the ones you trust.");
+        ImGui::PopStyleColor();
+        if (!m_index_state->error.empty())
+            ImGui::TextColored(Colors::RED, "%s", m_index_state->error.c_str());
+        else if (m_index_state->stale)
+            ImGui::TextColored(0xFFCC33FF_rgba, "Offline: this is the last downloaded copy of the index.");
+        ImGui::Separator();
+        ImGui::Spacing();
 
-        { ImGuiCol_Tab,           0x10141BFF_rgba },
-        { ImGuiCol_TabHovered,    0x252E42FF_rgba },
-        { ImGuiCol_TabSelected,   0x294CC7FF_rgba },
+        std::string filter = m_index_filter;
+        std::ranges::transform(filter, filter.begin(), [](unsigned char c) { return std::tolower(c); });
 
-        { ImGuiCol_SliderGrab,    0x294CC7FF_rgba },
-        { ImGuiCol_SliderGrabActive, 0x5274F0FF_rgba },
+        std::string install_id;
+        bool        install_update = false;
+        size_t      shown          = 0;
+        // state.toml changes under a running install: don't read it meanwhile
+        if (busy)
+            ImGui::TextDisabled("Working, see the Plugins status window.");
+        for (const index_plugin_t& p : m_index_state->index.plugins)
+        {
+            if (busy)
+                break;
+            if (!filter.empty())
+            {
+                std::string haystack = fmt::format("{} {} {} {}", p.id, p.name, p.description, fmt::join(p.tags, " "));
+                std::ranges::transform(haystack, haystack.begin(), [](unsigned char c) { return std::tolower(c); });
+                if (haystack.find(filter) == haystack.npos)
+                    continue;
+            }
+            ++shown;
 
-        { ImGuiCol_ScrollbarBg,   0x07090CFF_rgba },
-        { ImGuiCol_ScrollbarGrab, 0x2A303AFF_rgba },
+            std::string            why;
+            const index_version_t* best      = pick_version(p, &why);
+            const auto             installed = m_plugin_manager.GetStateManager().FindPlugin(p.id);
+            const index_version_t* current =
+                installed && !installed->version.empty() ? p.FindVersion(installed->version) : nullptr;
 
-        { ImGuiCol_CheckMark,     0x5274F0FF_rgba },
-        { ImGuiCol_MenuBarBg,     0x090B0FFF_rgba },
-        { ImGuiCol_PlotHistogram, 0x5274F0FF_rgba },
+            ImGui::PushID(p.id.c_str());
+            ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, (0xffffff07_rgba));
+            ImGui::PushStyleColor(ImGuiCol_Border, (0xffffff14_rgba));
+            ImGui::BeginChild("card",
+                              ImVec2(0, 0),
+                              ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY,
+                              ImGuiWindowFlags_NoScrollbar);
+
+            ImGui::TextUnformatted(p.name.c_str());
+            ImGui::SameLine();
+            ImGui::TextDisabled("(%s)", p.id.c_str());
+            if (best)
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", best->version.c_str());
+            }
+
+            if (!p.description.empty())
+                ImGui::TextWrapped("%s", p.description.c_str());
+            if (!p.owners.empty())
+                ImGui::TextDisabled(
+                    "By %s", fmt::format("{}", fmt::join(p.authors.empty() ? p.owners : p.authors, ", ")).c_str());
+
+            if (!p.license.empty())
+                draw_tag(p.license.c_str(), 0x334c7fFF_rgba);
+            if (p.network)
+            {
+                ImGui::SameLine();
+                draw_tag("Uses the internet", 0x725919FF_rgba);
+            }
+            for (const std::string& tag : p.tags)
+            {
+                ImGui::SameLine();
+                draw_tag(tag.c_str(), 0x3f3f3fFF_rgba);
+            }
+
+            if (!p.homepage.empty())
+            {
+                ImGui::TextDisabled("Homepage:");
+                ImGui::SameLine(0, 4);
+                if (ImGui::TextLinkOpenURL(p.homepage.c_str(), p.homepage.c_str()))
+                    minimize_window();
+            }
+
+            if (!best)
+                ImGui::TextColored(Colors::RED, "Can't be installed here: %s", why.c_str());
+            else if (best->artifacts.contains(OSHOT_TARGET))
+                ImGui::TextDisabled("Prebuilt for %s", OSHOT_TARGET);
+            else
+                ImGui::TextDisabled("Built from source when installed: needs git, CMake and a C compiler");
+
+            if (current && current->yanked)
+                ImGui::TextColored(Colors::RED,
+                                   "Your version (%s) was withdrawn%s%s",
+                                   current->version.c_str(),
+                                   current->yanked_reason.empty() ? "" : ": ",
+                                   current->yanked_reason.c_str());
+
+            // Right-aligned action
+            if (installed && installed->repository != INDEX_REPO_NAME)
+            {
+                ImGui::TextDisabled("Installed from %s", installed->repository.c_str());
+            }
+            else if (installed && best && compare_versions(best->version, installed->version) > 0)
+            {
+                const std::string label = fmt::format("Update {} -> {}", installed->version, best->version);
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
+                                     button_width(label.c_str()));
+                if (ImGui::Button(label.c_str()))
+                {
+                    install_id     = p.id;
+                    install_update = true;
+                }
+            }
+            else if (installed)
+            {
+                const std::string label = fmt::format("Installed {}", installed->version);
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
+                                     button_width(label.c_str()));
+                ImGui::BeginDisabled();
+                ImGui::Button(label.c_str());
+                ImGui::EndDisabled();
+            }
+            else if (best)
+            {
+                const std::string label = fmt::format("Install {}", best->version);
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
+                                     button_width(label.c_str()));
+                if (ImGui::Button(label.c_str()))
+                    install_id = p.id;
+            }
+
+            ImGui::EndChild();
+            ImGui::PopStyleColor(2);
+            ImGui::PopStyleVar();
+            ImGui::Spacing();
+            ImGui::PopID();
+        }
+
+        if (shown == 0 && !busy && !loading && m_index_state->error.empty())
+            ImGui::TextDisabled(m_index_filter.empty() ? "The plugin index is empty." : "No plugin matches.");
+
+        if (!install_id.empty())
+        {
+            const index_plugin_t* p     = m_index_state->index.Find(install_id);
+            const std::string     title = fmt::format("{} {}", install_update ? "Updating" : "Installing", p->name);
+            StartPluginTask(title, [install_id, install_update](PluginManager& pm) {
+                return pm.InstallFromIndex(install_id, install_update);
+            });
+        }
+
+        lock.unlock();
+        if (fetch)
+            FetchIndexAsync();
+    }
+    ImGui::End();
+
+    m_show_window.Set(SubWindow::BrowsePlugins, open);
+}
+
+void ScreenshotTool::DrawInstallPluginsWindow()
+{
+    bool open = m_show_window.Has(SubWindow::InstallPlugins);
+    if (!open)
+        return;
+
+    const bool is_installing = m_install_state && m_install_state->running;
+
+    ImGui::SetNextWindowSize(ImVec2(560, 220), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Install plugins##install_plugins_window", &open, ImGuiWindowFlags_NoSavedSettings))
+    {
+        ImGui::TextWrapped(
+            "A git URL, a folder with an oshot-plugin.toml, or a prebuilt plugin archive (.zip, .tar.gz, .tar.xz). "
+            "From git or a folder, the plugin is built on this computer, which needs git and its build tools.");
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
+        ImGui::TextWrapped("Plugins run with the same permissions as oshot. Only install them from people you trust.");
+        ImGui::PopStyleColor();
+        ImGui::Spacing();
+
+        if (is_installing)
+            ImGui::BeginDisabled();
+
+        static constexpr auto filters = std::to_array({ "*.zip", "*.tar.gz", "*.tgz", "*.tar.xz", "*.txz" });
+        draw_input_text_file("Source", "##install_source", filters, nullptr, m_install_source);
+
+        const bool can_install = !is_installing && !m_install_source.empty();
+        if (!can_install)
+            ImGui::BeginDisabled();
+        if (ImGui::Button("Install"))
+            StartPluginTask(fmt::format("Installing {}", m_install_source),
+                            [source = m_install_source](PluginManager& pm) { return pm.Install(source); });
+        if (!can_install)
+            ImGui::EndDisabled();
+
+        if (is_installing)
+        {
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextDisabled("Working, see the status window...");
+        }
+    }
+    ImGui::End();
+
+    m_show_window.Set(SubWindow::InstallPlugins, open);
+}
+
+void ScreenshotTool::DrawPluginInstallStatus()
+{
+    bool open = m_show_window.Has(SubWindow::PluginInstallStatus);
+    if (!open || !m_install_state)
+        return;
+
+    // Drain the worker thread's queue into the UI-owned tree. This is the
+    // only place m_install_events gets mutated.
+    {
+        std::scoped_lock lock(m_install_state->events_mutex);
+        while (!m_install_state->pending_events.empty())
+        {
+            plugin_install_event_t ev = std::move(m_install_state->pending_events.front());
+            m_install_state->pending_events.pop_front();
+
+            // Build output belongs to the step that is running
+            if (ev.kind == plugin_install_event_t::Kind::Output)
+            {
+                if (m_install_events.empty())
+                    m_install_events.push_back({ .kind = ev.kind, .text = "Output", .in_progress = false });
+                std::string& out = m_install_events.back().output;
+                out += ev.text;
+                if (out.size() > 64 * 1024)
+                    out.erase(0, out.size() - 48 * 1024);
+                continue;
+            }
+
+            // A step followed by the next one finished fine
+            if (!m_install_events.empty() && m_install_events.back().in_progress &&
+                ev.kind == plugin_install_event_t::Kind::Status)
+            {
+                m_install_events.back().kind        = plugin_install_event_t::Kind::Success;
+                m_install_events.back().in_progress = false;
+            }
+
+            if (!m_install_events.empty() && m_install_events.back().in_progress &&
+                ev.kind != plugin_install_event_t::Kind::Status)
+            {
+                install_node_t& node = m_install_events.back();
+                node.kind            = ev.kind;
+                node.in_progress     = false;
+                node.details.push_back(ev.text);
+            }
+            else
+            {
+                m_install_events.push_back({ .kind        = ev.kind,
+                                             .text        = ev.text,
+                                             .details     = {},
+                                             .in_progress = ev.kind == plugin_install_event_t::Kind::Status });
+            }
+        }
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(560, 420), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Plugins##plugin_install_status_window", &open, ImGuiWindowFlags_NoSavedSettings))
+    {
+        for (size_t i = 0; i < m_install_events.size(); i++)
+        {
+            const install_node_t& node = m_install_events[i];
+            ImGui::PushID(static_cast<int>(i));
+
+            DrawEventIcon(node.kind);
+            ImGui::SameLine();
+            const bool has_children = !node.details.empty() || !node.output.empty();
+            // Errors open by themselves: they're what the person needs to read
+            if (node.kind == plugin_install_event_t::Kind::Error && has_children)
+                ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+            if (ImGui::TreeNodeEx("##node",
+                                  has_children ? ImGuiTreeNodeFlags_None
+                                               : ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen,
+                                  "%s",
+                                  node.text.c_str()) &&
+                has_children)
+            {
+                for (const std::string& detail : node.details)
+                    ImGui::TextWrapped("%s", detail.c_str());
+                if (!node.output.empty())
+                {
+                    ImGui::BeginChild("##output",
+                                      ImVec2(0, ImGui::GetTextLineHeight() * 12),
+                                      ImGuiChildFlags_Borders,
+                                      ImGuiWindowFlags_HorizontalScrollbar);
+                    ImGui::TextUnformatted(node.output.c_str(), node.output.c_str() + node.output.size());
+                    if (m_install_state->running)
+                        ImGui::SetScrollHereY(1.0f);
+                    ImGui::EndChild();
+                }
+                ImGui::TreePop();
+            }
+
+            ImGui::PopID();
+        }
+
+        if (m_install_state->running)
+        {
+            ImGui::Spacing();
+            ImGui::TextDisabled("Working...");
+        }
+
+        // Pending confirmation from the worker thread, rendered as a modal
+        // inside this same window's frame.
+        bool has_confirm;
+        {
+            std::scoped_lock lock(m_install_state->confirm_mutex);
+            has_confirm = m_install_state->confirm_pending && !m_install_state->confirm_answered;
+        }
+        if (has_confirm)
+            ImGui::OpenPopup("Confirm##plugin_install_confirm");
+
+        ImGui::SetNextWindowSize(ImVec2(550, 220));
+        if (ImGui::BeginPopupModal("Confirm##plugin_install_confirm", nullptr, ImGuiWindowFlags_NoCollapse))
+        {
+            std::scoped_lock lock(m_install_state->confirm_mutex);
+            ImGui::TextWrapped("%s", m_install_state->confirm_prompt.c_str());
+            if (ImGui::Button("Yes"))
+            {
+                m_install_state->confirm_answer   = true;
+                m_install_state->confirm_answered = true;
+                m_install_state->confirm_cv.notify_all();
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("No"))
+            {
+                m_install_state->confirm_answer   = false;
+                m_install_state->confirm_answered = true;
+                m_install_state->confirm_cv.notify_all();
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+
+        ImGui::End();
+    }
+
+    // Don't let the person close the window out from under a running
+    // install: the worker thread would keep pushing events into a queue
+    // nothing is draining, and a pending confirm would hang forever with no
+    // popup left to answer it from.
+    if (!open && m_install_state->running)
+        open = true;
+
+    m_show_window.Set(SubWindow::PluginInstallStatus, open);
+}
+
+void ScreenshotTool::DrawEventIcon(plugin_install_event_t::Kind kind)
+{
+    struct icon_t
+    {
+        const char* glyph;
+        rgba_t      color;
     };
-    // clang-format on
-
-    ImGui::StyleColorsDark();
-
-    auto& style = ImGui::GetStyle();
-
-    style.WindowRounding = 4.0f;
-    style.FrameRounding  = 4.0f;
-    style.GrabRounding   = 1.5f;
-    style.TabRounding    = 2.0f;
-
-    style.WindowBorderSize = 1.0f;
-    style.FrameBorderSize  = 0.0f;
-
-    for (const auto& [color, rgba] : theme_colors)
-        style.Colors[color] = rgba;
+    constexpr auto table = std::to_array<icon_t>({
+        { .glyph = "o", .color = 0x808080FF_rgba },  // Status (in progress)
+        { .glyph = "v", .color = 0x2ecc71FF_rgba },  // Success
+        { .glyph = "!", .color = 0xf1c40fFF_rgba },  // Warning
+        { .glyph = "x", .color = 0xe74c3cFF_rgba },  // Error
+        { .glyph = "i", .color = 0x3498dbFF_rgba },  // Info
+        { .glyph = ">", .color = 0x808080FF_rgba },  // Output
+    });
+    const icon_t&  icon  = table[idx(kind)];
+    ImGui::TextColored(icon.color, "%s", icon.glyph);
 }
-
-Result<ImTextureRef> ScreenshotTool::CreateTexture(ImTextureID tex, std::span<const uint8_t> data, int w, int h)
-{
-#if OSHOT_MACOS
-    // Metal backend handles textures separately
-    return Ok(ImTextureRef{});
-#else
-    if (tex)
-    {
-        const auto old_texture = static_cast<GLuint>(tex);
-        glDeleteTextures(1, &old_texture);
-    }
-
-    GLuint texture;
-    glGenTextures(1, &texture);
-
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data.data());
-
-    ImTextureRef ref;
-    ref._TexID = static_cast<ImTextureID>(texture);
-
-    return Ok(ref);
 #endif
-}

@@ -386,6 +386,9 @@ public:
     }
 #endif
 
+    // ------------------------------
+    // Errors
+    // ------------------------------
     template <typename Enum>
     void SetError(ErrorContext<Enum>& ctx, Enum e, const std::string_view err = "")
     {
@@ -410,6 +413,9 @@ public:
         return ctx.Has(e);
     }
 
+    // ------------------------------
+    // Lifecycle
+    // ------------------------------
     // Takes the screenshot, or loads Runtime.source_file. Called before the window
     // is created, so the overlay isn't in it
     Result<> Start();
@@ -417,9 +423,11 @@ public:
     // Sets up the overlay once the window and graphics context exist
     Result<> StartWindow();
 
-    // Uploads RGBA pixels to a new OpenGL texture, deleting `tex` first.
-    // Returns an empty one on macOS, where the Metal backend makes them
-    Result<ImTextureRef> CreateTexture(ImTextureID tex, std::span<const uint8_t> data, int w, int h);
+    // Draws a frame of the overlay and handles its input
+    void RenderOverlay();
+
+    // Ends the capture: frees the textures and calls the SetOnCancel() callback
+    void Cancel();
 
     // Replaces the screenshot with an image file and starts a new selection.
     // Shows an error dialog on failure
@@ -429,17 +437,20 @@ public:
     // DrawOutputMenuSelection(), and undoes the output's rotation (`transform`, 0-3 quarter turns)
     Result<> CropToOutput(const std::deque<region_t>& layout, const monitor_t& target, int transform = 0);
 
-    // Top-left corner of the screenshot on screen: it's drawn centered
-    const point_t GetImageOrigin() const { return { .x = m_image_origin.x, .y = m_image_origin.y }; }
+    // ------------------------------
+    // Backend setters
+    // ------------------------------
+    // Called by OnCleanFrame() with what to do, the active region with its annotations, and the image format
+    void SetOnComplete(std::function<void(SavingOp, const capture_result_t&, ImageExt)> cb)
+    {
+        m_on_complete = std::move(cb);
+    }
 
-    // Screenshot pixels per screen unit: above 1 on a scaled (HiDPI) output when
-    // the backend renders at full resolution, see SetFullResolutionImage()
-    [[nodiscard]] float GetImageScale() const { return m_image_scale; }
+    // Called by OpenImage() on macOS, so the backend recreates the screenshot texture
+    void SetOnImageReload(std::function<void(const capture_result_t&)> fn) { m_on_image_reload = std::move(fn); }
 
-    // Draw the screenshot at its full resolution on a scaled output, instead of
-    // shrinking it to the logical screen size. The backend must then read back
-    // framebuffer pixels at GetImageScale().
-    void SetFullResolutionImage(bool enable) { m_full_res_image = enable; }
+    // Reads a region (in screenshot pixels) of the frame the backend just rendered
+    void SetReadPixels(std::function<capture_result_t(const region_t&)> fn) { m_read_pixels = std::move(fn); }
 
     // The texture of the screenshot, made by the Metal backend
     void SetBackendTexture(void* tex) { m_texture_id._TexID = static_cast<ImTextureID>(size_t(tex)); }
@@ -450,42 +461,16 @@ public:
         m_tool_textures[idx(type)]._TexID = static_cast<ImTextureID>(size_t(tex));
     }
 
-    // Text buffers plugins read and write by ID (OSHOT_TEXT_OCR, OSHOT_TEXT_BARCODE)
-    auto& GetImGuiIDTexts() { return m_imgui_id_texts; }
+    // Draw the screenshot at its full resolution on a scaled output, instead of
+    // shrinking it to the logical screen size. The backend must then read back
+    // framebuffer pixels at GetImageScale().
+    void SetFullResolutionImage(bool enable) { m_full_res_image = enable; }
 
-    // Called by OpenImage() on macOS, so the backend recreates the screenshot texture
-    void SetOnImageReload(std::function<void(const capture_result_t&)> fn) { m_on_image_reload = std::move(fn); }
+    void SetOnCancel(const std::function<void()>& cb) { m_on_cancel = cb; }
 
-    // A copy of the active region of the screenshot, without annotations
-    capture_result_t GetFinalImage();
-
-    // The selection in screenshot pixels, or the whole screenshot without one
-    [[nodiscard]] region_t GetActiveRegion() const;
-
-    // Fonts by path and size, added to the atlas the first time. Sizes under 16 share one entry
-    ImFont* CacheAndGetFont(const std::string& font_name, const float font_size);
-
-    // The default font for an empty path, nullptr if CacheAndGetFont() didn't load it yet
-    [[nodiscard]] ImFont* GetCachedFont(const std::string& font_path, const float font_size) const;
-
-    // Draws a frame of the overlay and handles its input
-    void RenderOverlay();
-
-    // Ends the capture: frees the textures and calls the SetOnCancel() callback
-    void Cancel();
-
-    // Applies oshot's default ImGui colors
-    static void StyleDefaultColor();
-
-    // Called by OnCleanFrame() with what to do, the active region with its annotations, and the image format
-    void SetOnComplete(std::function<void(SavingOp, const capture_result_t&, ImageExt)> cb)
-    {
-        m_on_complete = std::move(cb);
-    }
-
-    // Reads a region (in screenshot pixels) of the frame the backend just rendered
-    void SetReadPixels(std::function<capture_result_t(const region_t&)> fn) { m_read_pixels = std::move(fn); }
-
+    // ------------------------------
+    // Frame read-back
+    // ------------------------------
     // Marks that the user asked to save/copy; the actual work is deferred
     // until OnCleanFrame() is called after the frame has been rendered.
     void RequestComplete(SavingOp op) { m_completed_op = op; }
@@ -498,10 +483,44 @@ public:
     // rendered: reads the active region from it, for the pending scan and save/copy
     void OnCleanFrame();
 
+    // ------------------------------
+    // Getters
+    // ------------------------------
+    // Top-left corner of the screenshot on screen: it's drawn centered
+    const point_t GetImageOrigin() const { return { .x = m_image_origin.x, .y = m_image_origin.y }; }
+
+    // Screenshot pixels per screen unit: above 1 on a scaled (HiDPI) output when
+    // the backend renders at full resolution, see SetFullResolutionImage()
+    [[nodiscard]] float GetImageScale() const { return m_image_scale; }
+
+    // A copy of the active region of the screenshot, without annotations
+    capture_result_t GetFinalImage();
+
+    // The selection in screenshot pixels, or the whole screenshot without one
+    [[nodiscard]] region_t GetActiveRegion() const;
+
+    // Text buffers plugins read and write by ID (OSHOT_TEXT_OCR, OSHOT_TEXT_BARCODE)
+    auto& GetImGuiIDTexts() { return m_imgui_id_texts; }
+
     [[nodiscard]] bool IsActive() const { return m_state != ToolState::Idle; }
     [[nodiscard]] bool IsCompleted() const { return m_completed_op != SavingOp::kNone; }
     capture_result_t&  GetRawScreenshot() { return m_screenshot; }
-    void               SetOnCancel(const std::function<void()>& cb) { m_on_cancel = cb; }
+
+    // ------------------------------
+    // Textures, fonts and style
+    // ------------------------------
+    // Uploads RGBA pixels to a new OpenGL texture, deleting `tex` first.
+    // Returns an empty one on macOS, where the Metal backend makes them
+    Result<ImTextureRef> CreateTexture(ImTextureID tex, std::span<const uint8_t> data, int w, int h);
+
+    // Fonts by path and size, added to the atlas the first time. Sizes under 16 share one entry
+    ImFont* CacheAndGetFont(const std::string& font_name, const float font_size);
+
+    // The default font for an empty path, nullptr if CacheAndGetFont() didn't load it yet
+    [[nodiscard]] ImFont* GetCachedFont(const std::string& font_path, const float font_size) const;
+
+    // Applies oshot's default ImGui colors
+    static void StyleDefaultColor();
 
 private:
     static constexpr int    TOOL_BUTTON_SIZE = 24;
@@ -567,6 +586,9 @@ private:
         ImRect        rect;
     };
 
+    // ------------------------------
+    // Screenshot
+    // ------------------------------
     // The whole-desktop capture at full resolution while the output picker is
     // open, so the chosen monitor is cropped from it and not from the shrunk copy
     capture_result_t m_uncropped;
@@ -575,20 +597,49 @@ private:
     ImVec2 m_image_origin;
     ImVec2 m_image_end;
 
+    // Outputs for the output picker (Wayland)
+    std::deque<monitor_t> m_wayland_monitors;
+
+    capture_result_t m_screenshot;
+    ImTextureRef     m_texture_id;
+    SessionType      m_session;
+    float            m_image_scale    = 1.0f;
+    bool             m_full_res_image = false;
+
+    // ------------------------------
+    // Selection
+    // ------------------------------
+    ToolState                     m_state       = ToolState::Idle;
+    InputOwner                    m_input_owner = InputOwner::kNone;
+    GeneralContext<CurrentAction> m_current_actions;
+
+    selection_info_t m_main_sel{ false, InputOwner::Selection, ToolState::Resizing, ToolState::Selected };
+    selection_info_t m_anno_sel{ true, InputOwner::AnnSelection, ToolState::AnnResizing, ToolState::AnnResizing };
+
+    // ------------------------------
+    // Annotations and toolbar
+    // ------------------------------
+    // The annotation selected for moving or resizing, in m_annotations
+    annotation_t* m_current_annotation_resize = nullptr;
+
     // Toolbar buttons on each border of the selection, from UpdateAnnsToolbarPos()
     std::array<std::vector<ToolType>, idx(SelectionBorder::COUNT)> m_tools_borders;
 
     // All the toolbar buttons fit around the selection
     bool m_fill_tools_complete{};
 
-    // Set by RequestComplete(), until OnCleanFrame()
-    SavingOp m_completed_op = SavingOp::kNone;
+    std::vector<annotation_t>                      m_annotations;
+    annotation_t                                   m_current_annotation;
+    ToolType                                       m_current_tool = ToolType::kNone;
+    rgba_t                                         m_current_color;
+    std::array<float, idx(ToolType::COUNT)>        m_tool_thickness;
+    std::array<ImTextureRef, idx(ToolType::COUNT)> m_tool_textures;
 
+    // ------------------------------
+    // Text tools
+    // ------------------------------
     // Set by RequestScan(), until OnCleanFrame()
     ScanType m_pending_scan = ScanType::kNone;
-
-    // The annotation selected for moving or resizing, in m_annotations
-    annotation_t* m_current_annotation_resize = nullptr;
 
     // Text buffers by ID, see GetImGuiIDTexts()
     std::unordered_map<std::string, std::string*> m_imgui_id_texts;
@@ -596,43 +647,37 @@ private:
     // The ocr_path RefreshOcrModels() last scanned
     std::string m_last_scanned_ocr_path;
 
-    // Outputs for the output picker (Wayland)
-    std::deque<monitor_t> m_wayland_monitors;
+    OcrAPI                          m_ocr_api;
+    ZbarAPI                         m_zbar_api;
+    inputs_results_t                m_inputs;
+    std::shared_ptr<ocr_download_t> m_ocr_download;
+    std::vector<std::string>        m_ocr_models_list;
+    ErrorContext<OcrError>          m_ocr_errors;
+    ErrorContext<ZbarError>         m_zbar_errors;
+    ErrorContext<OcrDownloadError>  m_download_errors;
+    ErrorContext<GeneralError>      m_general_errors;
 
-    OcrAPI                                                           m_ocr_api;
-    ZbarAPI                                                          m_zbar_api;
-    capture_result_t                                                 m_screenshot;
-    ImTextureRef                                                     m_texture_id;
-    ToolState                                                        m_state       = ToolState::Idle;
-    InputOwner                                                       m_input_owner = InputOwner::kNone;
-    ErrorContext<OcrDownloadError>                                   m_download_errors;
-    ErrorContext<OcrError>                                           m_ocr_errors;
-    ErrorContext<ZbarError>                                          m_zbar_errors;
-    ErrorContext<GeneralError>                                       m_general_errors;
-    inputs_results_t                                                 m_inputs;
-    float                                                            m_image_scale    = 1.0f;
-    bool                                                             m_full_res_image = false;
-    std::shared_ptr<ocr_download_t>                                  m_ocr_download;
-    std::vector<std::string>                                         m_ocr_models_list;
-    std::map<std::pair<std::string, float>, font_cache_t>            m_font_cache;
+    // ------------------------------
+    // Windows and fonts
+    // ------------------------------
+    GeneralContext<SubWindow>                             m_show_window;
+    std::map<std::pair<std::string, float>, font_cache_t> m_font_cache;
+
+    // ------------------------------
+    // Completion and backend callbacks
+    // ------------------------------
+    // Set by RequestComplete(), until OnCleanFrame()
+    SavingOp m_completed_op = SavingOp::kNone;
+
     std::function<void()>                                            m_on_cancel;
     std::function<void(const capture_result_t&)>                     m_on_image_reload;
     std::function<void(SavingOp, const capture_result_t&, ImageExt)> m_on_complete;
     std::function<capture_result_t(const region_t&)>                 m_read_pixels;
-    SessionType                                                      m_session;
-    GeneralContext<SubWindow>                                        m_show_window;
-    GeneralContext<CurrentAction>                                    m_current_actions;
-    std::array<ImTextureRef, idx(ToolType::COUNT)>                   m_tool_textures;
-    ToolType                                                         m_current_tool = ToolType::kNone;
-    std::vector<annotation_t>                                        m_annotations;
-    annotation_t                                                     m_current_annotation;
-    rgba_t                                                           m_current_color;
-    std::array<float, idx(ToolType::COUNT)>                          m_tool_thickness;
-
-    selection_info_t m_main_sel{ false, InputOwner::Selection, ToolState::Resizing, ToolState::Selected };
-    selection_info_t m_anno_sel{ true, InputOwner::AnnSelection, ToolState::AnnResizing, ToolState::AnnResizing };
 
 #ifndef DISABLE_PLUGINS
+    // ------------------------------
+    // Plugins
+    // ------------------------------
     // m_plugin_cb must be declared (and therefore constructed) before
     // m_plugin_manager, which the constructor initializes with a copy of it
     PluginCallbacks m_plugin_cb;
@@ -653,6 +698,9 @@ private:
     std::string                           m_index_filter;
 #endif
 
+    // ------------------------------
+    // Errors
+    // ------------------------------
     // Shows the error in red if it's set, and returns whether it is
     template <typename Enum>
     bool ShowIfError(const ErrorContext<Enum>& ctx, Enum e)
@@ -663,34 +711,43 @@ private:
         return has;
     }
 
+    // ------------------------------
+    // Input
+    // ------------------------------
     // Returns true when the click only deselected an annotation: the main
     // selection must then ignore it this frame
     bool HandleAnnotationSelectionInput();
 
-    // Special util draw function, used in DrawAnnotationResizeBorder() and DrawSelectionBorder()
-    void DrawASelectionBorder(selection_info_t& sel,
-                              const float       sel_x,
-                              const float       sel_y,
-                              const float       sel_w,
-                              const float       sel_h);
+    void HandleShortcutsInput();
+    void HandleSelectionInput(selection_info_t& sel);
+    void HandleResizeInput(selection_info_t& sel);
+    void HandleAnnotationInput();
+    void HandleColorPickerInput();
 
-#ifndef DISABLE_PLUGINS
-    // Downloads the plugin index into m_index_state, on m_index_thread
-    void FetchIndexAsync();
-
-    // Runs a PluginManager operation (install, update, uninstall) on a
-    // background thread. Wires fresh PluginCallbacks around a new
-    // plugin_install_state_t so the render thread can drain progress from
-    // it without touching ImGui from off the render thread.
-    void StartPluginTask(std::string title, std::function<Result<>(PluginManager&)> task);
-#endif
-
+    // ------------------------------
+    // State updates
+    // ------------------------------
     // Centers the screenshot in the viewport: sets m_image_origin, m_image_end and m_image_scale
     void UpdateWindowBg();
 
     // Spreads the toolbar buttons over the selection's borders
     void UpdateAnnsToolbarPos();
 
+    // Swaps the selection's start and end so start is the top-left corner
+    void NormalizeSelection(selection_info_t& sel);
+
+    // Copies the config into m_inputs, after it was loaded or changed in Preferences
+    void SyncRuntimeFromConfig();
+
+    // Lists the models in the OCR path, if it changed since the last scan
+    void RefreshOcrModels();
+
+    void UpdateHandleHoverState(selection_info_t& sel);
+    void UpdateCursor(const selection_info_t& sel);
+
+    // ------------------------------
+    // Geometry
+    // ------------------------------
     // The annotation's bounds on screen
     [[nodiscard]] ImRect GetAnnotationBBox(const annotation_t& ann) const;
 
@@ -700,6 +757,11 @@ private:
     // Line/Arrow keep their raw, un-normalized start/end to preserve direction.
     [[nodiscard]] ImRect GetAnnotationHandleBox(const annotation_t& ann) const;
 
+    ImVec2 GetToolButtonSize();
+
+    // ------------------------------
+    // Scans
+    // ------------------------------
     // Runs an OCR or barcode scan of the active region. With the annotations-in-text-tools
     // option and annotations drawn, it waits for OnCleanFrame() to read them back with the image
     void RequestScan(ScanType type);
@@ -708,50 +770,56 @@ private:
     void RunOcr(const capture_result_t& img);
     void RunBarcodeScan(const capture_result_t& img);
 
+    // ------------------------------
+    // Drawing
+    // ------------------------------
+    // Special util draw function, used in DrawAnnotationResizeBorder() and DrawSelectionBorder()
+    void DrawASelectionBorder(selection_info_t& sel,
+                              const float       sel_x,
+                              const float       sel_y,
+                              const float       sel_w,
+                              const float       sel_h);
+
     // A button that copies `text_copy` and says "Copied!" for a moment
     void CreateCopyTextButton(const std::string& text_copy, const std::string_view label1 = "Copy Text");
 
-    // Lists the models in the OCR path, if it changed since the last scan
-    void RefreshOcrModels();
-
-    // Swaps the selection's start and end so start is the top-left corner
-    void NormalizeSelection(selection_info_t& sel);
-
-    // Copies the config into m_inputs, after it was loaded or changed in Preferences
-    void SyncRuntimeFromConfig();
-
-    void HandleShortcutsInput();
-    void HandleSelectionInput(selection_info_t& sel);
-    void HandleResizeInput(selection_info_t& sel);
-    void HandleAnnotationInput();
-    void HandleColorPickerInput();
-
     void DrawDarkOverlay();
     void DrawAnnotations();
-    void DrawMenuItems();
     void DrawSelectionBorder();
     void DrawAnnotationResizeBorder();
+    void DrawAnnotationToolbar();
+    void DrawMenuItems();
     void DrawOcrTools();
     void DrawBarDecodeTools();
+
+    // ------------------------------
+    // Windows
+    // ------------------------------
     void DrawAboutWindow();
-    void DrawAnnotationToolbar();
     void DrawPreferencesWindow();
     void DrawDownloadOCRWindow();
     void DrawLogsWindow();
     void DrawOutputMenuSelection();
 
 #ifndef DISABLE_PLUGINS
+    // ------------------------------
+    // Plugins
+    // ------------------------------
+    // Downloads the plugin index into m_index_state, on m_index_thread
+    void FetchIndexAsync();
+
+    // Runs a PluginManager operation (install, update, uninstall) on a
+    // background thread. Wires fresh PluginCallbacks around a new
+    // plugin_install_state_t so the render thread can drain progress from
+    // it without touching ImGui from off the render thread.
+    void StartPluginTask(std::string title, std::function<Result<>(PluginManager&)> task);
+
     void DrawManagePluginsWindow();
     void DrawBrowsePluginsWindow();
     void DrawInstallPluginsWindow();
     void DrawPluginInstallStatus();
     void DrawEventIcon(plugin_install_event_t::Kind kind);
 #endif
-
-    void UpdateHandleHoverState(selection_info_t& sel);
-    void UpdateCursor(const selection_info_t& sel);
-
-    ImVec2 GetToolButtonSize();
 };
 
 // The overlay of this process
