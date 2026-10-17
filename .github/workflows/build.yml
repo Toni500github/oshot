@@ -411,13 +411,16 @@ jobs:
           ninja -C build
 
       # The whole plugin path: oshotpm builds the example plugin against the SDK
-      # in build/sdk, checks the library and installs it
+      # in build/sdk, checks the library and installs it; then installs the test
+      # plugin's prebuilt library for this platform from the plugin index
       - name: Test installing a plugin (Linux, macOS)
         if: matrix.plugins && (matrix.target == 'linux' || runner.os == 'macOS')
         run: |
           ./build/oshotpm install -y examples/plugins/uppercase
+          ./build/oshotpm search -v
+          ./build/oshotpm install -y io.github.toni500github.plugin-test
           ./build/oshotpm list -v
-          ./build/oshotpm uninstall io.github.toni500github.uppercase
+          ./build/oshotpm uninstall io.github.toni500github.uppercase io.github.toni500github.plugin-test
 
       - name: Test installing a plugin (Windows)
         if: matrix.plugins && runner.os == 'Windows'
@@ -426,8 +429,10 @@ jobs:
           CMAKE_GENERATOR: Ninja
         run: |
           ./build/oshotpm install -y examples/plugins/uppercase
+          ./build/oshotpm search -v
+          ./build/oshotpm install -y io.github.toni500github.plugin-test
           ./build/oshotpm list -v
-          ./build/oshotpm uninstall io.github.toni500github.uppercase
+          ./build/oshotpm uninstall io.github.toni500github.uppercase io.github.toni500github.plugin-test
 
       # Package
       - name: Package Linux binary

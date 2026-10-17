@@ -63,6 +63,7 @@
 enum OPs : std::uint8_t
 {
     NONE,
+    SEARCH,
     INSTALL,
     UPDATE,
     LIST,
@@ -82,6 +83,7 @@ struct command_t
 };
 
 constexpr auto commands = std::to_array<command_t>({
+    { "search", SEARCH, oshotpm_help_search, "vh" },
     { "install", INSTALL, oshotpm_help_install, "fyh" },
     { "update", UPDATE, oshotpm_help_update, "yh" },
     { "list", LIST, oshotpm_help_list, "vh" },
@@ -251,6 +253,8 @@ static void list_all_plugins(const StateManager& state)
                        col(ansi::dim),
                        plugin.id,
                        col(ansi::reset));
+            if (!plugin.version.empty())
+                fmt::print(" {}", plugin.version);
             if (!plugin.enabled)
                 fmt::print(" {}(disabled){}", col(ansi::red), col(ansi::reset));
             if (plugin.library.empty() || !fs::exists(plugin.library, ec))
@@ -265,12 +269,107 @@ static void list_all_plugins(const StateManager& state)
                     "      {}Authors:{}   {}", col(ansi::cyan), col(ansi::reset), fmt::join(plugin.authors, ", "));
                 fmt::println(
                     "      {}Licenses:{}  {}", col(ansi::cyan), col(ansi::reset), fmt::join(plugin.licenses, ", "));
-                fmt::println(
-                    "      {}Platforms:{} {}", col(ansi::cyan), col(ansi::reset), fmt::join(plugin.platforms, ", "));
+                if (!plugin.platforms.empty())
+                    fmt::println("      {}Platforms:{} {}",
+                                 col(ansi::cyan),
+                                 col(ansi::reset),
+                                 fmt::join(plugin.platforms, ", "));
                 fmt::println("      {}Library:{}   {}", col(ansi::cyan), col(ansi::reset), plugin.library.string());
             }
         }
     }
+}
+
+static std::string lowercase(std::string s)
+{
+    std::ranges::transform(s, s.begin(), [](unsigned char c) { return std::tolower(c); });
+    return s;
+}
+
+// Lists the index's plugins that match every search word
+static bool search_index(const StateManager& state, const PluginCallbacks& cb)
+{
+    bool stale = false;
+    auto index = PluginManager::FetchIndex(/*allow_cached=*/true, &stale);
+    if (!index.ok())
+    {
+        cb.on_error(index.error_v());
+        return false;
+    }
+    if (stale)
+        cb.on_warning("Couldn't download the plugin index, this is the last downloaded copy");
+
+    size_t shown = 0;
+    for (const index_plugin_t& p : index.get().plugins)
+    {
+        const std::string haystack =
+            lowercase(fmt::format("{} {} {} {}", p.id, p.name, p.description, fmt::join(p.tags, " ")));
+        if (!std::ranges::all_of(options.arguments,
+                                 [&](const std::string& w) { return haystack.find(lowercase(w)) != haystack.npos; }))
+            continue;
+        ++shown;
+
+        std::string            why;
+        const index_version_t* best      = pick_version(p, &why);
+        const auto             installed = state.FindPlugin(p.id);
+
+        fmt::print("{}{}{} {}{}{}", col(ansi::blue), p.name, col(ansi::reset), col(ansi::dim), p.id, col(ansi::reset));
+        if (best)
+            fmt::print(" {}", best->version);
+        if (installed && !installed->version.empty())
+        {
+            const bool newer = best && compare_versions(best->version, installed->version) > 0;
+            fmt::print(" {}(installed {}{}){}",
+                       col(ansi::green),
+                       installed->version,
+                       newer ? ", update available" : "",
+                       col(ansi::reset));
+        }
+        else if (installed)
+        {
+            fmt::print(" {}(installed from {}){}", col(ansi::green), installed->repository, col(ansi::reset));
+        }
+        if (p.network)
+            fmt::print(" {}[uses the internet]{}", col(ansi::yellow), col(ansi::reset));
+        fmt::print("\n");
+
+        if (!p.description.empty())
+            fmt::println("    {}", p.description);
+        if (!best)
+            fmt::println("    {}Can't be installed here: {}{}", col(ansi::red), why, col(ansi::reset));
+        else if (best->artifacts.contains(OSHOT_TARGET))
+            fmt::println("    {}Prebuilt for {}{}", col(ansi::dim), OSHOT_TARGET, col(ansi::reset));
+        else
+            fmt::println("    {}Built from source when installed (needs git, CMake and a compiler){}",
+                         col(ansi::dim),
+                         col(ansi::reset));
+
+        if (options.list_verbose)
+        {
+            fmt::println("    {}Owners:{}   {}", col(ansi::cyan), col(ansi::reset), fmt::join(p.owners, ", "));
+            fmt::println("    {}License:{}  {}", col(ansi::cyan), col(ansi::reset), p.license);
+            fmt::println("    {}Homepage:{} {}", col(ansi::cyan), col(ansi::reset), p.homepage);
+            for (const index_version_t& v : p.versions)
+            {
+                fmt::print("    {}{}{} {}", col(ansi::cyan), v.version, col(ansi::reset), v.date);
+                if (v.yanked)
+                    fmt::print(" {}withdrawn{}{}{}",
+                               col(ansi::red),
+                               v.yanked_reason.empty() ? "" : ": ",
+                               v.yanked_reason,
+                               col(ansi::reset));
+                if (std::string why_not; !v.yanked && !is_installable(v, &why_not))
+                    fmt::print(" {}(can't be installed: {}){}", col(ansi::red), why_not, col(ansi::reset));
+                if (!v.changes.empty())
+                    fmt::print(" - {}", v.changes);
+                fmt::print("\n");
+            }
+        }
+    }
+
+    if (shown == 0)
+        fmt::println("{}", options.arguments.empty() ? "The plugin index is empty" : "No plugin in the index matches");
+    return true;
 }
 
 static int oshotpm_main(int argc, char** argv)
@@ -359,7 +458,8 @@ static int oshotpm_main(int argc, char** argv)
                               [&](const std::string& arg) { return plugin_manager.SetEnabled(arg, op == ENABLE); });
             break;
 
-        case LIST: list_all_plugins(state); break;
+        case LIST:   list_all_plugins(state); break;
+        case SEARCH: ok = search_index(state, cb); break;
 
         case GEN_MANIFEST:
         {

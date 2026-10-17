@@ -78,7 +78,8 @@
 enum class RepoSource : std::uint8_t
 {
     GitRepository,
-    LocalPlugin
+    LocalPlugin,
+    Index,  // the plugin index: its plugins are tracked one by one, by version
 };
 
 struct plugin_t
@@ -112,6 +113,7 @@ struct plugin_t
 
     // Only set for installed plugins, by StateManager
     std::string repository;
+    std::string version;  // installed from the plugin index only
     fs::path    library;
     bool        enabled = true;
 };

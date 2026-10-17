@@ -689,6 +689,7 @@ void ScreenshotTool::RenderOverlay()
         DrawBarDecodeTools();
 #ifndef DISABLE_PLUGINS
         DrawManagePluginsWindow();
+        DrawBrowsePluginsWindow();
         DrawInstallPluginsWindow();
         DrawPluginInstallStatus();
         for (auto& [id, rt] : g_plugins)
@@ -1767,6 +1768,8 @@ void ScreenshotTool::DrawMenuItems()
             ImGui::Separator();
 
 #ifndef DISABLE_PLUGINS
+            if (ImGui::MenuItem("Browse Plugins..."))
+                m_show_window.Set(SubWindow::BrowsePlugins);
             if (ImGui::MenuItem("Manage Plugins"))
                 m_show_window.Set(SubWindow::ManagePlugins);
             if (ImGui::MenuItem("Install Plugins..."))
@@ -2997,7 +3000,10 @@ void ScreenshotTool::DrawManagePluginsWindow()
             return;
         }
 
-        if (ImGui::Button("Install plugins..."))
+        if (ImGui::Button("Browse plugins..."))
+            m_show_window.Set(SubWindow::BrowsePlugins);
+        ImGui::SameLine();
+        if (ImGui::Button("Install from a URL or file..."))
             m_show_window.Set(SubWindow::InstallPlugins);
         ImGui::SameLine();
         if (ImGui::Button("Check for updates"))
@@ -3174,6 +3180,234 @@ void ScreenshotTool::DrawManagePluginsWindow()
     ImGui::End();
 
     m_show_window.Set(SubWindow::ManagePlugins, open);
+}
+
+void ScreenshotTool::FetchIndexAsync()
+{
+    {
+        std::scoped_lock lock(m_index_state->mutex);
+        if (m_index_state->loading)
+            return;
+        m_index_state->loading = true;
+    }
+    if (m_index_thread.joinable())
+        m_index_thread.join();
+
+    m_index_thread = std::thread([state = m_index_state]() {
+        bool                   stale = false;
+        Result<plugin_index_t> index = PluginManager::FetchIndex(/*allow_cached=*/true, &stale);
+
+        std::scoped_lock lock(state->mutex);
+        state->loading = false;
+        state->loaded  = true;
+        state->stale   = stale;
+        if (index.ok())
+        {
+            state->index = std::move(index.get());
+            state->error.clear();
+        }
+        else
+        {
+            state->error = index.error_v();
+        }
+    });
+}
+
+void ScreenshotTool::DrawBrowsePluginsWindow()
+{
+    bool open = m_show_window.Has(SubWindow::BrowsePlugins);
+    if (!open)
+        return;
+
+    // Downloaded the first time the window opens, then on Refresh
+    bool fetch = false;
+    {
+        std::scoped_lock lock(m_index_state->mutex);
+        fetch = !m_index_state->loaded && !m_index_state->loading;
+    }
+    if (fetch)
+        FetchIndexAsync();
+
+    ImGui::SetNextWindowSize(ImVec2(640, 520), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Browse plugins##browse_plugins_window", &open, ImGuiWindowFlags_NoSavedSettings))
+    {
+        const bool busy = m_install_state && m_install_state->running;
+
+        std::unique_lock lock(m_index_state->mutex);
+        const bool       loading = m_index_state->loading;
+
+        if (loading)
+            ImGui::BeginDisabled();
+        fetch = ImGui::Button("Refresh");
+        if (loading)
+        {
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextDisabled("Downloading the plugin index...");
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::InputTextWithHint("##index_filter", "Search", &m_index_filter);
+
+        ImGui::PushStyleColor(ImGuiCol_Text, (0x999999FF_rgba));
+        ImGui::TextWrapped(
+            "Plugins listed in the oshot plugin index. Listed doesn't mean audited: plugins run with the same "
+            "permissions as oshot, so only install the ones you trust.");
+        ImGui::PopStyleColor();
+        if (!m_index_state->error.empty())
+            ImGui::TextColored(Colors::RED, "%s", m_index_state->error.c_str());
+        else if (m_index_state->stale)
+            ImGui::TextColored(0xFFCC33FF_rgba, "Offline: this is the last downloaded copy of the index.");
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        std::string filter = m_index_filter;
+        std::ranges::transform(filter, filter.begin(), [](unsigned char c) { return std::tolower(c); });
+
+        std::string install_id;
+        bool        install_update = false;
+        size_t      shown          = 0;
+        // state.toml changes under a running install: don't read it meanwhile
+        if (busy)
+            ImGui::TextDisabled("Working, see the Plugins status window.");
+        for (const index_plugin_t& p : m_index_state->index.plugins)
+        {
+            if (busy)
+                break;
+            if (!filter.empty())
+            {
+                std::string haystack = fmt::format("{} {} {} {}", p.id, p.name, p.description, fmt::join(p.tags, " "));
+                std::ranges::transform(haystack, haystack.begin(), [](unsigned char c) { return std::tolower(c); });
+                if (haystack.find(filter) == haystack.npos)
+                    continue;
+            }
+            ++shown;
+
+            std::string            why;
+            const index_version_t* best      = pick_version(p, &why);
+            const auto             installed = m_plugin_manager.GetStateManager().FindPlugin(p.id);
+            const index_version_t* current =
+                installed && !installed->version.empty() ? p.FindVersion(installed->version) : nullptr;
+
+            ImGui::PushID(p.id.c_str());
+            ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, (0xffffff07_rgba));
+            ImGui::PushStyleColor(ImGuiCol_Border, (0xffffff14_rgba));
+            ImGui::BeginChild("card",
+                              ImVec2(0, 0),
+                              ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY,
+                              ImGuiWindowFlags_NoScrollbar);
+
+            ImGui::TextUnformatted(p.name.c_str());
+            ImGui::SameLine();
+            ImGui::TextDisabled("(%s)", p.id.c_str());
+            if (best)
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", best->version.c_str());
+            }
+
+            if (!p.description.empty())
+                ImGui::TextWrapped("%s", p.description.c_str());
+            if (!p.owners.empty())
+                ImGui::TextDisabled(
+                    "By %s", fmt::format("{}", fmt::join(p.authors.empty() ? p.owners : p.authors, ", ")).c_str());
+
+            if (!p.license.empty())
+                draw_tag(p.license.c_str(), 0x334c7fFF_rgba);
+            if (p.network)
+            {
+                ImGui::SameLine();
+                draw_tag("Uses the internet", 0x725919FF_rgba);
+            }
+            for (const std::string& tag : p.tags)
+            {
+                ImGui::SameLine();
+                draw_tag(tag.c_str(), 0x3f3f3fFF_rgba);
+            }
+
+            if (!p.homepage.empty())
+            {
+                ImGui::TextDisabled("Homepage:");
+                ImGui::SameLine(0, 4);
+                if (ImGui::TextLinkOpenURL(p.homepage.c_str(), p.homepage.c_str()))
+                    minimize_window();
+            }
+
+            if (!best)
+                ImGui::TextColored(Colors::RED, "Can't be installed here: %s", why.c_str());
+            else if (best->artifacts.contains(OSHOT_TARGET))
+                ImGui::TextDisabled("Prebuilt for %s", OSHOT_TARGET);
+            else
+                ImGui::TextDisabled("Built from source when installed: needs git, CMake and a C compiler");
+
+            if (current && current->yanked)
+                ImGui::TextColored(Colors::RED,
+                                   "Your version (%s) was withdrawn%s%s",
+                                   current->version.c_str(),
+                                   current->yanked_reason.empty() ? "" : ": ",
+                                   current->yanked_reason.c_str());
+
+            // Right-aligned action
+            if (installed && installed->repository != INDEX_REPO_NAME)
+            {
+                ImGui::TextDisabled("Installed from %s", installed->repository.c_str());
+            }
+            else if (installed && best && compare_versions(best->version, installed->version) > 0)
+            {
+                const std::string label = fmt::format("Update {} -> {}", installed->version, best->version);
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
+                                     button_width(label.c_str()));
+                if (ImGui::Button(label.c_str()))
+                {
+                    install_id     = p.id;
+                    install_update = true;
+                }
+            }
+            else if (installed)
+            {
+                const std::string label = fmt::format("Installed {}", installed->version);
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
+                                     button_width(label.c_str()));
+                ImGui::BeginDisabled();
+                ImGui::Button(label.c_str());
+                ImGui::EndDisabled();
+            }
+            else if (best)
+            {
+                const std::string label = fmt::format("Install {}", best->version);
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
+                                     button_width(label.c_str()));
+                if (ImGui::Button(label.c_str()))
+                    install_id = p.id;
+            }
+
+            ImGui::EndChild();
+            ImGui::PopStyleColor(2);
+            ImGui::PopStyleVar();
+            ImGui::Spacing();
+            ImGui::PopID();
+        }
+
+        if (shown == 0 && !busy && !loading && m_index_state->error.empty())
+            ImGui::TextDisabled(m_index_filter.empty() ? "The plugin index is empty." : "No plugin matches.");
+
+        if (!install_id.empty())
+        {
+            const index_plugin_t* p     = m_index_state->index.Find(install_id);
+            const std::string     title = fmt::format("{} {}", install_update ? "Updating" : "Installing", p->name);
+            StartPluginTask(title, [install_id, install_update](PluginManager& pm) {
+                return pm.InstallFromIndex(install_id, install_update);
+            });
+        }
+
+        lock.unlock();
+        if (fetch)
+            FetchIndexAsync();
+    }
+    ImGui::End();
+
+    m_show_window.Set(SubWindow::BrowsePlugins, open);
 }
 
 void ScreenshotTool::StartPluginTask(std::string title, std::function<Result<>(PluginManager&)> task)

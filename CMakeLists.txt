@@ -296,6 +296,7 @@ if(NOT DISABLE_PLUGINS)
         src/plugins.cpp
         src/plugins/oshot_plugins.cc
         oshotpm/src/manifest.cc
+        oshotpm/src/plugin_index.cc
         oshotpm/src/plugin_manager.cc
         oshotpm/src/state_manager.cc
     )

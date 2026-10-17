@@ -148,7 +148,22 @@ output-dir = "build/out"                    # must contain exactly one library a
 
 ## Distributing
 
-People install plugins from the Plugins menu in oshot or with `oshotpm install <SOURCE>`, where the source is:
+### The plugin index
+
+The [oshot plugin index](https://github.com/Toni500github/oshot-plugin-index) lists plugins people can find in
+oshot (Tools > Browse Plugins) and install by ID with `oshotpm install <ID>`. Each version in it pins a source (tag
+and commit) and prebuilt files per target with their SHA-256. oshot installs the prebuilt file for the person's
+platform after checking its checksum and the library's ID, ABI and ImGui version, and builds the pinned commit when
+there's no prebuilt file. `oshotpm update` and the browser offer newer versions and warn about withdrawn ones.
+
+To list a plugin, open a pull request there with a `plugins/<ID>.toml`: its README explains the format and what's
+checked. The [test plugin](https://github.com/Toni500github/oshot-plugin-test) is a complete example, with a release
+workflow that builds every target.
+
+### Other ways
+
+People can also install plugins from Tools > Install Plugins... in oshot or with `oshotpm install <SOURCE>`, where the
+source is:
 
 - **a git URL**: oshotpm clones it and runs the build steps. This needs git, the build tools and the SDK on the
   person's computer, which is normal on Linux but rare on Windows and macOS. `oshotpm update` fetches and rebuilds it.

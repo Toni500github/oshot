@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "manifest.hh"
+#include "plugin_index.hh"
 #include "state_manager.hh"
 #include "util.hpp"
 
@@ -69,12 +70,20 @@ public:
         : m_is_cli(is_cli), m_state_manager(std::move(state_manager)), m_callbacks(callbacks)
     {}
 
-    // `source` is a git URL, a local folder with an oshot-plugin.toml, or a
-    // prebuilt archive (.zip, .tar.gz/.tgz, .tar.xz/.txz)
+    // `source` is a plugin ID from the plugin index, a git URL, a local folder
+    // with an oshot-plugin.toml, or a prebuilt archive (.zip, .tar.gz/.tgz, .tar.xz/.txz)
     Result<> Install(const std::string& source);
 
-    // Fetches every repository installed from git, and rebuilds the ones that changed
+    // Installs the newest version of a plugin in the plugin index that works here
+    Result<> InstallFromIndex(const std::string& id, bool is_update = false);
+
+    // Updates the plugins from the index, and fetches every repository
+    // installed from git and rebuilds the ones that changed
     Result<> UpdateAll();
+
+    // Downloads the plugin index. With `allow_cached`, falls back to the last
+    // downloaded copy when offline, and sets `stale`.
+    static Result<plugin_index_t> FetchIndex(bool allow_cached, bool* stale = nullptr);
 
     // `name` is a plugin ID (has a dot) or a repository name (has none)
     Result<> Uninstall(const std::string& name);
@@ -108,6 +117,8 @@ private:
     };
 
     Result<> InstallGit(const std::string& url);
+    Result<> InstallIndexVersion(const index_plugin_t& plugin, const index_version_t& version, bool is_update);
+    Result<> UpdateIndexPlugins(const manifest_t& repo);
     Result<> InstallArchive(const fs::path& archive);
     Result<> UpdateRepo(const manifest_t& repo);
 
@@ -119,7 +130,8 @@ private:
     Result<fs::path>    FindPrebuilt(const plugin_t& plugin, const fs::path& dir);
     Result<std::string> CopyLibrary(const std::string& id, const fs::path& library);
 
-    Result<> ConfirmTrust();
+    // `notice`: more to warn about, e.g. that the plugin uses the network
+    Result<> ConfirmTrust(std::string_view notice = {});
     Result<> ConfirmDependencies(const manifest_t& repo);
 
     Result<std::string> Git(const std::vector<std::string>& args, const fs::path& cwd);

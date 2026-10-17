@@ -81,8 +81,9 @@ https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 
 **Extend** (experimental, only in the `-plugins` builds, see [Installation](#installation))
 - Plain C ABI, so plugins can be written in any language that can export C functions, with UI through cimgui
-- Install plugins from git repositories, folders or prebuilt archives, and update, enable, disable and uninstall them,
-  from the Tools menu of the text tools window or from the command line with `oshotpm`
+- Browse and install plugins from the [plugin index](https://github.com/Toni500github/oshot-plugin-index), prebuilt
+  for your system, or from git repositories, folders and archives; update, enable, disable and uninstall them, from
+  the Tools menu of the text tools window or from the command line with `oshotpm`
 - [Writing plugins](docs/plugins.md), with an [example](examples/plugins/uppercase)
 
 ## How does it compare?

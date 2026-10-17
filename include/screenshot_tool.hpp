@@ -132,6 +132,7 @@ enum class SubWindow : std::uint8_t
     InstallPlugins,
     PluginInstallStatus,
     ManagePlugins,
+    BrowsePlugins,
     Logs,
     OutputMenuSelection,
     COUNT
@@ -276,6 +277,17 @@ struct plugin_install_state_t
     bool                    confirm_answered = false;
     bool                    confirm_answer   = false;
 };
+
+// The plugin index for the Browse plugins window, downloaded on a worker thread
+struct plugin_index_state_t
+{
+    std::mutex     mutex;
+    bool           loading = false;
+    bool           loaded  = false;
+    bool           stale   = false;  // offline: the last downloaded copy
+    std::string    error;
+    plugin_index_t index;
+};
 #endif
 
 template <typename Enum>
@@ -325,6 +337,8 @@ public:
     {
         if (m_install_thread.joinable())
             m_install_thread.join();
+        if (m_index_thread.joinable())
+            m_index_thread.join();
     }
 #endif
 
@@ -521,6 +535,9 @@ private:
     std::thread                             m_install_thread;
     std::shared_ptr<plugin_install_state_t> m_install_state;
     std::vector<install_node_t>             m_install_events;
+    std::shared_ptr<plugin_index_state_t>   m_index_state = std::make_shared<plugin_index_state_t>();
+    std::thread                             m_index_thread;
+    std::string                             m_index_filter;
 #endif
 
     void CreateCopyTextButton(const std::string& text_copy, const std::string_view label1 = "Copy Text");
@@ -560,6 +577,8 @@ private:
 
 #ifndef DISABLE_PLUGINS
     void DrawManagePluginsWindow();
+    void DrawBrowsePluginsWindow();
+    void FetchIndexAsync();
     void DrawInstallPluginsWindow();
     void DrawPluginInstallStatus();
     void DrawEventIcon(plugin_install_event_t::Kind kind);

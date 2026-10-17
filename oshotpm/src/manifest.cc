@@ -91,6 +91,8 @@ Result<> Manifest::ParseManifest()
         return Err("The manifest has no [repository] name");
     if (!IsValidName(m_repo.name))
         return Err("Repository name '{}' is invalid: use 1-64 letters, digits, '-', '_' or '='", m_repo.name);
+    if (m_repo.name == "index")
+        return Err("The repository name 'index' is reserved for plugins from the plugin index");
 
     const auto& deps_all  = m_toml.GetValueArrayStr("dependencies.all", {});
     const auto& deps_plat = m_toml.GetValueArrayStr("dependencies." OSHOT_PLATFORM, {});
