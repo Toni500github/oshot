@@ -54,13 +54,27 @@ void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
 
 GLFWwindow* window = nullptr;
 
+// The thread running the frame loop, the only one that may touch the window
+static std::thread::id window_thread;
+
 static void minimize_window_()
 {
     glfwIconifyWindow(window);
     glfwPollEvents();  // flush
 }
 
-static void maximize_window_()
+static bool hide_window_()
+{
+    if (!window || std::this_thread::get_id() != window_thread || !glfwGetWindowAttrib(window, GLFW_VISIBLE) ||
+        glfwGetWindowAttrib(window, GLFW_ICONIFIED))
+        return false;
+
+    glfwIconifyWindow(window);
+    glfwPollEvents();  // flush
+    return true;
+}
+
+static void show_window_()
 {
     glfwRestoreWindow(window);
     glfwFocusWindow(window);
@@ -86,7 +100,8 @@ bool app_quitting();  // main.cpp
 
 int run_main_tool()
 {
-    register_window_callbacks(minimize_window_, maximize_window_, glfwTerminate, glfwSwapInterval);
+    window_thread = std::this_thread::get_id();
+    register_window_callbacks(minimize_window_, hide_window_, show_window_, nullptr, glfwTerminate, glfwSwapInterval);
     id<MTLDevice>       device                = nil;
     id<MTLCommandQueue> commandQueue          = nil;
     id<MTLTexture>      current_frame_texture = nil;
@@ -126,8 +141,11 @@ int run_main_tool()
         return capture_result_t{ .data = std::move(pixels), .w = region.w, .h = region.h };
     });
     g_ss_tool.SetOnComplete([&](SavingOp op, const capture_result_t& img, ImageExt ext) {
-        MUST_OK(save_image(op, img, ext),
-                error("Failed to save as {}: {}", g_config->File.image_out_type.first, _r.error_v()));
+        MUST_OK(save_image(op, img, ext), {
+            // The overlay closes anyway: hide it now so the error isn't opened behind it
+            hide_window_();
+            error("Failed to save as {}: {}", g_config->File.image_out_type.first, _r.error_v());
+        });
 
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });

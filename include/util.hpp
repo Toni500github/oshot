@@ -138,6 +138,9 @@ enum class SavingOp;
 bool        init_dialogs() noexcept;
 static void create_dialog(const char* title, const NvdDialogType type, const std::string& str) noexcept;
 void        extern_glfwTerminate();
+bool        hide_window();
+void        show_window();
+void*       dialog_parent_window();
 
 // I'm not including <gtk/gtk.h> just for a couple of functions
 extern "C" {
@@ -628,12 +631,28 @@ static void create_dialog(const char* title, const NvdDialogType type, const std
     if (!init_dialogs())
         return;
 
+    // The overlay is always on top, so the dialog would open behind it.
+    // On Windows, hiding it hands the foreground to another window, which then
+    // stays in front of the dialog: let the overlay own the dialog instead
+#if OSHOT_WINDOWS
+    nvd_set_parent(dialog_parent_window());
+#else
+    const bool hidden = hide_window();
+#endif
+
     NvdDialogBox* dialog = nvd_dialog_box_new(title, str.c_str(), type);
     nvd_show_dialog(dialog);
     nvd_free_object(dialog);
 #if OSHOT_FREEDESKTOP
     while (gtk_events_pending())
         gtk_main_iteration();
+#endif
+
+#if OSHOT_WINDOWS
+    nvd_set_parent(nullptr);
+#else
+    if (hidden)
+        show_window();
 #endif
 }
 
@@ -946,21 +965,39 @@ void rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int heig
 /**
  * Register the window functions of the graphics backend (main_tool_*), so oshot_common
  * can call them without linking GLFW
- * @param minimize_fn Hides the overlay, e.g. while the save dialog is open
- * @param maximize_fn Shows the overlay again
+ * @param minimize_fn Minimizes the overlay, e.g. when a link opens in the browser
+ * @param hide_fn Hides the overlay while a modal dialog is open, see hide_window()
+ * @param show_fn Shows the overlay again after hide_fn
+ * @param dialog_parent_fn Returns the overlay's native window, see dialog_parent_window(). May be nullptr
  * @param _extern_glfwTerminate glfwTerminate()
  * @param _extern_glfwSwapInterval glfwSwapInterval()
  **/
 void register_window_callbacks(void (*minimize_fn)(),
-                               void (*maximize_fn)(),
+                               bool (*hide_fn)(),
+                               void (*show_fn)(),
+                               void* (*dialog_parent_fn)(),
                                void (*_extern_glfwTerminate)(),
                                void (*_extern_glfwSwapInterval)(int));
 
-/* Hide the overlay window, if a backend registered one */
+/* Minimize the overlay window, if a backend registered one */
 void minimize_window();
 
-/* Show the overlay window again, if a backend registered one */
-void maximize_window();
+/**
+ * Hide the overlay window while a modal dialog (file picker, message box) is open.
+ * It's always on top, so the dialog would open behind it, and its frame loop is
+ * blocked until the dialog closes. Does nothing off the overlay's thread
+ * @return true if the overlay was on screen and is now hidden: call show_window() after the dialog
+ **/
+bool hide_window();
+
+/* Show the overlay window again after hide_window() */
+void show_window();
+
+/**
+ * The overlay's native window (HWND on Windows), to own a dialog so it stays above the overlay
+ * @return nullptr off the overlay's thread, without an overlay, or where owning isn't supported
+ **/
+void* dialog_parent_window();
 
 /* Call glfwTerminate(), if a backend registered it */
 void extern_glfwTerminate();

@@ -147,7 +147,7 @@ static void draw_input_text_path(const char*                      label,
     ImGui::SameLine(0, 0);
     if (ImGui::Button("...", ImVec2(button_size, button_size)))
     {
-        minimize_window();
+        const bool hidden = hide_window();
 
         const fs::path default_path = path;
 
@@ -163,7 +163,8 @@ static void draw_input_text_path(const char*                      label,
                      : tinyfd_openFileDialog(
                            "Open file", start_path.c_str(), int(filters.size()), filters.data(), nullptr, 0);
 
-        maximize_window();
+        if (hidden)
+            show_window();
 
         if (dialog_path)
         {
@@ -2542,7 +2543,7 @@ void ScreenshotTool::DrawMenuItems()
         {
             if (ImGui::MenuItem("Open Image..."))
             {
-                minimize_window();
+                const bool hidden = hide_window();
 
                 static constexpr auto filter    = std::to_array({ "*.png", "*.jpeg", "*.jpg", "*.bmp" });
                 const char*           open_path = tinyfd_openFileDialog("Open Image",
@@ -2553,7 +2554,8 @@ void ScreenshotTool::DrawMenuItems()
                                                                         false           // allow multiple selections
                 );
 
-                maximize_window();
+                if (hidden)
+                    show_window();
 
                 if (open_path)
                     OpenImage(open_path);

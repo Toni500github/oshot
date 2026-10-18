@@ -100,7 +100,9 @@
 namespace main_tool
 {
 void (*minimize_fn)()                 = nullptr;
-void (*maximize_fn)()                 = nullptr;
+bool (*hide_fn)()                     = nullptr;
+void (*show_fn)()                     = nullptr;
+void* (*dialog_parent_fn)()           = nullptr;
 void (*_extern_glfwTerminate)()       = nullptr;
 void (*_extern_glfwSwapInterval)(int) = nullptr;
 }  // namespace main_tool
@@ -500,7 +502,7 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
     const Result<std::string>& fmt = get_config_image_out_fmt();
     TRY(fmt);
 
-    minimize_window();
+    const bool      hidden         = hide_window();
     const fs::path& saved_path_dir = g_cache->GetValue(CacheEntry::ImgSavePath, get_home_pictures_dir().string());
 
     std::string filter_type = ("*." + str_tolower(g_config->File.image_out_type.first));
@@ -512,7 +514,8 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
                                                     "Images"        // filter description
     );
 
-    maximize_window();
+    if (hidden)
+        show_window();
 
     if (!save_path)
     {
@@ -824,12 +827,16 @@ fs::path get_home_pictures_dir()
 #endif
 
 void register_window_callbacks(void (*minimize_fn)(),
-                               void (*maximize_fn)(),
+                               bool (*hide_fn)(),
+                               void (*show_fn)(),
+                               void* (*dialog_parent_fn)(),
                                void (*_extern_glfwTerminate)(),
                                void (*_extern_glfwSwapInterval)(int))
 {
     main_tool::minimize_fn              = minimize_fn;
-    main_tool::maximize_fn              = maximize_fn;
+    main_tool::hide_fn                  = hide_fn;
+    main_tool::show_fn                  = show_fn;
+    main_tool::dialog_parent_fn         = dialog_parent_fn;
     main_tool::_extern_glfwTerminate    = _extern_glfwTerminate;
     main_tool::_extern_glfwSwapInterval = _extern_glfwSwapInterval;
 }
@@ -839,10 +846,18 @@ void minimize_window()
     if (main_tool::minimize_fn)
         main_tool::minimize_fn();
 }
-void maximize_window()
+bool hide_window()
 {
-    if (main_tool::maximize_fn)
-        main_tool::maximize_fn();
+    return main_tool::hide_fn && main_tool::hide_fn();
+}
+void show_window()
+{
+    if (main_tool::show_fn)
+        main_tool::show_fn();
+}
+void* dialog_parent_window()
+{
+    return main_tool::dialog_parent_fn ? main_tool::dialog_parent_fn() : nullptr;
 }
 void extern_glfwTerminate()
 {
