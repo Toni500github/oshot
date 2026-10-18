@@ -1713,14 +1713,13 @@ void ScreenshotTool::RefreshOcrModels()
         return;
     }
 
-    if (!get_filtered_filenames(
-            m_inputs.ocr_path,
-            m_ocr_models_list,
-            [](const fs::path& entry) { return entry.extension().string() == ".traineddata"; },
-            [](const fs::path& entry) { return entry.stem().string(); }))
-    {
-        m_ocr_models_list.clear();
-    }
+    // get_filtered_filenames() appends: a rescan listed every model twice
+    m_ocr_models_list.clear();
+    get_filtered_filenames(
+        m_inputs.ocr_path,
+        m_ocr_models_list,
+        [](const fs::path& entry) { return entry.extension().string() == ".traineddata"; },
+        [](const fs::path& entry) { return entry.stem().string(); });
 
     m_last_scanned_ocr_path = m_inputs.ocr_path;
     ClearError(ectx, OcrError::NeedToScanDir);
