@@ -745,13 +745,15 @@ fs::path get_home_pictures_dir()
     die("Failed to get Pictures directory path");
 }
 #else
-static fs::path get_known_dir(const char* xdg, const char* backup, bool search_xdg_user_dirs = true)
+// `is_user_dir`: a user dir like XDG_PICTURES_DIR, also looked up in user-dirs.dirs, which
+// must exist. Otherwise a base dir like XDG_CONFIG_HOME, which oshot creates on first use
+static fs::path get_known_dir(const char* xdg, const char* backup, bool is_user_dir)
 {
     const char* dir = std::getenv(xdg);
-    if (dir != nullptr && dir[0] != '\0' && fs::exists(dir))
+    if (dir != nullptr && fs::path(dir).is_absolute() && (!is_user_dir || fs::exists(dir)))
         return dir;
 
-    if (search_xdg_user_dirs)
+    if (is_user_dir)
     {
         const auto& dirs = get_xdg_user_dirs();
         if (dirs.find(xdg) != dirs.end())
@@ -817,12 +819,12 @@ fs::path get_home_config_dir()
 
 fs::path get_home_cache_dir()
 {
-    return get_known_dir("XDG_CACHE_HOME", ".cache");
+    return get_known_dir("XDG_CACHE_HOME", ".cache", false);
 }
 
 fs::path get_home_pictures_dir()
 {
-    return get_known_dir("XDG_PICTURES_DIR", "Pictures");
+    return get_known_dir("XDG_PICTURES_DIR", "Pictures", true);
 }
 #endif
 
