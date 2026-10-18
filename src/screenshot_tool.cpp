@@ -288,6 +288,18 @@ Result<> ScreenshotTool::Start()
     Result<capture_result_t> result{ Err() };
     m_session = get_session_type();
 
+    // g_ss_tool outlives a capture: the tray runs every one of them with it
+    ResetSelection();
+    m_anno_sel.handle_hover    = HandleHovered::kNone;
+    m_anno_sel.dragging_handle = HandleHovered::kNone;
+    m_annotations.clear();
+    m_current_annotation        = {};
+    m_current_annotation_resize = nullptr;
+    m_current_actions           = {};
+    m_pending_scan              = ScanType::kNone;
+    m_completed_op              = SavingOp::kNone;
+    m_show_window.Clear(SubWindow::OutputMenuSelection);
+
     if (!g_config->Runtime.source_file.empty())
     {
         result = load_image_rgba(g_config->Runtime.source_file);
@@ -640,8 +652,14 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     m_texture_id = r.get();
 #endif
 
-    // Reset interactions
-    m_state                    = ToolState::Selecting;
+    ResetSelection();
+    m_state = ToolState::Selecting;
+
+    return true;
+}
+
+void ScreenshotTool::ResetSelection()
+{
     m_current_tool             = ToolType::kNone;
     m_main_sel.handle_hover    = HandleHovered::kNone;
     m_main_sel.dragging_handle = HandleHovered::kNone;
@@ -652,8 +670,6 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     m_main_sel.drag_start_mouse     = {};
     m_image_origin                  = {};
     m_image_end                     = {};
-
-    return true;
 }
 
 Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const monitor_t& target, int transform)

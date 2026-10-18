@@ -742,6 +742,9 @@ private:
     // Swaps the selection's start and end so start is the top-left corner
     void NormalizeSelection(selection_info_t& sel);
 
+    // Drops the main selection, its drag state and the current tool
+    void ResetSelection();
+
     // Copies the config into m_inputs, after it was loaded or changed in Preferences
     void SyncRuntimeFromConfig();
 
