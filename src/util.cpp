@@ -338,6 +338,9 @@ Result<capture_result_t> load_image_rgba(const std::string& path)
     if (path != "-")
     {
         pixels = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+        // stb only says "can't fopen"; fopen() left the reason in errno
+        if (!pixels && std::string_view(STBI_ERROR) == "can't fopen")
+            return Err("{}: {}", path, strerror(errno));
     }
     else
     {
@@ -353,7 +356,7 @@ Result<capture_result_t> load_image_rgba(const std::string& path)
     }
 
     if (!pixels)
-        return Err("Failed to load image: {}", STBI_ERROR);
+        return Err("{}: {}", path == "-" ? "stdin" : path, STBI_ERROR);
 
     result.w = width;
     result.h = height;
