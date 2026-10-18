@@ -24,7 +24,7 @@
  */
 
 #include "platform.hpp"
-#if OSHOT_MACOS
+#if OSHOT_METAL
 // macOS Metal backend for oshot.
 // Compiled as Objective-C++ (.mm) so it can use Metal/Cocoa APIs freely
 // while the rest of the project stays plain C++.
@@ -369,4 +369,4 @@ int run_main_tool()
     return EXIT_SUCCESS;
 }
 
-#endif  // OSHOT_MACOS
+#endif  // OSHOT_METAL

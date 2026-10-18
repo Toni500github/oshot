@@ -344,7 +344,7 @@ Result<> ScreenshotTool::StartWindow()
     if (g_config->Runtime.instant_copy_save != SavingOp::kNone)
     {
         m_state = ToolState::Selecting;
-#if OSHOT_MACOS
+#if OSHOT_METAL
         m_texture_id = ImTextureRef{};  // will be set by backend
 #else
         const Result<ImTextureRef>& res = CreateTexture(0, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
@@ -380,7 +380,7 @@ Result<> ScreenshotTool::StartWindow()
 
     SyncRuntimeFromConfig();
 
-#if OSHOT_MACOS
+#if OSHOT_METAL
     m_texture_id = ImTextureRef{};  // will be set by backend
 #else
     const Result<ImTextureRef>& res = CreateTexture(0, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
@@ -604,7 +604,7 @@ void ScreenshotTool::Cancel()
     m_state = ToolState::Idle;
 
     auto delete_texture = [](ImTextureRef& tex) {
-#if OSHOT_MACOS
+#if OSHOT_METAL
         tex = ImTextureRef{};
 #else
         if (tex._TexID)
@@ -638,7 +638,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     m_screenshot = std::move(cap.get());
     fit_to_screen(m_screenshot);
 
-#if OSHOT_MACOS
+#if OSHOT_METAL
     // Tell backend to recreate Metal texture
     if (m_on_image_reload)
         m_on_image_reload(m_screenshot);
@@ -797,7 +797,7 @@ region_t ScreenshotTool::GetActiveRegion() const
 
 Result<ImTextureRef> ScreenshotTool::CreateTexture(ImTextureID tex, std::span<const uint8_t> data, int w, int h)
 {
-#if OSHOT_MACOS
+#if OSHOT_METAL
     // Metal backend handles textures separately
     return Ok(ImTextureRef{});
 #else

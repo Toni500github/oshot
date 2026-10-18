@@ -25,7 +25,7 @@
 
 #include "platform.hpp"
 
-#if !OSHOT_MACOS
+#if !OSHOT_METAL
 #  include "config.hpp"
 #  include "imgui/imgui.h"
 #  include "imgui/imgui_impl_glfw.h"
@@ -38,7 +38,13 @@
 #  endif
 
 // clang-format off
-#  include <GL/gl.h>
+#  if OSHOT_MACOS
+#    define GL_SILENCE_DEPRECATION
+#    define GLFW_INCLUDE_NONE
+#    include <OpenGL/gl3.h>
+#  else
+#    include <GL/gl.h>
+#  endif
 #  include <GLFW/glfw3.h>  // Will drag system OpenGL headers
 // clang-format on
 

@@ -75,6 +75,7 @@ endmacro()
 # Options
 # -----------------------------
 add_option(DISABLE_PLUGINS "Disable plugins support" ON ON)
+add_option(MACOS_OPENGL "Draw the overlay with OpenGL instead of Metal on macOS, for VMs without Metal" OFF ON)
 
 # Arch-style default; Debian sets it empty, as the license goes into
 # /usr/share/doc/oshot/copyright there
@@ -449,7 +450,7 @@ if(UNIX AND NOT APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
 endif()
 
-if(APPLE)
+if(APPLE AND NOT MACOS_OPENGL)
     target_sources(${PROJECT_NAME} PRIVATE src/main_tool_metal.mm)
 else()
     target_link_libraries(${PROJECT_NAME} PRIVATE OpenGL::GL)
