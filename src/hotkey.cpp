@@ -94,10 +94,10 @@ bool is_fkey(ImGuiKey k)
 std::string key_name(ImGuiKey k)
 {
     if (is_letter(k))
-        return { 1, char('A' + (k - ImGuiKey_A)) };
+        return std::string(1, char('A' + (k - ImGuiKey_A)));  // not {}: that's the chars 1 and 'A'
 
     if (is_digit(k))
-        return { 1, char('0' + (k - ImGuiKey_0)) };
+        return std::string(1, char('0' + (k - ImGuiKey_0)));
 
     if (is_fkey(k))
         return fmt::format("F{}", 1 + (k - ImGuiKey_F1));
