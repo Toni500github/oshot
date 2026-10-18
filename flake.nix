@@ -59,6 +59,11 @@
             cmake --install . --prefix "$out"
           '';
 
+          # oshot runs these: xclip/wl-copy to copy, zenity for the file dialogs
+          preFixup = ''
+            gappsWrapperArgs+=(--prefix PATH : ${pkgs.lib.makeBinPath (with pkgs; [ xclip wl-clipboard zenity ])})
+          '';
+
           meta = with pkgs.lib; {
             description = "Screenshot tool to extract text, scan QR codes and barcodes on the fly";
             homepage = "https://github.com/Toni500github/oshot";
