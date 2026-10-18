@@ -140,7 +140,8 @@ GENERAL OPTIONS:
     -V, --version               Print version and other information about the build.
     -f, --source <PATH>         Path to the image to use as background (use '-' for reading from stdin).
     -C, --config <PATH>         Path to the config file to use (default: ~/.config/oshot/config.toml).
-    -O, --override <OPTION>     Override a config option (e.g. "delay=200", "default.ocr-model='jpn'").
+    -O, --override <OPTION>     Override a config option (e.g. "delay=200", "default.ocr-model='jpn'",
+                                "fonts=['/path/to/font.ttf']").
     -d, --delay <MILLIS>        Delay the app before acquiring the screenshot by milliseconds.
                                 Has no effect with the -f flag.
 

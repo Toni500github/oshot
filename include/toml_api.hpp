@@ -42,7 +42,8 @@ enum class ValueType : std::uint8_t
     kNone,
     String,
     Bool,
-    Int
+    Int,
+    ArrayStr
 };
 
 // A value from --override. Only the field of value_type is set
@@ -52,6 +53,8 @@ struct override_config_value_t
     std::string string_value = "";
     bool        bool_value   = false;
     int         int_value    = 0;
+
+    std::vector<std::string> array_value = {};
 };
 
 // A TOML table with typed getters and setters, and --override support.
@@ -259,7 +262,8 @@ public:
     /**
      * Override a value from --override. Dies if `opt` is malformed
      * @param opt "name=value", with no spaces around the '='. A name without a dot
-     *            is in [default]. The value is true/false, an integer or a quoted string
+     *            is in [default]. The value is true/false, an integer, a quoted string
+     *            or a TOML array of strings
      **/
     void OverrideOption(const std::string& opt)
     {
@@ -285,8 +289,10 @@ public:
             m_overrides[name] = { .value_type = ValueType::String, .string_value = value.substr(1, value.size() - 2) };
         else if (std::ranges::all_of(value, ::isdigit))
             m_overrides[name] = { .value_type = ValueType::Int, .int_value = std::stoi(value) };
+        else if (value[0] == '[')
+            m_overrides[name] = { .value_type = ValueType::ArrayStr, .array_value = ParseArrayStr(name, value) };
         else
-            die("looks like override value '{}' from '{}' is neither a bool, int or string value", value, name);
+            die("looks like override value '{}' from '{}' is neither a bool, int, string or array value", value, name);
     }
 
     /**
@@ -297,7 +303,7 @@ public:
     [[nodiscard]] std::vector<std::string> GetValueArrayStr(const std::string_view          value,
                                                             const std::vector<std::string>& fallback) const
     {
-        return GetValueArrayStrIntern(m_tbl.at_path(value).as_array(), fallback);
+        return GetValueArrayStrIntern(value, m_tbl.at_path(value).as_array(), fallback);
     }
 
     /**
@@ -310,7 +316,7 @@ public:
                                                             const std::string_view          key,
                                                             const std::vector<std::string>& fallback) const
     {
-        return GetValueArrayStrIntern(m_tbl[name][key].as_array(), fallback);
+        return GetValueArrayStrIntern(fmt::format("{}.{}", name, key), m_tbl[name][key].as_array(), fallback);
     }
 
     toml::table&                     EnsureTable(const std::string_view key) { return EnsureTable(m_tbl, key); }
@@ -416,9 +422,47 @@ private:
             return value.value_or(fallback);
     }
 
-    std::vector<std::string> GetValueArrayStrIntern(const toml::array*              array,
+    /**
+     * Parse the value of an array --override, e.g. ["a", 'b']. Dies if it isn't an array of strings
+     * @param name The full key, for the error message
+     * @param value The array, as TOML
+     **/
+    static std::vector<std::string> ParseArrayStr(const std::string& name, const std::string& value)
+    {
+        toml::table tbl;
+        try
+        {
+            tbl = toml::parse("v = " + value);
+        }
+        catch (const toml::parse_error& err)
+        {
+            die("override value '{}' from '{}' is not a valid array: {}", value, name, err.description());
+        }
+
+        std::vector<std::string> ret;
+        for (const toml::node& el : *tbl["v"].as_array())
+        {
+            if (!el.is_string())
+                die("override value '{}' from '{}' must be an array of strings", value, name);
+            ret.push_back(**el.as_string());
+        }
+        return ret;
+    }
+
+    /**
+     * Get the strings of an array, or its --override
+     * @param key The full key, to look up in m_overrides
+     * @param array The array in the table, if any
+     * @param fallback What to return without an array
+     **/
+    std::vector<std::string> GetValueArrayStrIntern(const std::string_view          key,
+                                                    const toml::array*              array,
                                                     const std::vector<std::string>& fallback) const
     {
+        const auto& overridePos = m_overrides.find(std::string(key));
+        if (overridePos != m_overrides.end() && overridePos->second.value_type == ValueType::ArrayStr)
+            return overridePos->second.array_value;
+
         std::vector<std::string> ret;
 
         // https://stackoverflow.com/a/78266628
