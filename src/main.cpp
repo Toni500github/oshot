@@ -51,6 +51,10 @@
 #  include <unistd.h>
 #endif
 
+#if defined(__GLIBC__)
+#  include <malloc.h>
+#endif
+
 #if OSHOT_TOOL_ON_MAIN_THREAD
 #  include <algorithm>
 #  include <optional>
@@ -318,10 +322,24 @@ static void exit_handler_nc()
 
 int run_main_tool();
 
+// After every capture: the tray process waits for the next one, and would
+// otherwise keep the last screenshot and the OCR model until then
+static void release_capture_memory()
+{
+    g_ss_tool.EndCapture();
+#if defined(__GLIBC__)
+    // glibc keeps freed memory for reuse, mostly in the capture_worker thread's
+    // arena where the overlay allocated it: give back the free pages in there.
+    // The arena's free top only shrinks with the fixed threshold set in oshot_main()
+    malloc_trim(0);
+#endif
+}
+
 static int run_capture()
 {
     capture_active.store(true);
     const int ret = run_main_tool();
+    release_capture_memory();
     capture_active.store(false);
     return ret;
 }
@@ -496,6 +514,7 @@ void capture_worker()
         lk.unlock();
         std::this_thread::sleep_for(delay);
         run_main_tool();
+        release_capture_memory();
 
         lk.lock();
         capture_active.store(false);
@@ -883,6 +902,14 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
         // Another instance owns the tray, just capture
         return run_capture();
     }
+
+#if defined(__GLIBC__)
+    // This process stays up as the tray. After a big block is freed (a screenshot,
+    // the OCR model) glibc raises its thresholds to that size and then keeps up to
+    // twice as much free memory around; a fixed threshold gives it back after each
+    // capture (~50 MB). Costs ~10 ms on an OCR of a whole 1080p screen
+    mallopt(M_MMAP_THRESHOLD, 1024 * 1024);
+#endif
 
 #if OSHOT_TOOL_ON_MAIN_THREAD
     // AppKit (macOS) needs the UI on the main thread, so the first capture runs

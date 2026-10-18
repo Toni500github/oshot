@@ -432,6 +432,10 @@ public:
     // Frees the OCR engine. Must run before the process exits, see OcrAPI::End()
     void EndOcr() { m_ocr_api.End(); }
 
+    // Frees what only the capture that just ended needs: the screenshot, its
+    // annotations and the OCR engine. The tray keeps g_ss_tool between captures
+    void EndCapture();
+
     // Replaces the screenshot with an image file and starts a new selection.
     // Shows an error dialog on failure
     bool OpenImage(const std::string& path);

@@ -627,6 +627,19 @@ void ScreenshotTool::Cancel()
         m_on_cancel();
 }
 
+void ScreenshotTool::EndCapture()
+{
+    // Assigning {} frees the buffers, clear() would keep their capacity
+    m_screenshot                = {};
+    m_uncropped                 = {};
+    m_annotations               = {};
+    m_current_annotation        = {};
+    m_current_annotation_resize = nullptr;
+
+    // ~20 MB for a model. Loading it again takes about 0.1 s, on the next capture's first OCR
+    m_ocr_api.End();
+}
+
 bool ScreenshotTool::OpenImage(const std::string& path)
 {
     Result<capture_result_t> cap = load_image_rgba(path);
