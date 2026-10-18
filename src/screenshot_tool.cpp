@@ -2186,10 +2186,8 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
                          ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs |
                              ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_AlwaysAutoResize))
-        {
             ImGui::TextUnformatted(str.begin(), str.end());
-            ImGui::End();
-        }
+        ImGui::End();  // even when Begin() returns false
 
         ImGui::PopStyleColor(3);
         ImGui::PopStyleVar(3);
@@ -2979,8 +2977,8 @@ void ScreenshotTool::DrawAboutWindow()
 
         if (ImGui::Button("Close"))
             open = false;
-        ImGui::End();
     }
+    ImGui::End();  // even when Begin() returns false: collapsed or clipped
     m_show_window.Set(SubWindow::About, open);
 }
 
@@ -3938,9 +3936,8 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         ShowIfError(ectx, OcrDownloadError::FailedToDownload);
         if (has_downloaded && !HasError(ectx, OcrDownloadError::FailedToDownload))
             ImGui::TextColored((0x33D933FF_rgba), "Downloaded successfully!");
-
-        ImGui::End();
     }
+    ImGui::End();  // even when Begin() returns false: collapsed or clipped
 
     m_show_window.Set(SubWindow::OcrDownload, open);
 }
@@ -4069,8 +4066,8 @@ void ScreenshotTool::DrawLogsWindow()
             ImGui::SetScrollHereY(1.0f);
 
         ImGui::EndChild();
-        ImGui::End();
     }
+    ImGui::End();  // even when Begin() returns false: collapsed or clipped
 
     m_show_window.Set(SubWindow::Logs, open);
 }
@@ -4850,9 +4847,8 @@ void ScreenshotTool::DrawPluginInstallStatus()
             }
             ImGui::EndPopup();
         }
-
-        ImGui::End();
     }
+    ImGui::End();  // even when Begin() returns false: collapsed or clipped
 
     // Don't let the person close the window out from under a running
     // install: the worker thread would keep pushing events into a queue
