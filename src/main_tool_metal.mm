@@ -185,9 +185,11 @@ int run_main_tool()
     GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
 
-    // No monitor: a borderless window instead of exclusive fullscreen, which
-    // ignores the window hints and gets input from the other monitors too
-    window = glfwCreateWindow(mode->width, mode->height, "oshot", nullptr, nullptr);
+    // Fullscreen on the monitor: macOS keeps a plain window below the menu bar, which
+    // drew the screenshot one menu bar too low, and GLFW_FLOATING is still under the
+    // Dock. GLFW's fullscreen covers both (NSMainMenuWindowLevel + 1) and keeps the
+    // video mode, since it's the current one
+    window = glfwCreateWindow(mode->width, mode->height, "oshot", monitor, nullptr);
     if (!window)
     {
         glfwTerminate();

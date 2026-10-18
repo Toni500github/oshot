@@ -307,6 +307,9 @@ int run_main_tool()
         // window has units: draw the screenshot at its full resolution there
         g_ss_tool.SetFullResolutionImage(true);
     }
+#  elif OSHOT_MACOS
+    // Same as the Metal backend: a plain window stays below the menu bar and the Dock
+    fullscreen = true;
 #  endif
 
     GLFWmonitor*       monitor = get_monitor_at_cursor();

@@ -3112,6 +3112,7 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     ImGui::Spacing();
 
     // --- Checkboxes ---
+#if !OSHOT_MACOS  // always fullscreen there
     ImGui::Checkbox("Exclusive fullscreen##config_real_full_screen", &g_config->File.real_full_screen);
     ImGui::SameLine();
     HelpMarker(
@@ -3119,6 +3120,7 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
         "the capture window look grainy. Enabling this uses exclusive fullscreen "
         "to bypass the compositor.\n"
         "Downside: the window may briefly take over the display on some setups.");
+#endif
 
     ImGui::Checkbox("Vertical sync (VSync)##config_vsync", &g_config->File.enable_vsync);
     ImGui::SameLine();
