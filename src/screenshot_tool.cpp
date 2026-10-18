@@ -117,6 +117,12 @@ static void HelpMarker(const char* desc)
     }
 }
 
+// Tools that draw a button in the toolbar
+static constexpr bool has_toolbar_button(ToolType t)
+{
+    return t != ToolType::kNone && t != ToolType::COUNT && t != ToolType::Logo;
+}
+
 template <size_t N>
 static void draw_input_text_path(const char*                      label,
                                  const char*                      input_id,
@@ -527,6 +533,15 @@ void ScreenshotTool::RenderOverlay()
     bool open = m_show_window.Has(SubWindow::MainTextTools);
     if (m_state == ToolState::Selected && open)
     {
+        // Open it on the side of the screen with more room next to the selection,
+        // so it doesn't cover the selection and its toolbar
+        constexpr float margin    = 60.0f;
+        const float     display_w = ImGui::GetIO().DisplaySize.x;
+        const float     sel_x     = m_main_sel.selection.get_x();
+        const bool      right     = display_w - (sel_x + m_main_sel.selection.get_width()) > sel_x;
+        ImGui::SetNextWindowPos(right ? ImVec2(display_w - margin, margin) : ImVec2(margin, margin),
+                                ImGuiCond_Appearing,
+                                right ? ImVec2(1.0f, 0.0f) : ImVec2(0.0f, 0.0f));
         ImGui::Begin("Text tools", &open, ImGuiWindowFlags_MenuBar);
         DrawMenuItems();
         DrawPreferencesWindow();
@@ -1102,6 +1117,7 @@ void ScreenshotTool::HandleShortcutsInput()
         m_main_sel.selection.start = point_t{ .x = m_image_origin.x, .y = m_image_origin.y };
         m_main_sel.selection.end   = point_t{ .x = m_image_end.x, .y = m_image_end.y };
         m_state                    = ToolState::Selected;
+        UpdateAnnsToolbarPos();
     }
 
     if (ImGui::Shortcut(ImGuiKey_Z | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal) && !m_annotations.empty())
@@ -1599,20 +1615,29 @@ void ScreenshotTool::UpdateAnnsToolbarPos()
     const ImGuiStyle& style = ImGui::GetStyle();
     const ImVec2      btn   = GetToolButtonSize();
 
-    const float sel_w = m_main_sel.selection.get_width();
-    const float sel_h = m_main_sel.selection.get_height();
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const float  sel_x   = m_main_sel.selection.get_x();
+    const float  sel_y   = m_main_sel.selection.get_y();
+    const float  sel_w   = m_main_sel.selection.get_width();
+    const float  sel_h   = m_main_sel.selection.get_height();
 
-    // Tools that never draw a button must not take a slot
-    auto has_button = [](ToolType t) { return t != ToolType::kNone && t != ToolType::COUNT && t != ToolType::Logo; };
+    // The buttons go outside the selection: skip the borders where they'd leave the screen
+    std::array<bool, idx(SelectionBorder::COUNT)> on_screen{};
+    on_screen[idx(SelectionBorder::Bottom)] = sel_y + sel_h + TOOLBAR_OFFSET + btn.y <= display.y;
+    on_screen[idx(SelectionBorder::Right)]  = sel_x + sel_w + TOOLBAR_OFFSET + btn.x <= display.x;
+    on_screen[idx(SelectionBorder::Top)]    = sel_y - TOOLBAR_OFFSET - btn.y >= 0.0f;
+    on_screen[idx(SelectionBorder::Left)]   = sel_x - TOOLBAR_OFFSET - btn.x >= 0.0f;
 
     const size_t end  = idx(ToolType::COUNT) - 1;
     size_t       next = idx(ToolType::kNone) + 1;
 
-    ToolType last_tool;
+    ToolType last_tool = ToolType::kNone;
     for (size_t i = 0; i < m_tools_borders.size(); ++i)
     {
         std::vector<ToolType>& tools = m_tools_borders[i];
         tools.clear();
+        if (!on_screen[i])
+            continue;
 
         const bool   is_side = i % 2 != 0;  // Bottom/Top = horizontal, Right/Left = vertical
         const size_t capacity =
@@ -1621,7 +1646,7 @@ void ScreenshotTool::UpdateAnnsToolbarPos()
         for (; next < end && tools.size() < capacity; ++next)
         {
             last_tool = toe<ToolType>(next);
-            if (has_button(last_tool))
+            if (has_toolbar_button(last_tool))
                 tools.emplace_back(last_tool);
         }
     }
@@ -2470,19 +2495,16 @@ void ScreenshotTool::DrawAnnotationToolbar()
     const float sel_w = m_main_sel.selection.get_width();
     const float sel_h = m_main_sel.selection.get_height();
 
-    constexpr float k_toolbar_offset   = 10.0f;  // gap between selection border and first button
-    constexpr float k_approx_toolbar_h = 40.0f;
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const ImVec2      btn   = GetToolButtonSize();
 
     if (m_fill_tools_complete && !g_config->File.old_toolbar_pos)
     {
-        const ImGuiStyle& style = ImGui::GetStyle();
-        const ImVec2      btn   = GetToolButtonSize();
-
         std::array<ImVec2, idx(SelectionBorder::COUNT)> first_btn_pos{};
-        first_btn_pos[idx(SelectionBorder::Bottom)] = ImVec2(sel_x, sel_y + sel_h + k_toolbar_offset);
-        first_btn_pos[idx(SelectionBorder::Right)]  = ImVec2(sel_x + sel_w + k_toolbar_offset, sel_y);
-        first_btn_pos[idx(SelectionBorder::Top)]    = ImVec2(sel_x, sel_y - k_toolbar_offset - btn.y);
-        first_btn_pos[idx(SelectionBorder::Left)]   = ImVec2(sel_x - k_toolbar_offset - btn.x, sel_y);
+        first_btn_pos[idx(SelectionBorder::Bottom)] = ImVec2(sel_x, sel_y + sel_h + TOOLBAR_OFFSET);
+        first_btn_pos[idx(SelectionBorder::Right)]  = ImVec2(sel_x + sel_w + TOOLBAR_OFFSET, sel_y);
+        first_btn_pos[idx(SelectionBorder::Top)]    = ImVec2(sel_x, sel_y - TOOLBAR_OFFSET - btn.y);
+        first_btn_pos[idx(SelectionBorder::Left)]   = ImVec2(sel_x - TOOLBAR_OFFSET - btn.x, sel_y);
 
         for (size_t i = 0; i < m_tools_borders.size(); ++i)
         {
@@ -2504,25 +2526,35 @@ void ScreenshotTool::DrawAnnotationToolbar()
     }
     else
     {
-        const float display_h = ImGui::GetIO().DisplaySize.y;
+        const ImVec2 display = ImGui::GetIO().DisplaySize;
 
-        const float below_y = sel_y + sel_h + k_toolbar_offset;
-        const float above_y = sel_y - k_toolbar_offset - k_approx_toolbar_h;
+        // One row of buttons, as big as the window will be
+        size_t n_buttons = 0;
+        for (size_t i = 1; i < idx(ToolType::COUNT); ++i)
+            n_buttons += has_toolbar_button(toe<ToolType>(i)) ? 1 : 0;
+        const float toolbar_w = (float(n_buttons) * (btn.x + style.ItemSpacing.x)) - style.ItemSpacing.x +
+                                (style.WindowPadding.x * 2.0f);
+        const float toolbar_h = btn.y + (style.WindowPadding.y * 2.0f);
+
+        const float below_y = sel_y + sel_h + TOOLBAR_OFFSET;
+        const float above_y = sel_y - TOOLBAR_OFFSET - toolbar_h;
 
         float toolbar_y = below_y;
 
         // Prefer below
-        if (below_y + k_approx_toolbar_h > display_h)
+        if (below_y + toolbar_h > display.y)
         {
             // Try above
             toolbar_y = above_y;
 
             // If above also invalid, clamp
             if (toolbar_y < 0.0f)
-                toolbar_y = std::clamp(below_y, 0.0f, display_h - k_approx_toolbar_h);
+                toolbar_y = std::clamp(below_y, 0.0f, display.y - toolbar_h);
         }
 
-        ImGui::SetNextWindowPos({ sel_x, toolbar_y });
+        const float toolbar_x = std::clamp(sel_x, 0.0f, std::max(0.0f, display.x - toolbar_w));
+
+        ImGui::SetNextWindowPos({ toolbar_x, toolbar_y });
         ImGui::Begin("##annotation_toolbar",
                      nullptr,
                      ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |

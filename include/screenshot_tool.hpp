@@ -523,6 +523,9 @@ public:
     static void StyleDefaultColor();
 
 private:
+    // Gap between the selection border and the toolbar
+    static constexpr float TOOLBAR_OFFSET = 10.0f;
+
     static constexpr int    TOOL_BUTTON_SIZE = 24;
     static constexpr ImVec2 TOOL_BUTTON_SIZE2{ TOOL_BUTTON_SIZE, TOOL_BUTTON_SIZE };
 
