@@ -396,8 +396,15 @@ static bool is_cjk_model(std::string_view model)
 
 OcrAPI::~OcrAPI()
 {
+    End();
+}
+
+void OcrAPI::End()
+{
     if (m_api && m_initialized)
         m_api->End();
+    m_initialized = false;
+    m_config.reset();
 }
 
 Result<> OcrAPI::Configure(const char* data_path, const char* model, tesseract::OcrEngineMode oem)
