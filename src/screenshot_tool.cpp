@@ -1222,7 +1222,10 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
         sel.dragging_handle = HandleHovered::kNone;
         m_input_owner       = InputOwner::kNone;
 
-        if (sel.is_ann || (sel.selection.get_width() > 10 && sel.selection.get_height() > 10))
+        // Only a click or a slip of the mouse is too small: a single line of text
+        // can be 10 px high, and used to leave the selection without its toolbar
+        constexpr float min_size = 3.0f;
+        if (sel.is_ann || (sel.selection.get_width() >= min_size && sel.selection.get_height() >= min_size))
             m_state = sel.idle_state;
 
         if (!sel.preserve_direction)
