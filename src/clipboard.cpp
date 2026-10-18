@@ -40,37 +40,25 @@
 #  include <unistd.h>
 
 #  include <csignal>
+#  include <thread>
 #endif
 
-// Starts wl-copy/xclip in the background, stopping the one started before,
-// and returns the write end of its stdin pipe
+// Starts wl-copy/xclip in the background and returns the write end of its stdin pipe.
+// The one started before exits by itself once this one takes the selection
 Result<int> start_linux_copy(SessionType session, const std::string& mime_type)
 {
 #if OSHOT_FREEDESKTOP
-    static pid_t clip_pid = -1;
-
     const char* tool = (session == SessionType::Wayland) ? "wl-copy" : "xclip";
     if (which(tool) == UNKNOWN)
         return Err("{} not found in PATH, please install it to enable clipboard support", tool);
 
     signal(SIGPIPE, SIG_IGN);
 
-    // stop the one already launched
-    if (clip_pid > 0)
-    {
-        kill(clip_pid, SIGINT);
-
-        // we need to do this on Linux, because the process will be defunct otherwise.
-        waitpid(clip_pid, nullptr, 0);
-
-        clip_pid = -1;
-    }
-
     std::array<int, 2> copy_pipe;
     if (pipe(copy_pipe.data()) == -1)
         return Err("Failed to open stdin pipe: {}", strerror(errno));
 
-    clip_pid = fork();
+    const pid_t clip_pid = fork();
 
     if (clip_pid == 0)
     {
@@ -99,6 +87,10 @@ Result<int> start_linux_copy(SessionType session, const std::string& mime_type)
         close(copy_pipe[1]);
         return Err("Failed to fork: {}", strerror(errno));
     }
+
+    // Reap it once it exits, or it stays defunct while the tray runs: xclip
+    // forks to the background and exits right away, wl-copy once replaced
+    std::thread([clip_pid] { waitpid(clip_pid, nullptr, 0); }).detach();
 
     return Ok(copy_pipe[1]);
 #else
