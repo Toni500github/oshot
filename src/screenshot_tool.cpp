@@ -34,6 +34,7 @@
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <span>
@@ -2112,7 +2113,9 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
 
     if ((ImGui::GetTime() - last_change_time) < 2.f)
     {
-        std::string str(fmt::format("{:.0f}x{:.0f}+{:.0f}+{:.0f}", sel_w, sel_h, sel_x, sel_y));
+        // Drawn every frame: fmt's buffer keeps a label this short on the stack
+        fmt::memory_buffer str;
+        fmt::format_to(std::back_inserter(str), "{:.0f}x{:.0f}+{:.0f}+{:.0f}", sel_w, sel_h, sel_x, sel_y);
         if (g_config->File.image_out_size_fmt != "off")
         {
             static std::atomic<size_t> estimated_size{ 0 };
@@ -2152,10 +2155,13 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
                     ? auto_divide_bytes(double(estimated_size.load()), ByteUnit::Kibibyte)
                     : divide_bytes(double(estimated_size.load()), g_config->File.image_out_size_fmt);
 
-            str += fmt::format(
-                "\n{}: {:.2f}{}", g_config->File.image_out_type.first, byte_units.num_bytes, byte_units.unit);
+            fmt::format_to(std::back_inserter(str),
+                           "\n{}: {:.2f}{}",
+                           g_config->File.image_out_type.first,
+                           byte_units.num_bytes,
+                           byte_units.unit);
         }
-        const ImVec2 str_size = ImGui::CalcTextSize(str.c_str());
+        const ImVec2 str_size = ImGui::CalcTextSize(str.begin(), str.end());
 
         constexpr float kPaddingX = 6.0f;
         constexpr float kPaddingY = 4.5f;
@@ -2181,7 +2187,7 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
                              ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_AlwaysAutoResize))
         {
-            ImGui::TextUnformatted(str.c_str());
+            ImGui::TextUnformatted(str.begin(), str.end());
             ImGui::End();
         }
 
@@ -2551,9 +2557,13 @@ void ScreenshotTool::DrawAnnotationToolbar()
             if (m_tools_borders[i].empty())
                 continue;
 
+            // On the stack: drawn every frame, and too long for std::string's inline buffer
+            std::array<char, 32> name{};
+            fmt::format_to_n(name.data(), name.size() - 1, "##annotation_toolbar_n{}", i);
+
             ImGui::SetNextWindowPos(
                 ImVec2(first_btn_pos[i].x - style.WindowPadding.x, first_btn_pos[i].y - style.WindowPadding.y));
-            ImGui::Begin(fmt::format("##annotation_toolbar_n{}", i).c_str(),
+            ImGui::Begin(name.data(),
                          nullptr,
                          ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                              ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize);

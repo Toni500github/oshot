@@ -928,15 +928,13 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     // screen, so this call gets there first and the worker's is a no-op.
     init_dialogs();
 
-    std::vector<TrayMenu*> menu;
-
 #if OSHOT_WINDOWS
     // Absolute path: when started at sign-in the working directory is System32.
     // Fall back to the icon embedded in oshot.exe (see assets/windows/oshot.rc.in).
     fs::path tray_ico = get_exe_dir() / "oshot.ico";
     if (!fs::exists(tray_ico, ec))
         tray_ico = get_exe_path();
-    TrayIcon tray = { "oshot.png", tray_ico.string(), "oshot", menu };
+    TrayIcon tray = { "oshot.png", tray_ico.string(), "oshot", {} };
 #else
     const fs::path& png_path = get_cache_dir() / "tray-icon.png";
     fs::create_directories(png_path.parent_path(), ec);
@@ -944,50 +942,52 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
 
     out.write(reinterpret_cast<const char*>(oshot_png), std::streamsize(oshot_png_len));
     out.close();
-    TrayIcon tray = { .iconFilePng = png_path.string(), .iconFileIco = "oshot.ico", .tooltip = "oshot", .menu = menu };
+    TrayIcon tray = { .iconFilePng = png_path.string(), .iconFileIco = "oshot.ico", .tooltip = "oshot", .menu = {} };
 #endif
 
-    tray.menu.push_back(new TrayMenu{ .text        = "Capture",
-                                      .isEnabled   = true,
-                                      .isChecked   = false,
-                                      .hasCheckbox = false,
-                                      .onClicked   = [&](TrayMenu*) { capture_from_tray({}, /*from_menu=*/true); },
-                                      .subMenu     = {} });
+    TrayMenu capture_item{ .text        = "Capture",
+                           .isEnabled   = true,
+                           .isChecked   = false,
+                           .hasCheckbox = false,
+                           .onClicked   = [&](TrayMenu*) { capture_from_tray({}, /*from_menu=*/true); },
+                           .subMenu = {} };
 
-    tray.menu.push_back(new TrayMenu{ .text        = "Open Image",
-                                      .isEnabled   = true,
-                                      .isChecked   = false,
-                                      .hasCheckbox = false,
-                                      .onClicked =
-                                          [&](TrayMenu*) {
-                                              // Patterns are case-sensitive with zenity/kdialog
-                                              const std::array<const char*, 8> filters = { "*.png", "*.jpeg", "*.jpg",
-                                                                                           "*.bmp", "*.PNG",  "*.JPEG",
-                                                                                           "*.JPG", "*.BMP" };
+    TrayMenu open_item{ .text        = "Open Image",
+                        .isEnabled   = true,
+                        .isChecked   = false,
+                        .hasCheckbox = false,
+                        .onClicked =
+                            [&](TrayMenu*) {
+                                // Patterns are case-sensitive with zenity/kdialog
+                                const std::array<const char*, 8> filters = { "*.png", "*.jpeg", "*.jpg", "*.bmp",
+                                                                             "*.PNG", "*.JPEG", "*.JPG", "*.BMP" };
 
-                                              const char* open_path =
-                                                  tinyfd_openFileDialog("Open Image",
-                                                                        "",              // default path
-                                                                        filters.size(),  // number of filter patterns
-                                                                        filters.data(),  // file filters
-                                                                        "Images",        // filter description
-                                                                        false            // allow multiple selections
-                                                  );
+                                const char* open_path =
+                                    tinyfd_openFileDialog("Open Image",
+                                                          "",              // default path
+                                                          filters.size(),  // number of filter patterns
+                                                          filters.data(),  // file filters
+                                                          "Images",        // filter description
+                                                          false            // allow multiple selections
+                                    );
 
-                                              // Canceled the dialog
-                                              if (!open_path)
-                                                  return;
+                                // Canceled the dialog
+                                if (!open_path)
+                                    return;
 
-                                              capture_from_tray(open_path);
-                                          },
-                                      .subMenu = {} });
+                                capture_from_tray(open_path);
+                            },
+                        .subMenu = {} };
 
-    tray.menu.push_back(new TrayMenu{ .text        = "Quit",
-                                      .isEnabled   = true,
-                                      .isChecked   = false,
-                                      .hasCheckbox = false,
-                                      .onClicked   = [&](TrayMenu*) { request_quit(); },
-                                      .subMenu     = {} });
+    TrayMenu quit_item{ .text        = "Quit",
+                        .isEnabled   = true,
+                        .isChecked   = false,
+                        .hasCheckbox = false,
+                        .onClicked   = [&](TrayMenu*) { request_quit(); },
+                        .subMenu = {} };
+
+    // Locals: the tray only uses them while its loop below runs
+    tray.menu = { &capture_item, &open_item, &quit_item };
 
     if (trayMaker.Initialize(&tray))
     {
