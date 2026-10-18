@@ -25,6 +25,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <csignal>
 #include <cstdio>
@@ -261,6 +262,7 @@ static std::condition_variable cv;
 static std::atomic<bool>       quit{ false };
 static bool                    do_capture = false;
 static std::string             pending_source;  // image to open instead of capturing, empty for a screenshot
+static std::chrono::milliseconds pending_delay{};  // wait this long before capturing
 static capture_result_t        pending_image;
 static bool                    do_copy_image = false;
 static std::atomic<bool>       capture_active{ false };  // a run_main_tool() is in progress, on any thread
@@ -488,9 +490,11 @@ void capture_worker()
         do_capture                    = false;
         g_config->Runtime.source_file = std::move(pending_source);
         pending_source.clear();
+        const auto delay = std::exchange(pending_delay, {});
         // Set under the lock so capture_from_tray() can't queue another one in between
         capture_active.store(true);
         lk.unlock();
+        std::this_thread::sleep_for(delay);
         run_main_tool();
 
         lk.lock();
@@ -500,7 +504,11 @@ void capture_worker()
     }
 }
 
-static void capture_from_tray(const std::string& source = {});
+// The tray menu takes a moment to fade out after the click: a capture started
+// from it right away has the menu in the screenshot
+static constexpr std::chrono::milliseconds TRAY_MENU_FADE{ 300 };
+
+static void capture_from_tray(const std::string& source = {}, bool from_menu = false);
 
 #if OSHOT_TOOL_ON_MAIN_THREAD
 // (Re-)register the global hotkey from the config if it changed
@@ -604,11 +612,28 @@ static void spawn_gui_instance(const std::string& source)
 // Start a capture from the tray (menu or global hotkey): a fresh screenshot,
 // or the `source` image if not empty. Always sets the source, otherwise an
 // image opened once would be reopened by every later capture.
-static void capture_from_tray(const std::string& source)
+// `from_menu`: clicked in the tray menu, wait for it to go away first
+static void capture_from_tray(const std::string& source, bool from_menu)
 {
 #if OSHOT_TOOL_ON_MAIN_THREAD
     if (app_quitting())
         return;
+
+    if (from_menu)
+    {
+#  if OSHOT_WINDOWS
+        // The overflow flyout, if the icon is in it, stays open over the capture.
+        // Close it with Esc, like the user would: hiding it directly leaves Explorer
+        // thinking it's open, and the next click on its arrow does nothing
+        HWND overflow = FindWindowW(L"NotifyIconOverflowWindow", nullptr);
+        if (overflow && IsWindowVisible(overflow))
+        {
+            PostMessageW(overflow, WM_KEYDOWN, VK_ESCAPE, 0x00010001);
+            PostMessageW(overflow, WM_KEYUP, VK_ESCAPE, 0xC0010001);
+        }
+#  endif
+        std::this_thread::sleep_for(TRAY_MENU_FADE);
+    }
 
     // The GLFW event pump inside run_main_tool() also dispatches the tray's
     // messages, so a second capture can't run in here: it would be nested
@@ -638,6 +663,7 @@ static void capture_from_tray(const std::string& source)
         if (!capture_active.load())
         {
             pending_source = source;
+            pending_delay  = from_menu ? TRAY_MENU_FADE : std::chrono::milliseconds{};
             do_capture     = true;
             cv.notify_all();
             return;
@@ -894,7 +920,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
                                       .isEnabled   = true,
                                       .isChecked   = false,
                                       .hasCheckbox = false,
-                                      .onClicked   = [&](TrayMenu*) { capture_from_tray(); },
+                                      .onClicked   = [&](TrayMenu*) { capture_from_tray({}, /*from_menu=*/true); },
                                       .subMenu     = {} });
 
     tray.menu.push_back(new TrayMenu{ .text        = "Open Image",
