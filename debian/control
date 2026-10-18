@@ -33,6 +33,9 @@ Recommends:
  grim,
  wl-clipboard,
  xclip,
+ zenity | kdialog,
+ curl,
+ git,
  xdg-desktop-portal,
  libdecor-0-plugin-1-cairo | libdecor-0-plugin-1-gtk
 Suggests:
