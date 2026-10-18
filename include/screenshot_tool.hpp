@@ -669,6 +669,9 @@ private:
     GeneralContext<SubWindow>                             m_show_window;
     std::map<std::pair<std::string, float>, font_cache_t> m_font_cache;
 
+    // A menu or popup was open at the end of the last frame, see RenderOverlay()
+    bool m_popup_open = false;
+
     // ------------------------------
     // Completion and backend callbacks
     // ------------------------------

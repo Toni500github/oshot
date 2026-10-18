@@ -298,6 +298,7 @@ Result<> ScreenshotTool::Start()
     m_current_actions           = {};
     m_pending_scan              = ScanType::kNone;
     m_completed_op              = SavingOp::kNone;
+    m_popup_open                = false;
     m_show_window.Clear(SubWindow::OutputMenuSelection);
 
     if (!g_config->Runtime.source_file.empty())
@@ -592,7 +593,11 @@ void ScreenshotTool::RenderOverlay()
 
     HandleShortcutsInput();
 
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !disable_esc)
+    // ImGui's NewFrame() already closed the menu or popup that was open on this Esc:
+    // that is all the Esc should do, not close the overlay as well
+    const bool popup_was_open = std::exchange(
+        m_popup_open, ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !disable_esc && !popup_was_open)
         Cancel();
 }
 
