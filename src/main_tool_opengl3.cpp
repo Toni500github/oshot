@@ -124,20 +124,55 @@ static void minimize_window_()
     glfwPollEvents();  // flush
 }
 
+static bool on_wayland()
+{
+#  if OSHOT_FREEDESKTOP && defined(GLFW_PLATFORM_WAYLAND)  // GLFW 3.4+
+    return glfwGetPlatform() == GLFW_PLATFORM_WAYLAND;
+#  else
+    return false;
+#  endif
+}
+
+// The monitor the overlay was fullscreen on before hide_window_() unmapped it
+static GLFWmonitor* hidden_monitor = nullptr;
+
 static bool hide_window_()
 {
     if (!window || std::this_thread::get_id() != window_thread || !glfwGetWindowAttrib(window, GLFW_VISIBLE) ||
         glfwGetWindowAttrib(window, GLFW_ICONIFIED))
         return false;
 
-    glfwIconifyWindow(window);
+    // Wayland compositors may ignore minimize requests (sway does), which would
+    // leave the dialog behind the fullscreen overlay: unmap it instead.
+    // glfwHideWindow() and glfwShowWindow() ignore fullscreen windows
+    if (on_wayland())
+    {
+        hidden_monitor = glfwGetWindowMonitor(window);
+        if (hidden_monitor)
+            glfwSetWindowMonitor(window, nullptr, 0, 0, g_scr_w, g_scr_h, GLFW_DONT_CARE);
+        glfwHideWindow(window);
+    }
+    else
+    {
+        glfwIconifyWindow(window);
+    }
     glfwPollEvents();  // flush
     return true;
 }
 
 static void show_window_()
 {
-    glfwRestoreWindow(window);
+    if (on_wayland())
+    {
+        glfwShowWindow(window);
+        if (hidden_monitor)
+            glfwSetWindowMonitor(window, hidden_monitor, 0, 0, g_scr_w, g_scr_h, GLFW_DONT_CARE);
+        hidden_monitor = nullptr;
+    }
+    else
+    {
+        glfwRestoreWindow(window);
+    }
     glfwFocusWindow(window);
 }
 
