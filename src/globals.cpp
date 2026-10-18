@@ -32,6 +32,7 @@
 #endif
 #include "screenshot_tool.hpp"
 #include "util.hpp"
+#include "version.h"
 
 // Extern variables declarations
 // These have to be globals and only a failed allocation could throw here
@@ -46,6 +47,22 @@ int                     g_scr_w{}, g_scr_h{};
 Clipboard               g_clipboard(SessionType::Unknown);
 
 std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_imgui_log_sink;
+
+const std::string version_infos = fmt::format(
+    "oshot v{} built from branch '{}' at {} commit '{}' ({}).\n"
+    "Date: {}\n"
+    "Tag: {}\n"
+#ifdef DISABLE_PLUGINS
+    "NO PLUGINS SUPPORT\n"
+#endif
+    ,
+    VERSION,
+    GIT_BRANCH,
+    GIT_DIRTY,
+    GIT_COMMIT_HASH,
+    GIT_COMMIT_MESSAGE,
+    GIT_COMMIT_DATE,
+    GIT_TAG);
 
 #ifndef DISABLE_PLUGINS
 static StateManager _s;

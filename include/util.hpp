@@ -42,7 +42,6 @@
 #include "platform.hpp"
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "spdlog/spdlog.h"
-#include "version.h"
 
 namespace fs = std::filesystem;
 
@@ -421,23 +420,9 @@ extern bool g_is_flatpak;
 // The last log lines, shown in the Logs window
 extern std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_imgui_log_sink;
 
-// The output of --version, also shown in the About window
-// NOLINTNEXTLINE(bugprone-throwing-static-initialization)
-static inline const std::string version_infos = fmt::format(
-    "oshot v{} built from branch '{}' at {} commit '{}' ({}).\n"
-    "Date: {}\n"
-    "Tag: {}\n"
-#ifdef DISABLE_PLUGINS
-    "NO PLUGINS SUPPORT\n"
-#endif
-    ,
-    VERSION,
-    GIT_BRANCH,
-    GIT_DIRTY,
-    GIT_COMMIT_HASH,
-    GIT_COMMIT_MESSAGE,
-    GIT_COMMIT_DATE,
-    GIT_TAG);
+// The output of --version, also shown in the About window.
+// In globals.cpp, the only file that includes version.h, which changes with every commit
+extern const std::string version_infos;
 
 inline GlfwGuard glfw_guard;
 

@@ -154,14 +154,14 @@ endif()
 # include/version.h, with the git commit, branch and tag
 set(VERSION_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/version.h)
 set(VERSION_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generateVersion.sh)
-add_custom_command(
-    OUTPUT ${VERSION_HEADER}
+# Runs on every build, so a new commit or tag is picked up. The script only rewrites
+# the file when it changed, and only src/globals.cpp includes it
+add_custom_target(generate_version
     COMMAND ${VERSION_SCRIPT}
+    BYPRODUCTS ${VERSION_HEADER}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    DEPENDS ${VERSION_HEADER}.in ${VERSION_SCRIPT}
     COMMENT "Generating version header"
 )
-add_custom_target(generate_version DEPENDS ${VERSION_HEADER})
 
 # The Wayland xdg-output protocol, for the monitors' logical geometry (wl_get_monitors.cpp)
 if(UNIX AND NOT APPLE)
