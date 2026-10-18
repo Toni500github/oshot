@@ -148,10 +148,11 @@ static bool hide_window_()
         glfwGetWindowAttrib(window, GLFW_ICONIFIED))
         return false;
 
-    // Wayland compositors may ignore minimize requests (sway does), which would
-    // leave the dialog behind the fullscreen overlay: unmap it instead.
+    // Wayland compositors may ignore minimize requests (sway does), and macOS
+    // minimizes with an animation that the dialog's modal loop never lets finish.
+    // Both left the dialog behind the fullscreen overlay: unmap it instead.
     // glfwHideWindow() and glfwShowWindow() ignore fullscreen windows
-    if (on_wayland())
+    if (OSHOT_MACOS || on_wayland())
     {
         hidden_monitor = glfwGetWindowMonitor(window);
         if (hidden_monitor)
@@ -168,7 +169,7 @@ static bool hide_window_()
 
 static void show_window_()
 {
-    if (on_wayland())
+    if (OSHOT_MACOS || on_wayland())
     {
         glfwShowWindow(window);
         if (hidden_monitor)

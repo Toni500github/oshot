@@ -63,20 +63,32 @@ static void minimize_window_()
     glfwPollEvents();  // flush
 }
 
+// The monitor the overlay was fullscreen on before hide_window_() hid it
+static GLFWmonitor* hidden_monitor = nullptr;
+
 static bool hide_window_()
 {
     if (!window || std::this_thread::get_id() != window_thread || !glfwGetWindowAttrib(window, GLFW_VISIBLE) ||
         glfwGetWindowAttrib(window, GLFW_ICONIFIED))
         return false;
 
-    glfwIconifyWindow(window);
+    // Not minimized: macOS minimizes with an animation that the dialog's modal
+    // loop never lets finish, which left the dialog behind the overlay.
+    // glfwHideWindow() and glfwShowWindow() ignore fullscreen windows
+    hidden_monitor = glfwGetWindowMonitor(window);
+    if (hidden_monitor)
+        glfwSetWindowMonitor(window, nullptr, 0, 0, g_scr_w, g_scr_h, GLFW_DONT_CARE);
+    glfwHideWindow(window);
     glfwPollEvents();  // flush
     return true;
 }
 
 static void show_window_()
 {
-    glfwRestoreWindow(window);
+    glfwShowWindow(window);
+    if (hidden_monitor)
+        glfwSetWindowMonitor(window, hidden_monitor, 0, 0, g_scr_w, g_scr_h, GLFW_DONT_CARE);
+    hidden_monitor = nullptr;
     glfwFocusWindow(window);
 }
 
