@@ -229,15 +229,17 @@ int run_main_tool()
     });
     g_ss_tool.SetOnComplete([&](SavingOp op, const capture_result_t& img, ImageExt ext) {
         MUST_OK(save_image(op, img, ext), {
-            // The overlay closes anyway: hide it now so the error isn't opened behind it.
-            // On Windows the overlay owns the dialog instead, see create_dialog()
-            if constexpr (!OSHOT_WINDOWS)
-                hide_window_();
-            error("Failed to save as {}: {}", g_config->File.image_out_type.first, _r.error_v());
+            // The overlay stays open; create_dialog() keeps the error in front of it
+            if (op == SavingOp::Clipboard)
+                error("Failed to copy the image: {}", _r.error_v());
+            else
+                error("Failed to save as {}: {}", g_config->File.image_out_type.first, _r.error_v());
+            return false;
         });
 
         glfwSwapInterval(0);  // Disable vsync
         glfwSetWindowShouldClose(window, GLFW_TRUE);
+        return true;
     });
 
     MUST_OK(g_ss_tool.Start(), {

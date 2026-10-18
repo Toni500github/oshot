@@ -443,8 +443,9 @@ public:
     // ------------------------------
     // Backend setters
     // ------------------------------
-    // Called by OnCleanFrame() with what to do, the active region with its annotations, and the image format
-    void SetOnComplete(std::function<void(SavingOp, const capture_result_t&, ImageExt)> cb)
+    // Called by OnCleanFrame() with what to do, the active region with its annotations, and the image format.
+    // Returns false if it failed: the overlay then stays open, so the user can try again
+    void SetOnComplete(std::function<bool(SavingOp, const capture_result_t&, ImageExt)> cb)
     {
         m_on_complete = std::move(cb);
     }
@@ -680,7 +681,7 @@ private:
 
     std::function<void()>                                            m_on_cancel;
     std::function<void(const capture_result_t&)>                     m_on_image_reload;
-    std::function<void(SavingOp, const capture_result_t&, ImageExt)> m_on_complete;
+    std::function<bool(SavingOp, const capture_result_t&, ImageExt)> m_on_complete;
     std::function<capture_result_t(const region_t&)>                 m_read_pixels;
 
 #ifndef DISABLE_PLUGINS

@@ -466,8 +466,6 @@ void ScreenshotTool::RenderOverlay()
         DrawAnnotations();
         ImGui::End();
         ImGui::PopStyleVar();
-        if (IsCompleted())
-            m_state = ToolState::Idle;
         return;
     }
 
@@ -716,8 +714,14 @@ void ScreenshotTool::OnCleanFrame()
         RunBarcodeScan(img);
 
     const SavingOp op = std::exchange(m_completed_op, SavingOp::kNone);
-    if (op != SavingOp::kNone && m_on_complete)
-        m_on_complete(op, img, g_config->File.image_out_type.second);
+    if (op == SavingOp::kNone)
+        return;
+
+    // Failed: keep the selection and annotations for another try. Not with
+    // --instant-copy/--instant-save, which would request it again every frame
+    const bool done = !m_on_complete || m_on_complete(op, img, g_config->File.image_out_type.second);
+    if (done || g_config->Runtime.instant_copy_save != SavingOp::kNone)
+        m_state = ToolState::Idle;
 }
 
 // ------------------------------
