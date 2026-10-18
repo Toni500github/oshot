@@ -3890,6 +3890,9 @@ void ScreenshotTool::DrawDownloadOCRWindow()
                 {
                     ClearError(ectx, OcrDownloadError::FailedToDownload);
                     has_downloaded = true;
+                    // Rescan, so the new model is in the Model list
+                    m_last_scanned_ocr_path.clear();
+                    RefreshOcrModels();
                 }
                 m_ocr_download.reset();
             }
