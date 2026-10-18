@@ -645,6 +645,8 @@ static void create_dialog(const char* title, const NvdDialogType type, const std
  * Make `logger` spdlog's default logger in liboshot_common too.
  * spdlog is header-only, and on Windows an executable and a DLL each get their
  * own copy of its registry, so the executable has to set it on both sides.
+ * So do oshot and liboshot_common in macOS Release builds, where LTO makes the
+ * executable's copy local instead of sharing the library's.
  * @param logger The executable's default logger
  **/
 void set_shared_default_logger(std::shared_ptr<spdlog::logger> logger);

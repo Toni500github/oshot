@@ -796,7 +796,6 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
         unsetenv("LD_LIBRARY_PATH");  // not running from AppImage, clear any stale value
 #endif
 
-    atexit(exit_handler_nc);
     signal(SIGINT, on_quit_signal);
     signal(SIGTERM, on_quit_signal);
     signal(SIGABRT, on_crash_signal);
@@ -815,6 +814,11 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     logger->flush_on(spdlog::level::trace);
     spdlog::set_default_logger(logger);
     set_shared_default_logger(logger);
+    // Only now that spdlog's registries exist: exit handlers run in reverse order, so they
+    // still exist in exit_handler_nc(). Registered earlier, liboshot_common's own registry
+    // (macOS Release builds have one, see set_shared_default_logger()) was already
+    // destroyed there, and release_shared_default_logger() aborted on its mutex
+    atexit(exit_handler_nc);
     g_imgui_log_sink = imgui;
 
     g_clipboard.SetSession(get_session_type());
