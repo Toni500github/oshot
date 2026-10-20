@@ -25,6 +25,7 @@
 
 #include <array>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
@@ -261,15 +262,15 @@ static bool parseargs(int argc, char* argv[], const fs::path& configFile)
 
 // clang-format on
 // NOLINTEND
-static std::mutex              mtx;
-static std::condition_variable cv;
-static std::atomic<bool>       quit{ false };
-static bool                    do_capture = false;
-static std::string             pending_source;  // image to open instead of capturing, empty for a screenshot
+static std::mutex                mtx;
+static std::condition_variable   cv;
+static std::atomic<bool>         quit{ false };
+static bool                      do_capture = false;
+static std::string               pending_source;   // image to open instead of capturing, empty for a screenshot
 static std::chrono::milliseconds pending_delay{};  // wait this long before capturing
-static capture_result_t        pending_image;
-static bool                    do_copy_image = false;
-static std::atomic<bool>       capture_active{ false };  // a run_main_tool() is in progress, on any thread
+static capture_result_t          pending_image;
+static bool                      do_copy_image = false;
+static std::atomic<bool>         capture_active{ false };  // a run_main_tool() is in progress, on any thread
 
 bool app_quitting()
 {
@@ -871,6 +872,18 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     }
 
     spdlog::set_level(spdlog::level::debug);
+
+#if OSHOT_FREEDESKTOP
+    // Must run before the first GLX call (glfwInit) and before any thread is spawned,
+    // since setenv() isn't thread-safe against getenv() in other threads
+    constexpr const char* GLX_ENV = "__GLX_VENDOR_LIBRARY_NAME";
+    if (!g_config->File.glx_vendor.empty() &&
+        setenv(GLX_ENV, g_config->File.glx_vendor.c_str(), int(g_config->File.pref_conf_to_env)) != 0)
+        spdlog::warn("Failed to set {}: {}", GLX_ENV, std::strerror(errno));
+
+    const char* glx_env = std::getenv(GLX_ENV);
+    spdlog::debug("GLX vendor library: {}", glx_env ? glx_env : "not set");
+#endif
 
     logger->info("=== oshot starting ===");
     if (file)

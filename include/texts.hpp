@@ -202,6 +202,16 @@ real-full-screen = {}
 # Disable if the overlay feels sluggish or unresponsive.
 vsync = {}
 
+# Linux (X11) only. GLX vendor library used to create the overlay's OpenGL window.
+# On laptops with a hybrid NVIDIA GPU, the NVIDIA library wakes up the sleeping
+# discrete GPU on every launch, delaying the overlay by 1-2 seconds.
+# Set to "mesa" to use only the integrated GPU's driver (this works if your
+# X screen is rendered by the integrated GPU, and breaks if it is rendered by NVIDIA).
+# Empty = leave it to the system.
+# The __GLX_VENDOR_LIBRARY_NAME environment variable supersedes this,
+# unless config-over-env is true.
+glx-vendor = "{}"
+
 # Allow the extracted output to be editable.
 allow-text-edit = {}
 

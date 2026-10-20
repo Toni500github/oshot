@@ -64,6 +64,10 @@ public:
         // Exclusive fullscreen, for compositors that make the overlay look grainy
         bool real_full_screen = false;
 
+        // glx-vendor (X11 only): value for __GLX_VENDOR_LIBRARY_NAME, empty = don't touch it.
+        // "mesa" keeps GLX off the NVIDIA library, which wakes a sleeping hybrid-laptop dGPU
+        std::string glx_vendor;
+
         // annotations-in-text-tools: scan the selection with its annotations
         bool render_anns = true;
 

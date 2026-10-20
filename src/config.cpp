@@ -102,6 +102,7 @@ void Config::LoadConfigFile(const std::string& filename)
     File.delay            = GetValue<int>("default.delay", -1);
     File.show_text_tools  = GetValue<bool>("default.show-text-tools", true);
     File.enable_vsync     = GetValue<bool>("default.vsync", true);
+    File.glx_vendor       = GetValue<std::string>("default.glx-vendor", "");
     File.real_full_screen = GetValue<bool>("default.real-full-screen", false);
     File.old_toolbar_pos  = GetValue<bool>("default.legacy-toolbar-pos", false);
     File.pref_conf_to_env = GetValue<bool>("default.config-over-env", false);
@@ -198,6 +199,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.cpa_mode,
             File.real_full_screen,
             File.enable_vsync,
+            EscapeString(File.glx_vendor),
             File.allow_out_edit,
             File.show_text_tools,
             File.pref_conf_to_env,
