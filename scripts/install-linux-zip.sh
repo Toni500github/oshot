@@ -26,7 +26,7 @@ if [ "$1" = "--uninstall" ]; then
             rm -f "$PREFIX/$f"
         done
     done
-    rmdir "$PREFIX/include/oshot" "$PREFIX/share/licenses/oshot" 2>/dev/null || true
+    rmdir "$PREFIX/lib/oshot" "$PREFIX/include/oshot" "$PREFIX/share/licenses/oshot" 2>/dev/null || true
     refresh_caches
     echo "oshot removed from $PREFIX"
     exit 0

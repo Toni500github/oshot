@@ -230,6 +230,17 @@ else()
     set(_rpath_origin "$ORIGIN")
 endif()
 
+# With plugins, oshot's shared libraries (imgui, cimgui, oshot_common) go in a
+# private lib/oshot folder, so their generic names don't clash with other
+# packages' libraries. Windows keeps the DLLs next to oshot.exe.
+if(WIN32)
+    set(OSHOT_INSTALL_LIBDIR "${CMAKE_INSTALL_LIBDIR}")
+    set(_full_libdir "${CMAKE_INSTALL_FULL_LIBDIR}")
+else()
+    set(OSHOT_INSTALL_LIBDIR "${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME}")
+    set(_full_libdir "${CMAKE_INSTALL_FULL_LIBDIR}/${PROJECT_NAME}")
+endif()
+
 # Relative, so the install stays relocatable (zip, AppImage), and following
 # CMAKE_INSTALL_LIBDIR, which is lib64 on Fedora/openSUSE and
 # lib/<multiarch> on Debian
@@ -237,7 +248,7 @@ file(
     RELATIVE_PATH
     _bin_to_lib
     "${CMAKE_INSTALL_FULL_BINDIR}"
-    "${CMAKE_INSTALL_FULL_LIBDIR}"
+    "${_full_libdir}"
 )
 set(OSHOT_INSTALL_RPATH "${_rpath_origin}/${_bin_to_lib}")
 
@@ -319,6 +330,9 @@ if(NOT DISABLE_PLUGINS)
             SOVERSION 1
             WINDOWS_EXPORT_ALL_SYMBOLS ON
             POSITION_INDEPENDENT_CODE ON
+            # Finds cimgui and imgui in lib/oshot, which the executables'
+            # RUNPATH doesn't cover for their dependencies
+            INSTALL_RPATH "${_rpath_origin}"
     )
     target_include_directories(
         oshot_common
@@ -599,6 +613,7 @@ if(NOT DISABLE_PLUGINS)
             SOVERSION 1
             WINDOWS_EXPORT_ALL_SYMBOLS ON
             POSITION_INDEPENDENT_CODE ON
+            INSTALL_RPATH "${_rpath_origin}"
     )
 endif()
 
@@ -870,8 +885,8 @@ else()
     install(
         TARGETS ${PROJECT_NAME} imgui cimgui oshot_common oshotpm
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${OSHOT_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${OSHOT_INSTALL_LIBDIR}
     )
 
     # The plugin SDK headers
