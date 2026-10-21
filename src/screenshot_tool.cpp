@@ -433,9 +433,10 @@ Result<> ScreenshotTool::StartWindow()
 
 void ScreenshotTool::RenderOverlay()
 {
-    const bool disable_esc = (m_current_actions.HasAny(CurrentAction::IsTextPlacing, CurrentAction::IsColorPicking) ||
-                              m_show_window.HasAny(SubWindow::OcrDownload, SubWindow::Preferences)) &&
-                             !g_config->File.show_text_tools;
+    const bool subwindow_shown = m_state == ToolState::Selected && m_show_window.Has(SubWindow::MainTextTools) &&
+                                 m_show_window.HasAny(SubWindow::OcrDownload, SubWindow::Preferences);
+    const bool disable_esc =
+        m_current_actions.HasAny(CurrentAction::IsTextPlacing, CurrentAction::IsColorPicking) || subwindow_shown;
 
     static constexpr int minimal_win_flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
                                              ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoResize |
