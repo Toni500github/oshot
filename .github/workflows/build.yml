@@ -236,7 +236,7 @@ jobs:
             libpng \
             tesseract \
             zbar \
-            libappindicator-gtk3 \
+            libayatana-appindicator \
             wayland-protocols \
             wayland-utils \
             wayland \

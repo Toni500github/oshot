@@ -312,7 +312,7 @@ sudo pacman -S --needed \
   glfw \
   tesseract leptonica \
   zbar \
-  gtk3 libappindicator-gtk3 \
+  gtk3 libayatana-appindicator \
   wayland wayland-protocols
 ```
 
