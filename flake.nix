@@ -85,5 +85,13 @@
 
         default = self.packages.${pkgs.stdenv.hostPlatform.system}.oshot;
       });
+
+      # nix develop: the plugin build's dependencies, a debugger and the tools oshot runs
+      devShells = forAllSystems (pkgs: {
+        default = pkgs.mkShell {
+          inputsFrom = [ (mkOshot pkgs { }) ];
+          packages = with pkgs; [ gdb xclip wl-clipboard zenity ];
+        };
+      });
     };
 }
