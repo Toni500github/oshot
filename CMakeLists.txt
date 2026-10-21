@@ -802,18 +802,28 @@ if(NOT DISABLE_PLUGINS)
     # what oshotpm passes to plugin builds as OSHOT_SDK. Windows plugins also
     # need cimgui's import library.
     set(OSHOT_SDK_DIR "${CMAKE_BINARY_DIR}/sdk")
+    set(OSHOT_SDK_HEADERS_SRC
+        "${CMAKE_SOURCE_DIR}/src/plugins/oshot_plugin.h"
+        "${CMAKE_SOURCE_DIR}/include/libs/cimgui/cimgui.h"
+    )
+    set(OSHOT_SDK_HEADERS
+        "${OSHOT_SDK_DIR}/include/oshot/oshot_plugin.h"
+        "${OSHOT_SDK_DIR}/include/oshot/cimgui.h"
+    )
+    # A custom command with outputs, not a POST_BUILD step on cimgui: Ninja
+    # compiles objects before the libraries they link are built, so the example
+    # plugin would race the copy.
     add_custom_command(
-        TARGET cimgui
-        POST_BUILD
+        OUTPUT ${OSHOT_SDK_HEADERS}
         COMMAND
             ${CMAKE_COMMAND} -E make_directory "${OSHOT_SDK_DIR}/include/oshot"
         COMMAND
-            ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_SOURCE_DIR}/src/plugins/oshot_plugin.h"
-            "${CMAKE_SOURCE_DIR}/include/libs/cimgui/cimgui.h"
+            ${CMAKE_COMMAND} -E copy_if_different ${OSHOT_SDK_HEADERS_SRC}
             "${OSHOT_SDK_DIR}/include/oshot/"
+        DEPENDS ${OSHOT_SDK_HEADERS_SRC}
         COMMENT "Copying the plugin SDK headers to ${OSHOT_SDK_DIR}"
     )
+    add_custom_target(oshot_sdk_headers ALL DEPENDS ${OSHOT_SDK_HEADERS})
     if(WIN32)
         add_custom_command(
             TARGET cimgui
@@ -830,6 +840,7 @@ if(NOT DISABLE_PLUGINS)
         oshot_example_uppercase
         MODULE
         examples/plugins/uppercase/uppercase.c
+        ${OSHOT_SDK_HEADERS}
     )
     target_include_directories(
         oshot_example_uppercase
