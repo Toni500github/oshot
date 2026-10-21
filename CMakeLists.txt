@@ -137,6 +137,8 @@ if(UNIX AND NOT APPLE)
     pkg_check_modules(XRANDR REQUIRED IMPORTED_TARGET xrandr)
     pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
     pkg_check_modules(DBUS REQUIRED IMPORTED_TARGET dbus-1)
+    # A UI font covering the language's script (util.cpp, find_language_fonts())
+    pkg_check_modules(FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
     pkg_check_modules(
         WAYLAND
         REQUIRED
@@ -157,11 +159,27 @@ set(VERSION_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/version.h)
 set(VERSION_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generateVersion.sh)
 # Runs on every build, so a new commit or tag is picked up. The script only rewrites
 # the file when it changed, and only src/globals.cpp includes it
-add_custom_target(generate_version
+add_custom_target(
+    generate_version
     COMMAND ${VERSION_SCRIPT}
     BYPRODUCTS ${VERSION_HEADER}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Generating version header"
+)
+
+# The po/<code>.po translations, embedded into a source file for src/i18n.cpp
+set(TRANSLATIONS_SOURCE ${CMAKE_CURRENT_BINARY_DIR}/generated/translations.cpp)
+file(GLOB PO_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/po/*.po)
+add_custom_command(
+    OUTPUT ${TRANSLATIONS_SOURCE}
+    COMMAND
+        ${CMAKE_COMMAND} -DPO_DIR=${CMAKE_CURRENT_SOURCE_DIR}/po
+        -DOUTPUT=${TRANSLATIONS_SOURCE} -P
+        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_translations.cmake
+    DEPENDS
+        ${PO_FILES}
+        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_translations.cmake
+    COMMENT "Embedding translations"
 )
 
 # The Wayland xdg-output protocol, for the monitors' logical geometry (wl_get_monitors.cpp)
@@ -216,7 +234,8 @@ endif()
 # CMAKE_INSTALL_LIBDIR, which is lib64 on Fedora/openSUSE and
 # lib/<multiarch> on Debian
 file(
-    RELATIVE_PATH _bin_to_lib
+    RELATIVE_PATH
+    _bin_to_lib
     "${CMAKE_INSTALL_FULL_BINDIR}"
     "${CMAKE_INSTALL_FULL_LIBDIR}"
 )
@@ -250,10 +269,12 @@ set(OSHOT_COMMON_SOURCES
     src/config.cpp
     src/globals.cpp
     src/hotkey.cpp
+    src/i18n.cpp
     src/screen_capture.cpp
     src/screenshot_tool.cpp
     src/text_extraction.cpp
     src/util.cpp
+    ${TRANSLATIONS_SOURCE}
 )
 
 # The plugin and oshotpm sources are compiled in too: globals.cpp makes a
@@ -340,9 +361,13 @@ else()
             PkgConfig::GIO
             PkgConfig::XRANDR
             PkgConfig::WAYLAND
+            PkgConfig::FONTCONFIG
     )
     add_dependencies(oshot_common generate_protocol)
 endif()
+
+# i18n.cpp parses the translations with it
+target_link_libraries(oshot_common PRIVATE tinygettext)
 
 target_link_libraries(
     oshot_common
@@ -435,9 +460,19 @@ if(WIN32)
     # and the manifest that sets the UTF-8 code page
     enable_language(RC)
     set(OSHOT_ICO_PATH ${CMAKE_CURRENT_SOURCE_DIR}/assets/windows/oshot.ico)
-    set(OSHOT_MANIFEST_PATH ${CMAKE_CURRENT_SOURCE_DIR}/assets/windows/oshot.manifest)
-    configure_file(assets/windows/oshot.rc.in ${CMAKE_CURRENT_BINARY_DIR}/oshot.rc @ONLY)
-    configure_file(assets/windows/manifest.rc.in ${CMAKE_CURRENT_BINARY_DIR}/manifest.rc @ONLY)
+    set(OSHOT_MANIFEST_PATH
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/windows/oshot.manifest
+    )
+    configure_file(
+        assets/windows/oshot.rc.in
+        ${CMAKE_CURRENT_BINARY_DIR}/oshot.rc
+        @ONLY
+    )
+    configure_file(
+        assets/windows/manifest.rc.in
+        ${CMAKE_CURRENT_BINARY_DIR}/manifest.rc
+        @ONLY
+    )
     target_sources(
         ${PROJECT_NAME}
         PRIVATE
@@ -481,7 +516,6 @@ endif()
 # -----------------------------
 # fmt library
 # -----------------------------
-
 add_library(fmt STATIC src/libs/fmt/os.cc src/libs/fmt/format.cc)
 
 enable_lto(fmt)
@@ -492,7 +526,6 @@ target_compile_definitions(fmt PUBLIC FMT_HEADER_ONLY=0)
 # -----------------------------
 # toml++ library
 # -----------------------------
-
 add_library(toml++ STATIC src/libs/toml++/toml.cpp)
 enable_lto(toml++)
 
@@ -502,7 +535,6 @@ target_compile_definitions(toml++ PUBLIC TOML_HEADER_ONLY=0)
 # -----------------------------
 # tfd (tinyfiledialogs) library
 # -----------------------------
-
 add_library(tfd STATIC src/libs/tinyfiledialogs/tinyfiledialogs.c)
 enable_lto(tfd)
 
@@ -512,7 +544,6 @@ set_target_properties(tfd PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
 # -----------------------------
 # imgui library
 # -----------------------------
-
 file(GLOB IMGUI_SOURCES src/libs/imgui/*.cpp)
 if(APPLE)
     list(APPEND IMGUI_SOURCES src/libs/imgui/imgui_impl_metal.mm)
@@ -556,7 +587,6 @@ endif()
 # -----------------------------
 # cimgui library (C-ABI plugins only)
 # -----------------------------
-
 if(NOT DISABLE_PLUGINS)
     add_library(cimgui SHARED src/libs/cimgui/cimgui.cpp)
 
@@ -575,7 +605,6 @@ endif()
 # -----------------------------
 # Tray library (integrated from its own CMakeLists.txt)
 # -----------------------------
-
 if(WIN32)
     list(APPEND TRAY_SOURCES src/libs/tray/tray_windows.cpp)
 elseif(APPLE)
@@ -597,10 +626,7 @@ elseif(APPLE)
     target_link_libraries(tray PRIVATE ${COCOA_FRAMEWORK})
 elseif(UNIX)
     target_compile_definitions(tray PRIVATE TRAY_APPINDICATOR=1)
-    target_link_libraries(
-        tray
-        PRIVATE PkgConfig::GTK PkgConfig::APPINDICATOR
-    )
+    target_link_libraries(tray PRIVATE PkgConfig::GTK PkgConfig::APPINDICATOR)
 endif()
 
 target_include_directories(tray PUBLIC include/libs)
@@ -608,7 +634,6 @@ target_include_directories(tray PUBLIC include/libs)
 # -----------------------------
 # clip library (integrated from its own CMakeLists.txt)
 # -----------------------------
-
 add_library(clip STATIC src/libs/clip/clip.cpp src/libs/clip/image.cpp)
 
 if(WIN32)
@@ -638,10 +663,29 @@ target_include_directories(clip PUBLIC include/libs/clip)
 target_compile_definitions(clip PUBLIC CLIP_ENABLE_IMAGE=1)
 
 # -----------------------------
+# tinygettext library (integrated from its own CMakeLists.txt)
+# -----------------------------
+file(GLOB TINYGETTEXT_SOURCES src/libs/tinygettext/*.cpp)
+add_library(tinygettext STATIC ${TINYGETTEXT_SOURCES})
+
+set_target_properties(
+    tinygettext
+    PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
+)
+target_include_directories(tinygettext PUBLIC include/libs/tinygettext)
+# The .po files are UTF-8 (xgettext, msgmerge and Weblate write them so), and the
+# strings go to ImGui as UTF-8: no charset conversion, so no iconv to ship on Windows/macOS.
+# PUBLIC: it changes a type in iconv.hpp, which i18n.cpp includes through po_parser.hpp
+target_compile_definitions(tinygettext PUBLIC TINYGETTEXT_UTF8_ONLY)
+
+if(WIN32)
+    target_compile_definitions(tinygettext PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+
+# -----------------------------
 # dylib library (integrated from its own CMakeLists.txt)
 # -----------------------------
-
-if(NOT DISABLE_PLUGINS OR WIN32)
+if(WIN32 OR NOT DISABLE_PLUGINS)
     file(GLOB DYLIB_SOURCES src/libs/dylib/*.cpp)
     add_library(dylib STATIC ${DYLIB_SOURCES})
 
@@ -655,7 +699,6 @@ endif()
 # -----------------------------
 # nvdialog (integrated from its own CMakeLists.txt)
 # -----------------------------
-
 file(GLOB NVD_COMMON_SOURCES src/libs/nvdialog/*.c)
 
 if(WIN32)
@@ -706,7 +749,6 @@ endif()
 # -----------------------------
 # tiny-process-library (integrated from its own CMakeLists.txt)
 # -----------------------------
-
 add_library(
     tiny-process-library
     STATIC
@@ -763,10 +805,13 @@ if(NOT DISABLE_PLUGINS)
     add_custom_command(
         TARGET cimgui
         POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${OSHOT_SDK_DIR}/include/oshot"
         COMMAND
-            ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/src/plugins/oshot_plugin.h"
-            "${CMAKE_SOURCE_DIR}/include/libs/cimgui/cimgui.h" "${OSHOT_SDK_DIR}/include/oshot/"
+            ${CMAKE_COMMAND} -E make_directory "${OSHOT_SDK_DIR}/include/oshot"
+        COMMAND
+            ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/src/plugins/oshot_plugin.h"
+            "${CMAKE_SOURCE_DIR}/include/libs/cimgui/cimgui.h"
+            "${OSHOT_SDK_DIR}/include/oshot/"
         COMMENT "Copying the plugin SDK headers to ${OSHOT_SDK_DIR}"
     )
     if(WIN32)
@@ -775,19 +820,33 @@ if(NOT DISABLE_PLUGINS)
             POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E make_directory "${OSHOT_SDK_DIR}/lib"
             COMMAND
-                ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_LINKER_FILE:cimgui>" "${OSHOT_SDK_DIR}/lib/"
+                ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_LINKER_FILE:cimgui>" "${OSHOT_SDK_DIR}/lib/"
         )
     endif()
 
     # The example plugin, built so CI checks it compiles everywhere. Not installed.
-    add_library(oshot_example_uppercase MODULE examples/plugins/uppercase/uppercase.c)
-    target_include_directories(oshot_example_uppercase PRIVATE "${OSHOT_SDK_DIR}/include")
-    set_target_properties(oshot_example_uppercase PROPERTIES C_VISIBILITY_PRESET hidden)
+    add_library(
+        oshot_example_uppercase
+        MODULE
+        examples/plugins/uppercase/uppercase.c
+    )
+    target_include_directories(
+        oshot_example_uppercase
+        PRIVATE "${OSHOT_SDK_DIR}/include"
+    )
+    set_target_properties(
+        oshot_example_uppercase
+        PROPERTIES C_VISIBILITY_PRESET hidden
+    )
     add_dependencies(oshot_example_uppercase cimgui)
     if(WIN32)
         target_link_libraries(oshot_example_uppercase PRIVATE cimgui)
     elseif(APPLE)
-        target_link_options(oshot_example_uppercase PRIVATE -undefined dynamic_lookup)
+        target_link_options(
+            oshot_example_uppercase
+            PRIVATE -undefined dynamic_lookup
+        )
     endif()
 endif()
 
@@ -835,10 +894,7 @@ if(UNIX AND NOT APPLE)
         FILES assets/oshot.png
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/64x64/apps
     )
-    install(
-        FILES assets/linux/oshot.1
-        DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
-    )
+    install(FILES assets/linux/oshot.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
     if(NOT DISABLE_PLUGINS)
         install(
             FILES assets/linux/oshotpm.1

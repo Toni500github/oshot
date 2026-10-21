@@ -50,6 +50,7 @@
 #include "dotenv.hpp"
 #include "fmt/chrono.h"
 #include "fmt/format.h"
+#include "i18n.hpp"
 #include "nvdialog/nvdialog_notification.h"
 #include "platform.hpp"
 #include "screen_capture.hpp"
@@ -93,6 +94,9 @@
 #  include <sys/file.h>
 #  include <unistd.h>
 #  include <X11/Xlib.h>
+#endif
+#if OSHOT_FREEDESKTOP
+#  include <fontconfig/fontconfig.h>
 #endif
 // clang-format on
 
@@ -487,7 +491,8 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
     {
         const Result<>& res = g_clipboard.CopyImage(img, ext);
         if (res.ok() && notify)
-            notif.reset(nvd_notification_new("Copied!", "Screenshot copied to clipboard", NVD_NOTIFICATION_SIMPLE));
+            notif.reset(
+                nvd_notification_new(_("Copied!"), _("Screenshot copied to clipboard"), NVD_NOTIFICATION_SIMPLE));
         return res;
     }
 
@@ -498,7 +503,7 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
         TRY(saved);
         spdlog::info("Saved to {}", saved.get());
         if (notify)
-            notif.reset(nvd_notification_new("Saved!", "Screenshot saved successfully", NVD_NOTIFICATION_SIMPLE));
+            notif.reset(nvd_notification_new(_("Saved!"), _("Screenshot saved successfully"), NVD_NOTIFICATION_SIMPLE));
         return Ok();
     }
 
@@ -510,11 +515,11 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
 
     std::string filter_type = ("*." + str_tolower(g_config->File.image_out_type.first));
     const auto  filter      = std::to_array({ filter_type.c_str() });
-    const char* save_path   = tinyfd_saveFileDialog("Save File",
+    const char* save_path   = tinyfd_saveFileDialog(_("Save File"),
                                                     (saved_path_dir / fmt.get()).string().c_str(),  // default path
                                                     1,              // number of filter patterns
                                                     filter.data(),  // file filters
-                                                    "Images"        // filter description
+                                                    _("Images")     // filter description
     );
 
     if (hidden)
@@ -523,13 +528,13 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
     if (!save_path)
     {
         if (notify)
-            notif.reset(nvd_notification_new("Canceled", "Save canceled by user", NVD_NOTIFICATION_WARNING));
+            notif.reset(nvd_notification_new(_("Canceled"), _("Save canceled by user"), NVD_NOTIFICATION_WARNING));
         return Ok();  // Not really an error, maybe the user cancelled
     }
 
     TRY(write_image_file(save_path, img, ext));
     if (notify)
-        notif.reset(nvd_notification_new("Saved!", "Screenshot saved successfully", NVD_NOTIFICATION_SIMPLE));
+        notif.reset(nvd_notification_new(_("Saved!"), _("Screenshot saved successfully"), NVD_NOTIFICATION_SIMPLE));
 
     fs::path path(save_path);
     g_cache->SetValue(CacheEntry::ImgSavePath, path.parent_path().string());
@@ -1095,6 +1100,104 @@ fs::path get_font_path(const std::string& font)
     return {};
 }
 
+// A system font file, and the font's index in it for a collection (.ttc)
+struct font_file_t
+{
+    std::string path;
+    int         index = 0;
+};
+
+/**
+ * Find system fonts covering a language's script, for when ImGui's built-in font lacks it.
+ * Uses fontconfig on Linux/BSD, a list of the fonts shipped with the OS on Windows/macOS
+ * @param lang A language code like "ru" or "zh_TW"
+ * @return The fonts, the first one for Latin text too, the others to fill in its missing glyphs
+ **/
+static std::vector<font_file_t> find_language_fonts(const std::string& lang)
+{
+    std::vector<font_file_t> fonts;
+
+#if OSHOT_FREEDESKTOP
+    // fontconfig wants RFC 3066 names: "zh-tw"
+    std::string fc_lang = str_tolower(lang);
+    std::ranges::replace(fc_lang, '_', '-');
+
+    if (!FcInit())
+        return fonts;
+
+    FcPattern* pat = FcNameParse(reinterpret_cast<const FcChar8*>(fmt::format("sans-serif:lang={}", fc_lang).c_str()));
+    if (!pat)
+        return fonts;
+    FcConfigSubstitute(nullptr, pat, FcMatchPattern);
+    FcDefaultSubstitute(pat);
+
+    FcResult   result;
+    FcPattern* match = FcFontMatch(nullptr, pat, &result);
+    FcPatternDestroy(pat);
+    if (!match)
+        return fonts;
+
+    // The best match isn't guaranteed to support the language, e.g. with no CJK font installed
+    FcChar8*   file  = nullptr;
+    FcLangSet* langs = nullptr;
+    int        index = 0;
+    if (FcPatternGetString(match, FC_FILE, 0, &file) == FcResultMatch &&
+        FcPatternGetLangSet(match, FC_LANG, 0, &langs) == FcResultMatch &&
+        FcLangSetHasLang(langs, reinterpret_cast<const FcChar8*>(fc_lang.c_str())) != FcLangDifferentLang)
+    {
+        FcPatternGetInteger(match, FC_INDEX, 0, &index);
+        fonts.push_back({ .path = reinterpret_cast<const char*>(file), .index = index });
+    }
+    FcPatternDestroy(match);
+#else
+    const std::string base = lang.substr(0, lang.find('_'));
+#  if OSHOT_WINDOWS
+    const char*    windir = std::getenv("WINDIR");
+    const fs::path dir    = fs::path(windir ? windir : "C:\\Windows") / "Fonts";
+
+    // Segoe UI covers Latin, Greek, Cyrillic, Arabic and Hebrew
+    std::vector<std::string_view> names = { "segoeui.ttf" };
+    if (lang == "zh_TW" || lang == "zh_HK")
+        names.emplace_back("msjh.ttc");
+    else if (base == "zh")
+        names.emplace_back("msyh.ttc");
+    else if (base == "ja")
+        names.insert(names.end(), { "YuGothM.ttc", "meiryo.ttc" });
+    else if (base == "ko")
+        names.emplace_back("malgun.ttf");
+    else if (base == "th")
+        names.emplace_back("leelawui.ttf");
+    else if (base == "hi" || base == "mr" || base == "ne" || base == "bn")
+        names.emplace_back("Nirmala.ttf");
+#  elif OSHOT_MACOS
+    const fs::path dir = "/System/Library/Fonts";
+
+    // Helvetica covers Latin, Greek and Cyrillic; Arial Unicode most other scripts
+    std::vector<std::string_view> names = { "Helvetica.ttc" };
+    if (base == "ja")
+        names.emplace_back("ヒラギノ角ゴシック W3.ttc");
+    else if (base == "ko")
+        names.emplace_back("AppleSDGothicNeo.ttc");
+    else if (base == "zh")
+        names.emplace_back("Hiragino Sans GB.ttc");
+    names.emplace_back("Supplemental/Arial Unicode.ttf");
+#  else
+    const fs::path                dir;
+    std::vector<std::string_view> names;
+#  endif
+
+    for (const std::string_view name : names)
+    {
+        std::error_code ec;
+        const fs::path& path = dir / fs::path(std::u8string(name.begin(), name.end()));
+        if (fs::exists(path, ec))
+            fonts.push_back({ .path = path.string() });
+    }
+#endif
+
+    return fonts;
+}
+
 void build_font_atlas(ImGuiIO& io)
 {
     io.Fonts->Clear();
@@ -1124,6 +1227,29 @@ void build_font_atlas(ImGuiIO& io)
             // MergeMode needs a font added first. The next fonts then fill in the glyphs
             // the first one lacks, e.g. Arabic glyphs for a font without them
             font_cfg.MergeMode = true;
+        }
+    }
+
+    // The configured fonts may lack the language's script too: fill it in after them
+    if (i18n::needs_extended_font())
+    {
+        const std::vector<font_file_t>& lang_fonts = find_language_fonts(i18n::current());
+        if (lang_fonts.empty())
+            spdlog::warn("No font found for language {}: set one in Preferences > Fonts", i18n::current());
+
+        for (const font_file_t& font : lang_fonts)
+        {
+            font_cfg.FontNo = font.index;
+            ImFont* f       = io.Fonts->AddFontFromFileTTF(font.path.c_str(), 16.0f, &font_cfg);
+            if (!f)
+                continue;
+
+            spdlog::debug("Loaded font {} for language {}", font.path, i18n::current());
+            if (!first)
+            {
+                first              = f;
+                font_cfg.MergeMode = true;
+            }
         }
     }
 

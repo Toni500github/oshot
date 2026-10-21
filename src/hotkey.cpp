@@ -29,6 +29,8 @@
 #include <array>
 #include <utility>
 
+#include "i18n.hpp"
+
 // clang-format off
 #if OSHOT_WINDOWS
 #  include <windows.h>
@@ -147,6 +149,21 @@ ImGuiKey key_from_name(const std::string& lower)
 std::string           s_status;
 std::function<void()> s_on_pressed;
 [[maybe_unused]] bool s_registered = false;
+
+#if OSHOT_HAS_GLOBAL_HOTKEY
+/**
+ * Fail a registration. The status, shown in Preferences and in the tray's notification,
+ * gets the error in the user's language; the returned error stays English for the log
+ * @param msgid The English format string, marked with N_() for scripts/update_translations.sh
+ * @param args Arguments in the format
+ **/
+template <typename... Args>
+Result<> fail(fmt::format_string<Args...> msgid, Args&&... args)
+{
+    s_status = fmt::format(fmt::runtime(i18n::tr(msgid.get().data())), args...);
+    return Err(fmt::format(fmt::runtime(msgid.get()), args...));
+}
+#endif
 
 #if OSHOT_WINDOWS
 constexpr int HOTKEY_ID = 1;
@@ -309,15 +326,14 @@ Result<> enable(const hotkey_t& hk, std::function<void()> on_pressed)
     s_on_pressed = std::move(on_pressed);
     if (hk.empty())
     {
-        s_status = "Disabled";
+        s_status = _("Disabled");
         return Ok();
     }
 
     const HWND hwnd = static_cast<HWND>(Tray::GetNativeHandle());
     if (!hwnd)
     {
-        s_status = "Not registered: the tray isn't running";
-        return Err("{}", s_status);
+        return fail(N_("Not registered: the tray isn't running"));
     }
 
     UINT mods = MOD_NOREPEAT;
@@ -340,14 +356,12 @@ Result<> enable(const hotkey_t& hk, std::function<void()> on_pressed)
     {
         const DWORD err = GetLastError();
         if (err == ERROR_HOTKEY_ALREADY_REGISTERED)
-            s_status = fmt::format("{} is already used by Windows or another app", to_string(hk));
-        else
-            s_status = fmt::format("Failed to register {} (error {})", to_string(hk), err);
-        return Err("{}", s_status);
+            return fail(N_("{} is already used by Windows or another app"), to_string(hk));
+        return fail(N_("Failed to register {} (error {})"), to_string(hk), err);
     }
 
     s_registered = true;
-    s_status     = fmt::format("Active: {}", to_string(hk));
+    s_status     = i18n::tr_fmt("Active: {}", to_string(hk));
     return Ok();
 }
 
@@ -365,15 +379,14 @@ Result<> enable(const hotkey_t& hk, std::function<void()> on_pressed)
     s_on_pressed = std::move(on_pressed);
     if (hk.empty())
     {
-        s_status = "Disabled";
+        s_status = _("Disabled");
         return Ok();
     }
 
     const int kvk = to_kvk(hk.key);
     if (kvk < 0)
     {
-        s_status = fmt::format("{} isn't available on Mac keyboards", key_name(hk.key));
-        return Err("{}", s_status);
+        return fail(N_("{} isn't available on Mac keyboards"), key_name(hk.key));
     }
 
     if (!s_handler)
@@ -400,14 +413,12 @@ Result<> enable(const hotkey_t& hk, std::function<void()> on_pressed)
     {
         s_ref = nullptr;
         if (err == eventHotKeyExistsErr)
-            s_status = fmt::format("{} is already used by macOS or another app", to_string(hk));
-        else
-            s_status = fmt::format("Failed to register {} (error {})", to_string(hk), int(err));
-        return Err("{}", s_status);
+            return fail(N_("{} is already used by macOS or another app"), to_string(hk));
+        return fail(N_("Failed to register {} (error {})"), to_string(hk), int(err));
     }
 
     s_registered = true;
-    s_status     = fmt::format("Active: {}", to_string(hk));
+    s_status     = i18n::tr_fmt("Active: {}", to_string(hk));
     return Ok();
 }
 

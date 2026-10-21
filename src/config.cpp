@@ -110,6 +110,7 @@ void Config::LoadConfigFile(const std::string& filename)
     File.ctrl_c_copy_img  = GetValue<bool>("default.ctrl-c-copy-img", false);
     File.allow_out_edit   = GetValue<bool>("default.allow-text-edit", false);
     File.hotkey           = GetValue<std::string>("default.hotkey", File.hotkey);
+    File.language         = GetValue<std::string>("default.language", "auto");
     File.fonts            = GetValueArrayStr("default.fonts", {});
 
     const char* t = getenv("TESSDATA_PREFIX");
@@ -207,6 +208,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.old_toolbar_pos,
             File.ctrl_c_copy_img,
             EscapeString(File.hotkey),
+            EscapeString(File.language),
             EscapeString(fonts_str),
             EscapeString(File.image_out_type.first),
             EscapeString(File.image_out_fmt),

@@ -798,7 +798,7 @@ private:
                               const float       sel_h);
 
     // A button that copies `text_copy` and says "Copied!" for a moment
-    void CreateCopyTextButton(const std::string& text_copy, const std::string_view label1 = "Copy Text");
+    void CreateCopyTextButton(const std::string& text_copy, const std::string_view label1 = _("Copy Text"));
 
     void DrawDarkOverlay();
     void DrawAnnotations();

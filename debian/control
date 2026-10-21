@@ -12,6 +12,7 @@ Build-Depends:
  libglfw3-dev,
  libglib2.0-dev,
  libgtk-3-dev,
+ libfontconfig-dev,
  libdbus-1-dev,
  libtesseract-dev,
  libleptonica-dev,

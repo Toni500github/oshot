@@ -36,6 +36,7 @@
 
 #include "fmt/base.h"
 #include "fmt/color.h"
+#include "i18n.hpp"
 #include "nvdialog/nvdialog_core.h"
 #include "nvdialog/nvdialog_dialog.h"
 #include "nvdialog/nvdialog_error.h"
@@ -484,7 +485,7 @@ template <typename... Args>
     const std::string& str = format_noexcept(fmt, std::forward<Args>(args)...);
 
     spdlog::critical("{}", str);
-    create_dialog("oshot Fatal Error", NVD_DIALOG_ERROR, str);
+    create_dialog(_("oshot Fatal Error"), NVD_DIALOG_ERROR, str);
     std::exit(1);
 }
 
@@ -500,7 +501,7 @@ inline void error(const std::string_view fmt, Args&&... args) noexcept
     const std::string& str = format_noexcept(fmt, std::forward<Args>(args)...);
 
     spdlog::error("{}", str);
-    create_dialog("oshot Error", NVD_DIALOG_ERROR, str);
+    create_dialog(_("oshot Error"), NVD_DIALOG_ERROR, str);
 }
 
 /**
@@ -515,7 +516,7 @@ inline void warn(const std::string_view fmt, Args&&... args) noexcept
     const std::string& str = format_noexcept(fmt, std::forward<Args>(args)...);
 
     spdlog::warn("{}", str);
-    create_dialog("oshot Warning", NVD_DIALOG_WARNING, str);
+    create_dialog(_("oshot Warning"), NVD_DIALOG_WARNING, str);
 }
 
 /**
@@ -530,7 +531,7 @@ inline void info(const std::string_view fmt, Args&&... args) noexcept
     const std::string& str = format_noexcept(fmt, std::forward<Args>(args)...);
 
     spdlog::info("{}", str);
-    create_dialog("oshot Info", NVD_DIALOG_SIMPLE, str);
+    create_dialog(_("oshot Info"), NVD_DIALOG_SIMPLE, str);
 }
 
 /**
@@ -551,7 +552,7 @@ inline bool ask_user_yn(bool def, const std::string_view fmt, Args&&... args)
         // oshot.exe has no console; oshotpm.exe (and oshot run from one) does
         if (!GetConsoleWindow())
         {
-            int result = MessageBox(NULL, str.c_str(), "Confirmation", MB_YESNO | MB_ICONQUESTION);
+            int result = MessageBox(NULL, str.c_str(), _("Confirmation"), MB_YESNO | MB_ICONQUESTION);
             return (result == IDYES);
         }
 #endif
@@ -582,7 +583,7 @@ inline bool ask_user_yn(bool def, const std::string_view fmt, Args&&... args)
     }
     else
     {
-        NvdQuestionBox* question = nvd_dialog_question_new("Confirmation", str.c_str(), NVD_YES_NO);
+        NvdQuestionBox* question = nvd_dialog_question_new(_("Confirmation"), str.c_str(), NVD_YES_NO);
         if (!question)
             die("Couldn't create question dialog box");
         return nvd_get_reply(question) == NVD_REPLY_OK;
@@ -997,7 +998,8 @@ void extern_glfwSwapInterval(int v);
 
 /**
  * Rebuild ImGui's font atlas from the fonts option. The first font found is the default
- * one and the others fill in its missing glyphs. Falls back to ImGui's own font
+ * one and the others fill in its missing glyphs. When the UI language needs glyphs past
+ * Latin-1, a system font covering it comes after them. Falls back to ImGui's own font
  * @param io The ImGui IO whose atlas to rebuild
  **/
 void build_font_atlas(ImGuiIO& io);

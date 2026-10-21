@@ -71,6 +71,7 @@
 #include "fmt/compile.h"
 #include "fmt/format.h"
 #include "getopt_port/getopt.h"
+#include "i18n.hpp"
 #include "oshot_png.h"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
@@ -547,15 +548,18 @@ static void sync_hotkey()
     }();
     if (res.ok())
     {
-        spdlog::info("Global hotkey: {}", hotkey::status());
+        // Not status(): that's in the user's language, and logs stay English
+        spdlog::info("Global hotkey: {}", hk.get().empty() ? "disabled" : hotkey::to_string(hk.get()));
         return;
     }
 
     spdlog::warn("Global hotkey: {}", res.error_v());
+    // status() has the same error in the user's language; a config the parser rejects only has the English one
     const std::string& body =
-        fmt::format("{}\nPick another shortcut in Preferences, or set 'hotkey' in the config.", res.error_v());
+        i18n::tr_fmt("{}\nPick another shortcut in Preferences, or set 'hotkey' in the config.",
+                     hk.ok() ? hotkey::status() : res.error_v());
     NvdNotification* notif = init_dialogs()
-                                 ? nvd_notification_new("oshot: hotkey not set", body.c_str(), NVD_NOTIFICATION_WARNING)
+                                 ? nvd_notification_new(_("oshot: hotkey not set"), body.c_str(), NVD_NOTIFICATION_WARNING)
                                  : nullptr;
     if (notif)
     {
@@ -870,6 +874,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
         if (fs::exists(p) && p.has_filename())
             g_config->LoadThemeFile(p.string());
     }
+    i18n::init(g_config->File.language, configDir);
 
     spdlog::set_level(spdlog::level::debug);
 
@@ -958,14 +963,14 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     TrayIcon tray = { .iconFilePng = png_path.string(), .iconFileIco = "oshot.ico", .tooltip = "oshot", .menu = {} };
 #endif
 
-    TrayMenu capture_item{ .text        = "Capture",
+    TrayMenu capture_item{ .text        = _("Capture"),
                            .isEnabled   = true,
                            .isChecked   = false,
                            .hasCheckbox = false,
                            .onClicked   = [&](TrayMenu*) { capture_from_tray({}, /*from_menu=*/true); },
                            .subMenu = {} };
 
-    TrayMenu open_item{ .text        = "Open Image",
+    TrayMenu open_item{ .text        = _("Open Image"),
                         .isEnabled   = true,
                         .isChecked   = false,
                         .hasCheckbox = false,
@@ -976,11 +981,11 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
                                                                              "*.PNG", "*.JPEG", "*.JPG", "*.BMP" };
 
                                 const char* open_path =
-                                    tinyfd_openFileDialog("Open Image",
+                                    tinyfd_openFileDialog(_("Open Image"),
                                                           "",              // default path
                                                           filters.size(),  // number of filter patterns
                                                           filters.data(),  // file filters
-                                                          "Images",        // filter description
+                                                          _("Images"),     // filter description
                                                           false            // allow multiple selections
                                     );
 
@@ -992,7 +997,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
                             },
                         .subMenu = {} };
 
-    TrayMenu quit_item{ .text        = "Quit",
+    TrayMenu quit_item{ .text        = _("Quit"),
                         .isEnabled   = true,
                         .isChecked   = false,
                         .hasCheckbox = false,

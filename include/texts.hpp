@@ -240,10 +240,17 @@ ctrl-c-copy-img = {}
 # On Linux, bind `oshot --gui` in your window manager/desktop settings instead.
 hotkey = "{}"
 
+# Language of the interface, as a code like "it", "ru" or "pt_BR".
+# "auto" follows the system language, and English is used when there's no translation for it.
+# Translations can also be added or tested by putting a <code>.po file in the locale/
+# folder next to this config (see docs/translating.md).
+language = "{}"
+
 # Fonts to use for the application. Can be an absolute path, or just a name.
 # You can combine multiple fonts for multiple language support.
 # for example, using "Roboto-Regular.ttf" and "RobotoCJK-Regular.ttc" for Chinese, Japanese, and Korean support alongside English support.
-# If empty, or non-existent (or commented out), oshot will use the default font for ImGui.
+# If empty, or non-existent (or commented out), oshot will use the default font for ImGui,
+# or a system font when the language's script needs one (e.g. Cyrillic or Chinese).
 fonts = [{}]
 
 # Extension of the output image when saving/copying.

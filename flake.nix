@@ -39,6 +39,7 @@
             libxrandr
             glib
             gtk3
+            fontconfig
             libappindicator-gtk3
             dbus
             wayland

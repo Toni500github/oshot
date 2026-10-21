@@ -87,6 +87,9 @@ public:
         std::string hotkey;
 #endif
 
+        // UI language code like "it" or "pt_BR", or "auto" for the system's (see i18n::init())
+        std::string language = "auto";
+
         // image-out-ext as written in the config, and parsed
         std::pair<std::string, ImageExt> image_out_type = { "png", ImageExt::PNG };
 
