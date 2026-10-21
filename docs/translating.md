@@ -96,7 +96,8 @@ and BSD, Segoe UI on Windows, Helvetica on macOS. When it lacks the language's s
 it: the CJK fonts on Windows (Microsoft YaHei, Yu Gothic, Malgun Gothic, …), the Hiragino and Apple SD Gothic fonts and
 Arial Unicode on macOS (for scripts past Latin, Greek and Cyrillic). Fonts in the font list at the bottom of
 Preferences > Defaults, or in the `fonts` option of the config, come first, and the system fonts fill in what they
-lack. ImGui's built-in font, which only has Latin-1 characters, is used only when no system font is found.
+lack. ImGui's built-in font, which only has Latin-1 characters, is used only when no system font is found, or when
+"Use the built-in font" (`builtin-font` in the config) is on: the system fonts then only fill in the other characters.
 
 If some characters still show as `?`, add a font with them to that font list. Buttons and windows are sized from the
 font, so longer translations usually fit, but check the Preferences and the Text tools window after translating.

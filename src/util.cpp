@@ -1231,15 +1231,31 @@ void build_font_atlas(ImGuiIO& io)
         }
     }
 
-    // The system UI font is the default one, or fills in the language's script after the configured fonts
-    const std::vector<font_file_t>& system_fonts = find_language_fonts(i18n::current());
-    if (system_fonts.empty() && i18n::charset() != i18n::Charset::Latin1)
-        spdlog::warn("No font found for language {}: set one in Preferences > Fonts", i18n::current());
+    // builtin-font: ProggyClean instead of the system UI font, unless a configured font comes first.
+    // It has every Latin-1 character, so the system fonts are only needed for other scripts
+    bool builtin_first = false;
+    if (!first && g_config->File.builtin_font)
+    {
+        first              = io.Fonts->AddFontDefaultBitmap();
+        font_cfg.MergeMode = true;
+        builtin_first      = first != nullptr;
+    }
 
+    // The system UI font is the default one, or fills in the language's script after the fonts before it
+    std::vector<font_file_t> system_fonts;
+    if (!builtin_first || i18n::charset() != i18n::Charset::Latin1)
+    {
+        system_fonts = find_language_fonts(i18n::current());
+        if (system_fonts.empty() && i18n::charset() != i18n::Charset::Latin1)
+            spdlog::warn("No font found for language {}: set one in Preferences > Fonts", i18n::current());
+    }
+
+    // A font merged into ProggyClean has to take its implicit size, so ImGui scales it the same way
+    const float system_size = builtin_first ? 0.0f : 16.0f;
     for (const font_file_t& font : system_fonts)
     {
         font_cfg.FontNo = font.index;
-        ImFont* f       = io.Fonts->AddFontFromFileTTF(font.path.c_str(), 16.0f, &font_cfg);
+        ImFont* f       = io.Fonts->AddFontFromFileTTF(font.path.c_str(), system_size, &font_cfg);
         if (!f)
             continue;
 

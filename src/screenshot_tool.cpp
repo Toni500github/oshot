@@ -3429,6 +3429,13 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
                          "Roboto-Regular.ttf and NotoSerifCJK-Regular.ttc for CJK alongside Latin."));
     ImGui::Spacing();
 
+    ImGui::Checkbox(_("Use the built-in font##config_builtin_font"), &g_config->File.builtin_font);
+    ImGui::SameLine();
+    HelpMarker(
+        _("ImGui's ProggyClean, a small pixel font, instead of the system UI font.\n"
+          "The fonts below still come first, and system fonts still fill in the characters it lacks."));
+    ImGui::Spacing();
+
     // Scrollable font list with remove buttons
     std::vector<std::string>& fonts       = g_config->File.fonts;
     const float               list_height = ImGui::GetTextLineHeightWithSpacing() * 4.5f;
@@ -3467,7 +3474,11 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
         ImGui::SetKeyboardFocusHere(0);
         should_refocus = false;
     }
+    // The input and its "..." button fill the line up to the Add font button (3 = the gap before the empty label)
+    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - button_width({ _("Add font") }) -
+                         ImGui::GetStyle().ItemSpacing.x - 3.0f);
     draw_input_text_file("", "##font_path", font_filters, [&] {}, new_font, ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::PopItemWidth();
     ImGui::SameLine();
     if (ImGui::Button(_("Add font")))
     {

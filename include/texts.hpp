@@ -253,8 +253,12 @@ language = "{}"
 # (fontconfig's sans-serif on Linux/BSD, Segoe UI on Windows, Helvetica on macOS),
 # plus a font for the language's script when it lacks one (e.g. Chinese or Arabic).
 # These system fonts also come after the fonts listed here, to fill in the characters they lack.
-# ImGui's built-in font is used only when no font is found.
+# ImGui's built-in font is used only when no font is found, or with builtin-font below.
 fonts = [{}]
+
+# Use ImGui's built-in font (ProggyClean, a small pixel font) instead of the system UI font.
+# The fonts above still come first, and system fonts still fill in the characters it lacks (e.g. Cyrillic).
+builtin-font = {}
 
 # Extension of the output image when saving/copying.
 # Case insensitive.

@@ -997,9 +997,10 @@ void extern_glfwTerminate();
 void extern_glfwSwapInterval(int v);
 
 /**
- * Rebuild ImGui's font atlas from the fonts option, then the system UI font and the fonts
- * covering the UI language's script. The first font found is the default one and the others
- * fill in its missing glyphs. Falls back to ImGui's own font when none is found
+ * Rebuild ImGui's font atlas from the fonts option, then ImGui's own font with builtin-font,
+ * then the system UI font and the fonts covering the UI language's script. The first font found
+ * is the default one and the others fill in its missing glyphs. Falls back to ImGui's own font
+ * when none is found
  * @param io The ImGui IO whose atlas to rebuild
  **/
 void build_font_atlas(ImGuiIO& io);
