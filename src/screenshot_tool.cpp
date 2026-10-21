@@ -3726,6 +3726,9 @@ void ScreenshotTool::DrawPreferencesWindow()
             tabs_width = std::max(tabs_width, ImGui::CalcTextSize(i18n::tr(item)).x);
         tabs_width += ImGui::GetStyle().WindowPadding.x * 2.0f;
 
+        // ResizeX saves the width in the ini and only uses ours the first time:
+        // a minimum keeps the tabs readable after a font or language change
+        ImGui::SetNextWindowSizeConstraints(ImVec2(tabs_width, 0), ImVec2(FLT_MAX, FLT_MAX));
         ImGui::BeginChild("##left_panel", ImVec2(tabs_width, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX);
         for (size_t i = 0; i < items.size(); i++)
             if (ImGui::Selectable(i18n::tr(items[i]), selected_tab == toe<PrefTab>(i)))

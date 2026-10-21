@@ -1125,7 +1125,8 @@ static std::vector<font_file_t> find_language_fonts(const std::string& lang)
     if (!FcInit())
         return fonts;
 
-    FcPattern* pat = FcNameParse(reinterpret_cast<const FcChar8*>(fmt::format("sans-serif:lang={}", fc_lang).c_str()));
+    FcPattern* pat =
+        FcNameParse(reinterpret_cast<const FcChar8*>(fmt::format("sans-serif:lang={}:scalable=true", fc_lang).c_str()));
     if (!pat)
         return fonts;
     FcConfigSubstitute(nullptr, pat, FcMatchPattern);
@@ -1137,11 +1138,18 @@ static std::vector<font_file_t> find_language_fonts(const std::string& lang)
     if (!match)
         return fonts;
 
-    // The best match isn't guaranteed to support the language, e.g. with no CJK font installed
-    FcChar8*   file  = nullptr;
-    FcLangSet* langs = nullptr;
-    int        index = 0;
+    // The best match isn't guaranteed to support the language, e.g. with no CJK font installed,
+    // nor to be an outline font stb_truetype can load (a bitmap or Type 1 font makes ImGui assert)
+    FcChar8*   file     = nullptr;
+    FcChar8*   format   = nullptr;
+    FcBool     scalable = FcFalse;
+    FcLangSet* langs    = nullptr;
+    int        index    = 0;
     if (FcPatternGetString(match, FC_FILE, 0, &file) == FcResultMatch &&
+        FcPatternGetBool(match, FC_SCALABLE, 0, &scalable) == FcResultMatch && scalable &&
+        FcPatternGetString(match, FC_FONTFORMAT, 0, &format) == FcResultMatch &&
+        (std::string_view(reinterpret_cast<const char*>(format)) == "TrueType" ||
+         std::string_view(reinterpret_cast<const char*>(format)) == "CFF") &&
         FcPatternGetLangSet(match, FC_LANG, 0, &langs) == FcResultMatch &&
         FcLangSetHasLang(langs, reinterpret_cast<const FcChar8*>(fc_lang.c_str())) != FcLangDifferentLang)
     {
