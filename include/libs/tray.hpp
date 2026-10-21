@@ -25,6 +25,12 @@ namespace Tray
 		std::string tooltip = "";		// Only used on Windows, hover tooltip
 
 		std::vector<TrayMenu*> menu;
+
+		// oshot: run on a primary (left) click on the icon, the menu then opens
+		// with a secondary (right) click. On Linux StatusNotifier hosts (KDE,
+		// XFCE, GNOME's extension) this needs Ayatana AppIndicator 0.6+, with
+		// older versions any click opens the menu.
+		std::function<void()> onClicked = nullptr;
 	};
 
 	class TrayMaker

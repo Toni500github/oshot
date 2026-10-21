@@ -124,13 +124,15 @@ if(UNIX AND NOT APPLE)
     find_package(X11 REQUIRED)
     # Imported targets carry the full library paths: on the BSDs these
     # live in /usr/local/lib, which the linker doesn't search by default
-    pkg_check_modules(APPINDICATOR IMPORTED_TARGET appindicator3-0.1)
+    # Ayatana first: from 0.6 it has the "activate" signal, without it a left
+    # click on the tray icon in StatusNotifier hosts can only open the menu
+    pkg_check_modules(APPINDICATOR IMPORTED_TARGET ayatana-appindicator3-0.1)
     if(NOT APPINDICATOR_FOUND)
         pkg_check_modules(
             APPINDICATOR
             REQUIRED
             IMPORTED_TARGET
-            ayatana-appindicator3-0.1
+            appindicator3-0.1
         )
     endif()
     pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0)

@@ -19,6 +19,7 @@ static HMENU hmenu = NULL;
 static UINT id = ID_TRAY_FIRST;
 static std::function<void(int)> hotkeyCallback;
 static std::function<void()> quitSignalCallback;
+static std::function<void()> iconClickCallback;
 // Broadcast when Explorer (re)starts, the icon must be added again or it's gone for good
 static UINT WM_TASKBAR_CREATED = 0;
 static bool exited = false;
@@ -49,6 +50,13 @@ static LRESULT CALLBACK _tray_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARA
 			quitSignalCallback();
 		return 0;
 	case WM_TRAY_CALLBACK_MESSAGE:
+		if (lparam == WM_LBUTTONUP && iconClickCallback)
+		{
+			// Like opening the menu: gives the foreground to whatever the callback shows
+			SetForegroundWindow(hwnd);
+			iconClickCallback();
+			return 0;
+		}
 		if (lparam == WM_LBUTTONUP || lparam == WM_RBUTTONUP)
 		{
 			POINT p;
@@ -184,6 +192,7 @@ void TrayMaker::Update()
 	id = ID_TRAY_FIRST;
 	hmenu = _tray_menu(trayIcon->menu);
 	SendMessage(hwnd, WM_INITMENUPOPUP, (WPARAM)hmenu, 0);
+	iconClickCallback = trayIcon->onClicked;
 
 	HICON icon = NULL;
 	ExtractIconEx(trayIcon->iconFileIco.c_str(), 0, NULL, &icon, 1);

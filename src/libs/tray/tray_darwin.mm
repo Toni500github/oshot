@@ -6,6 +6,8 @@ using namespace Tray;
 static NSApplication* app;
 static NSStatusBar* statusBar;
 static NSStatusItem* statusItem;
+static NSMenu* trayMenu;
+static std::function<void()> iconClickCallback;
 static bool wantsExit = false;
 static std::function<void()> reopenCallback;
 static std::function<void()> quitSignalCallback;
@@ -13,6 +15,7 @@ static dispatch_source_t signalSources[3];
 
 @interface AppDelegate: NSObject <NSApplicationDelegate>
     - (IBAction)menuCallback:(id)sender;
+    - (IBAction)statusItemClicked:(id)sender;
     - (void)handleReopen:(NSAppleEventDescriptor*)event withReplyEvent:(NSAppleEventDescriptor*)reply;
 @end
 @implementation AppDelegate{}
@@ -23,6 +26,20 @@ static dispatch_source_t signalSources[3];
 		{
 			menu->onClicked(menu);
 		}
+    }
+    - (IBAction)statusItemClicked:(id)sender
+    {
+		// Right or Ctrl+click: open the menu, which only stays attached while
+		// it's open, otherwise every click would open it instead of getting here
+		NSEvent* event = [NSApp currentEvent];
+		if (event.type == NSEventTypeRightMouseUp || (event.modifierFlags & NSEventModifierFlagControl))
+		{
+			statusItem.menu = trayMenu;
+			[statusItem.button performClick:nil];
+			statusItem.menu = nil;
+			return;
+		}
+		iconClickCallback();
     }
     - (void)handleReopen:(NSAppleEventDescriptor*)event withReplyEvent:(NSAppleEventDescriptor*)reply
     {
@@ -112,7 +129,19 @@ void TrayMaker::Update()
         statusItem.button.title = [NSString stringWithUTF8String:trayIcon->tooltip.c_str()];
     }
 
-    [statusItem setMenu:_tray_menu(trayIcon->menu)];
+    trayMenu          = _tray_menu(trayIcon->menu);
+    iconClickCallback = trayIcon->onClicked;
+    if (iconClickCallback)
+    {
+        [statusItem setMenu:nil];
+        statusItem.button.target = delegate;
+        statusItem.button.action = @selector(statusItemClicked:);
+        [statusItem.button sendActionOn:NSEventMaskLeftMouseUp | NSEventMaskRightMouseUp];
+    }
+    else
+    {
+        [statusItem setMenu:trayMenu];
+    }
 }
 
 void TrayMaker::Exit()

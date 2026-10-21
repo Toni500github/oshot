@@ -529,7 +529,15 @@ void capture_worker()
 // from it right away has the menu in the screenshot
 static constexpr std::chrono::milliseconds TRAY_MENU_FADE{ 300 };
 
-static void capture_from_tray(const std::string& source = {}, bool from_menu = false);
+// What in the tray started a capture
+enum class TrayClick : std::uint8_t
+{
+    None,  // hotkey, reopen, Open Image
+    Icon,  // primary click on the icon
+    Menu   // the Capture menu item
+};
+
+static void capture_from_tray(const std::string& source = {}, TrayClick click = TrayClick::None);
 
 #if OSHOT_TOOL_ON_MAIN_THREAD
 // (Re-)register the global hotkey from the config if it changed
@@ -555,12 +563,11 @@ static void sync_hotkey()
 
     spdlog::warn("Global hotkey: {}", res.error_v());
     // status() has the same error in the user's language; a config the parser rejects only has the English one
-    const std::string& body =
-        i18n::tr_fmt("{}\nPick another shortcut in Preferences, or set 'hotkey' in the config.",
-                     hk.ok() ? hotkey::status() : res.error_v());
-    NvdNotification* notif = init_dialogs()
-                                 ? nvd_notification_new(_("oshot: hotkey not set"), body.c_str(), NVD_NOTIFICATION_WARNING)
-                                 : nullptr;
+    const std::string& body = i18n::tr_fmt("{}\nPick another shortcut in Preferences, or set 'hotkey' in the config.",
+                                           hk.ok() ? hotkey::status() : res.error_v());
+    NvdNotification*   notif =
+        init_dialogs() ? nvd_notification_new(_("oshot: hotkey not set"), body.c_str(), NVD_NOTIFICATION_WARNING)
+                       : nullptr;
     if (notif)
     {
         nvd_send_notification(notif);
@@ -636,28 +643,38 @@ static void spawn_gui_instance(const std::string& source)
 // Start a capture from the tray (menu or global hotkey): a fresh screenshot,
 // or the `source` image if not empty. Always sets the source, otherwise an
 // image opened once would be reopened by every later capture.
-// `from_menu`: clicked in the tray menu, wait for it to go away first
-static void capture_from_tray(const std::string& source, bool from_menu)
+// `click`: from the menu, wait for it to go away first
+static void capture_from_tray(const std::string& source, TrayClick click)
 {
+    if (click == TrayClick::Icon)
+    {
+        // A double click shouldn't open a second overlay on top of the first
+        static std::chrono::steady_clock::time_point last_click;
+        const auto                                   now = std::chrono::steady_clock::now();
+        if (now - last_click < 500ms)
+            return;
+        last_click = now;
+    }
+
 #if OSHOT_TOOL_ON_MAIN_THREAD
     if (app_quitting())
         return;
 
-    if (from_menu)
-    {
+    bool wait_fade = click == TrayClick::Menu;
 #  if OSHOT_WINDOWS
-        // The overflow flyout, if the icon is in it, stays open over the capture.
-        // Close it with Esc, like the user would: hiding it directly leaves Explorer
-        // thinking it's open, and the next click on its arrow does nothing
-        HWND overflow = FindWindowW(L"NotifyIconOverflowWindow", nullptr);
-        if (overflow && IsWindowVisible(overflow))
-        {
-            PostMessageW(overflow, WM_KEYDOWN, VK_ESCAPE, 0x00010001);
-            PostMessageW(overflow, WM_KEYUP, VK_ESCAPE, 0xC0010001);
-        }
-#  endif
-        std::this_thread::sleep_for(TRAY_MENU_FADE);
+    // The overflow flyout, if the icon is in it, stays open over the capture.
+    // Close it with Esc, like the user would: hiding it directly leaves Explorer
+    // thinking it's open, and the next click on its arrow does nothing
+    HWND overflow = FindWindowW(L"NotifyIconOverflowWindow", nullptr);
+    if (click != TrayClick::None && overflow && IsWindowVisible(overflow))
+    {
+        PostMessageW(overflow, WM_KEYDOWN, VK_ESCAPE, 0x00010001);
+        PostMessageW(overflow, WM_KEYUP, VK_ESCAPE, 0xC0010001);
+        wait_fade = true;
     }
+#  endif
+    if (wait_fade)
+        std::this_thread::sleep_for(TRAY_MENU_FADE);
 
     // The GLFW event pump inside run_main_tool() also dispatches the tray's
     // messages, so a second capture can't run in here: it would be nested
@@ -687,7 +704,7 @@ static void capture_from_tray(const std::string& source, bool from_menu)
         if (!capture_active.load())
         {
             pending_source = source;
-            pending_delay  = from_menu ? TRAY_MENU_FADE : std::chrono::milliseconds{};
+            pending_delay  = click == TrayClick::Menu ? TRAY_MENU_FADE : std::chrono::milliseconds{};
             do_capture     = true;
             cv.notify_all();
             return;
@@ -864,6 +881,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
         spdlog::error("--selection needs --extract-text, --extract-barcode, --instant-copy or --instant-save");
         return EXIT_FAILURE;
     }
+
     // stdout is for the extracted text, and the info logs would clutter a terminal or script
     if (no_overlay)
         console->set_level(spdlog::level::warn);
@@ -967,7 +985,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
                            .isEnabled   = true,
                            .isChecked   = false,
                            .hasCheckbox = false,
-                           .onClicked   = [&](TrayMenu*) { capture_from_tray({}, /*from_menu=*/true); },
+                           .onClicked   = [&](TrayMenu*) { capture_from_tray({}, TrayClick::Menu); },
                            .subMenu = {} };
 
     TrayMenu open_item{ .text        = _("Open Image"),
@@ -1005,7 +1023,8 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
                         .subMenu = {} };
 
     // Locals: the tray only uses them while its loop below runs
-    tray.menu = { &capture_item, &open_item, &quit_item };
+    tray.menu      = { &capture_item, &open_item, &quit_item };
+    tray.onClicked = [] { capture_from_tray({}, TrayClick::Icon); };
 
     if (trayMaker.Initialize(&tray))
     {
