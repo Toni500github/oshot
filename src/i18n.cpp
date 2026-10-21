@@ -89,7 +89,7 @@ struct catalog_t
 
     tg::PluralForms plural_forms;
     std::string     code;
-    bool            extended = false;
+    i18n::Charset   charset = i18n::Charset::Latin1;
 };
 
 // Catalogs are never freed: tr() hands out pointers into them, which have to
@@ -171,10 +171,30 @@ std::optional<std::vector<std::string>> placeholders(std::string_view s)
     return braces;
 }
 
-// A character past Latin-1 needs a 2-byte UTF-8 sequence led by 0xC4 or more, or a longer one
-bool has_extended_chars(std::string_view s)
+// The narrowest charset that has every character of a UTF-8 string
+i18n::Charset charset_of(std::string_view s)
 {
-    return std::ranges::any_of(s, [](const char c) { return static_cast<unsigned char>(c) >= 0xC4; });
+    i18n::Charset charset = i18n::Charset::Latin1;
+    for (size_t i = 0; i < s.size();)
+    {
+        const auto lead = static_cast<unsigned char>(s[i]);
+        const int  len  = lead < 0x80 ? 1 : lead < 0xE0 ? 2 : lead < 0xF0 ? 3 : 4;
+
+        char32_t c = len == 1 ? lead : lead & (0x7F >> len);
+        for (int k = 1; k < len && i + k < s.size(); ++k)
+            c = (c << 6) | (static_cast<unsigned char>(s[i + k]) & 0x3F);
+        i += len;
+
+        if (c <= 0xFF)
+            continue;
+
+        // Latin Extended, Greek, Cyrillic, punctuation like "—" and "«", currency signs, and "№"
+        if (c <= 0x4FF || (c >= 0x2000 && c <= 0x206F) || (c >= 0x20A0 && c <= 0x20CF) || c == 0x2116)
+            charset = i18n::Charset::European;
+        else
+            return i18n::Charset::Other;
+    }
+    return charset;
 }
 
 // ------------------------------
@@ -271,7 +291,8 @@ void load_catalog(const std::string& code, catalog_t& cat)
             }
         }
 
-        cat.extended = cat.extended || std::ranges::any_of(msgstrs, has_extended_chars);
+        for (const std::string& msgstr : msgstrs)
+            cat.charset = std::max(cat.charset, charset_of(msgstr));
         cat.strings.insert_or_assign(msgid, msgstrs);
     });
 }
@@ -489,8 +510,8 @@ std::vector<i18n::language_t> i18n::available()
     return g_available;
 }
 
-bool i18n::needs_extended_font()
+i18n::Charset i18n::charset()
 {
     const catalog_t* cat = g_current.load(std::memory_order_acquire);
-    return cat && cat->extended;
+    return cat ? cat->charset : Charset::Latin1;
 }

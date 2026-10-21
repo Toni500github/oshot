@@ -1108,7 +1108,7 @@ struct font_file_t
 };
 
 /**
- * Find system fonts covering a language's script, for when ImGui's built-in font lacks it.
+ * Find the system UI font, plus the fonts covering a language's script when it lacks them.
  * Uses fontconfig on Linux/BSD, a list of the fonts shipped with the OS on Windows/macOS
  * @param lang A language code like "ru" or "zh_TW"
  * @return The fonts, the first one for Latin text too, the others to fill in its missing glyphs
@@ -1180,7 +1180,8 @@ static std::vector<font_file_t> find_language_fonts(const std::string& lang)
         names.emplace_back("AppleSDGothicNeo.ttc");
     else if (base == "zh")
         names.emplace_back("Hiragino Sans GB.ttc");
-    names.emplace_back("Supplemental/Arial Unicode.ttf");
+    if (i18n::charset() == i18n::Charset::Other)
+        names.emplace_back("Supplemental/Arial Unicode.ttf");
 #  else
     const fs::path                dir;
     std::vector<std::string_view> names;
@@ -1230,31 +1231,28 @@ void build_font_atlas(ImGuiIO& io)
         }
     }
 
-    // The configured fonts may lack the language's script too: fill it in after them
-    if (i18n::needs_extended_font())
+    // The system UI font is the default one, or fills in the language's script after the configured fonts
+    const std::vector<font_file_t>& system_fonts = find_language_fonts(i18n::current());
+    if (system_fonts.empty() && i18n::charset() != i18n::Charset::Latin1)
+        spdlog::warn("No font found for language {}: set one in Preferences > Fonts", i18n::current());
+
+    for (const font_file_t& font : system_fonts)
     {
-        const std::vector<font_file_t>& lang_fonts = find_language_fonts(i18n::current());
-        if (lang_fonts.empty())
-            spdlog::warn("No font found for language {}: set one in Preferences > Fonts", i18n::current());
+        font_cfg.FontNo = font.index;
+        ImFont* f       = io.Fonts->AddFontFromFileTTF(font.path.c_str(), 16.0f, &font_cfg);
+        if (!f)
+            continue;
 
-        for (const font_file_t& font : lang_fonts)
+        spdlog::debug("Loaded font {} for language {}", font.path, i18n::current());
+        if (!first)
         {
-            font_cfg.FontNo = font.index;
-            ImFont* f       = io.Fonts->AddFontFromFileTTF(font.path.c_str(), 16.0f, &font_cfg);
-            if (!f)
-                continue;
-
-            spdlog::debug("Loaded font {} for language {}", font.path, i18n::current());
-            if (!first)
-            {
-                first              = f;
-                font_cfg.MergeMode = true;
-            }
+            first              = f;
+            font_cfg.MergeMode = true;
         }
     }
 
     if (!first)
-        first = io.Fonts->AddFontDefault();  // nothing loaded, use ImGui built-in
+        first = io.Fonts->AddFontDefault();  // no system font found, use ImGui's built-in one
 
     io.FontDefault = first;
 }

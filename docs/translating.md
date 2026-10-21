@@ -91,10 +91,15 @@ language oshot loaded (e.g. `Language: it (296 strings)`) and any warning about 
 
 ### Fonts
 
-ImGui's built-in font only has Latin-1 characters. For a language with other characters (Polish, Greek, Cyrillic,
-Chinese, Arabic, …), oshot adds a system font that covers it: picked by fontconfig on Linux and BSD, Segoe UI and the
-CJK fonts on Windows, Helvetica and Arial Unicode on macOS. If some characters still show as `?`, add a font with them
-to the font list at the bottom of Preferences > Defaults, or to the `fonts` option of the config.
+oshot draws its interface with the system UI font: the sans-serif font picked by fontconfig for the language on Linux
+and BSD, Segoe UI on Windows, Helvetica on macOS. When it lacks the language's script, oshot adds a font that covers
+it: the CJK fonts on Windows (Microsoft YaHei, Yu Gothic, Malgun Gothic, …), the Hiragino and Apple SD Gothic fonts and
+Arial Unicode on macOS (for scripts past Latin, Greek and Cyrillic). Fonts in the font list at the bottom of
+Preferences > Defaults, or in the `fonts` option of the config, come first, and the system fonts fill in what they
+lack. ImGui's built-in font, which only has Latin-1 characters, is used only when no system font is found.
+
+If some characters still show as `?`, add a font with them to that font list. Buttons and windows are sized from the
+font, so longer translations usually fit, but check the Preferences and the Text tools window after translating.
 
 ### Submit it
 

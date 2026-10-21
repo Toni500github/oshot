@@ -249,8 +249,11 @@ language = "{}"
 # Fonts to use for the application. Can be an absolute path, or just a name.
 # You can combine multiple fonts for multiple language support.
 # for example, using "Roboto-Regular.ttf" and "RobotoCJK-Regular.ttc" for Chinese, Japanese, and Korean support alongside English support.
-# If empty, or non-existent (or commented out), oshot will use the default font for ImGui,
-# or a system font when the language's script needs one (e.g. Cyrillic or Chinese).
+# If empty, or non-existent (or commented out), oshot will use the system UI font
+# (fontconfig's sans-serif on Linux/BSD, Segoe UI on Windows, Helvetica on macOS),
+# plus a font for the language's script when it lacks one (e.g. Chinese or Arabic).
+# These system fonts also come after the fonts listed here, to fill in the characters they lack.
+# ImGui's built-in font is used only when no font is found.
 fonts = [{}]
 
 # Extension of the output image when saving/copying.

@@ -34,6 +34,7 @@
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <memory>
 #include <mutex>
@@ -117,6 +118,21 @@ static void HelpMarker(const char* desc)
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
     }
+}
+
+// A size in multiples of the font size, so windows fit the same text whatever the font
+static ImVec2 font_relative(const float w, const float h)
+{
+    return { ImGui::GetFontSize() * w, ImGui::GetFontSize() * h };
+}
+
+// The width of a button that fits the widest of the labels, for a row of buttons of the same size
+static float button_width(std::initializer_list<const char*> labels)
+{
+    float width = 0.0f;
+    for (const char* label : labels)
+        width = std::max(width, ImGui::CalcTextSize(label, nullptr, true).x);
+    return width + ImGui::GetStyle().FramePadding.x * 2.0f;
 }
 
 // Tools that draw a button in the toolbar
@@ -556,6 +572,7 @@ void ScreenshotTool::RenderOverlay()
         ImGui::SetNextWindowPos(right ? ImVec2(display_w - margin, margin) : ImVec2(margin, margin),
                                 ImGuiCond_Appearing,
                                 right ? ImVec2(1.0f, 0.0f) : ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowSize(font_relative(22, 0), ImGuiCond_FirstUseEver);  // 0 = auto height
         ImGui::Begin(_("Text tools###text_tools"), &open, ImGuiWindowFlags_MenuBar);
         DrawMenuItems();
         DrawPreferencesWindow();
@@ -2467,7 +2484,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
             ImGui::TextUnformatted(_("Annotation Settings"));
             ImGui::Separator();
-            ImGui::SetNextItemWidth(100);
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f);
 
             if (m_current_tool == ToolType::Text)
             {
@@ -2928,7 +2945,7 @@ void ScreenshotTool::DrawAboutWindow()
     if (!open)
         return;
 
-    ImGui::SetNextWindowSize(ImVec2(350, 250), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(font_relative(27, 19), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(_("About###about_window"), &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings))
     {
         const char* text_display;
@@ -2940,7 +2957,7 @@ void ScreenshotTool::DrawAboutWindow()
         };
 
         // Centered image
-        ImGui::SetCursorPosX((window_width - 24.0f) / 2);
+        ImGui::SetCursorPosX((window_width - 32.0f) / 2);
         ImGui::Image(m_tool_textures[idx(ToolType::Logo)], ImVec2(32, 32));
 
         // Centered labels
@@ -2962,7 +2979,10 @@ void ScreenshotTool::DrawAboutWindow()
         text_display = _("More Details:");
         if (ImGui::TreeNode(text_display))
         {
-            ImGui::BeginChild("##scrollable_region", ImVec2(0, 100), false, ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::BeginChild("##scrollable_region",
+                              ImVec2(0, ImGui::GetTextLineHeightWithSpacing() * 6.0f),
+                              false,
+                              ImGuiWindowFlags_HorizontalScrollbar);
             ImGui::TextUnformatted(version_infos.c_str());
             CreateCopyTextButton(version_infos);
             ImGui::EndChild();
@@ -3538,7 +3558,7 @@ static void draw_theme_editor()
 
     const auto& cmap = color_name_map();
 
-    ImGui::BeginChild("##color_list", ImVec2(0, 300), true);
+    ImGui::BeginChild("##color_list", ImVec2(0, ImGui::GetFrameHeightWithSpacing() * 13.0f), true);
     for (const char* name : important)
     {
         auto it = cmap.find(name);
@@ -3677,7 +3697,7 @@ void ScreenshotTool::DrawPreferencesWindow()
         prefs_modified = true;
 
     bool window_open = true;
-    ImGui::SetNextWindowSize(ImVec2(500, 440), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(font_relative(40, 34), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(_("Preferences###preferences_window"), &window_open, ImGuiWindowFlags_NoSavedSettings))
     {
         // [x] or Esc: close, or ask first if there are unsaved changes.
@@ -3690,7 +3710,12 @@ void ScreenshotTool::DrawPreferencesWindow()
                 m_show_window.Clear(SubWindow::Preferences);
         }
 
-        ImGui::BeginChild("##left_panel", ImVec2(150, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX);
+        float tabs_width = ImGui::GetFontSize() * 8.0f;
+        for (const char* item : items)
+            tabs_width = std::max(tabs_width, ImGui::CalcTextSize(i18n::tr(item)).x);
+        tabs_width += ImGui::GetStyle().WindowPadding.x * 2.0f;
+
+        ImGui::BeginChild("##left_panel", ImVec2(tabs_width, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX);
         for (size_t i = 0; i < items.size(); i++)
             if (ImGui::Selectable(i18n::tr(items[i]), selected_tab == toe<PrefTab>(i)))
                 selected_tab = toe<PrefTab>(i);
@@ -3732,21 +3757,22 @@ void ScreenshotTool::DrawPreferencesWindow()
             ImGui::TextUnformatted(_("You have unsaved changes. What would you like to do?"));
             ImGui::Spacing();
 
-            if (ImGui::Button(_("Save & Close"), ImVec2(110, 0)))
+            const ImVec2 size(button_width({ _("Save & Close"), _("Discard"), _("Cancel") }), 0);
+            if (ImGui::Button(_("Save & Close"), size))
             {
                 save_current_tab();
                 m_show_window.Clear(SubWindow::Preferences);
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button(_("Discard"), ImVec2(80, 0)))
+            if (ImGui::Button(_("Discard"), size))
             {
                 discard_current_tab();
                 m_show_window.Clear(SubWindow::Preferences);
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button(_("Cancel"), ImVec2(80, 0)))
+            if (ImGui::Button(_("Cancel"), size))
             {
                 ImGui::CloseCurrentPopup();
             }
@@ -3761,7 +3787,7 @@ void ScreenshotTool::DrawPreferencesWindow()
                 _("Please set a theme file path like 'theme.toml' before saving theme changes.\n"
                   "Changes will be set temporarily for the current session."));
             ImGui::Spacing();
-            if (ImGui::Button(_("OK"), ImVec2(100, 0)))
+            if (ImGui::Button(_("OK"), ImVec2(std::max(ImGui::GetFontSize() * 6.0f, button_width({ _("OK") })), 0)))
                 ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
@@ -3797,7 +3823,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
 
     const bool is_downloading = m_ocr_download && m_ocr_download->running.load();
 
-    ImGui::SetNextWindowSize(ImVec2(520, 0), ImGuiCond_FirstUseEver);  // 0 = auto height
+    ImGui::SetNextWindowSize(font_relative(40, 0), ImGuiCond_FirstUseEver);  // 0 = auto height
     if (ImGui::Begin(_("Download OCR Model###ocr_download_window"), &open, ImGuiWindowFlags_NoSavedSettings))
     {
         // Lock all inputs while a download is in flight
@@ -4042,7 +4068,7 @@ void ScreenshotTool::DrawLogsWindow()
     static bool                          autoscroll = true;
     static spdlog::log_clock::time_point cleared_before{};  // "soft clear" marker
 
-    ImGui::SetNextWindowSize(ImVec2(560, 400), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(font_relative(43, 31), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(_("Logs###logs_window"), &open, ImGuiWindowFlags_NoSavedSettings))
     {
         // --- Toolbar ---
@@ -4055,7 +4081,7 @@ void ScreenshotTool::DrawLogsWindow()
         ImGui::SameLine();
         ImGui::Checkbox(_("Auto-scroll"), &autoscroll);
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(110);
+        ImGui::SetNextItemWidth(button_width({ level_tag(spdlog::level::critical) }) + ImGui::GetFrameHeight());
         if (ImGui::BeginCombo("##min_level", level_tag(min_level)))
         {
             for (int i = spdlog::level::trace; i < spdlog::level::off; ++i)
@@ -4148,7 +4174,7 @@ void ScreenshotTool::DrawOutputMenuSelection()
 
     static ImVec2 menu_display;
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), center_cond(menu_display), ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSizeConstraints(ImVec2(320, 0), ImVec2(520, 480));
+    ImGui::SetNextWindowSizeConstraints(font_relative(25, 0), font_relative(40, 37));
     ImGui::Begin(_("Choose an output to capture###select_output_crop"),
                  nullptr,
                  ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize);
@@ -4345,7 +4371,7 @@ void ScreenshotTool::DrawManagePluginsWindow()
         m_plugin_manager.GetStateManager().Reload();
     was_open = true;
 
-    ImGui::SetNextWindowSize(ImVec2(620, 480), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(font_relative(48, 37), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(_("Manage plugins###manage_plugins_window"), &open, ImGuiWindowFlags_NoSavedSettings))
     {
         if (busy)
@@ -4559,7 +4585,7 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
     if (fetch)
         FetchIndexAsync();
 
-    ImGui::SetNextWindowSize(ImVec2(640, 520), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(font_relative(49, 40), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(_("Browse plugins###browse_plugins_window"), &open, ImGuiWindowFlags_NoSavedSettings))
     {
         const bool busy = m_install_state && m_install_state->running;
@@ -4753,7 +4779,7 @@ void ScreenshotTool::DrawInstallPluginsWindow()
 
     const bool is_installing = m_install_state && m_install_state->running;
 
-    ImGui::SetNextWindowSize(ImVec2(560, 220), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(font_relative(43, 17), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(_("Install plugins###install_plugins_window"), &open, ImGuiWindowFlags_NoSavedSettings))
     {
         ImGui::TextWrapped(
@@ -4847,7 +4873,7 @@ void ScreenshotTool::DrawPluginInstallStatus()
         }
     }
 
-    ImGui::SetNextWindowSize(ImVec2(560, 420), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(font_relative(43, 32), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(_("Plugins###plugin_install_status_window"), &open, ImGuiWindowFlags_NoSavedSettings))
     {
         for (size_t i = 0; i < m_install_events.size(); i++)
@@ -4903,7 +4929,7 @@ void ScreenshotTool::DrawPluginInstallStatus()
         if (has_confirm)
             ImGui::OpenPopup(_("Confirm###plugin_install_confirm"));
 
-        ImGui::SetNextWindowSize(ImVec2(550, 220));
+        ImGui::SetNextWindowSize(font_relative(42, 17));
         if (ImGui::BeginPopupModal(_("Confirm###plugin_install_confirm"), nullptr, ImGuiWindowFlags_NoCollapse))
         {
             std::scoped_lock lock(m_install_state->confirm_mutex);

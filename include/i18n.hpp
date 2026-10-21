@@ -60,6 +60,14 @@ struct language_t
     std::string english_name;
 };
 
+// The characters a catalog uses, from the narrowest to the widest set of fonts that can draw them
+enum class Charset
+{
+    Latin1,    // ImGui's built-in font draws them
+    European,  // Latin, Greek and Cyrillic, which Helvetica covers
+    Other      // e.g. CJK, Arabic or Thai
+};
+
 /**
  * Translate a format string, then format it with fmt.
  * fmt checks the English string against the arguments at compile time, like fmt::format(),
@@ -123,11 +131,8 @@ std::string system_language();
 /* @return English plus every language with a catalog, sorted by code */
 std::vector<language_t> available();
 
-/**
- * Check whether the current language has characters past Latin-1 (e.g. Cyrillic or CJK),
- * which ImGui's built-in font can't draw
- **/
-bool needs_extended_font();
+/* @return The characters the current language uses, Latin1 when no catalog is loaded */
+Charset charset();
 }  // namespace i18n
 
 // A format_string made from a literal views the whole literal, so data() is null-terminated
