@@ -188,6 +188,12 @@ Result<plugin_info_t> inspect_plugin_library(const fs::path& path);
  **/
 void load_plugins(const StateManager& state);
 
+/**
+ * Unload every plugin, calling its destroy(). Call it before main() returns,
+ * while the logger exists
+ **/
+void unload_plugins();
+
 /* Check whether the caller is on the thread plugins were loaded on (their UI thread) */
 bool on_plugin_ui_thread();
 

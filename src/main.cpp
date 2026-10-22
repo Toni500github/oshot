@@ -67,6 +67,9 @@
 
 #include "clipboard.hpp"
 #include "config.hpp"
+#ifndef DISABLE_PLUGINS
+#  include "plugin.hpp"
+#endif
 #include "fmt/base.h"
 #include "fmt/compile.h"
 #include "fmt/format.h"
@@ -805,11 +808,18 @@ int main(int argc, char* argv[])  // NOLINT(bugprone-exception-escape)
 static int oshot_main(int argc, char* argv[])  // NOLINT
 {
     // On every return, after the captures: g_ss_tool is only destroyed after Tesseract's
-    // static caches (FreeBSD aborted on exit after an OCR, Linux printed "LEAK!" warnings)
-    struct OcrEnd
+    // static caches (FreeBSD aborted on exit after an OCR, Linux printed "LEAK!" warnings),
+    // and g_plugins after spdlog's registry, which a plugin's destroy() may still log to
+    struct ExitCleanup
     {
-        ~OcrEnd() { g_ss_tool.EndOcr(); }
-    } ocr_end;
+        ~ExitCleanup()
+        {
+#ifndef DISABLE_PLUGINS
+            unload_plugins();
+#endif
+            g_ss_tool.EndOcr();
+        }
+    } exit_cleanup;
 
     // Not relative to the working directory: when started at sign-in on Windows it's System32
     const fs::path& log_path = fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid());

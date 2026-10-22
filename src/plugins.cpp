@@ -412,4 +412,9 @@ void load_plugins(const StateManager& state)
     }
 }
 
+void unload_plugins()
+{
+    g_plugins.clear();
+}
+
 #endif
