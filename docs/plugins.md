@@ -5,8 +5,8 @@
 
 Plugins only work in the `-plugins` builds of oshot. A plugin is a shared library (`.so`, `.dll`, or `.dylib` or `.so` on macOS) with a plain
 C interface, so it can be written in any language that can export a C function: C, C++, Rust, Zig, and so on.
-[`examples/plugins`](../examples/plugins) has the same complete plugin in each of those four languages, plus one
-that uses cimgui.
+[`examples/plugins`](../examples/plugins) has the same complete plugin in each of those four languages, one that
+uses cimgui, and one that uses the scan results and host services.
 
 What a plugin can do:
 
@@ -14,7 +14,10 @@ What a plugin can do:
 - declare its settings, which oshot shows in Preferences > Plugins and saves for it;
 - draw anything else with Dear ImGui itself, through [cimgui](https://github.com/cimgui/cimgui);
 - read and replace the OCR and barcode text, and read the selected image;
-- react when text has been extracted;
+- react when text has been extracted, with each word's position and confidence, and when QR codes or barcodes have
+  been decoded, with their positions;
+- know when a capture starts and ends, and when the selection changes;
+- copy to the clipboard, show notifications, open URLs and run programs the way oshot does on each system;
 - keep settings in its own `config.toml`, and other state in oshot's cache;
 - do anything else a native program can, e.g. use the network from its own threads.
 
@@ -130,6 +133,85 @@ OSHOT_PLUGIN_EXPORT const oshot_plugin_t* oshot_plugin_entry(void) { return &des
   when oshot exits) or `OSHOT_STORE_CACHE` (oshot's cache file).
 - `host->get_text()`/`set_text()` work on `OSHOT_TEXT_OCR` and `OSHOT_TEXT_BARCODE`.
 - `host->get_capture()` copies the whole selected image: call it when needed, not every frame.
+- Host functions that can fail return an `oshot_err_t` (see [Errors](#errors)).
+
+### Scan results
+
+`on_ocr_done()` gets the text, and since the host services came in, every word Tesseract read (`words`, `n_words`):
+its text, box, confidence (0-100), and the indexes of its text line and block, in reading order. Check
+`OSHOT_OCR_HAS_WORDS(host)` before reading them: an older oshot passes a shorter `oshot_ocr_result_t`. It also runs
+when OCR read nothing or failed, with empty text, no words and a confidence and `psm` of -1, so the plugin can clear
+what it showed (plugins built before `on_barcodes_done` existed only get it with text).
+
+`on_barcodes_done(state, codes, n)` runs after every QR code and barcode scan, with one `oshot_barcode_t` per code
+found (two codes with the same data are two entries): ZBar's name for its type (`"QR-Code"`, `"EAN-13"`, ...), its
+data and its box. `n` is 0 when the scan found nothing, so the plugin can clear what it showed.
+
+Both arrays are borrowed: copy what you need, they're gone when the callback returns. The boxes are in the pixels of
+the image that was scanned, which is the image `get_capture()` returns for the same selection, with (0, 0) at its
+top-left corner. They don't depend on the screen's scaling (Wayland output scales, Retina).
+
+### Captures and the selection
+
+In the tray, oshot keeps plugins loaded from one capture to the next, so a plugin needs to know where one ends:
+
+- `on_capture_start()`: a screenshot or image is loaded, before its first frame. Also when the person opens another
+  image in the overlay, after `on_capture_end()` for the previous one.
+- `on_capture_end()`: the overlay is closed. Drop what belongs to the capture, or it shows up in the next one. Every
+  `on_capture_start()` gets one, also when oshot exits during a capture (then before `destroy()`). `get_capture()`
+  and `open_url()` don't work in it anymore.
+- `on_selection_changed(state, x, y, w, h)`: once the person has finished drawing, moving or resizing the selection,
+  not on every frame of the drag; also after Ctrl+A. It's in the pixels of the whole screenshot.
+
+### Host services
+
+oshot already does these right on every system, so plugins call them instead of their own versions:
+
+| Function | What it does | Thread |
+| -------- | ------------ | ------ |
+| `copy_text`, `copy_image` | Copy to the clipboard like oshot does (xclip or wl-copy on Linux, which keep serving it after oshot exits). The image is encoded in the format set in Preferences. | UI |
+| `notify(title, body)` | A desktop notification. | UI |
+| `open_url(url)` | Open a URL (`https://`, `mailto:`, `file:///`, ...) with the default application. It must start with a scheme. | UI |
+| `run_process(argv, argc, cwd, on_exit, user, &id)` | Start a program, see below. | any |
+| `kill_process(id)` | Stop a process `run_process()` started. | any |
+| `mem_alloc`, `mem_free` | Memory oshot and the plugin can free on each other's side: on Windows they may use different C runtimes. | any |
+
+`run_process()` never goes through a shell: `argv[0]` is the program, looked up in `PATH` if it has no directory,
+and every argument reaches it as it is, so there's nothing to quote. Its working directory is `cwd`, or the plugin's
+folder if `cwd` is empty, its stdin is empty, and it inherits oshot's environment. When it exits, `on_exit(user,
+result)` runs on the UI thread with the exit code and what it wrote to stdout and stderr (up to
+`OSHOT_PROCESS_OUTPUT_MAX` bytes each, `truncated` if there was more). It runs at the start of the next overlay frame,
+so in the tray, a process that ends between captures reports at the start of the next one. `kill_process()` stops a
+process (SIGTERM on Unix, also to the processes it started); its `on_exit` still runs, with `killed` set. oshot kills
+the plugin's processes that are still running when it unloads the plugin, and drops their `on_exit` calls.
+
+There's no HTTP client, file API or event bus: plugins use their language's libraries for those.
+
+### Errors
+
+Every host function that can fail returns an `oshot_err_t` and takes an `oshot_str_t* err` last:
+
+```c
+oshot_str_t err = { NULL, 0 };
+if (host->copy_text(ctx, text, &err) != OSHOT_OK)
+{
+    host->log(ctx, OSHOT_LOG_WARN, err); /* or show it */
+    host->str_free(&err);
+}
+```
+
+| Code | Meaning |
+| ---- | ------- |
+| `OSHOT_OK` | It worked. `err` isn't touched. |
+| `OSHOT_ERR_INVALID` | A bad argument: NULL, empty or malformed. |
+| `OSHOT_ERR_THREAD` | A UI-thread function called from another thread. |
+| `OSHOT_ERR_UNSUPPORTED` | Not available on this system, or not right now (no notifications, no overlay open). |
+| `OSHOT_ERR_NOT_FOUND` | The program, folder or process doesn't exist. |
+| `OSHOT_ERR_FAILED` | Failed for another reason, which `err` says. |
+
+On failure oshot stores a message in `*err`, which the plugin frees with `str_free`. If the plugin passes `NULL`,
+oshot logs the message under the plugin's ID instead, so a failure never goes unnoticed. More codes may be added:
+treat anything but `OSHOT_OK` as a failure.
 
 ### Widgets
 
@@ -208,13 +290,20 @@ if (!OSHOT_HOST_HAS(host, ui_end_section)) /* the widgets came after the first v
 oshot does the same with the descriptor: fields added to `oshot_plugin_t` (like `settings`) are only read when the
 plugin's `struct_size` includes them.
 
+Structs oshot passes to callbacks have no size of their own. A field appended to one comes with host functions of
+the same oshot version, so the plugin checks one of those: `OSHOT_OCR_HAS_WORDS(host)` is
+`OSHOT_HOST_HAS(host, mem_alloc)`, and the header says which function to check for each later addition. Structs
+oshot passes in arrays (`oshot_ocr_word_t`, `oshot_barcode_t`) and `oshot_setting_t` never change.
+
 ### Threads
 
 All callbacks run on oshot's UI thread. A plugin may start its own threads (for network requests, say). From those:
 
-- `log`, `get_data_dir`, `str_new`/`str_free` and `run_on_ui_thread` can be called;
-- everything else is refused and logged (the `ui_*` functions only once): hand the result to `host->run_on_ui_thread(ctx, fn, user)`, which calls
-  `fn(user)` on the UI thread before the plugin is drawn next;
+- `log`, `get_data_dir`, `str_new`/`str_free`, `run_on_ui_thread`, `mem_alloc`/`mem_free`, `run_process` and
+  `kill_process` can be called;
+- everything else is refused and logged (the `ui_*` functions only once), and the host services return
+  `OSHOT_ERR_THREAD`: hand the result to `host->run_on_ui_thread(ctx, fn, user)`, which calls `fn(user)` on the UI
+  thread at the start of the next overlay frame (in the tray, between captures, when the next one starts);
 - stop the threads in `destroy()`: tasks still queued then are dropped.
 
 ## The manifest

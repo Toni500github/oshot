@@ -27,16 +27,32 @@
 // oshot through these functions, with their oshot_ctx_t telling which plugin
 // is calling; nothing here is exported for them to link against.
 
+#include <algorithm>
+#include <cctype>
+#include <chrono>
+#include <csignal>
 #include <cstdlib>
 #include <cstring>
+#include <thread>
 
 #include "cache.hpp"
+#include "clipboard.hpp"
+#include "config.hpp"
 #include "fmt/format.h"
 #include "imgui.h"
 #include "imgui_stdlib.h"
+#include "nvdialog/nvdialog_notification.h"
+#include "platform.hpp"
 #include "plugin.hpp"
 #include "screenshot_tool.hpp"
+#include "tiny-process-library/process.hpp"
 #include "util.hpp"
+
+#if !OSHOT_WINDOWS
+#  include <unistd.h>
+#endif
+
+using namespace std::chrono_literals;
 
 static plugin_runtime_t& rt_of(oshot_ctx_t* ctx)
 {
@@ -113,7 +129,7 @@ static void run_on_ui_thread(oshot_ctx_t* ctx, void (*fn)(void*), void* user)
         return;
     plugin_runtime_t& rt = rt_of(ctx);
     std::scoped_lock  lock(rt.tasks_mutex);
-    rt.tasks.emplace_back(fn, user);
+    rt.tasks.emplace_back([fn, user] { fn(user); });
 }
 
 /* ------------------------------------------------------------------
@@ -328,6 +344,9 @@ static oshot_capture_t get_capture(oshot_ctx_t* ctx)
     oshot_capture_t ret{};  // rgba == nullptr: no capture
     if (!ui_thread_check(ctx, "get_capture"))
         return ret;
+    // No overlay, e.g. in on_capture_end(): the selection is in its ImGui context
+    if (!ImGui::GetCurrentContext())
+        return ret;
 
     const capture_result_t& cap = g_ss_tool.GetFinalImage();
     if (cap.data.empty() || cap.w <= 0 || cap.h <= 0)
@@ -528,6 +547,293 @@ static void ui_end_section(oshot_ctx_t* ctx)
     rt.sections.pop_back();
 }
 
+/* ------------------------------------------------------------------
+ * Host services
+ * ------------------------------------------------------------------ */
+
+// Reports a failure as oshot_err_t describes: in *err, or logged when the plugin passed no err
+template <typename... Args>
+static oshot_err_t fail(oshot_ctx_t*                ctx,
+                        oshot_str_t*                err,
+                        oshot_err_t                 code,
+                        const char*                 func,
+                        fmt::format_string<Args...> format,
+                        Args&&... args)
+{
+    const std::string msg = fmt::format(format, std::forward<Args>(args)...);
+    if (err)
+        *err = str_new(msg);
+    else
+        spdlog::warn("{}: {}(): {}", rt_of(ctx).id, func, msg);
+    return code;
+}
+
+static oshot_err_t fail_off_ui_thread(oshot_ctx_t* ctx, oshot_str_t* err, const char* func)
+{
+    return fail(ctx, err, OSHOT_ERR_THREAD, func, "called outside the UI thread, use run_on_ui_thread()");
+}
+
+static void* mem_alloc(size_t size)
+{
+    return std::malloc(size ? size : 1);
+}
+
+static void mem_free(void* ptr)
+{
+    std::free(ptr);
+}
+
+static oshot_err_t copy_text(oshot_ctx_t* ctx, oshot_str_t text, oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "copy_text");
+    if (!text.p && text.len > 0)
+        return fail(ctx, err, OSHOT_ERR_INVALID, "copy_text", "the text is NULL");
+
+    const Result<>& res = g_clipboard.CopyText(to_string(text));
+    if (!res.ok())
+        return fail(ctx, err, OSHOT_ERR_FAILED, "copy_text", "{}", res.error_v());
+    return OSHOT_OK;
+}
+
+static oshot_err_t copy_image(oshot_ctx_t* ctx, const oshot_capture_t* image, oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "copy_image");
+    if (!image || !image->rgba || image->w <= 0 || image->h <= 0)
+        return fail(ctx, err, OSHOT_ERR_INVALID, "copy_image", "the image is empty");
+
+    capture_result_t cap{ .data = {}, .w = image->w, .h = image->h };
+    cap.data.assign(image->rgba, image->rgba + (size_t(image->w) * size_t(image->h) * 4));
+    const Result<>& res = g_clipboard.CopyImage(cap, g_config->File.image_out_type.second);
+    if (!res.ok())
+        return fail(ctx, err, OSHOT_ERR_FAILED, "copy_image", "{}", res.error_v());
+    return OSHOT_OK;
+}
+
+static oshot_err_t notify(oshot_ctx_t* ctx, oshot_str_t title, oshot_str_t body, oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "notify");
+    if (!init_dialogs())
+        return fail(ctx, err, OSHOT_ERR_UNSUPPORTED, "notify", "notifications aren't available");
+
+    const std::string t = to_string(title), b = to_string(body);
+    NvdNotification*  notif = nvd_notification_new(t.c_str(), b.c_str(), NVD_NOTIFICATION_SIMPLE);
+    if (!notif)
+        return fail(ctx,
+                    err,
+                    OSHOT_ERR_FAILED,
+                    "notify",
+                    "couldn't create the notification (nvdialog error {})",
+                    static_cast<int>(nvd_get_error()));
+    nvd_send_notification(notif);
+    nvd_delete_notification(notif);
+    return OSHOT_OK;
+}
+
+// "scheme:...", with a scheme of at least 2 characters so a Windows path
+// ("C:\...") isn't taken for one, and no control characters
+static bool is_url(std::string_view url)
+{
+    const size_t colon = url.find(':');
+    if (colon == std::string_view::npos || colon < 2 || !std::isalpha(static_cast<unsigned char>(url[0])))
+        return false;
+    const bool scheme_ok = std::all_of(url.begin() + 1, url.begin() + colon, [](unsigned char c) {
+        return std::isalnum(c) || c == '+' || c == '-' || c == '.';
+    });
+    return scheme_ok && std::ranges::none_of(url, [](unsigned char c) { return c < 0x20 || c == 0x7f; });
+}
+
+static oshot_err_t open_url(oshot_ctx_t* ctx, oshot_str_t url, oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "open_url");
+
+    const std::string u = to_string(url);
+    if (!is_url(u))
+        return fail(ctx, err, OSHOT_ERR_INVALID, "open_url", "'{}' isn't a URL starting with a scheme", u);
+
+    // The platform's opener, which oshot's own links use, lives in ImGui's context
+    ImGuiContext* imgui = ImGui::GetCurrentContext();
+    if (!imgui || !ImGui::GetPlatformIO().Platform_OpenInShellFn)
+        return fail(ctx, err, OSHOT_ERR_UNSUPPORTED, "open_url", "no overlay is open");
+    if (!ImGui::GetPlatformIO().Platform_OpenInShellFn(imgui, u.c_str()))
+        return fail(ctx, err, OSHOT_ERR_FAILED, "open_url", "the system couldn't open '{}'", u);
+    return OSHOT_OK;
+}
+
+// A run_process() child. Each output buffer is written only by the thread
+// reading that pipe; the waiting thread reads them after those have ended
+struct plugin_process_t
+{
+    std::unique_ptr<TinyProcessLib::Process> proc;
+    std::string                              out;
+    std::string                              err;
+    std::atomic<bool>                        truncated = false;
+    std::atomic<bool>                        killed    = false;
+};
+
+using proc_string_t = TinyProcessLib::Process::string_type;
+
+static proc_string_t to_proc_string(const std::string& s)
+{
+#if defined(_WIN32) && defined(UNICODE)
+    return fs::path(s).wstring();
+#else
+    return s;
+#endif
+}
+
+// Waits for the process, then queues its on_exit call for RunUiTasks().
+// Holds the registry, not the plugin, which may be unloaded meanwhile
+static void wait_for_process(std::shared_ptr<plugin_processes_t> procs,
+                             std::shared_ptr<plugin_process_t>   p,
+                             int64_t                             id,
+                             void (*on_exit)(void*, const oshot_process_result_t*),
+                             void* user)
+{
+    const int status = p->proc->get_exit_status();
+
+    std::scoped_lock lock(procs->mutex);
+    procs->running.erase(id);
+    if (on_exit && !procs->closed)
+    {
+        procs->exited.emplace_back([p, id, status, on_exit, user] {
+            const bool                   killed = p->killed;
+            const oshot_process_result_t res{
+                .id          = id,
+                .exit_code   = killed ? -1 : status,
+                .killed      = killed,
+                .truncated   = p->truncated,
+                .stdout_data = { .p = p->out.c_str(), .len = p->out.size() },
+                .stderr_data = { .p = p->err.c_str(), .len = p->err.size() },
+            };
+            on_exit(user, &res);
+        });
+    }
+    procs->cv.notify_all();
+}
+
+static oshot_err_t run_process(oshot_ctx_t*       ctx,
+                               const oshot_str_t* argv,
+                               size_t             argc,
+                               oshot_str_t        cwd,
+                               void (*on_exit)(void*, const oshot_process_result_t*),
+                               void*        user,
+                               int64_t*     id,
+                               oshot_str_t* err)
+{
+    if (!argv || argc == 0 || !argv[0].p || argv[0].len == 0)
+        return fail(ctx, err, OSHOT_ERR_INVALID, "run_process", "argv has no program");
+
+    std::vector<std::string> args;
+    for (size_t i = 0; i < argc; ++i)
+    {
+        if ((!argv[i].p && argv[i].len > 0) || (argv[i].p && std::memchr(argv[i].p, '\0', argv[i].len)))
+            return fail(ctx, err, OSHOT_ERR_INVALID, "run_process", "argv[{}] is NULL or has a NUL byte", i);
+        args.push_back(to_string(argv[i]));
+    }
+
+    plugin_runtime_t& rt  = rt_of(ctx);
+    const fs::path    dir = cwd.len > 0 ? fs::path(to_string(cwd)) : rt.dir;
+    std::error_code   ec;
+    if (!fs::is_directory(dir, ec))
+        return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "run_process", "the folder '{}' doesn't exist", dir.string());
+
+#if !OSHOT_WINDOWS
+    // A missing program would only show up as exit code 1 from the child
+    if (args[0].find('/') == std::string::npos)
+    {
+        if (which(args[0]) == UNKNOWN)
+            return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "run_process", "'{}' isn't in PATH", args[0]);
+    }
+    else if (const fs::path prog = dir / args[0]; access(prog.c_str(), X_OK) != 0)
+    {
+        return fail(
+            ctx, err, OSHOT_ERR_NOT_FOUND, "run_process", "'{}' doesn't exist or isn't executable", prog.string());
+    }
+#endif
+
+    std::vector<proc_string_t> proc_args;
+    proc_args.reserve(args.size());
+    for (const std::string& arg : args)
+        proc_args.push_back(to_proc_string(arg));
+
+    auto              p      = std::make_shared<plugin_process_t>();
+    plugin_process_t* raw    = p.get();
+    auto              reader = [raw](std::string& buf) {
+        return [raw, &buf](const char* bytes, size_t n) {
+            const size_t room = OSHOT_PROCESS_OUTPUT_MAX - std::min<size_t>(buf.size(), OSHOT_PROCESS_OUTPUT_MAX);
+            if (n > room)
+                raw->truncated = true;
+            buf.append(bytes, std::min(n, room));
+        };
+    };
+
+    // Under the lock, so KillProcesses() can't run between the check and the start
+    plugin_processes_t& procs = *rt.processes;
+    std::scoped_lock    lock(procs.mutex);
+    if (procs.closed)
+        return fail(ctx, err, OSHOT_ERR_UNSUPPORTED, "run_process", "the plugin is being unloaded");
+
+    p->proc = std::make_unique<TinyProcessLib::Process>(
+        proc_args, to_proc_string(dir.string()), reader(p->out), reader(p->err), /*open_stdin=*/true);
+    if (p->proc->get_id() <= 0)
+        return fail(ctx, err, OSHOT_ERR_FAILED, "run_process", "couldn't start '{}'", args[0]);
+    p->proc->close_stdin();
+
+    const int64_t pid = procs.next_id++;
+    procs.running.emplace(pid, p);
+    std::thread(wait_for_process, rt.processes, std::move(p), pid, on_exit, user).detach();
+
+    spdlog::debug("{}: started process {} ({})", rt.id, pid, args[0]);
+    if (id)
+        *id = pid;
+    return OSHOT_OK;
+}
+
+static oshot_err_t kill_process(oshot_ctx_t* ctx, int64_t id, oshot_str_t* err)
+{
+    plugin_processes_t& procs = *rt_of(ctx).processes;
+    std::scoped_lock    lock(procs.mutex);
+
+    auto it = procs.running.find(id);
+    if (it == procs.running.end())
+        return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "kill_process", "no running process has the ID {}", id);
+    it->second->killed = true;
+    it->second->proc->kill(/*force=*/true);
+    return OSHOT_OK;
+}
+
+void plugin_runtime_t::KillProcesses()
+{
+    std::unique_lock lock(processes->mutex);
+    processes->closed = true;
+    processes->exited.clear();
+    if (processes->running.empty())
+        return;
+
+    spdlog::info("{}: killing the processes it started that are still running ({})", id, processes->running.size());
+    for (auto& [pid, p] : processes->running)
+    {
+        p->killed = true;
+        p->proc->kill(/*force=*/true);
+    }
+
+    auto all_exited = [this] { return processes->running.empty(); };
+    if (processes->cv.wait_for(lock, 2s, all_exited))
+        return;
+#if !OSHOT_WINDOWS
+    for (auto& [pid, p] : processes->running)
+        p->proc->signal(SIGKILL);
+    if (processes->cv.wait_for(lock, 1s, all_exited))
+        return;
+#endif
+    // Their threads only hold the registry, so they can keep waiting after the plugin is gone
+    spdlog::warn("{}: {} of its processes didn't exit", id, processes->running.size());
+}
+
 const oshot_host_t g_oshot_host = {
     .struct_size   = sizeof(oshot_host_t),
     .abi_version   = OSHOT_API_VERSION,
@@ -567,4 +873,12 @@ const oshot_host_t g_oshot_host = {
     .ui_tooltip       = ui_tooltip,
     .ui_begin_section = ui_begin_section,
     .ui_end_section   = ui_end_section,
+    .mem_alloc        = mem_alloc,
+    .mem_free         = mem_free,
+    .copy_text        = copy_text,
+    .copy_image       = copy_image,
+    .notify           = notify,
+    .open_url         = open_url,
+    .run_process      = run_process,
+    .kill_process     = kill_process,
 };

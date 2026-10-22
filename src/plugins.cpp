@@ -25,8 +25,10 @@
 
 #ifndef DISABLE_PLUGINS
 
+#  include <algorithm>
 #  include <cstddef>
 #  include <cstring>
+#  include <iterator>
 #  include <set>
 
 #  include "imgui.h"
@@ -63,8 +65,13 @@ bool on_plugin_ui_thread()
 
 plugin_runtime_t::~plugin_runtime_t()
 {
-    if (initialized && plugin->destroy)
-        plugin->destroy(state);
+    if (initialized)
+    {
+        CaptureEnd();
+        KillProcesses();
+        if (plugin->destroy)
+            plugin->destroy(state);
+    }
     SaveConfig();
 }
 
@@ -79,13 +86,33 @@ void plugin_runtime_t::SaveConfig()
 
 void plugin_runtime_t::RunUiTasks()
 {
-    std::vector<std::pair<void (*)(void*), void*>> todo;
+    std::vector<std::function<void()>> todo;
     {
         std::scoped_lock lock(tasks_mutex);
         todo.swap(tasks);
     }
-    for (auto& [fn, user] : todo)
-        fn(user);
+    {
+        std::scoped_lock lock(processes->mutex);
+        std::ranges::move(processes->exited, std::back_inserter(todo));
+        processes->exited.clear();
+    }
+    for (const std::function<void()>& fn : todo)
+        fn();
+}
+
+void plugin_runtime_t::CaptureStart()
+{
+    in_capture = true;
+    if (OSHOT_PLUGIN_HAS(plugin, on_capture_start) && plugin->on_capture_start)
+        plugin->on_capture_start(state);
+}
+
+void plugin_runtime_t::CaptureEnd()
+{
+    if (!std::exchange(in_capture, false))
+        return;
+    if (OSHOT_PLUGIN_HAS(plugin, on_capture_end) && plugin->on_capture_end)
+        plugin->on_capture_end(state);
 }
 
 void plugin_runtime_t::WarnOnce(UiWarning warning, std::string_view msg)

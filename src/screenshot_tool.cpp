@@ -445,11 +445,19 @@ Result<> ScreenshotTool::StartWindow()
     else if (!fs::is_directory(m_inputs.ocr_model_downloaded_path))
         SetError(m_download_errors, OcrDownloadError::InvalidPath, _("Not a directory"));
 
+#ifndef DISABLE_PLUGINS
+    StartPluginsCapture();
+#endif
     return Ok();
 }
 
 void ScreenshotTool::RenderOverlay()
 {
+#ifndef DISABLE_PLUGINS
+    for (auto& [id, rt] : g_plugins)
+        rt.RunUiTasks();
+#endif
+
     const bool subwindow_shown = m_state == ToolState::Selected && m_show_window.Has(SubWindow::MainTextTools) &&
                                  m_show_window.HasAny(SubWindow::OcrDownload, SubWindow::Preferences);
     const bool disable_esc =
@@ -557,6 +565,10 @@ void ScreenshotTool::RenderOverlay()
             RequestComplete(g_config->Runtime.instant_copy_save);
     }
 
+#ifndef DISABLE_PLUGINS
+    NotifyPluginsOfSelection();
+#endif
+
     ImGui::End();
     ImGui::PopStyleVar();
 
@@ -588,8 +600,6 @@ void ScreenshotTool::RenderOverlay()
         DrawPluginInstallStatus();
         for (auto& [id, rt] : g_plugins)
         {
-            rt.RunUiTasks();
-
             const oshot_plugin_t* plugin = rt.plugin;
             if (!plugin->render)
                 continue;
@@ -649,6 +659,10 @@ void ScreenshotTool::Cancel()
 
 void ScreenshotTool::EndCapture()
 {
+#ifndef DISABLE_PLUGINS
+    EndPluginsCapture();
+#endif
+
     // Assigning {} frees the buffers, clear() would keep their capacity
     m_screenshot                = {};
     m_uncropped                 = {};
@@ -691,6 +705,11 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     ResetSelection();
     m_state = ToolState::Selecting;
 
+#ifndef DISABLE_PLUGINS
+    // Another image: a new capture for the plugins
+    EndPluginsCapture();
+    StartPluginsCapture();
+#endif
     return true;
 }
 
@@ -2024,6 +2043,9 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
     if (!configure_res.ok())
     {
         SetError(ectx, OcrError::FailedToOCR, configure_res.error_v());
+#ifndef DISABLE_PLUGINS
+        NotifyPluginsOfOcr(nullptr);
+#endif
         return;
     }
 
@@ -2031,22 +2053,16 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
     if (!result.ok())
     {
         SetError(ectx, OcrError::FailedToOCR, result.error_v());
+#ifndef DISABLE_PLUGINS
+        NotifyPluginsOfOcr(nullptr);
+#endif
         return;
     }
 
     ClearError(ectx, OcrError::FailedToOCR);
     m_inputs.ocr_results = std::move(result.get());
 #ifndef DISABLE_PLUGINS
-    // Copied: a plugin may call set_text(OSHOT_TEXT_OCR) from on_ocr_done()
-    const std::string        text = m_inputs.ocr_results.data;
-    const oshot_ocr_result_t ocr{
-        .text       = { .p = text.c_str(), .len = text.length() },
-        .confidence = m_inputs.ocr_results.confidence,
-        .psm        = m_inputs.ocr_results.psm,
-    };
-    for (auto& [id, rt] : g_plugins)
-        if (rt.plugin->on_ocr_done)
-            rt.plugin->on_ocr_done(rt.state, &ocr);
+    NotifyPluginsOfOcr(&m_inputs.ocr_results);
 #endif
 }
 
@@ -2058,6 +2074,11 @@ void ScreenshotTool::RunBarcodeScan(const capture_result_t& img)
     if (!scan.ok())
     {
         SetError(ectx, ZbarError::FailedToScan, scan.error_v());
+#ifndef DISABLE_PLUGINS
+        for (auto& [id, rt] : g_plugins)
+            if (OSHOT_PLUGIN_HAS(rt.plugin, on_barcodes_done) && rt.plugin->on_barcodes_done)
+                rt.plugin->on_barcodes_done(rt.state, nullptr, 0);
+#endif
         return;
     }
 
@@ -2066,6 +2087,21 @@ void ScreenshotTool::RunBarcodeScan(const capture_result_t& img)
     m_inputs.barcode_text.clear();
     for (const std::string& data : m_inputs.zbar_scan_result.datas)
         m_inputs.barcode_text += data + "\n\n";
+
+#ifndef DISABLE_PLUGINS
+    std::vector<oshot_barcode_t> codes;
+    codes.reserve(m_inputs.zbar_scan_result.codes.size());
+    for (const barcode_t& c : m_inputs.zbar_scan_result.codes)
+        codes.push_back({ .type = { .p = c.type.c_str(), .len = c.type.length() },
+                          .data = { .p = c.data.c_str(), .len = c.data.length() },
+                          .x    = c.x,
+                          .y    = c.y,
+                          .w    = c.w,
+                          .h    = c.h });
+    for (auto& [id, rt] : g_plugins)
+        if (OSHOT_PLUGIN_HAS(rt.plugin, on_barcodes_done) && rt.plugin->on_barcodes_done)
+            rt.plugin->on_barcodes_done(rt.state, codes.data(), codes.size());
+#endif
 }
 
 // ------------------------------
@@ -4471,6 +4507,71 @@ void ScreenshotTool::StartPluginTask(std::string title, std::function<Result<>(P
         }
         state->running = false;
     });
+}
+
+void ScreenshotTool::StartPluginsCapture()
+{
+    m_plugin_selection = {};
+    for (auto& [id, rt] : g_plugins)
+        rt.CaptureStart();
+}
+
+void ScreenshotTool::EndPluginsCapture()
+{
+    for (auto& [id, rt] : g_plugins)
+        rt.CaptureEnd();
+}
+
+void ScreenshotTool::NotifyPluginsOfOcr(const ocr_result_t* res)
+{
+    // Copied: a plugin may call set_text(OSHOT_TEXT_OCR) from on_ocr_done()
+    const std::string             text = res ? res->data : std::string();
+    std::vector<oshot_ocr_word_t> words;
+    if (res)
+    {
+        words.reserve(res->words.size());
+        for (const ocr_word_t& w : res->words)
+            words.push_back({ .text       = { .p = w.text.c_str(), .len = w.text.length() },
+                              .x          = w.x,
+                              .y          = w.y,
+                              .w          = w.w,
+                              .h          = w.h,
+                              .confidence = w.confidence,
+                              .line       = w.line,
+                              .block      = w.block });
+    }
+
+    const oshot_ocr_result_t ocr{
+        .text       = { .p = text.c_str(), .len = text.length() },
+        .confidence = res ? res->confidence : -1,
+        .psm        = res ? res->psm : -1,
+        .words      = words.data(),
+        .n_words    = words.size(),
+    };
+    for (auto& [id, rt] : g_plugins)
+    {
+        // Plugins built before on_barcodes_done expect on_ocr_done() only with text
+        if (!rt.plugin->on_ocr_done || (!res && !OSHOT_PLUGIN_HAS(rt.plugin, on_barcodes_done)))
+            continue;
+        rt.plugin->on_ocr_done(rt.state, &ocr);
+    }
+}
+
+void ScreenshotTool::NotifyPluginsOfSelection()
+{
+    // Selected and not being dragged: a drag owns the input until the mouse is released
+    const bool has_selection = m_main_sel.selection.get_width() > 0 && m_main_sel.selection.get_height() > 0;
+    if (m_state != ToolState::Selected || m_input_owner == InputOwner::Selection || !has_selection)
+        return;
+
+    const region_t sel = GetActiveRegion();
+    if (sel == m_plugin_selection)
+        return;
+    m_plugin_selection = sel;
+
+    for (auto& [id, rt] : g_plugins)
+        if (OSHOT_PLUGIN_HAS(rt.plugin, on_selection_changed) && rt.plugin->on_selection_changed)
+            rt.plugin->on_selection_changed(rt.state, float(sel.x), float(sel.y), float(sel.w), float(sel.h));
 }
 
 void ScreenshotTool::DrawManagePluginsWindow()

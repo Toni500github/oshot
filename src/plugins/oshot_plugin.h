@@ -45,6 +45,14 @@
  * creates; the others only from inside a callback. To get back to the UI
  * thread from a worker, use run_on_ui_thread(). A plugin must stop its own
  * threads in destroy().
+ *
+ * Errors: host functions that can fail return an oshot_err_t and take an
+ * `oshot_str_t* err` last (see oshot_err_t).
+ *
+ * Coordinates: OCR words and barcodes are in the pixels of the image that
+ * was scanned, the same image get_capture() returns for that selection, with
+ * (0, 0) at its top-left corner. The selection itself is in the pixels of
+ * the whole screenshot. Neither depends on the screen's scaling.
  **/
 
 #ifdef __cplusplus
@@ -86,6 +94,16 @@ extern "C" {
 #define OSHOT_HOST_HAS(host, field) \
     (offsetof(oshot_host_t, field) + sizeof(((oshot_host_t*)0)->field) <= (host)->struct_size)
 
+/**
+ * Whether oshot_ocr_result_t has `words` and `n_words`. Fields appended to a
+ * struct oshot passes to a callback come with host functions of the same
+ * oshot version, so a plugin checks one of those: these came with mem_alloc.
+ **/
+#define OSHOT_OCR_HAS_WORDS(host) OSHOT_HOST_HAS(host, mem_alloc)
+
+/* At most this many bytes of a run_process() child's stdout, and of its stderr, are kept */
+#define OSHOT_PROCESS_OUTPUT_MAX ((size_t)4 * 1024 * 1024)
+
 #if defined(OSHOT_HOST)
 #  define OSHOT_PLUGIN_EXPORT
 #elif defined(_WIN32) || defined(__CYGWIN__)
@@ -108,6 +126,23 @@ typedef enum
     OSHOT_LOG_WARN,
     OSHOT_LOG_ERROR,
 } oshot_log_level_t;
+
+/**
+ * What a host function that can fail returns. Such a function takes an
+ * `oshot_str_t* err` as its last argument: on failure oshot stores a message
+ * there (a host string, free it with str_free), or logs the message under
+ * the plugin's ID if err is NULL. err is written only on failure.
+ * Codes may be added later: treat anything but OSHOT_OK as a failure.
+ **/
+typedef enum
+{
+    OSHOT_OK              = 0,
+    OSHOT_ERR_INVALID     = 1, /* a bad argument: NULL, empty or malformed */
+    OSHOT_ERR_THREAD      = 2, /* a UI-thread-only function called from another thread */
+    OSHOT_ERR_UNSUPPORTED = 3, /* not available on this system, or not right now */
+    OSHOT_ERR_NOT_FOUND   = 4, /* the program, folder or process doesn't exist */
+    OSHOT_ERR_FAILED      = 5, /* failed for another reason, which err says */
+} oshot_err_t;
 
 /* The type of an oshot_value_t */
 typedef enum
@@ -162,13 +197,53 @@ typedef struct
     uint8_t* rgba;
 } oshot_capture_t;
 
-/* What on_ocr_done() gets */
+/**
+ * A word Tesseract read. The layout is fixed: oshot passes an array of them.
+ * The box is in the scanned image's pixels (see "Coordinates" above).
+ **/
 typedef struct
 {
-    oshot_str_t text;       /* borrowed: only valid during on_ocr_done() */
+    oshot_str_t text;
+    float       x, y, w, h;
+    int32_t     confidence; /* 0-100 */
+    int32_t     line;       /* the word's text line, counted from 0 over the whole result */
+    int32_t     block;      /* the word's block (a column or paragraph group), counted the same way */
+} oshot_ocr_word_t;
+
+/**
+ * A QR code or barcode ZBar decoded. The layout is fixed: oshot passes an
+ * array of them. The box is in the scanned image's pixels (see "Coordinates"
+ * above), around the points ZBar located the code at.
+ **/
+typedef struct
+{
+    oshot_str_t type; /* ZBar's name for it: "QR-Code", "EAN-13", "CODE-128", ... */
+    oshot_str_t data; /* the decoded payload */
+    float       x, y, w, h;
+} oshot_barcode_t;
+
+/* What on_ocr_done() gets. Everything in it is borrowed: only valid during the call */
+typedef struct
+{
+    oshot_str_t text;
     int32_t     confidence; /* 0-100, or -1 if unavailable */
-    int32_t     psm;        /* tesseract::PageSegMode value */
+    int32_t     psm;        /* tesseract::PageSegMode value, or -1 if nothing was read */
+
+    /* Only there if OSHOT_OCR_HAS_WORDS(host): an older oshot's struct ends before them */
+    const oshot_ocr_word_t* words; /* in reading order */
+    size_t                  n_words;
 } oshot_ocr_result_t;
+
+/* What a run_process() on_exit callback gets. Everything in it is borrowed: only valid during the call */
+typedef struct
+{
+    int64_t     id;          /* what run_process() returned */
+    int32_t     exit_code;   /* as the system reports it, or -1 if killed */
+    bool        killed;      /* by kill_process() */
+    bool        truncated;   /* stdout or stderr was longer than OSHOT_PROCESS_OUTPUT_MAX, and was cut */
+    oshot_str_t stdout_data; /* what it wrote to stdout */
+    oshot_str_t stderr_data; /* what it wrote to stderr */
+} oshot_process_result_t;
 
 /**
  * The type of a declarative setting, and the oshot_value_t kind of its
@@ -228,7 +303,8 @@ typedef struct
     oshot_str_t (*get_data_dir)(oshot_ctx_t* ctx);
 
     /**
-     * Runs fn(user) on the UI thread, before the plugin is next drawn. Tasks
+     * Runs fn(user) on the UI thread, at the start of the next overlay frame.
+     * From the tray, between captures, that's when the next one starts. Tasks
      * still queued when the plugin is unloaded are dropped. Any thread.
      **/
     void (*run_on_ui_thread)(oshot_ctx_t* ctx, void (*fn)(void* user), void* user);
@@ -270,7 +346,8 @@ typedef struct
     /**
      * A copy of the screenshot inside the selection, or of the whole screenshot
      * without one. Annotations aren't included. rgba is NULL if it couldn't be
-     * copied. It copies the whole image: don't call it every frame. UI thread only.
+     * copied, or no overlay is open (in on_capture_end()). It copies the whole
+     * image: don't call it every frame. UI thread only.
      **/
     oshot_capture_t (*get_capture)(oshot_ctx_t* ctx);
     void (*capture_free)(oshot_capture_t* cap);
@@ -313,6 +390,72 @@ typedef struct
      **/
     bool (*ui_begin_section)(oshot_ctx_t* ctx, oshot_str_t label);
     void (*ui_end_section)(oshot_ctx_t* ctx);
+
+    /* Host services. Check OSHOT_HOST_HAS(host, kill_process) before using them. */
+
+    /**
+     * Memory that oshot can free, and memory from oshot that the plugin can
+     * free: on Windows a plugin and oshot may use different C runtimes, so
+     * plugin malloc() and oshot's free() don't mix. mem_free(NULL) does
+     * nothing. Any thread.
+     **/
+    void* (*mem_alloc)(size_t size);
+    void (*mem_free)(void* ptr);
+
+    /**
+     * Copy text, or an RGBA image, to the clipboard the way oshot copies its
+     * own (on X11 and Wayland through xclip or wl-copy, which keep serving it
+     * after oshot exits). The image is encoded in the format set in
+     * Preferences where the clipboard needs one. UI thread only.
+     **/
+    oshot_err_t (*copy_text)(oshot_ctx_t* ctx, oshot_str_t text, oshot_str_t* err);
+    oshot_err_t (*copy_image)(oshot_ctx_t* ctx, const oshot_capture_t* image, oshot_str_t* err);
+
+    /**
+     * Shows a desktop notification. OSHOT_ERR_UNSUPPORTED if the system has
+     * no notifications oshot can use. UI thread only.
+     **/
+    oshot_err_t (*notify)(oshot_ctx_t* ctx, oshot_str_t title, oshot_str_t body, oshot_str_t* err);
+
+    /**
+     * Opens a URL ("https://...", "mailto:...", "file:///...") with the
+     * system's default application, like oshot's own links. It must start with
+     * a scheme. OSHOT_ERR_UNSUPPORTED while no overlay is open (in
+     * on_capture_end()). UI thread only.
+     **/
+    oshot_err_t (*open_url)(oshot_ctx_t* ctx, oshot_str_t url, oshot_str_t* err);
+
+    /**
+     * Starts a program, without a shell: argv[0] is the program (looked up
+     * in PATH if it has no directory) and argv[1..argc) its arguments, passed
+     * as they are. Its stdin is empty and it inherits oshot's environment.
+     * Any thread.
+     *
+     * @param cwd Its working directory, or empty for the plugin's directory
+     * @param on_exit Called on the UI thread after it exits, with its exit
+     *        code and output; may be NULL. It runs with the next overlay
+     *        frame: from the tray, after the next capture starts. It's not
+     *        called once the plugin is unloading.
+     * @param id Set to the process's ID for kill_process(), unless NULL
+     *
+     * oshot kills the plugin's processes that are still running when the
+     * plugin is unloaded.
+     **/
+    oshot_err_t (*run_process)(oshot_ctx_t*       ctx,
+                               const oshot_str_t* argv,
+                               size_t             argc,
+                               oshot_str_t        cwd,
+                               void (*on_exit)(void* user, const oshot_process_result_t* result),
+                               void*        user,
+                               int64_t*     id,
+                               oshot_str_t* err);
+
+    /**
+     * Stops a process run_process() started: its on_exit still gets called,
+     * with killed = true. OSHOT_ERR_NOT_FOUND if it has already exited. On
+     * unix it gets SIGTERM, as do the processes it started. Any thread.
+     **/
+    oshot_err_t (*kill_process)(oshot_ctx_t* ctx, int64_t id, oshot_str_t* err);
 } oshot_host_t;
 
 /* ------------------------------------------------------------------
@@ -353,7 +496,12 @@ typedef struct
      **/
     void (*render)(void* state);
 
-    /* After oshot extracted text from the selection. */
+    /**
+     * After oshot extracted text from the selection. Also when it read
+     * nothing or OCR failed: then text is empty, n_words 0, confidence and
+     * psm -1 (since on_barcodes_done was added; oshot doesn't call older
+     * plugins then).
+     **/
     void (*on_ocr_done)(void* state, const oshot_ocr_result_t* result);
 
     /**
@@ -380,6 +528,36 @@ typedef struct
      * render_preferences) to config.toml: re-read the values that matter.
      **/
     void (*on_settings_saved)(void* state);
+
+    /**
+     * After oshot scanned the selection for QR codes and barcodes: one entry
+     * per code found, also when two have the same data. n is 0 (and codes
+     * NULL) when it found none. The array is borrowed: only valid during the call.
+     **/
+    void (*on_barcodes_done)(void* state, const oshot_barcode_t* codes, size_t n);
+
+    /**
+     * A capture started: a new screenshot or image is loaded, and its first
+     * frame not drawn yet. Also called when the person opens another image in
+     * the overlay, after on_capture_end() for the previous one. On Wayland with
+     * several outputs, the image is cropped to the chosen output after this.
+     **/
+    void (*on_capture_start)(void* state);
+
+    /**
+     * The capture ended and its overlay is closed: drop what belongs to it.
+     * The tray keeps plugins loaded across captures, so state left over would
+     * show up in the next one. Called for every on_capture_start(), and before
+     * destroy() if oshot exits during a capture.
+     **/
+    void (*on_capture_end)(void* state);
+
+    /**
+     * The person finished drawing, moving or resizing the selection (not on
+     * every frame of the drag), or selected everything. In the pixels of the
+     * whole screenshot.
+     **/
+    void (*on_selection_changed)(void* state, float x, float y, float w, float h);
 } oshot_plugin_t;
 
 /**

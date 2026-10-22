@@ -121,7 +121,7 @@ const Plugin = struct {
     }
 
     fn onOcrDone(self: *Plugin, result: *const c.oshot_ocr_result_t) void {
-        if (self.auto_uppercase)
+        if (self.auto_uppercase and result.text.len > 0) // empty when nothing was read
             self.uppercaseText(hostSlice(result.text));
     }
 };

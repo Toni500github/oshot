@@ -1,0 +1,18 @@
+[repository]
+name = "oshot-example-scan-results"
+url = "https://github.com/Toni500github/oshot/tree/main/examples/plugins/scan-results"
+
+[dependencies]
+all = ["cmake", "a C compiler"]
+
+[scan-results]
+id = "io.github.toni500github.scan-results"
+description = "Lists the QR codes, barcodes and unsure OCR words with their positions, an example plugin"
+authors = ["Toni500github"]
+licenses = ["Unlicense"]
+platforms = ["all"]
+build-steps = [
+    "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
+    "cmake --build build --config Release",
+]
+output-dir = "build/out"

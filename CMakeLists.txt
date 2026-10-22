@@ -76,7 +76,7 @@ endmacro()
 # -----------------------------
 add_option(DISABLE_PLUGINS "Disable plugins support" ON ON)
 add_option(MACOS_OPENGL "Draw the overlay with OpenGL instead of Metal on macOS, for VMs without Metal" OFF ON)
-add_option(BUILD_EXAMPLES "Build the C, C++ and cimgui example plugins (needs plugins)" OFF OFF)
+add_option(BUILD_EXAMPLES "Build the C, C++, cimgui and scan-results example plugins (needs plugins)" OFF OFF)
 
 # Arch-style default; Debian sets it empty, as the license goes into
 # /usr/share/doc/oshot/copyright there
@@ -853,7 +853,7 @@ if(NOT DISABLE_PLUGINS)
         )
     endif()
 
-    # The C, C++ and cimgui example plugins, with -DBUILD_EXAMPLES=ON; CI
+    # The C, C++, cimgui and scan-results example plugins, with -DBUILD_EXAMPLES=ON; CI
     # builds them so it checks they compile everywhere. Not installed. The
     # Rust and Zig ones need their own toolchains.
     if(BUILD_EXAMPLES)
@@ -875,6 +875,12 @@ if(NOT DISABLE_PLUGINS)
             examples/plugins/cimgui/line_lengths.c
             ${OSHOT_SDK_HEADERS}
         )
+        add_library(
+            oshot_example_scan_results
+            MODULE
+            examples/plugins/scan-results/scan_results.c
+            ${OSHOT_SDK_HEADERS}
+        )
         set_target_properties(
             oshot_example_uppercase_cpp
             PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON
@@ -884,6 +890,7 @@ if(NOT DISABLE_PLUGINS)
             oshot_example_uppercase
             oshot_example_uppercase_cpp
             oshot_example_line_lengths
+            oshot_example_scan_results
         )
             target_include_directories(
                 ${example}

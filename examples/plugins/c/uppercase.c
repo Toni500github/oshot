@@ -141,7 +141,7 @@ static void plugin_render(void* state)
 static void plugin_on_ocr_done(void* state, const oshot_ocr_result_t* result)
 {
     state_t* s = state;
-    if (s->auto_uppercase)
+    if (s->auto_uppercase && result->text.len > 0) /* empty when nothing was read */
         uppercase_text(s, result->text);
 }
 

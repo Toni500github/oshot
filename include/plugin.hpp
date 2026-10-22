@@ -27,8 +27,11 @@
 
 #ifndef DISABLE_PLUGINS
 #  include <atomic>
+#  include <condition_variable>
 #  include <cstddef>
+#  include <functional>
 #  include <map>
+#  include <memory>
 #  include <mutex>
 #  include <span>
 #  include <string>
@@ -64,6 +67,28 @@ enum class UiWarning : uint32_t
     ImGuiStack    = 1 << 4,
 };
 
+// A child process run_process() started, see oshot_plugins.cc
+struct plugin_process_t;
+
+// A plugin's run_process() children, shared with the threads waiting for
+// them, which only reach the plugin through here: they can outlive it
+struct plugin_processes_t
+{
+    std::mutex mutex;
+
+    // Signaled when a process exits
+    std::condition_variable cv;
+
+    // The on_exit calls of the processes that exited, run by RunUiTasks()
+    std::vector<std::function<void()>> exited;
+
+    // Set when the plugin unloads: no more processes start, and on_exit isn't called
+    bool closed = false;
+
+    std::map<int64_t, std::shared_ptr<plugin_process_t>> running;
+    int64_t                                              next_id = 1;
+};
+
 // A loaded plugin. Lives in g_plugins from load until oshot exits; its address
 // is the oshot_ctx_t the plugin gets, so it must never move.
 struct plugin_runtime_t
@@ -84,8 +109,10 @@ struct plugin_runtime_t
     TomlAPI config;
 
     // run_on_ui_thread() queue, emptied by RunUiTasks()
-    std::mutex                                     tasks_mutex;
-    std::vector<std::pair<void (*)(void*), void*>> tasks;
+    std::mutex                         tasks_mutex;
+    std::vector<std::function<void()>> tasks;
+
+    std::shared_ptr<plugin_processes_t> processes = std::make_shared<plugin_processes_t>();
 
     // plugin->settings as they're in config.toml, and as Preferences shows them until saved
     std::vector<setting_value_t> settings_saved;
@@ -104,19 +131,32 @@ struct plugin_runtime_t
     fs::path    config_path;
     bool        initialized  = false;
     bool        config_dirty = false;
+    bool        in_capture   = false;  // between CaptureStart() and CaptureEnd()
 
     plugin_runtime_t(std::string id, fs::path dir, const oshot_plugin_t* plugin, dylib::library lib)
         : lib(std::move(lib)), dir(std::move(dir)), plugin(plugin), id(std::move(id))
     {}
 
-    // Calls plugin->destroy() if it was initialized, then SaveConfig()
+    // Ends its capture, kills its processes, calls plugin->destroy() if it was initialized, then SaveConfig()
     ~plugin_runtime_t();
 
     plugin_runtime_t(const plugin_runtime_t&)            = delete;
     plugin_runtime_t& operator=(const plugin_runtime_t&) = delete;
 
-    // Runs the queued run_on_ui_thread() tasks. Call it on the UI thread
+    // Runs the queued run_on_ui_thread() tasks and on_exit calls. Call it on the UI thread
     void RunUiTasks();
+
+    /* Call plugin->on_capture_start(), if it has one */
+    void CaptureStart();
+
+    /* Call plugin->on_capture_end() if CaptureStart() was called since the last time */
+    void CaptureEnd();
+
+    /**
+     * Kill the processes run_process() started, wait a moment for them to
+     * exit, and drop their on_exit calls. Implemented in oshot_plugins.cc
+     **/
+    void KillProcesses();
 
     /**
      * Call plugin->render() inside the plugin's ImGui ID scope, with the ui_*
@@ -189,8 +229,8 @@ Result<plugin_info_t> inspect_plugin_library(const fs::path& path);
 void load_plugins(const StateManager& state);
 
 /**
- * Unload every plugin, calling its destroy(). Call it before main() returns,
- * while the logger exists
+ * Unload every plugin: on_capture_end() if a capture is open, kill their
+ * processes, destroy(). Call it before main() returns, while the logger exists
  **/
 void unload_plugins();
 

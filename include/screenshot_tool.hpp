@@ -706,6 +706,9 @@ private:
     // The status window's tree, built from m_install_state's events
     std::vector<install_node_t> m_install_events;
 
+    // The selection plugins were last told about, see NotifyPluginsOfSelection()
+    region_t m_plugin_selection;
+
     std::shared_ptr<plugin_index_state_t> m_index_state = std::make_shared<plugin_index_state_t>();
     std::thread                           m_install_thread;
     std::thread                           m_index_thread;
@@ -830,6 +833,17 @@ private:
     // plugin_install_state_t so the render thread can drain progress from
     // it without touching ImGui from off the render thread.
     void StartPluginTask(std::string title, std::function<Result<>(PluginManager&)> task);
+
+    // Calls the plugins' on_capture_start(), or on_capture_end() for the ones that got it
+    void StartPluginsCapture();
+    void EndPluginsCapture();
+
+    // Calls on_ocr_done() with what OCR read, or with nothing (nullptr) after it read nothing or failed
+    void NotifyPluginsOfOcr(const ocr_result_t* res);
+
+    // Calls on_selection_changed() once the selection is done changing and differs
+    // from what the plugins were last told
+    void NotifyPluginsOfSelection();
 
     void DrawManagePluginsWindow();
     void DrawBrowsePluginsWindow();

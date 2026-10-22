@@ -154,7 +154,8 @@ impl Plugin {
     }
 
     fn on_ocr_done(&self, result: &oshot_ocr_result_t) {
-        if self.auto_uppercase {
+        // Empty when nothing was read
+        if self.auto_uppercase && result.text.len > 0 {
             // SAFETY: the text is valid during on_ocr_done()
             self.uppercase_text(unsafe { result.text.as_bytes() });
         }
@@ -218,6 +219,10 @@ static DESCRIPTOR: oshot_plugin_t = oshot_plugin_t {
     settings: SETTINGS.as_ptr(),
     n_settings: SETTINGS.len(),
     on_settings_saved: Some(plugin_on_settings_saved),
+    on_barcodes_done: None,
+    on_capture_start: None,
+    on_capture_end: None,
+    on_selection_changed: None,
 };
 
 /// The one symbol the library exports

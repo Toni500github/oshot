@@ -29,6 +29,7 @@
 #include <zbar.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -330,9 +331,17 @@ static text_layout_t measure_text(PIX* gray)
     return layout;
 }
 
+// What normalize_for_ocr() did to the image, to map Tesseract's boxes back onto it
+struct ocr_transform_t
+{
+    float scale = 1.0f;
+    int   pad   = 0;
+    float angle = 0.0f;  // radians, clockwise, about the center of the padded image
+};
+
 // Scale so the glyphs are about the size Tesseract reads best, pad the edges,
 // and straighten a skewed scan
-static PIX* normalize_for_ocr(PIX* gray, const text_layout_t& layout)
+static PIX* normalize_for_ocr(PIX* gray, const text_layout_t& layout, ocr_transform_t& xform)
 {
     // Median glyph height (mostly x-height and capitals) Tesseract reads best, from the test set
     constexpr int target = 24;
@@ -347,13 +356,19 @@ static PIX* normalize_for_ocr(PIX* gray, const text_layout_t& layout)
         if (scale > 1.0f)
         {
             if (PIX* scaled = pixScaleGrayLI(gray, scale, scale))
+            {
                 out.reset(scaled);
+                xform.scale = scale;
+            }
         }
     }
 
     // Text touching the edge of a tight selection is often dropped
     if (PIX* padded = pixAddBorder(out.get(), target, 255))
+    {
         out.reset(padded);
+        xform.pad = target;
+    }
 
     PIX*      bin   = pixThresholdToBinary(out.get(), layout.threshold);
     l_float32 angle = 0.f, conf = 0.f;
@@ -362,7 +377,10 @@ static PIX* normalize_for_ocr(PIX* gray, const text_layout_t& layout)
         // The angle to rotate by, as in pixDeskew()
         const l_float32 rad = angle * (std::numbers::pi_v<l_float32> / 180.f);
         if (PIX* rotated = pixRotate(out.get(), rad, L_ROTATE_AREA_MAP, L_BRING_IN_WHITE, 0, 0))
+        {
             out.reset(rotated);
+            xform.angle = rad;
+        }
     }
     if (bin)
         pixDestroy(&bin);
@@ -432,6 +450,44 @@ Result<> OcrAPI::Configure(const char* data_path, const char* model, tesseract::
     return Ok();
 }
 
+// A box Tesseract found in the image normalize_for_ocr() made, in the pixels
+// of the image it was made from: rotated back, unpadded, unscaled and clamped
+static ocr_word_t map_box_to_source(int                    left,
+                                    int                    top,
+                                    int                    right,
+                                    int                    bottom,
+                                    const ocr_transform_t& xform,
+                                    int                    proc_w,
+                                    int                    proc_h,
+                                    float                  src_w,
+                                    float                  src_h)
+{
+    const float cx = float(proc_w) / 2.0f, cy = float(proc_h) / 2.0f;
+    const float c = std::cos(xform.angle), s = std::sin(xform.angle);
+
+    float                                    min_x = src_w, min_y = src_h, max_x = 0.0f, max_y = 0.0f;
+    const std::array<std::pair<int, int>, 4> corners = {
+        { { left, top }, { right, top }, { left, bottom }, { right, bottom } }
+    };
+    for (const auto& [px, py] : corners)
+    {
+        // pixRotate() turned the image clockwise by angle: turn the corner back
+        const float dx = float(px) - cx, dy = float(py) - cy;
+        const float x = ((cx + (dx * c) + (dy * s)) - float(xform.pad)) / xform.scale;
+        const float y = ((cy - (dx * s) + (dy * c)) - float(xform.pad)) / xform.scale;
+        min_x         = std::min(min_x, x);
+        min_y         = std::min(min_y, y);
+        max_x         = std::max(max_x, x);
+        max_y         = std::max(max_y, y);
+    }
+
+    min_x = std::clamp(min_x, 0.0f, src_w);
+    min_y = std::clamp(min_y, 0.0f, src_h);
+    max_x = std::clamp(max_x, min_x, src_w);
+    max_y = std::clamp(max_y, min_y, src_h);
+    return ocr_word_t{ .x = min_x, .y = min_y, .w = max_x - min_x, .h = max_y - min_y };
+}
+
 // From "  hello world  \n  " to "hello world"
 static void trim(std::string& s)
 {
@@ -474,7 +530,8 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
             return Err("Failed to convert image into Pix format");
         layout = measure_text(gray.get());
     }
-    PixPtr pix(normalize_for_ocr(gray.get(), layout));
+    ocr_transform_t xform;
+    PixPtr          pix(normalize_for_ocr(gray.get(), layout, xform));
     if (!pix)
         return Err("Failed to preprocess image");
 
@@ -510,14 +567,35 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
     {
         double sum   = 0.0;
         int    count = 0;
+        int    line = -1, block = -1;
         do
         {
+            if (ri->Empty(tesseract::RIL_WORD))
+                continue;
+
             float conf = ri->Confidence(tesseract::RIL_WORD);
             if (conf >= 0.0f)
             {
                 sum += conf;
                 ++count;
             }
+
+            if (ri->IsAtBeginningOf(tesseract::RIL_BLOCK))
+                ++block;
+            if (ri->IsAtBeginningOf(tesseract::RIL_TEXTLINE))
+                ++line;
+
+            TextPtr word(ri->GetUTF8Text(tesseract::RIL_WORD), [](char* p) { delete[] p; });
+            int     left = 0, top = 0, right = 0, bottom = 0;
+            if (!word || !ri->BoundingBox(tesseract::RIL_WORD, &left, &top, &right, &bottom))
+                continue;
+
+            ocr_word_t& w = ret.words.emplace_back(
+                map_box_to_source(left, top, right, bottom, xform, proc_w, proc_h, float(cap.w), float(cap.h)));
+            w.text       = word.get();
+            w.confidence = int(std::round(std::max(conf, 0.0f)));
+            w.line       = std::max(line, 0);
+            w.block      = std::max(block, 0);
         } while (ri->Next(tesseract::RIL_WORD));
 
         ret.confidence = count ? int(std::round(sum / count)) : 0;
@@ -539,8 +617,14 @@ ZbarAPI::ZbarAPI()
     SetConfig(zbar::ZBAR_NONE, true);  // enable all
 }
 
-// Codes found in a grayscale image, added to `ret` unless already there
-static void scan_gray(zbar::ImageScanner& scanner, std::vector<uint8_t>& gray, int w, int h, zbar_result_t& ret)
+// Codes found in a grayscale image, added to `ret.datas` unless already there.
+// `scale`: how much bigger `gray` is than the scanned image
+static void scan_gray(zbar::ImageScanner&   scanner,
+                      std::vector<uint8_t>& gray,
+                      int                   w,
+                      int                   h,
+                      int                   scale,
+                      zbar_result_t&        ret)
 {
     // ZBar doesn't take ownership of the buffer
     zbar::Image image(w, h, "Y800", gray.data(), gray.size());
@@ -550,6 +634,24 @@ static void scan_gray(zbar::ImageScanner& scanner, std::vector<uint8_t>& gray, i
     for (auto sym = image.symbol_begin(); sym != image.symbol_end(); ++sym)
     {
         std::string data = sym->get_data();
+
+        barcode_t& code = ret.codes.emplace_back(barcode_t{ .type = sym->get_type_name(), .data = data });
+        if (const int n = sym->get_location_size(); n > 0)
+        {
+            int min_x = w, min_y = h, max_x = 0, max_y = 0;
+            for (int i = 0; i < n; ++i)
+            {
+                min_x = std::min(min_x, sym->get_location_x(i));
+                min_y = std::min(min_y, sym->get_location_y(i));
+                max_x = std::max(max_x, sym->get_location_x(i));
+                max_y = std::max(max_y, sym->get_location_y(i));
+            }
+            code.x = float(min_x) / float(scale);
+            code.y = float(min_y) / float(scale);
+            code.w = float(max_x - min_x) / float(scale);
+            code.h = float(max_y - min_y) / float(scale);
+        }
+
         if (std::ranges::find(ret.datas, data) != ret.datas.end())
             continue;
         ret.datas.push_back(std::move(data));
@@ -563,13 +665,13 @@ Result<zbar_result_t> ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
     std::vector<uint8_t> gray(size_t(cap.w) * cap.h);
 
     rgba_to_grayscale(cap.view().data(), gray.data(), cap.w, cap.h);
-    scan_gray(m_scanner, gray, cap.w, cap.h, ret);
+    scan_gray(m_scanner, gray, cap.w, cap.h, 1, ret);
 
     // Light codes on a dark background (dark mode, inverted codes)
     if (ret.datas.empty())
     {
         std::ranges::transform(gray, gray.begin(), [](uint8_t v) { return uint8_t(255 - v); });
-        scan_gray(m_scanner, gray, cap.w, cap.h, ret);
+        scan_gray(m_scanner, gray, cap.w, cap.h, 1, ret);
         std::ranges::transform(gray, gray.begin(), [](uint8_t v) { return uint8_t(255 - v); });
     }
 
@@ -582,11 +684,11 @@ Result<zbar_result_t> ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
             for (int x = 0; x < w2; ++x)
                 big[(size_t(y) * w2) + x] = gray[(size_t(y / 2) * cap.w) + (x / 2)];
 
-        scan_gray(m_scanner, big, w2, h2, ret);
+        scan_gray(m_scanner, big, w2, h2, 2, ret);
         if (ret.datas.empty())
         {
             std::ranges::transform(big, big.begin(), [](uint8_t v) { return uint8_t(255 - v); });
-            scan_gray(m_scanner, big, w2, h2, ret);
+            scan_gray(m_scanner, big, w2, h2, 2, ret);
         }
     }
 

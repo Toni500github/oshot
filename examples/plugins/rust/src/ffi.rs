@@ -18,6 +18,8 @@ pub const OSHOT_UI_WRAPPED: u32 = 1 << 1;
 pub const OSHOT_UI_MULTILINE: u32 = 1 << 2;
 pub const OSHOT_UI_PASSWORD: u32 = 1 << 3;
 
+pub const OSHOT_PROCESS_OUTPUT_MAX: usize = 4 * 1024 * 1024;
+
 /// Opaque: identifies the plugin in every host call
 #[repr(C)]
 pub struct oshot_ctx_t {
@@ -30,6 +32,15 @@ pub const OSHOT_LOG_DEBUG: oshot_log_level_t = 0;
 pub const OSHOT_LOG_INFO: oshot_log_level_t = 1;
 pub const OSHOT_LOG_WARN: oshot_log_level_t = 2;
 pub const OSHOT_LOG_ERROR: oshot_log_level_t = 3;
+
+// Not a Rust enum: oshot may return codes added after these bindings
+pub type oshot_err_t = c_int;
+pub const OSHOT_OK: oshot_err_t = 0;
+pub const OSHOT_ERR_INVALID: oshot_err_t = 1;
+pub const OSHOT_ERR_THREAD: oshot_err_t = 2;
+pub const OSHOT_ERR_UNSUPPORTED: oshot_err_t = 3;
+pub const OSHOT_ERR_NOT_FOUND: oshot_err_t = 4;
+pub const OSHOT_ERR_FAILED: oshot_err_t = 5;
 
 pub type oshot_value_kind_t = c_int;
 pub const OSHOT_VAL_STRING: oshot_value_kind_t = 0;
@@ -95,10 +106,45 @@ pub struct oshot_capture_t {
 }
 
 #[repr(C)]
+pub struct oshot_ocr_word_t {
+    pub text: oshot_str_t,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub confidence: i32,
+    pub line: i32,
+    pub block: i32,
+}
+
+#[repr(C)]
+pub struct oshot_barcode_t {
+    pub type_: oshot_str_t, // `type` in C
+    pub data: oshot_str_t,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+#[repr(C)]
 pub struct oshot_ocr_result_t {
     pub text: oshot_str_t,
     pub confidence: i32,
     pub psm: i32,
+    // Only there if ocr_has_words!(): an older oshot's struct ends before them
+    pub words: *const oshot_ocr_word_t,
+    pub n_words: usize,
+}
+
+#[repr(C)]
+pub struct oshot_process_result_t {
+    pub id: i64,
+    pub exit_code: i32,
+    pub killed: bool,
+    pub truncated: bool,
+    pub stdout_data: oshot_str_t,
+    pub stderr_data: oshot_str_t,
 }
 
 #[repr(C)]
@@ -220,6 +266,30 @@ pub struct oshot_host_t {
     pub ui_tooltip: Option<unsafe extern "C" fn(ctx: Ctx, text: oshot_str_t)>,
     pub ui_begin_section: Option<unsafe extern "C" fn(ctx: Ctx, label: oshot_str_t) -> bool>,
     pub ui_end_section: Option<unsafe extern "C" fn(ctx: Ctx)>,
+
+    // Host services: check host_has!(host, kill_process) first
+    pub mem_alloc: Option<unsafe extern "C" fn(size: usize) -> *mut c_void>,
+    pub mem_free: Option<unsafe extern "C" fn(ptr: *mut c_void)>,
+    pub copy_text: Option<unsafe extern "C" fn(ctx: Ctx, text: oshot_str_t, err: *mut oshot_str_t) -> oshot_err_t>,
+    pub copy_image:
+        Option<unsafe extern "C" fn(ctx: Ctx, image: *const oshot_capture_t, err: *mut oshot_str_t) -> oshot_err_t>,
+    pub notify: Option<
+        unsafe extern "C" fn(ctx: Ctx, title: oshot_str_t, body: oshot_str_t, err: *mut oshot_str_t) -> oshot_err_t,
+    >,
+    pub open_url: Option<unsafe extern "C" fn(ctx: Ctx, url: oshot_str_t, err: *mut oshot_str_t) -> oshot_err_t>,
+    pub run_process: Option<
+        unsafe extern "C" fn(
+            ctx: Ctx,
+            argv: *const oshot_str_t,
+            argc: usize,
+            cwd: oshot_str_t,
+            on_exit: Option<unsafe extern "C" fn(user: *mut c_void, result: *const oshot_process_result_t)>,
+            user: *mut c_void,
+            id: *mut i64,
+            err: *mut oshot_str_t,
+        ) -> oshot_err_t,
+    >,
+    pub kill_process: Option<unsafe extern "C" fn(ctx: Ctx, id: i64, err: *mut oshot_str_t) -> oshot_err_t>,
 }
 
 type State = *mut c_void;
@@ -244,6 +314,10 @@ pub struct oshot_plugin_t {
     pub settings: *const oshot_setting_t,
     pub n_settings: usize,
     pub on_settings_saved: Option<unsafe extern "C" fn(state: State)>,
+    pub on_barcodes_done: Option<unsafe extern "C" fn(state: State, codes: *const oshot_barcode_t, n: usize)>,
+    pub on_capture_start: Option<unsafe extern "C" fn(state: State)>,
+    pub on_capture_end: Option<unsafe extern "C" fn(state: State)>,
+    pub on_selection_changed: Option<unsafe extern "C" fn(state: State, x: f32, y: f32, w: f32, h: f32)>,
 }
 
 // The descriptor and the settings are statics whose pointers are to string
@@ -260,6 +334,17 @@ macro_rules! host_has {
     };
 }
 pub(crate) use host_has;
+
+/// OSHOT_OCR_HAS_WORDS(): whether oshot_ocr_result_t has `words` and `n_words`,
+/// which came with mem_alloc
+#[allow(unused_macros)]
+macro_rules! ocr_has_words {
+    ($host:expr) => {
+        $crate::ffi::host_has!($host, mem_alloc)
+    };
+}
+#[allow(unused_imports)]
+pub(crate) use ocr_has_words;
 
 /// A function from oshot's host table. oshot fills in every field of the API
 /// version it was built with; a field added in a later version needs a

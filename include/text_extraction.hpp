@@ -33,6 +33,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "screen_capture.hpp"
 #include "util.hpp"
@@ -40,6 +41,18 @@
 // ------------------------------
 // OCR (tesseract img2text)
 // ------------------------------
+// A word Tesseract read, with its box in the pixels of the image that was read
+struct ocr_word_t
+{
+    std::string text;
+    float       x = 0, y = 0, w = 0, h = 0;
+    int         confidence = 0;
+
+    // Text line and block, counted from 0 over the whole result
+    int line  = 0;
+    int block = 0;
+};
+
 struct ocr_result_t
 {
     // Mean word confidence, 0..100, or -1 if nothing was read yet
@@ -50,6 +63,8 @@ struct ocr_result_t
     std::string psm_str;
 
     std::string data;
+
+    std::vector<ocr_word_t> words;
 };
 
 class OcrAPI
@@ -107,10 +122,19 @@ private:
 // ------------------------------
 // Zbar (QR/Bar Codes)
 // ------------------------------
+// A decoded code, with the box around its location points in the pixels of the scanned image
+struct barcode_t
+{
+    std::string type;  // e.g. "QR-Code", "EAN-13"
+    std::string data;
+    float       x = 0, y = 0, w = 0, h = 0;
+};
+
 struct zbar_result_t
 {
     std::vector<std::string>             datas;        // decoded payloads, without duplicates
     std::unordered_map<std::string, int> symbologies;  // how many of each, e.g. "QRCODE", "EAN-13", ...
+    std::vector<barcode_t>               codes;        // every code found, duplicates included
 };
 
 class ZbarAPI

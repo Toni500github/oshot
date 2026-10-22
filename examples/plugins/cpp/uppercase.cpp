@@ -106,7 +106,7 @@ public:
 
     void on_ocr_done(const oshot_ocr_result_t& result)
     {
-        if (m_auto_uppercase)
+        if (m_auto_uppercase && result.text.len > 0) /* empty when nothing was read */
             uppercase_text(std::string_view(result.text.p, result.text.len));
     }
 
