@@ -230,6 +230,8 @@ std::vector<std::string> split(const std::string_view text, const char delim)
 std::vector<uint8_t> encode_to_image(const capture_result_t& cap, ImageExt ext)
 {
     std::vector<uint8_t> out;
+    if (cap.w <= 0 || cap.h <= 0 || cap.data.empty())
+        return out;
 
     auto callback = [](void* context, void* data, int size) {
         auto* buf   = static_cast<std::vector<uint8_t>*>(context);
@@ -451,12 +453,15 @@ void release_shared_default_logger()
 
 Result<> write_image_file(const std::string& path, const capture_result_t& img, ImageExt ext)
 {
+    const std::vector<uint8_t>& data = encode_to_image(img, ext);
+    if (data.empty())
+        return Err("Failed to encode the image ({}x{} px)", img.w, img.h);
+
     FILE* fp = fopen(path.c_str(), "wb");
     if (!fp)
         return Err("Failed to open {} to write the image: {}", path, strerror(errno));
 
-    const std::vector<uint8_t>& data    = encode_to_image(img, ext);
-    size_t                      written = fwrite(data.data(), 1, data.size(), fp);
+    size_t written = fwrite(data.data(), 1, data.size(), fp);
     fclose(fp);
     if (written != data.size())
         return Err("Failed to write image data to {}", path);

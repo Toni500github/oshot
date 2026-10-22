@@ -661,6 +661,9 @@ static void scan_gray(zbar::ImageScanner&   scanner,
 
 Result<zbar_result_t> ZbarAPI::ExtractTextsCapture(const capture_result_t& cap)
 {
+    if (cap.view().empty() || cap.w <= 0 || cap.h <= 0)
+        return Err("Image is empty");
+
     zbar_result_t        ret;
     std::vector<uint8_t> gray(size_t(cap.w) * cap.h);
 

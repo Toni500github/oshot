@@ -1289,6 +1289,9 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
             HandleResizeInput(sel);
         else  // ToolState::Selecting
             sel.selection.end = { .x = mouse_pos.x, .y = mouse_pos.y };
+
+        if (!sel.is_ann)
+            ClampSelectionToImage(sel);
     }
 
     if (m_input_owner == sel.main_input_owner && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
@@ -1759,6 +1762,31 @@ void ScreenshotTool::NormalizeSelection(selection_info_t& sel)
         std::swap(sel.selection.start.x, sel.selection.end.x);
     if (sel.selection.start.y > sel.selection.end.y)
         std::swap(sel.selection.start.y, sel.selection.end.y);
+}
+
+void ScreenshotTool::ClampSelectionToImage(selection_info_t& sel)
+{
+    selection_rect_t& s = sel.selection;
+
+    // Moved: push it back whole instead of shrinking it
+    if (sel.dragging_handle == HandleHovered::Move)
+    {
+        const float dx =
+            std::max(m_image_origin.x - s.get_x(), 0.0f) + std::min(m_image_end.x - (s.get_x() + s.get_width()), 0.0f);
+        const float dy =
+            std::max(m_image_origin.y - s.get_y(), 0.0f) + std::min(m_image_end.y - (s.get_y() + s.get_height()), 0.0f);
+        s.start.x += dx;
+        s.end.x += dx;
+        s.start.y += dy;
+        s.end.y += dy;
+        return;
+    }
+
+    for (point_t* p : { &s.start, &s.end })
+    {
+        p->x = std::clamp(p->x, m_image_origin.x, m_image_end.x);
+        p->y = std::clamp(p->y, m_image_origin.y, m_image_end.y);
+    }
 }
 
 void ScreenshotTool::SyncRuntimeFromConfig()

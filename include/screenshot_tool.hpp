@@ -753,6 +753,9 @@ private:
     // Swaps the selection's start and end so start is the top-left corner
     void NormalizeSelection(selection_info_t& sel);
 
+    // Keeps the selection on the screenshot: around a smaller image opened with -f there is nothing to capture
+    void ClampSelectionToImage(selection_info_t& sel);
+
     // Drops the main selection, its drag state and the current tool
     void ResetSelection();
 
