@@ -5,12 +5,14 @@
 
 Plugins only work in the `-plugins` builds of oshot. A plugin is a shared library (`.so`, `.dll`, or `.dylib` or `.so` on macOS) with a plain
 C interface, so it can be written in any language that can export a C function: C, C++, Rust, Zig, and so on.
-[`examples/plugins`](../examples/plugins) has the same complete plugin in each of those four languages.
+[`examples/plugins`](../examples/plugins) has the same complete plugin in each of those four languages, plus one
+that uses cimgui.
 
 What a plugin can do:
 
-- draw its own section in the text tools window, and its own settings in Preferences > Plugins, with Dear ImGui
-  (through [cimgui](https://github.com/cimgui/cimgui));
+- draw its own section in the text tools window with oshot's widgets (buttons, text fields, sliders, ...);
+- declare its settings, which oshot shows in Preferences > Plugins and saves for it;
+- draw anything else with Dear ImGui itself, through [cimgui](https://github.com/cimgui/cimgui);
 - read and replace the OCR and barcode text, and read the selected image;
 - react when text has been extracted;
 - keep settings in its own `config.toml`, and other state in oshot's cache;
@@ -26,7 +28,7 @@ Plugins run inside oshot with the same permissions: oshot can't sandbox them.
 | **ID** | Reverse-domain name like `io.github.user.translate`: lowercase letters, digits, `-`, `_`, at least one `.`, up to 64 characters. The same ID is compiled into the library and written in the manifest. |
 | **repository** | Everything one `oshot-plugin.toml` describes: one or more plugins, from a git repository, a folder or an archive. |
 | **manifest** | The `oshot-plugin.toml` file at the root of a repository. |
-| **SDK** | The headers (`oshot/oshot_plugin.h`, `oshot/cimgui.h`), plus on Windows the cimgui import library, that come with oshot. |
+| **SDK** | The headers (`oshot/oshot_plugin.h`, and `oshot/cimgui.h` for plugins that use cimgui), plus on Windows the cimgui import library, that come with oshot. |
 | **host** | oshot, as seen from a plugin. |
 
 ## The SDK
@@ -46,49 +48,73 @@ Set `OSHOT_SDK` yourself to use another one.
 
 ## Building
 
-oshot loads cimgui itself, so a plugin uses it without bundling Dear ImGui:
+A plugin only needs `oshot/oshot_plugin.h`: compile it as a shared library (`-shared -fPIC`) and link nothing from
+oshot. Build it with hidden symbols (`-fvisibility=hidden`) and export only the entry point, with
+`OSHOT_PLUGIN_EXPORT`. The C example's [`CMakeLists.txt`](../examples/plugins/c/CMakeLists.txt) and the Zig
+example's [`build.zig`](../examples/plugins/zig/build.zig) do this; the Rust example has its own bindings and doesn't
+need the SDK at all.
 
-- **Linux and the BSDs**: compile with `-shared -fPIC` and the SDK's `include` folder, without linking anything.
-- **macOS**: also link with `-undefined dynamic_lookup`.
+A plugin that also uses cimgui (see [Dear ImGui through cimgui](#dear-imgui-through-cimgui)) gets it from oshot,
+without bundling Dear ImGui:
+
+- **Linux and the BSDs**: nothing more to link.
+- **macOS**: link with `-undefined dynamic_lookup`.
 - **Windows**: link `sdk/lib/libcimgui.dll.a`. It's a MinGW import library: build with MinGW-w64 (MSYS2's UCRT64 or
   CLANGARM64 environments, the ones oshot is built with).
 
-The C example's [`CMakeLists.txt`](../examples/plugins/c/CMakeLists.txt) does all of this, as do the Rust example's
-[`build.rs`](../examples/plugins/rust/build.rs) and the Zig example's [`build.zig`](../examples/plugins/zig/build.zig).
-Build the plugin with hidden symbols (`-fvisibility=hidden`) and export only the entry point, with
-`OSHOT_PLUGIN_EXPORT`.
-
-A plugin that uses cimgui only works with the exact Dear ImGui version oshot is built with (`OSHOT_IMGUI_VERSION`),
-because cimgui exposes ImGui's structs. oshot refuses plugins built for another version, so rebuild plugins when oshot
-updates Dear ImGui.
+The cimgui example's [`CMakeLists.txt`](../examples/plugins/cimgui/CMakeLists.txt) does this.
 
 ## The API
 
 Everything is in `oshot/oshot_plugin.h`, which documents each function. In short:
 
 ```c
-#define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
-#include "oshot/cimgui.h"
 #include "oshot/oshot_plugin.h"
+
+typedef struct
+{
+    const oshot_host_t* host;
+    oshot_ctx_t*        ctx;
+} state_t;
+
+static state_t g_state;
 
 static bool my_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state)
 {
     /* keep host and ctx: every host call needs them */
-    host->log(ctx, OSHOT_LOG_INFO, oshot_str_borrow("hello"));
-    *state = /* your state */;
+    g_state = (state_t){ host, ctx };
+    if (host->get_bool(ctx, OSHOT_STORE_CONFIG, "greet-on-start", true)) /* the setting below */
+        host->log(ctx, OSHOT_LOG_INFO, oshot_str_borrow("hello"));
+    *state = &g_state;
     return true;
 }
 
-static void my_render(void* state) { igText("Hello from a plugin"); }
+static void my_render(void* state)
+{
+    state_t* s = state;
+    if (s->host->ui_button(s->ctx, oshot_str_borrow("Say hello")))
+        s->host->log(s->ctx, OSHOT_LOG_INFO, oshot_str_borrow("hello again"));
+}
+
+static const oshot_setting_t settings[] = {
+    {
+        .kind     = OSHOT_SETTING_BOOL,
+        .key      = "greet-on-start",
+        .label    = "Say hello when oshot starts",
+        .fallback = { .kind = OSHOT_VAL_BOOL, .b = true },
+    },
+};
 
 static const oshot_plugin_t descriptor = {
     .struct_size   = sizeof(oshot_plugin_t),
     .abi_version   = OSHOT_API_VERSION,
-    .imgui_version = OSHOT_IMGUI_VERSION, /* 0 if the plugin doesn't use ImGui */
+    .imgui_version = 0, /* OSHOT_IMGUI_VERSION only if it calls cimgui */
     .id            = "io.github.user.hello",
     .name          = "Hello",
     .init          = my_init,
     .render        = my_render,
+    .settings      = settings,
+    .n_settings    = sizeof(settings) / sizeof(settings[0]),
 };
 
 OSHOT_PLUGIN_EXPORT const oshot_plugin_t* oshot_plugin_entry(void) { return &descriptor; }
@@ -105,12 +131,89 @@ OSHOT_PLUGIN_EXPORT const oshot_plugin_t* oshot_plugin_entry(void) { return &des
 - `host->get_text()`/`set_text()` work on `OSHOT_TEXT_OCR` and `OSHOT_TEXT_BARCODE`.
 - `host->get_capture()` copies the whole selected image: call it when needed, not every frame.
 
+### Widgets
+
+`render()` draws the plugin's section in the text tools window, every frame while it's expanded, with the `ui_*`
+functions of the host table: `ui_text`, `ui_button`, `ui_checkbox`, `ui_input_text`, `ui_combo`, `ui_slider_int`,
+`ui_slider_float`, `ui_color`, `ui_progress`, `ui_separator`, `ui_same_line`, `ui_tooltip` and
+`ui_begin_section`/`ui_end_section`. They draw with oshot's theme, fonts and scaling, and they're part of the plugin
+API, so a plugin that only uses them keeps working when oshot updates Dear ImGui.
+
+- They work only inside `render()` and `render_preferences()`, on the UI thread. Called anywhere else they do nothing,
+  and oshot logs it once.
+- Labels and text are `oshot_str_t` and drawn as they are, never read as format strings, so text from OCR is safe to
+  show. A label must be unique within the plugin: append `##` and something to tell apart widgets with the same text,
+  e.g. `"Copy##url"` and `"Copy##text"`; the part after `##` isn't shown. Each plugin gets its own ID scope, so its
+  labels can't clash with oshot's or another plugin's.
+- Functions that return `bool` return true in the frame the person pressed or changed the widget.
+- `ui_input_text` edits a host string (from `str_new`, `get_string`, ... or empty): when the text changes, oshot frees
+  the old string and stores a new one, which the plugin frees with `str_free` when it's done with it. There's no fixed
+  buffer size.
+- Call `ui_end_section()` after every `ui_begin_section()`, whatever it returned; draw the section's contents only when
+  it returned true. Sections left open when `render()` returns are closed by oshot and logged.
+
+### Settings
+
+Most plugins' settings are a few checkboxes, text fields, numbers or choices. Describe them in a static array of
+`oshot_setting_t` and oshot draws them in Preferences > Plugins, saves them to the plugin's `config.toml` when the
+person presses Save, and drops the changes when they discard them:
+
+| Kind | Drawn as | Stored as | Read with |
+| ---- | -------- | --------- | --------- |
+| `OSHOT_SETTING_BOOL` | checkbox | bool | `get_bool` |
+| `OSHOT_SETTING_STRING` | text field (`flags`: `OSHOT_UI_MULTILINE`, `OSHOT_UI_PASSWORD`) | string | `get_string` |
+| `OSHOT_SETTING_INT` | slider from `min` to `max`, or a number field if `min == max` | integer | `get_int64` |
+| `OSHOT_SETTING_FLOAT` | the same | float | `get_double` |
+| `OSHOT_SETTING_CHOICE` | combo box with `choices` | the chosen string | `get_string` |
+
+- `fallback` is the default, and its `kind` must match the setting's (`OSHOT_VAL_STRING` for STRING and CHOICE).
+  `help`, if set, is shown as a tooltip.
+- The plugin reads the values with the same key and fallback, usually in `init()`, and again in
+  `on_settings_saved()`, which oshot calls after saving.
+- oshot checks the array when it loads the plugin (and `oshotpm` when it installs it): every setting needs a unique
+  key, a label and a fallback of the right kind.
+- For anything the settings can't express, `render_preferences()` draws a custom page under them with the same
+  widgets. It returns true while it has unsaved changes; oshot then calls `on_save_preferences()` or
+  `on_discard_preferences()`.
+
+### Dear ImGui through cimgui
+
+For what the widgets can't draw (plots, tables, custom drawing), a plugin can call Dear ImGui through cimgui
+(`oshot/cimgui.h`, with `CIMGUI_DEFINE_ENUMS_AND_STRUCTS` defined before including it), alongside the `ui_*`
+functions. [`examples/plugins/cimgui`](../examples/plugins/cimgui) draws a histogram this way. The cost:
+
+- cimgui exposes ImGui's structs, so the plugin only works with the exact Dear ImGui version oshot is built with. It
+  must set `imgui_version = OSHOT_IMGUI_VERSION`, and oshot refuses it when the versions differ.
+- oshot updates Dear ImGui only in minor releases (x.y.0), never in patch releases, so a cimgui plugin needs a rebuild
+  for each oshot minor release. Plugins that use only the widgets and settings keep `imgui_version = 0` and don't.
+- It links cimgui as described in [Building](#building).
+
+oshot checks Dear ImGui's stacks around `render()` and `render_preferences()`: a `Begin`/`Push` the plugin didn't end
+or pop is closed by oshot and logged, instead of breaking the rest of the window.
+
+### Newer host functions
+
+oshot only ever appends to `oshot_host_t` and `oshot_plugin_t`, so a plugin built with an older header keeps working.
+A plugin built with a newer header may run in an older oshot, whose host table ends earlier: check a function added
+after the plugin API's first version with `OSHOT_HOST_HAS(host, field)` before calling it, e.g. in `init()`:
+
+```c
+if (!OSHOT_HOST_HAS(host, ui_end_section)) /* the widgets came after the first version */
+{
+    host->log(ctx, OSHOT_LOG_ERROR, oshot_str_borrow("this oshot is too old for this plugin"));
+    return false;
+}
+```
+
+oshot does the same with the descriptor: fields added to `oshot_plugin_t` (like `settings`) are only read when the
+plugin's `struct_size` includes them.
+
 ### Threads
 
 All callbacks run on oshot's UI thread. A plugin may start its own threads (for network requests, say). From those:
 
 - `log`, `get_data_dir`, `str_new`/`str_free` and `run_on_ui_thread` can be called;
-- everything else is refused and logged: hand the result to `host->run_on_ui_thread(ctx, fn, user)`, which calls
+- everything else is refused and logged (the `ui_*` functions only once): hand the result to `host->run_on_ui_thread(ctx, fn, user)`, which calls
   `fn(user)` on the UI thread before the plugin is drawn next;
 - stop the threads in `destroy()`: tasks still queued then are dropped.
 
@@ -145,8 +248,8 @@ output-dir = "build/out"                    # must contain exactly one library a
   commands like the ones above work with both shells.
 - The build gets `OSHOT_SDK`, `OSHOT_PLATFORM`, `OSHOT_ARCH`, `OSHOT_TARGET` (e.g. `linux-x86_64`) and
   `OSHOT_VERSION` in its environment.
-- After building, oshotpm loads the library to check its ID, ABI and Dear ImGui version (without calling `init()`),
-  then copies it into the plugin's folder.
+- After building, oshotpm loads the library to check its ID, ABI, Dear ImGui version and settings (without calling
+  `init()`), then copies it into the plugin's folder.
 
 ## Distributing
 

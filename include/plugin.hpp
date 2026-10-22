@@ -26,10 +26,15 @@
 #pragma once
 
 #ifndef DISABLE_PLUGINS
+#  include <atomic>
+#  include <cstddef>
 #  include <map>
 #  include <mutex>
+#  include <span>
+#  include <string>
 #  include <thread>
 #  include <utility>
+#  include <variant>
 #  include <vector>
 
 #  ifndef OSHOT_HOST
@@ -40,6 +45,24 @@
 #  include "toml_api.hpp"
 
 class StateManager;
+
+// Whether a plugin's descriptor has `field`: one built with an older
+// oshot_plugin.h is shorter and ends before the fields added since
+#  define OSHOT_PLUGIN_HAS(plugin, field) \
+      (offsetof(oshot_plugin_t, field) + sizeof(((oshot_plugin_t*)0)->field) <= (plugin)->struct_size)
+
+// The value of a declarative setting: CHOICE settings hold the chosen string
+using setting_value_t = std::variant<bool, int64_t, double, std::string>;
+
+// Mistakes in a plugin's UI code, each logged only once per plugin
+enum class UiWarning : uint32_t
+{
+    OutsideRender = 1 << 0,
+    OffThread     = 1 << 1,
+    OpenSection   = 1 << 2,
+    ExtraEnd      = 1 << 3,
+    ImGuiStack    = 1 << 4,
+};
 
 // A loaded plugin. Lives in g_plugins from load until oshot exits; its address
 // is the oshot_ctx_t the plugin gets, so it must never move.
@@ -64,6 +87,19 @@ struct plugin_runtime_t
     std::mutex                                     tasks_mutex;
     std::vector<std::pair<void (*)(void*), void*>> tasks;
 
+    // plugin->settings as they're in config.toml, and as Preferences shows them until saved
+    std::vector<setting_value_t> settings_saved;
+    std::vector<setting_value_t> settings_editing;
+
+    // While render() or render_preferences() runs: the ui_* functions only work then
+    bool in_ui = false;
+
+    // The ui_begin_section() calls not ended yet, and whether each one is open
+    std::vector<bool> sections;
+
+    // UiWarning bits already logged; atomic because the ui_* functions can be called from any thread
+    std::atomic<uint32_t> warned = 0;
+
     std::string id;
     fs::path    config_path;
     bool        initialized  = false;
@@ -81,6 +117,34 @@ struct plugin_runtime_t
 
     // Runs the queued run_on_ui_thread() tasks. Call it on the UI thread
     void RunUiTasks();
+
+    /**
+     * Call plugin->render() inside the plugin's ImGui ID scope, with the ui_*
+     * functions enabled, and close what it left open. Call it inside a window
+     **/
+    void Render();
+
+    /**
+     * The same for plugin->render_preferences()
+     * @return What render_preferences() returned: true while it has unsaved changes
+     **/
+    bool RenderPreferences();
+
+    /**
+     * Log a mistake in the plugin's UI code, the first time it happens
+     * @param warning Which mistake
+     * @param msg The message, after the plugin's ID
+     **/
+    void WarnOnce(UiWarning warning, std::string_view msg);
+
+    /* The declarative settings, empty if the plugin has none or is too old for them */
+    std::span<const oshot_setting_t> Settings() const;
+
+    /* Read the settings' values from config.toml into settings_saved and settings_editing */
+    void LoadSettings();
+
+    /* Write settings_editing into config.toml (on the next SaveConfig()) */
+    void StoreSettings();
 
     void SaveConfig();
 };

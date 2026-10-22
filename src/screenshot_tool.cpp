@@ -599,7 +599,7 @@ void ScreenshotTool::RenderOverlay()
             {
                 ImGui::BeginChild(
                     "##plugin", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
-                plugin->render(rt.state);
+                rt.Render();
                 ImGui::EndChild();
             }
             ImGui::PopID();
@@ -3493,13 +3493,91 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
 }
 
 #ifndef DISABLE_PLUGINS
+// Draws a plugin's declarative settings, editing rt.settings_editing
+static void draw_plugin_settings(plugin_runtime_t& rt)
+{
+    const std::span<const oshot_setting_t> settings = rt.Settings();
+    for (size_t i = 0; i < settings.size() && i < rt.settings_editing.size(); ++i)
+    {
+        const oshot_setting_t& s   = settings[i];
+        setting_value_t&       val = rt.settings_editing[i];
+
+        ImGui::PushID(s.key);
+        switch (s.kind)
+        {
+            case OSHOT_SETTING_BOOL: ImGui::Checkbox(s.label, &std::get<bool>(val)); break;
+            case OSHOT_SETTING_STRING:
+                if (s.flags & OSHOT_UI_MULTILINE)
+                    ImGui::InputTextMultiline(s.label, &std::get<std::string>(val));
+                else
+                    ImGui::InputText(s.label,
+                                     &std::get<std::string>(val),
+                                     (s.flags & OSHOT_UI_PASSWORD) ? ImGuiInputTextFlags_Password : 0);
+                break;
+            case OSHOT_SETTING_INT:
+            {
+                const int64_t min = static_cast<int64_t>(s.min), max = static_cast<int64_t>(s.max), step = 1;
+                if (min < max)
+                    ImGui::SliderScalar(s.label,
+                                        ImGuiDataType_S64,
+                                        &std::get<int64_t>(val),
+                                        &min,
+                                        &max,
+                                        nullptr,
+                                        ImGuiSliderFlags_AlwaysClamp);
+                else
+                    ImGui::InputScalar(s.label, ImGuiDataType_S64, &std::get<int64_t>(val), &step);
+                break;
+            }
+            case OSHOT_SETTING_FLOAT:
+                if (s.min < s.max)
+                    ImGui::SliderScalar(s.label,
+                                        ImGuiDataType_Double,
+                                        &std::get<double>(val),
+                                        &s.min,
+                                        &s.max,
+                                        "%.3f",
+                                        ImGuiSliderFlags_AlwaysClamp);
+                else
+                    ImGui::InputScalar(s.label, ImGuiDataType_Double, &std::get<double>(val), nullptr, nullptr, "%g");
+                break;
+            case OSHOT_SETTING_CHOICE:
+            {
+                std::string& chosen = std::get<std::string>(val);
+                if (ImGui::BeginCombo(s.label, chosen.c_str()))
+                {
+                    for (size_t j = 0; j < s.n_choices; ++j)
+                    {
+                        const bool selected = chosen == s.choices[j];
+                        ImGui::PushID(static_cast<int>(j));
+                        if (ImGui::Selectable(s.choices[j], selected))
+                            chosen = s.choices[j];
+                        if (selected)
+                            ImGui::SetItemDefaultFocus();
+                        ImGui::PopID();
+                    }
+                    ImGui::EndCombo();
+                }
+                break;
+            }
+        }
+        if (s.help)
+        {
+            ImGui::SameLine();
+            HelpMarker(s.help);
+        }
+        ImGui::PopID();
+    }
+}
+
 static void draw_preference_plugin(auto& plugin_dirty, bool& prefs_modified)
 {
     bool any = false;
     for (auto& [id, rt] : g_plugins)
     {
-        const oshot_plugin_t* pl = rt.plugin;
-        if (!pl->render_preferences)
+        const oshot_plugin_t* pl           = rt.plugin;
+        const bool            has_settings = !rt.Settings().empty();
+        if (!has_settings && !pl->render_preferences)
             continue;
         any = true;
 
@@ -3507,13 +3585,27 @@ static void draw_preference_plugin(auto& plugin_dirty, bool& prefs_modified)
         ImGui::SeparatorText(fmt::format("{} ({})", pl->name, pl->id).c_str());
         ImGui::Spacing();
 
-        ImGui::BeginChild("##plugin_prefs", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AutoResizeY);
-        if (pl->render_preferences(rt.state))
+        if (has_settings)
         {
-            plugin_dirty[id] = true;
-            prefs_modified   = true;
+            draw_plugin_settings(rt);
+            if (rt.settings_editing != rt.settings_saved)
+            {
+                plugin_dirty[id] = true;
+                prefs_modified   = true;
+            }
         }
-        ImGui::EndChild();
+
+        // A custom page goes under the generated settings
+        if (pl->render_preferences)
+        {
+            ImGui::BeginChild("##plugin_prefs", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AutoResizeY);
+            if (rt.RenderPreferences())
+            {
+                plugin_dirty[id] = true;
+                prefs_modified   = true;
+            }
+            ImGui::EndChild();
+        }
 
         ImGui::PopID();
         ImGui::Spacing();
@@ -3673,11 +3765,16 @@ void ScreenshotTool::DrawPreferencesWindow()
 #ifndef DISABLE_PLUGINS
         for (auto& [id, rt] : g_plugins)
         {
-            if (!plugin_dirty[id] || !rt.plugin->on_save_preferences)
+            if (!plugin_dirty[id])
                 continue;
 
-            rt.plugin->on_save_preferences(rt.state);  // the plugin calls host->set_* here, filling rt.config
+            if (rt.settings_editing != rt.settings_saved)
+                rt.StoreSettings();
+            if (rt.plugin->on_save_preferences)
+                rt.plugin->on_save_preferences(rt.state);  // the plugin calls host->set_* here, filling rt.config
             rt.SaveConfig();
+            if (OSHOT_PLUGIN_HAS(rt.plugin, on_settings_saved) && rt.plugin->on_settings_saved)
+                rt.plugin->on_settings_saved(rt.state);
             plugin_dirty[id] = false;
         }
 #endif
@@ -3689,9 +3786,11 @@ void ScreenshotTool::DrawPreferencesWindow()
 #ifndef DISABLE_PLUGINS
         for (auto& [id, rt] : g_plugins)
         {
-            if (!plugin_dirty[id] || !rt.plugin->on_discard_preferences)
+            if (!plugin_dirty[id])
                 continue;
-            rt.plugin->on_discard_preferences(rt.state);
+            rt.settings_editing = rt.settings_saved;
+            if (rt.plugin->on_discard_preferences)
+                rt.plugin->on_discard_preferences(rt.state);
             plugin_dirty[id] = false;
         }
 #endif
@@ -3702,6 +3801,12 @@ void ScreenshotTool::DrawPreferencesWindow()
     {
         config_snapshot = g_config->File;
         theme_snapshot  = g_config->theme_overrides;
+#ifndef DISABLE_PLUGINS
+        // Edits left from a window that closed without Save or Discard are dropped
+        plugin_dirty.clear();
+        for (auto& [id, rt] : g_plugins)
+            rt.LoadSettings();
+#endif
     }
 
     if (config_snapshot != g_config->File || theme_snapshot != g_config->theme_overrides)

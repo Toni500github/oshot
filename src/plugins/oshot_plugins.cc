@@ -32,6 +32,8 @@
 
 #include "cache.hpp"
 #include "fmt/format.h"
+#include "imgui.h"
+#include "imgui_stdlib.h"
 #include "plugin.hpp"
 #include "screenshot_tool.hpp"
 #include "util.hpp"
@@ -350,6 +352,182 @@ static void capture_free(oshot_capture_t* cap)
     cap->w = cap->h = 0;
 }
 
+/* ------------------------------------------------------------------
+ * Widgets: UI thread, inside render() and render_preferences()
+ * ------------------------------------------------------------------ */
+
+// Logs once and returns false anywhere a plugin's UI isn't being drawn
+static bool ui_check(oshot_ctx_t* ctx, const char* func)
+{
+    plugin_runtime_t& rt = rt_of(ctx);
+    if (!on_plugin_ui_thread())
+    {
+        rt.WarnOnce(UiWarning::OffThread,
+                    fmt::format("{}() called outside the UI thread, ignored. Use run_on_ui_thread()", func));
+        return false;
+    }
+    if (!rt.in_ui)
+    {
+        rt.WarnOnce(UiWarning::OutsideRender,
+                    fmt::format("{}() called outside render() and render_preferences(), ignored", func));
+        return false;
+    }
+    return true;
+}
+
+static void ui_text(oshot_ctx_t* ctx, oshot_str_t text, uint32_t flags)
+{
+    if (!ui_check(ctx, "ui_text"))
+        return;
+
+    const char* begin = text.p ? text.p : "";
+    const char* end   = begin + (text.p ? text.len : 0);
+    if (flags & OSHOT_UI_DISABLED)
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    if (flags & OSHOT_UI_WRAPPED)
+        ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(begin, end);
+    if (flags & OSHOT_UI_WRAPPED)
+        ImGui::PopTextWrapPos();
+    if (flags & OSHOT_UI_DISABLED)
+        ImGui::PopStyleColor();
+}
+
+static bool ui_button(oshot_ctx_t* ctx, oshot_str_t label)
+{
+    return ui_check(ctx, "ui_button") && ImGui::Button(to_string(label).c_str());
+}
+
+static bool ui_checkbox(oshot_ctx_t* ctx, oshot_str_t label, bool* value)
+{
+    return value && ui_check(ctx, "ui_checkbox") && ImGui::Checkbox(to_string(label).c_str(), value);
+}
+
+static bool ui_input_text(oshot_ctx_t* ctx, oshot_str_t label, oshot_str_t* value, uint32_t flags)
+{
+    if (!value || !ui_check(ctx, "ui_input_text"))
+        return false;
+
+    // ImGui keeps its own copy while the field is being edited, so a fresh buffer every frame is fine
+    std::string       buf = to_string(*value);
+    const std::string lbl = to_string(label);
+    const bool        changed =
+        (flags & OSHOT_UI_MULTILINE)
+            ? ImGui::InputTextMultiline(lbl.c_str(), &buf)
+            : ImGui::InputText(lbl.c_str(), &buf, (flags & OSHOT_UI_PASSWORD) ? ImGuiInputTextFlags_Password : 0);
+    if (!changed)
+        return false;
+
+    oshot_str_t str = str_new(buf);
+    if (!str.p)
+        return false;  // out of memory: the plugin keeps its old string
+    str_free(value);
+    *value = str;
+    return true;
+}
+
+static bool ui_combo(oshot_ctx_t* ctx, oshot_str_t label, int32_t* current, const oshot_str_t* items, size_t n)
+{
+    if (!current || (!items && n > 0) || !ui_check(ctx, "ui_combo"))
+        return false;
+
+    const bool        valid   = *current >= 0 && static_cast<size_t>(*current) < n;
+    const std::string preview = valid ? to_string(items[*current]) : std::string();
+    bool              changed = false;
+    if (ImGui::BeginCombo(to_string(label).c_str(), preview.c_str()))
+    {
+        for (size_t i = 0; i < n; ++i)
+        {
+            const bool selected = valid && static_cast<size_t>(*current) == i;
+            ImGui::PushID(static_cast<int>(i));  // items may repeat
+            if (ImGui::Selectable(to_string(items[i]).c_str(), selected))
+            {
+                *current = static_cast<int32_t>(i);
+                changed  = true;
+            }
+            if (selected)
+                ImGui::SetItemDefaultFocus();
+            ImGui::PopID();
+        }
+        ImGui::EndCombo();
+    }
+    return changed;
+}
+
+static bool ui_slider_int(oshot_ctx_t* ctx, oshot_str_t label, int64_t* value, int64_t min, int64_t max)
+{
+    return value && ui_check(ctx, "ui_slider_int") &&
+           ImGui::SliderScalar(
+               to_string(label).c_str(), ImGuiDataType_S64, value, &min, &max, nullptr, ImGuiSliderFlags_AlwaysClamp);
+}
+
+static bool ui_slider_float(oshot_ctx_t* ctx, oshot_str_t label, double* value, double min, double max)
+{
+    return value && ui_check(ctx, "ui_slider_float") &&
+           ImGui::SliderScalar(
+               to_string(label).c_str(), ImGuiDataType_Double, value, &min, &max, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+}
+
+static bool ui_color(oshot_ctx_t* ctx, oshot_str_t label, float rgba[4])
+{
+    return rgba && ui_check(ctx, "ui_color") && ImGui::ColorEdit4(to_string(label).c_str(), rgba);
+}
+
+static void ui_progress(oshot_ctx_t* ctx, float fraction, oshot_str_t overlay)
+{
+    if (!ui_check(ctx, "ui_progress"))
+        return;
+    const std::string text = to_string(overlay);
+    ImGui::ProgressBar(fraction, ImVec2(-FLT_MIN, 0.0f), text.empty() ? nullptr : text.c_str());
+}
+
+static void ui_separator(oshot_ctx_t* ctx, oshot_str_t label)
+{
+    if (!ui_check(ctx, "ui_separator"))
+        return;
+    if (!label.p || label.len == 0)
+        ImGui::Separator();
+    else
+        ImGui::SeparatorText(to_string(label).c_str());
+}
+
+static void ui_same_line(oshot_ctx_t* ctx)
+{
+    if (ui_check(ctx, "ui_same_line"))
+        ImGui::SameLine();
+}
+
+static void ui_tooltip(oshot_ctx_t* ctx, oshot_str_t text)
+{
+    if (ui_check(ctx, "ui_tooltip"))
+        ImGui::SetItemTooltip("%s", to_string(text).c_str());
+}
+
+static bool ui_begin_section(oshot_ctx_t* ctx, oshot_str_t label)
+{
+    if (!ui_check(ctx, "ui_begin_section"))
+        return false;
+    const bool open = ImGui::TreeNodeEx(to_string(label).c_str(), ImGuiTreeNodeFlags_SpanAvailWidth);
+    rt_of(ctx).sections.push_back(open);
+    return open;
+}
+
+static void ui_end_section(oshot_ctx_t* ctx)
+{
+    if (!ui_check(ctx, "ui_end_section"))
+        return;
+
+    plugin_runtime_t& rt = rt_of(ctx);
+    if (rt.sections.empty())
+    {
+        rt.WarnOnce(UiWarning::ExtraEnd, "ui_end_section() without ui_begin_section(), ignored");
+        return;
+    }
+    if (rt.sections.back())
+        ImGui::TreePop();
+    rt.sections.pop_back();
+}
+
 const oshot_host_t g_oshot_host = {
     .struct_size   = sizeof(oshot_host_t),
     .abi_version   = OSHOT_API_VERSION,
@@ -375,4 +553,18 @@ const oshot_host_t g_oshot_host = {
     .set_text         = set_text,
     .get_capture      = get_capture,
     .capture_free     = capture_free,
+    .ui_text          = ui_text,
+    .ui_button        = ui_button,
+    .ui_checkbox      = ui_checkbox,
+    .ui_input_text    = ui_input_text,
+    .ui_combo         = ui_combo,
+    .ui_slider_int    = ui_slider_int,
+    .ui_slider_float  = ui_slider_float,
+    .ui_color         = ui_color,
+    .ui_progress      = ui_progress,
+    .ui_separator     = ui_separator,
+    .ui_same_line     = ui_same_line,
+    .ui_tooltip       = ui_tooltip,
+    .ui_begin_section = ui_begin_section,
+    .ui_end_section   = ui_end_section,
 };

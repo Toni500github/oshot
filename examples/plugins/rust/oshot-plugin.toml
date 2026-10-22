@@ -3,8 +3,7 @@ name = "oshot-example-rust"
 url = "https://github.com/Toni500github/oshot/tree/main/examples/plugins/rust"
 
 [dependencies]
-all = ["cargo and rustc 1.85 or newer", "libclang, for bindgen"]
-windows = ["Rust's GNU toolchain and clang (MSYS2's rust and clang packages), not the MSVC ones"]
+all = ["cargo and rustc 1.85 or newer"]
 
 [uppercase-rust]
 id = "io.github.toni500github.uppercase-rust"

@@ -14,14 +14,13 @@ pub fn build(b: *std.Build) void {
         std.debug.panic("oshot's plugin SDK wasn't found: pass -Dsdk=<folder with include/oshot/oshot_plugin.h>", .{});
     const sdk: std.Build.LazyPath = .{ .cwd_relative = sdk_path };
 
-    // The SDK headers become the "c" module, so the plugin always uses the
+    // oshot_plugin.h becomes the "c" module, so the plugin always uses the
     // structs and version numbers of the oshot it's built for
     const headers = b.addTranslateC(.{
-        .root_source_file = b.path("src/oshot.h"),
+        .root_source_file = sdk.path(b, "include/oshot/oshot_plugin.h"),
         .target = target,
         .optimize = optimize,
     });
-    headers.addIncludePath(sdk.path(b, "include"));
 
     const mod = b.createModule(.{
         .root_source_file = b.path("src/uppercase.zig"),
@@ -36,15 +35,6 @@ pub fn build(b: *std.Build) void {
         .linkage = .dynamic,
         .root_module = mod,
     });
-
-    // cimgui comes from oshot: Linux and the BSDs resolve it when oshot loads
-    // the plugin, macOS needs to be told to, Windows links its import library
-    if (target.result.os.tag == .windows) {
-        mod.addLibraryPath(sdk.path(b, "lib"));
-        mod.linkSystemLibrary("cimgui", .{});
-    } else {
-        lib.linker_allow_shlib_undefined = true;
-    }
 
     // Only the library, without the Windows import library or debug files,
     // as oshotpm wants a folder with exactly one library

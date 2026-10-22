@@ -1,0 +1,18 @@
+[repository]
+name = "oshot-example-cimgui"
+url = "https://github.com/Toni500github/oshot/tree/main/examples/plugins/cimgui"
+
+[dependencies]
+all = ["cmake", "a C compiler"]
+
+[line-lengths]
+id = "io.github.toni500github.line-lengths"
+description = "Shows a histogram of the extracted text's line lengths, an example plugin that uses cimgui"
+authors = ["Toni500github"]
+licenses = ["Unlicense"]
+platforms = ["all"]
+build-steps = [
+    "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
+    "cmake --build build --config Release",
+]
+output-dir = "build/out"

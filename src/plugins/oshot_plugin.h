@@ -32,10 +32,13 @@
  * oshot_plugin_entry(), returning a static oshot_plugin_t. oshot calls into
  * the plugin through that descriptor, and the plugin calls back into oshot
  * only through the oshot_host_t table it gets in init(). Plugins don't link
- * against oshot. A plugin that draws UI uses Dear ImGui through cimgui
- * (oshot/cimgui.h): on Linux and the BSDs it doesn't need to link anything,
- * on macOS it links with `-undefined dynamic_lookup`, and on Windows it links
- * the libcimgui import library from the SDK (sdk/lib).
+ * against oshot. A plugin draws its UI with the ui_* host functions and
+ * declares its settings in `settings`, which oshot draws in Preferences.
+ * For anything those can't draw, a plugin can use Dear ImGui through cimgui
+ * (oshot/cimgui.h), but then it only loads in an oshot built with the same
+ * ImGui (see OSHOT_IMGUI_VERSION). Such a plugin doesn't need to link anything
+ * on Linux and the BSDs, links with `-undefined dynamic_lookup` on macOS, and
+ * links the libcimgui import library from the SDK (sdk/lib) on Windows.
  *
  * Threads: callbacks in oshot_plugin_t run on oshot's UI thread. Host
  * functions marked "any thread" may be called from threads the plugin
@@ -58,13 +61,30 @@ extern "C" {
 /**
  * IMGUI_VERSION_NUM of the Dear ImGui that oshot and oshot/cimgui.h are built
  * from. cimgui exposes ImGui's structs, so a plugin that uses it only works
- * with the exact same ImGui version.
+ * with the exact same ImGui version. oshot updates ImGui only in minor
+ * releases (x.y.0). Plugins that use only the ui_* functions don't depend on it.
  **/
 #define OSHOT_IMGUI_VERSION 19284u
 
 /* Text buffers that get_text()/set_text() accept */
 #define OSHOT_TEXT_OCR     "ocr_output"
 #define OSHOT_TEXT_BARCODE "barcode_output"
+
+/* Flags of host->ui_text() */
+#define OSHOT_UI_DISABLED (1u << 0) /* greyed out */
+#define OSHOT_UI_WRAPPED  (1u << 1) /* wrapped at the window's edge */
+
+/* Flags of host->ui_input_text() and of OSHOT_SETTING_STRING settings */
+#define OSHOT_UI_MULTILINE (1u << 2)
+#define OSHOT_UI_PASSWORD  (1u << 3) /* shown as dots; ignored with MULTILINE */
+
+/**
+ * Whether the running oshot's host table has `field`, for functions added
+ * after the plugin API's first version:
+ *     if (!OSHOT_HOST_HAS(host, ui_button)) ...
+ **/
+#define OSHOT_HOST_HAS(host, field) \
+    (offsetof(oshot_host_t, field) + sizeof(((oshot_host_t*)0)->field) <= (host)->struct_size)
 
 #if defined(OSHOT_HOST)
 #  define OSHOT_PLUGIN_EXPORT
@@ -150,6 +170,39 @@ typedef struct
     int32_t     psm;        /* tesseract::PageSegMode value */
 } oshot_ocr_result_t;
 
+/**
+ * The type of a declarative setting, and the oshot_value_t kind of its
+ * fallback and of the value in config.toml.
+ **/
+typedef enum
+{
+    OSHOT_SETTING_BOOL,   /* a checkbox; OSHOT_VAL_BOOL */
+    OSHOT_SETTING_STRING, /* a text field; OSHOT_VAL_STRING */
+    OSHOT_SETTING_INT,    /* a slider, or a number field without min/max; OSHOT_VAL_INT64 */
+    OSHOT_SETTING_FLOAT,  /* the same, OSHOT_VAL_DOUBLE */
+    OSHOT_SETTING_CHOICE  /* a combo box; OSHOT_VAL_STRING, one of `choices` */
+} oshot_setting_kind_t;
+
+/**
+ * A setting oshot draws in Preferences > Plugins and saves to the plugin's
+ * config.toml under `key`. The plugin reads it with get_bool, get_string,
+ * get_int64 or get_double with the same key and fallback. Every pointer
+ * must stay valid while the plugin is loaded (string literals, static arrays).
+ * The layout is fixed: oshot reads the array with this struct's size.
+ **/
+typedef struct
+{
+    oshot_setting_kind_t kind;
+    const char*          key; /* config.toml key; dots for nested tables */
+    const char*          label;
+    const char*          help;     /* tooltip, or NULL */
+    oshot_value_t        fallback; /* the default, of the kind `kind` says */
+    double               min, max; /* INT and FLOAT: a slider from min to max, or a plain field if min == max */
+    const char* const*   choices;  /* CHOICE: the options, stored as the chosen string */
+    size_t               n_choices;
+    uint32_t             flags; /* STRING: OSHOT_UI_MULTILINE, OSHOT_UI_PASSWORD */
+} oshot_setting_t;
+
 /* ------------------------------------------------------------------
  * Host functions, passed to init(). Fields are only ever appended:
  * check host->struct_size before using one added in a later version.
@@ -221,6 +274,45 @@ typedef struct
      **/
     oshot_capture_t (*get_capture)(oshot_ctx_t* ctx);
     void (*capture_free)(oshot_capture_t* cap);
+
+    /**
+     * Widgets, drawn with oshot's style and fonts. Check OSHOT_HOST_HAS(host,
+     * ui_text) before using them. UI thread only, and only inside render()
+     * and render_preferences(): anywhere else they do nothing and log once.
+     *
+     * Labels and text are drawn as they are, never read as format strings.
+     * A label must be unique within the plugin's section: add "##suffix" to
+     * tell apart widgets with the same text ("Copy##url"), the part after
+     * "##" isn't shown. Functions returning bool return true when the person
+     * pressed or changed the widget in this frame.
+     **/
+    void (*ui_text)(oshot_ctx_t* ctx, oshot_str_t text, uint32_t flags); /* OSHOT_UI_DISABLED, OSHOT_UI_WRAPPED */
+    bool (*ui_button)(oshot_ctx_t* ctx, oshot_str_t label);
+    bool (*ui_checkbox)(oshot_ctx_t* ctx, oshot_str_t label, bool* value);
+    /**
+     * `value` must be a host string (from str_new, get_string, ...) or empty
+     * ({ NULL, 0 }). When it changes, oshot frees it and stores a new host
+     * string, which the plugin frees with str_free when done with it.
+     * flags: OSHOT_UI_MULTILINE, OSHOT_UI_PASSWORD
+     **/
+    bool (*ui_input_text)(oshot_ctx_t* ctx, oshot_str_t label, oshot_str_t* value, uint32_t flags);
+    /* A combo box with items[0..n); *current is the selected index */
+    bool (*ui_combo)(oshot_ctx_t* ctx, oshot_str_t label, int32_t* current, const oshot_str_t* items, size_t n);
+    bool (*ui_slider_int)(oshot_ctx_t* ctx, oshot_str_t label, int64_t* value, int64_t min, int64_t max);
+    bool (*ui_slider_float)(oshot_ctx_t* ctx, oshot_str_t label, double* value, double min, double max);
+    bool (*ui_color)(oshot_ctx_t* ctx, oshot_str_t label, float rgba[4]); /* components in 0-1 */
+    /* fraction in 0-1; overlay is drawn on the bar, or the percentage if it's empty */
+    void (*ui_progress)(oshot_ctx_t* ctx, float fraction, oshot_str_t overlay);
+    void (*ui_separator)(oshot_ctx_t* ctx, oshot_str_t label); /* empty label = a plain line */
+    void (*ui_same_line)(oshot_ctx_t* ctx);                    /* the next widget goes on the same line */
+    void (*ui_tooltip)(oshot_ctx_t* ctx, oshot_str_t text);    /* shown when hovering the previous widget */
+    /**
+     * A collapsible section: returns true when it's open, then draw its
+     * contents. Call ui_end_section() after it either way. Sections left open
+     * when the callback returns are closed by oshot, and logged.
+     **/
+    bool (*ui_begin_section)(oshot_ctx_t* ctx, oshot_str_t label);
+    void (*ui_end_section)(oshot_ctx_t* ctx);
 } oshot_host_t;
 
 /* ------------------------------------------------------------------
@@ -230,8 +322,8 @@ typedef struct
 {
     uint32_t struct_size;   /* sizeof(oshot_plugin_t) */
     uint32_t abi_version;   /* OSHOT_API_VERSION */
-    uint32_t imgui_version; /* OSHOT_IMGUI_VERSION, or 0 if the plugin doesn't use ImGui
-                               (then render and render_preferences must be NULL) */
+    uint32_t imgui_version; /* OSHOT_IMGUI_VERSION if the plugin calls cimgui, or 0 if it doesn't
+                               (it may still draw with the ui_* host functions) */
 
     /**
      * Reverse-domain ID, e.g. "io.github.user.translate": lowercase letters,
@@ -265,13 +357,29 @@ typedef struct
     void (*on_ocr_done)(void* state, const oshot_ocr_result_t* result);
 
     /**
-     * Draws the plugin's settings in Preferences > Plugins. Return true while
-     * there are unsaved changes; oshot then calls on_save_preferences or
+     * Draws a custom page in Preferences > Plugins, under the declarative
+     * `settings`; most plugins only need those. Return true while there are
+     * unsaved changes; oshot then calls on_save_preferences or
      * on_discard_preferences when the person saves or discards them.
      **/
     bool (*render_preferences)(void* state);
     void (*on_save_preferences)(void* state);
     void (*on_discard_preferences)(void* state);
+
+    /* Added after the first version: oshot checks struct_size before reading them. */
+
+    /**
+     * Settings oshot draws, saves and discards in Preferences > Plugins: a
+     * static array of n_settings, in the order they're shown. NULL for none.
+     **/
+    const oshot_setting_t* settings;
+    size_t                 n_settings;
+
+    /**
+     * After the person saved this plugin's preferences (settings and
+     * render_preferences) to config.toml: re-read the values that matter.
+     **/
+    void (*on_settings_saved)(void* state);
 } oshot_plugin_t;
 
 /**

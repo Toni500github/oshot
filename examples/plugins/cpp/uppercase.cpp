@@ -3,26 +3,26 @@
  * RAII for the strings oshot returns, and static noexcept functions as the
  * C callbacks.
  *
- * - render():             a button that uppercases the text, and the selection's size
- * - on_ocr_done():        optionally uppercases new text right away
- * - render_preferences(): a setting for that, plus a prefix, saved in the plugin's config.toml
+ * - render():      a button that uppercases the text, and the selection's size
+ * - on_ocr_done(): optionally uppercases new text right away
+ * - settings:      that option and a prefix, which oshot draws in Preferences > Plugins
+ *                  and saves in the plugin's config.toml
+ *
+ * It draws only with the host's ui_* functions (imgui_version = 0).
  *
  * Build it with the CMakeLists.txt next to it, or install the folder with
  * `oshotpm install <this folder>`. See docs/plugins.md. Public domain (Unlicense).
  */
 
-#define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <cstring>
 #include <iterator>
 #include <new>
 #include <optional>
 #include <string>
 #include <string_view>
 
-#include "oshot/cimgui.h"
 #include "oshot/oshot_plugin.h"
 
 namespace
@@ -45,15 +45,26 @@ private:
     oshot_str_t         m_str;
 };
 
-struct Prefs
+oshot_str_t borrow(std::string_view s)
 {
-    bool                 auto_uppercase = false; /* uppercase as soon as OCR is done */
-    std::array<char, 64> prefix{};               /* put before the uppercased text; a buffer for igInputText */
+    return { s.data(), s.size() };
+}
 
-    bool operator==(const Prefs& other) const
-    {
-        return auto_uppercase == other.auto_uppercase && std::strcmp(prefix.data(), other.prefix.data()) == 0;
-    }
+/* oshot draws these in Preferences > Plugins and saves them in config.toml */
+constexpr std::array settings = {
+    oshot_setting_t{
+        .kind     = OSHOT_SETTING_BOOL,
+        .key      = "auto-uppercase",
+        .label    = "Uppercase as soon as text is extracted",
+        .fallback = { .kind = OSHOT_VAL_BOOL, .b = false },
+    },
+    oshot_setting_t{
+        .kind     = OSHOT_SETTING_STRING,
+        .key      = "prefix",
+        .label    = "Prefix",
+        .help     = "Put before the uppercased text",
+        .fallback = { .kind = OSHOT_VAL_STRING, .s = { "", 0 } },
+    },
 };
 
 class UppercasePlugin
@@ -61,19 +72,20 @@ class UppercasePlugin
 public:
     UppercasePlugin(const oshot_host_t* host, oshot_ctx_t* ctx) : m_host(host), m_ctx(ctx)
     {
-        m_saved.auto_uppercase = host->get_bool(ctx, OSHOT_STORE_CONFIG, "auto-uppercase", false);
-
-        const HostString prefix(host, host->get_string(ctx, OSHOT_STORE_CONFIG, "prefix", oshot_str_borrow("")));
-        const std::string_view sv = prefix.view().substr(0, m_saved.prefix.size() - 1);
-        std::copy(sv.begin(), sv.end(), m_saved.prefix.begin());
-        m_editing = m_saved;
-
+        read_settings();
         log(OSHOT_LOG_INFO, "uppercase plugin (C++) loaded");
+    }
+
+    /* Reads the settings with the same keys and fallbacks as `settings` */
+    void read_settings()
+    {
+        m_auto_uppercase = m_host->get_bool(m_ctx, OSHOT_STORE_CONFIG, "auto-uppercase", false);
+        m_prefix = HostString(m_host, m_host->get_string(m_ctx, OSHOT_STORE_CONFIG, "prefix", borrow(""))).view();
     }
 
     void render()
     {
-        if (igButton("Uppercase the OCR output", ImVec2_c{ 0, 0 }))
+        if (m_host->ui_button(m_ctx, borrow("Uppercase the OCR output")))
         {
             if (const std::optional<std::string> text = get_text(OSHOT_TEXT_OCR))
                 uppercase_text(*text);
@@ -86,43 +98,29 @@ public:
         }
 
         if (m_cap_w > 0)
-            igTextDisabled("Selection: %dx%d", m_cap_w, m_cap_h);
+        {
+            const std::string line = "Selection: " + std::to_string(m_cap_w) + "x" + std::to_string(m_cap_h);
+            m_host->ui_text(m_ctx, borrow(line), OSHOT_UI_DISABLED);
+        }
     }
 
     void on_ocr_done(const oshot_ocr_result_t& result)
     {
-        if (m_saved.auto_uppercase)
+        if (m_auto_uppercase)
             uppercase_text(std::string_view(result.text.p, result.text.len));
     }
-
-    bool render_preferences()
-    {
-        igCheckbox("Uppercase as soon as text is extracted", &m_editing.auto_uppercase);
-        igInputText("Prefix", m_editing.prefix.data(), m_editing.prefix.size(), ImGuiInputTextFlags_None, nullptr,
-                    nullptr);
-
-        return !(m_editing == m_saved);
-    }
-
-    void on_save_preferences()
-    {
-        m_saved = m_editing;
-        m_host->set_bool(m_ctx, OSHOT_STORE_CONFIG, "auto-uppercase", m_saved.auto_uppercase);
-        m_host->set_string(m_ctx, OSHOT_STORE_CONFIG, "prefix", oshot_str_borrow(m_saved.prefix.data()));
-    }
-
-    void on_discard_preferences() { m_editing = m_saved; }
 
 private:
     const oshot_host_t* m_host;
     oshot_ctx_t*        m_ctx;
 
-    Prefs m_saved;   /* what's in config.toml */
-    Prefs m_editing; /* what the Preferences window shows, until saved */
+    /* The settings, as last saved */
+    bool        m_auto_uppercase = false; /* uppercase as soon as OCR is done */
+    std::string m_prefix;                 /* put before the uppercased text */
 
     int32_t m_cap_w = 0, m_cap_h = 0; /* size of the selection when "Uppercase" was last pressed */
 
-    void log(oshot_log_level_t level, const char* msg) { m_host->log(m_ctx, level, oshot_str_borrow(msg)); }
+    void log(oshot_log_level_t level, std::string_view msg) { m_host->log(m_ctx, level, borrow(msg)); }
 
     std::optional<std::string> get_text(const char* id)
     {
@@ -135,12 +133,12 @@ private:
     /* Replaces oshot's OCR output with prefix + UPPERCASE(text) */
     void uppercase_text(std::string_view text)
     {
-        std::string out = m_saved.prefix.data();
+        std::string out = m_prefix;
         out.reserve(out.size() + text.size());
         std::transform(text.begin(), text.end(), std::back_inserter(out),
                        [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
 
-        m_host->set_text(m_ctx, OSHOT_TEXT_OCR, oshot_str_t{ out.data(), out.size() });
+        m_host->set_text(m_ctx, OSHOT_TEXT_OCR, borrow(out));
     }
 };
 
@@ -154,6 +152,13 @@ UppercasePlugin* self(void* state)
 
 bool plugin_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state) noexcept
 {
+    /* The ui_* functions came after the first plugin API: check the last one */
+    if (!OSHOT_HOST_HAS(host, ui_end_section))
+    {
+        host->log(ctx, OSHOT_LOG_ERROR, borrow("this oshot is too old for this plugin: update it"));
+        return false;
+    }
+
     auto* plugin = new (std::nothrow) UppercasePlugin(host, ctx);
     *state       = plugin;
     return plugin != nullptr;
@@ -174,34 +179,24 @@ void plugin_on_ocr_done(void* state, const oshot_ocr_result_t* result) noexcept
     self(state)->on_ocr_done(*result);
 }
 
-bool plugin_render_preferences(void* state) noexcept
+void plugin_on_settings_saved(void* state) noexcept
 {
-    return self(state)->render_preferences();
-}
-
-void plugin_on_save_preferences(void* state) noexcept
-{
-    self(state)->on_save_preferences();
-}
-
-void plugin_on_discard_preferences(void* state) noexcept
-{
-    self(state)->on_discard_preferences();
+    self(state)->read_settings();
 }
 
 constexpr oshot_plugin_t descriptor = {
-    .struct_size            = sizeof(oshot_plugin_t),
-    .abi_version            = OSHOT_API_VERSION,
-    .imgui_version          = OSHOT_IMGUI_VERSION,
-    .id                     = "io.github.toni500github.uppercase-cpp",
-    .name                   = "Uppercase (C++)",
-    .init                   = plugin_init,
-    .destroy                = plugin_destroy,
-    .render                 = plugin_render,
-    .on_ocr_done            = plugin_on_ocr_done,
-    .render_preferences     = plugin_render_preferences,
-    .on_save_preferences    = plugin_on_save_preferences,
-    .on_discard_preferences = plugin_on_discard_preferences,
+    .struct_size       = sizeof(oshot_plugin_t),
+    .abi_version       = OSHOT_API_VERSION,
+    .imgui_version     = 0, /* no cimgui */
+    .id                = "io.github.toni500github.uppercase-cpp",
+    .name              = "Uppercase (C++)",
+    .init              = plugin_init,
+    .destroy           = plugin_destroy,
+    .render            = plugin_render,
+    .on_ocr_done       = plugin_on_ocr_done,
+    .settings          = settings.data(),
+    .n_settings        = settings.size(),
+    .on_settings_saved = plugin_on_settings_saved,
 };
 
 }  // namespace

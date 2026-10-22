@@ -12,6 +12,3 @@ crate-type = ["cdylib"]
 
 [profile.release]
 panic = "abort"
-
-[build-dependencies]
-bindgen = "0.73"

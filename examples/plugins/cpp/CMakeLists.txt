@@ -23,12 +23,3 @@ foreach(config ${CMAKE_CONFIGURATION_TYPES})
     string(TOUPPER "${config}" config)
     set_target_properties(uppercase_cpp PROPERTIES LIBRARY_OUTPUT_DIRECTORY_${config} "${CMAKE_BINARY_DIR}/out")
 endforeach()
-
-# cimgui comes from oshot: Linux and the BSDs resolve it when oshot loads the
-# plugin, macOS needs to be told to, Windows links its import library
-if(WIN32)
-    find_library(CIMGUI_LIB NAMES cimgui libcimgui PATHS "${OSHOT_SDK}/lib" NO_DEFAULT_PATH REQUIRED)
-    target_link_libraries(uppercase_cpp PRIVATE "${CIMGUI_LIB}")
-elseif(APPLE)
-    target_link_options(uppercase_cpp PRIVATE -undefined dynamic_lookup)
-endif()

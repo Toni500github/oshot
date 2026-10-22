@@ -76,7 +76,7 @@ endmacro()
 # -----------------------------
 add_option(DISABLE_PLUGINS "Disable plugins support" ON ON)
 add_option(MACOS_OPENGL "Draw the overlay with OpenGL instead of Metal on macOS, for VMs without Metal" OFF ON)
-add_option(BUILD_EXAMPLES "Build the C and C++ example plugins (needs plugins)" OFF OFF)
+add_option(BUILD_EXAMPLES "Build the C, C++ and cimgui example plugins (needs plugins)" OFF OFF)
 
 # Arch-style default; Debian sets it empty, as the license goes into
 # /usr/share/doc/oshot/copyright there
@@ -853,9 +853,9 @@ if(NOT DISABLE_PLUGINS)
         )
     endif()
 
-    # The C and C++ example plugins, with -DBUILD_EXAMPLES=ON; CI builds them so
-    # it checks they compile everywhere. Not installed. The Rust and Zig ones
-    # need their own toolchains.
+    # The C, C++ and cimgui example plugins, with -DBUILD_EXAMPLES=ON; CI
+    # builds them so it checks they compile everywhere. Not installed. The
+    # Rust and Zig ones need their own toolchains.
     if(BUILD_EXAMPLES)
         add_library(
             oshot_example_uppercase
@@ -869,11 +869,22 @@ if(NOT DISABLE_PLUGINS)
             examples/plugins/cpp/uppercase.cpp
             ${OSHOT_SDK_HEADERS}
         )
+        add_library(
+            oshot_example_line_lengths
+            MODULE
+            examples/plugins/cimgui/line_lengths.c
+            ${OSHOT_SDK_HEADERS}
+        )
         set_target_properties(
             oshot_example_uppercase_cpp
             PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON
         )
-        foreach(example oshot_example_uppercase oshot_example_uppercase_cpp)
+        foreach(
+            example
+            oshot_example_uppercase
+            oshot_example_uppercase_cpp
+            oshot_example_line_lengths
+        )
             target_include_directories(
                 ${example}
                 PRIVATE "${OSHOT_SDK_DIR}/include"
@@ -885,13 +896,17 @@ if(NOT DISABLE_PLUGINS)
                     CXX_VISIBILITY_PRESET hidden
                     VISIBILITY_INLINES_HIDDEN ON
             )
-            add_dependencies(${example} cimgui)
-            if(WIN32)
-                target_link_libraries(${example} PRIVATE cimgui)
-            elseif(APPLE)
-                target_link_options(${example} PRIVATE -undefined dynamic_lookup)
-            endif()
         endforeach()
+        # Only the cimgui one uses cimgui
+        add_dependencies(oshot_example_line_lengths cimgui)
+        if(WIN32)
+            target_link_libraries(oshot_example_line_lengths PRIVATE cimgui)
+        elseif(APPLE)
+            target_link_options(
+                oshot_example_line_lengths
+                PRIVATE -undefined dynamic_lookup
+            )
+        endif()
     endif()
 endif()
 
