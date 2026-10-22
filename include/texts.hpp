@@ -367,7 +367,8 @@ MenuBarBg = "#090B0FFF"
 PlotHistogram = "#5274F0FF"
 )");
 
-inline constexpr std::string_view AUTO_MANIFEST = R"(# oshot plugin manifest. See docs/plugins.md in the oshot repository.
+inline constexpr std::string_view AUTO_MANIFEST =
+    R"(# oshot plugin manifest. See docs/plugins.md in the oshot repository.
 
 [repository]
 # The repository name, used by `oshotpm uninstall` and the like.

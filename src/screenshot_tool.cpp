@@ -623,8 +623,8 @@ void ScreenshotTool::RenderOverlay()
 
     // ImGui's NewFrame() already closed the menu or popup that was open on this Esc:
     // that is all the Esc should do, not close the overlay as well
-    const bool popup_was_open = std::exchange(
-        m_popup_open, ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
+    const bool popup_was_open =
+        std::exchange(m_popup_open, ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
     if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !disable_esc && !popup_was_open)
         Cancel();
 }
@@ -2635,8 +2635,8 @@ void ScreenshotTool::DrawAnnotationToolbar()
         size_t n_buttons = 0;
         for (size_t i = 1; i < idx(ToolType::COUNT); ++i)
             n_buttons += has_toolbar_button(toe<ToolType>(i)) ? 1 : 0;
-        const float toolbar_w = (float(n_buttons) * (btn.x + style.ItemSpacing.x)) - style.ItemSpacing.x +
-                                (style.WindowPadding.x * 2.0f);
+        const float toolbar_w =
+            (float(n_buttons) * (btn.x + style.ItemSpacing.x)) - style.ItemSpacing.x + (style.WindowPadding.x * 2.0f);
         const float toolbar_h = btn.y + (style.WindowPadding.y * 2.0f);
 
         const float below_y = sel_y + sel_h + TOOLBAR_OFFSET;
@@ -3579,7 +3579,7 @@ static void draw_plugin_settings(plugin_runtime_t& rt)
                 break;
             case OSHOT_SETTING_CHOICE:
             {
-                std::string& chosen = std::get<std::string>(val);
+                auto& chosen = std::get<std::string>(val);
                 if (ImGui::BeginCombo(s.label, chosen.c_str()))
                 {
                     for (size_t j = 0; j < s.n_choices; ++j)
@@ -4445,7 +4445,7 @@ void ScreenshotTool::FetchIndexAsync()
     });
 }
 
-void ScreenshotTool::StartPluginTask(std::string title, std::function<Result<>(PluginManager&)> task)
+void ScreenshotTool::StartPluginTask(const std::string& title, std::function<Result<>(PluginManager&)> task)
 {
     // The buttons that start a task are disabled while one runs: just a safety net
     if (m_install_state && m_install_state->running)
@@ -4661,7 +4661,7 @@ void ScreenshotTool::DrawManagePluginsWindow()
                     pending_uninstall = repo.name;
                     pending_label =
                         i18n::tr_n_fmt("'{}' and its {} plugin", "'{}' and its {} plugins", count, repo.name, count);
-                    request_confirm   = true;
+                    request_confirm = true;
                 }
                 ImGui::Spacing();
 
@@ -4974,7 +4974,7 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
 
         if (!install_id.empty())
         {
-            const index_plugin_t* p     = m_index_state->index.Find(install_id);
+            const index_plugin_t* p = m_index_state->index.Find(install_id);
             const std::string     title =
                 install_update ? i18n::tr_fmt("Updating {}", p->name) : i18n::tr_fmt("Installing {}", p->name);
             StartPluginTask(title, [install_id, install_update](PluginManager& pm) {

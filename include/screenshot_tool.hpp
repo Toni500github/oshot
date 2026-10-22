@@ -495,7 +495,7 @@ public:
     // Getters
     // ------------------------------
     // Top-left corner of the screenshot on screen: it's drawn centered
-    const point_t GetImageOrigin() const { return { .x = m_image_origin.x, .y = m_image_origin.y }; }
+    [[nodiscard]] const point_t GetImageOrigin() const { return { .x = m_image_origin.x, .y = m_image_origin.y }; }
 
     // Screenshot pixels per screen unit: above 1 on a scaled (HiDPI) output when
     // the backend renders at full resolution, see SetFullResolutionImage()

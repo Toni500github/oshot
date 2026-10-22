@@ -34,6 +34,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <thread>
+#include <utility>
 
 #include "cache.hpp"
 #include "clipboard.hpp"
@@ -450,14 +451,14 @@ static bool ui_combo(oshot_ctx_t* ctx, oshot_str_t label, int32_t* current, cons
     if (!current || (!items && n > 0) || !ui_check(ctx, "ui_combo"))
         return false;
 
-    const bool        valid   = *current >= 0 && static_cast<size_t>(*current) < n;
+    const bool        valid   = *current >= 0 && std::cmp_less(*current, n);
     const std::string preview = valid ? to_string(items[*current]) : std::string();
     bool              changed = false;
     if (ImGui::BeginCombo(to_string(label).c_str(), preview.c_str()))
     {
         for (size_t i = 0; i < n; ++i)
         {
-            const bool selected = valid && static_cast<size_t>(*current) == i;
+            const bool selected = valid && std::cmp_equal(*current, i);
             ImGui::PushID(static_cast<int>(i));  // items may repeat
             if (ImGui::Selectable(to_string(items[i]).c_str(), selected))
             {

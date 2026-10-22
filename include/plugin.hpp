@@ -58,7 +58,7 @@ class StateManager;
 using setting_value_t = std::variant<bool, int64_t, double, std::string>;
 
 // Mistakes in a plugin's UI code, each logged only once per plugin
-enum class UiWarning : uint32_t
+enum class UiWarning : uint32_t  // NOLINT
 {
     OutsideRender = 1 << 0,
     OffThread     = 1 << 1,
@@ -178,7 +178,7 @@ struct plugin_runtime_t
     void WarnOnce(UiWarning warning, std::string_view msg);
 
     /* The declarative settings, empty if the plugin has none or is too old for them */
-    std::span<const oshot_setting_t> Settings() const;
+    [[nodiscard]] std::span<const oshot_setting_t> Settings() const;
 
     /* Read the settings' values from config.toml into settings_saved and settings_editing */
     void LoadSettings();

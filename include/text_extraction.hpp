@@ -70,7 +70,7 @@ struct ocr_result_t
 class OcrAPI
 {
 public:
-    OcrAPI() : m_api(std::make_unique<tesseract::TessBaseAPI>()) {};
+    OcrAPI() : m_api(std::make_unique<tesseract::TessBaseAPI>()) = default;
     ~OcrAPI();
 
     // non-copyable (Tesseract is stateful)
