@@ -16,6 +16,7 @@ TARGET     ?= $(NAME)
 
 DEBUG           ?= 0
 DISABLE_PLUGINS ?= 0
+BUILD_EXAMPLES  ?= 0
 
 ifeq ($(DEBUG),1)
     BUILDDIR   := build/debug
@@ -29,6 +30,7 @@ CMAKE_CONFIGURE_FLAGS := \
     -S . -B $(BUILDDIR) \
     -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
     -DDISABLE_PLUGINS=$(DISABLE_PLUGINS) \
+    -DBUILD_EXAMPLES=$(BUILD_EXAMPLES) \
     -DCMAKE_INSTALL_PREFIX=$(PREFIX)
 
 .PHONY: all configure build clean distclean dist genver updatever install uninstall

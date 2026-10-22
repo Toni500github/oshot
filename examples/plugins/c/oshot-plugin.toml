@@ -1,6 +1,6 @@
 [repository]
-name = "oshot-examples"
-url = "https://github.com/Toni500github/oshot/tree/main/examples/plugins"
+name = "oshot-example-c"
+url = "https://github.com/Toni500github/oshot/tree/main/examples/plugins/c"
 
 [dependencies]
 all = ["cmake", "a C compiler"]

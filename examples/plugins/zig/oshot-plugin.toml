@@ -1,0 +1,15 @@
+[repository]
+name = "oshot-example-zig"
+url = "https://github.com/Toni500github/oshot/tree/main/examples/plugins/zig"
+
+[dependencies]
+all = ["zig 0.17"]
+
+[uppercase-zig]
+id = "io.github.toni500github.uppercase-zig"
+description = "Uppercases the extracted text, an example plugin in Zig"
+authors = ["Toni500github"]
+licenses = ["Unlicense"]
+platforms = ["all"]
+build-steps = ["zig build --release=safe"]
+output-dir = "zig-out/plugin"

@@ -1,0 +1,17 @@
+[package]
+name = "oshot-uppercase"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Unlicense"
+publish = false
+
+[lib]
+name = "oshot_uppercase"
+crate-type = ["cdylib"]
+
+[profile.release]
+panic = "abort"
+
+[build-dependencies]
+bindgen = "0.73"

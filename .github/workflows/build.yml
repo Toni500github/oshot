@@ -354,7 +354,7 @@ jobs:
         run: |
           ./scripts/generateVersion.sh
           mkdir -p build
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }} \
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }} -DBUILD_EXAMPLES=ON \
             -Dglfw3_DIR=/usr/local/lib/cmake/glfw3
           cmake --build build
           # The static GLFW must be the one linked in, not a system libglfw
@@ -395,7 +395,7 @@ jobs:
             -DCMAKE_PREFIX_PATH="$TESSERACT_PREFIX;$BREW" \
             -DPKG_CONFIG_PATH="$BREW/lib/pkgconfig:$BREW/share/pkgconfig" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" \
-            -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }}
+            -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }} -DBUILD_EXAMPLES=ON
           cd build && make
           strip -x ./oshot
           # The static libtesseract must be the one linked in, not a Homebrew dylib
@@ -407,7 +407,7 @@ jobs:
         run: |
           ./scripts/generateVersion.sh
           mkdir -p build
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }}
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }} -DBUILD_EXAMPLES=ON
           ninja -C build
 
       # The whole plugin path: oshotpm builds the example plugin against the SDK
@@ -416,7 +416,7 @@ jobs:
       - name: Test installing a plugin (Linux, macOS)
         if: matrix.plugins && (matrix.target == 'linux' || runner.os == 'macOS')
         run: |
-          ./build/oshotpm install -y examples/plugins/uppercase
+          ./build/oshotpm install -y examples/plugins/c
           ./build/oshotpm search -v
           ./build/oshotpm install -y io.github.toni500github.plugin-test
           ./build/oshotpm list -v
@@ -428,7 +428,7 @@ jobs:
         env:
           CMAKE_GENERATOR: Ninja
         run: |
-          ./build/oshotpm install -y examples/plugins/uppercase
+          ./build/oshotpm install -y examples/plugins/c
           ./build/oshotpm search -v
           ./build/oshotpm install -y io.github.toni500github.plugin-test
           ./build/oshotpm list -v
@@ -574,7 +574,7 @@ jobs:
             set -e
             git config --global --add safe.directory '*'
             ./scripts/generateVersion.sh
-            cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }}
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }} -DBUILD_EXAMPLES=ON
             cmake --build build --parallel "$(sysctl -n hw.ncpu)"
             cmake --install build --prefix "$PWD/stage"
 

@@ -76,6 +76,7 @@ endmacro()
 # -----------------------------
 add_option(DISABLE_PLUGINS "Disable plugins support" ON ON)
 add_option(MACOS_OPENGL "Draw the overlay with OpenGL instead of Metal on macOS, for VMs without Metal" OFF ON)
+add_option(BUILD_EXAMPLES "Build the C and C++ example plugins (needs plugins)" OFF OFF)
 
 # Arch-style default; Debian sets it empty, as the license goes into
 # /usr/share/doc/oshot/copyright there
@@ -852,29 +853,45 @@ if(NOT DISABLE_PLUGINS)
         )
     endif()
 
-    # The example plugin, built so CI checks it compiles everywhere. Not installed.
-    add_library(
-        oshot_example_uppercase
-        MODULE
-        examples/plugins/uppercase/uppercase.c
-        ${OSHOT_SDK_HEADERS}
-    )
-    target_include_directories(
-        oshot_example_uppercase
-        PRIVATE "${OSHOT_SDK_DIR}/include"
-    )
-    set_target_properties(
-        oshot_example_uppercase
-        PROPERTIES C_VISIBILITY_PRESET hidden
-    )
-    add_dependencies(oshot_example_uppercase cimgui)
-    if(WIN32)
-        target_link_libraries(oshot_example_uppercase PRIVATE cimgui)
-    elseif(APPLE)
-        target_link_options(
+    # The C and C++ example plugins, with -DBUILD_EXAMPLES=ON; CI builds them so
+    # it checks they compile everywhere. Not installed. The Rust and Zig ones
+    # need their own toolchains.
+    if(BUILD_EXAMPLES)
+        add_library(
             oshot_example_uppercase
-            PRIVATE -undefined dynamic_lookup
+            MODULE
+            examples/plugins/c/uppercase.c
+            ${OSHOT_SDK_HEADERS}
         )
+        add_library(
+            oshot_example_uppercase_cpp
+            MODULE
+            examples/plugins/cpp/uppercase.cpp
+            ${OSHOT_SDK_HEADERS}
+        )
+        set_target_properties(
+            oshot_example_uppercase_cpp
+            PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON
+        )
+        foreach(example oshot_example_uppercase oshot_example_uppercase_cpp)
+            target_include_directories(
+                ${example}
+                PRIVATE "${OSHOT_SDK_DIR}/include"
+            )
+            set_target_properties(
+                ${example}
+                PROPERTIES
+                    C_VISIBILITY_PRESET hidden
+                    CXX_VISIBILITY_PRESET hidden
+                    VISIBILITY_INLINES_HIDDEN ON
+            )
+            add_dependencies(${example} cimgui)
+            if(WIN32)
+                target_link_libraries(${example} PRIVATE cimgui)
+            elseif(APPLE)
+                target_link_options(${example} PRIVATE -undefined dynamic_lookup)
+            endif()
+        endforeach()
     endif()
 endif()
 

@@ -84,7 +84,7 @@ https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 - Browse and install plugins from the [plugin index](https://github.com/Toni500github/oshot-plugin-index), prebuilt
   for your system, or from git repositories, folders and archives; update, enable, disable and uninstall them, from
   the Tools menu of the text tools window or from the command line with `oshotpm`
-- [Writing plugins](docs/plugins.md), with an [example](examples/plugins/uppercase)
+- [Writing plugins](docs/plugins.md), with [examples](examples/plugins) in C, C++, Rust and Zig
 
 ## How does it compare?
 

@@ -4,8 +4,8 @@
 > plugins then need to be rebuilt.
 
 Plugins only work in the `-plugins` builds of oshot. A plugin is a shared library (`.so`, `.dll`, or `.dylib` or `.so` on macOS) with a plain
-C interface, so it can be written in any language that can export a C function: C, C++, Rust, Zig, and so on. The
-example in [`examples/plugins/uppercase`](../examples/plugins/uppercase) is a complete plugin in C.
+C interface, so it can be written in any language that can export a C function: C, C++, Rust, Zig, and so on.
+[`examples/plugins`](../examples/plugins) has the same complete plugin in each of those four languages.
 
 What a plugin can do:
 
@@ -53,8 +53,10 @@ oshot loads cimgui itself, so a plugin uses it without bundling Dear ImGui:
 - **Windows**: link `sdk/lib/libcimgui.dll.a`. It's a MinGW import library: build with MinGW-w64 (MSYS2's UCRT64 or
   CLANGARM64 environments, the ones oshot is built with).
 
-The example's [`CMakeLists.txt`](../examples/plugins/uppercase/CMakeLists.txt) does all of this. Build the plugin
-with hidden symbols (`-fvisibility=hidden`) and export only the entry point, with `OSHOT_PLUGIN_EXPORT`.
+The C example's [`CMakeLists.txt`](../examples/plugins/c/CMakeLists.txt) does all of this, as do the Rust example's
+[`build.rs`](../examples/plugins/rust/build.rs) and the Zig example's [`build.zig`](../examples/plugins/zig/build.zig).
+Build the plugin with hidden symbols (`-fvisibility=hidden`) and export only the entry point, with
+`OSHOT_PLUGIN_EXPORT`.
 
 A plugin that uses cimgui only works with the exact Dear ImGui version oshot is built with (`OSHOT_IMGUI_VERSION`),
 because cimgui exposes ImGui's structs. oshot refuses plugins built for another version, so rebuild plugins when oshot
