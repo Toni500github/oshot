@@ -575,17 +575,35 @@ void ScreenshotTool::RenderOverlay()
     bool open = m_show_window.Has(SubWindow::MainTextTools);
     if (m_state == ToolState::Selected && open)
     {
-        // Open it on the side of the screen with more room next to the selection,
-        // so it doesn't cover the selection and its toolbar
-        constexpr float margin    = 60.0f;
-        const float     display_w = ImGui::GetIO().DisplaySize.x;
-        const float     sel_x     = m_main_sel.selection.get_x();
-        const bool      right     = display_w - (sel_x + m_main_sel.selection.get_width()) > sel_x;
+        const char* text_tools_name = _("Text tools###text_tools");
+
+        // Where it was last shown, if it is about to (re)appear: from this session or from imgui.ini
+        std::optional<ImRect> last_rect;
+        if (const ImGuiWindow* window = ImGui::FindWindowByName(text_tools_name))
+        {
+            if (!window->WasActive)
+                last_rect = window->Rect();
+        }
+        else if (const ImGuiWindowSettings* settings = ImGui::FindWindowSettingsByID(ImHashStr(text_tools_name)))
+        {
+            const ImVec2 pos(float(settings->Pos.x), float(settings->Pos.y));
+            last_rect = ImRect(pos, ImVec2(pos.x + float(settings->Size.x), pos.y + float(settings->Size.y)));
+        }
+
+        // It stays where it was left, unless it would cover the new selection: then, like the first time,
+        // it opens on the side of the screen with more room next to the selection.
+        // Decided before Begin(), as moving it afterwards shows it in the old place for a frame
+        constexpr float         margin    = 60.0f;
+        const float             display_w = ImGui::GetIO().DisplaySize.x;
+        const selection_rect_t& sel       = m_main_sel.selection;
+        const ImRect sel_rect(sel.get_x(), sel.get_y(), sel.get_x() + sel.get_width(), sel.get_y() + sel.get_height());
+        const bool   right  = display_w - sel_rect.Max.x > sel_rect.Min.x;
+        const bool   covers = last_rect && last_rect->Overlaps(sel_rect);
         ImGui::SetNextWindowPos(right ? ImVec2(display_w - margin, margin) : ImVec2(margin, margin),
-                                ImGuiCond_Appearing,
+                                covers ? ImGuiCond_Always : ImGuiCond_FirstUseEver,
                                 right ? ImVec2(1.0f, 0.0f) : ImVec2(0.0f, 0.0f));
         ImGui::SetNextWindowSize(font_relative(22, 0), ImGuiCond_FirstUseEver);  // 0 = auto height
-        ImGui::Begin(_("Text tools###text_tools"), &open, ImGuiWindowFlags_MenuBar);
+        ImGui::Begin(text_tools_name, &open, ImGuiWindowFlags_MenuBar);
         DrawMenuItems();
         DrawPreferencesWindow();
         DrawDownloadOCRWindow();
