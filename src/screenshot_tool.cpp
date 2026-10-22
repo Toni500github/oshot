@@ -4445,7 +4445,7 @@ void ScreenshotTool::FetchIndexAsync()
     });
 }
 
-void ScreenshotTool::StartPluginTask(const std::string& title, std::function<Result<>(PluginManager&)> task)
+void ScreenshotTool::StartPluginTask(std::string title, std::function<Result<>(PluginManager&)> task)
 {
     // The buttons that start a task are disabled while one runs: just a safety net
     if (m_install_state && m_install_state->running)
