@@ -626,6 +626,10 @@ bool parse_hex_rgba(const std::string_view hex, rgba_t& out)
     // from the substring
     const std::string s(hex.substr(1));
 
+    // strtoul() also takes a sign, leading spaces and a 0x prefix
+    if (!std::ranges::all_of(s, [](const unsigned char c) { return std::isxdigit(c); }))
+        return false;
+
     char*         end    = nullptr;
     unsigned long parsed = std::strtoul(s.c_str(), &end, 16);
 
