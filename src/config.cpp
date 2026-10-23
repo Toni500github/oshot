@@ -100,6 +100,8 @@ void Config::LoadConfigFile(const std::string& filename)
     File.theme_file_path  = GetValue<std::string>("default.theme-file", "theme.toml");
     File.image_out_fmt    = GetValue<std::string>("default.image-out-fmt", "oshot_{:%F_%H-%M}");
     File.delay            = GetValue<int>("default.delay", -1);
+    File.color_picker     = GetValue<int>("default.color-picker", 0);
+    File.cpa_mode         = GetValue<int>("default.color-picker-alpha-mode", 2);
     File.show_text_tools  = GetValue<bool>("default.show-text-tools", true);
     File.enable_vsync     = GetValue<bool>("default.vsync", true);
     File.glx_vendor       = GetValue<std::string>("default.glx-vendor", "");
@@ -139,7 +141,7 @@ void Config::LoadConfigFile(const std::string& filename)
         File.image_out_size_fmt = "auto";
 
     {
-        std::string& s = g_config->File.theme_file_path;
+        std::string& s = File.theme_file_path;
         fs::path     p(s);
         if (p.has_filename() && p.is_relative())
             s.insert(0, m_config_dir_path + DIR_SEP_STR);
@@ -187,7 +189,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
     if (!File.fonts.empty())
     {
         for (const std::string& font : File.fonts)
-            fonts_str += '\'' + font + "', ";
+            fonts_str += '"' + EscapeString(font) + "\", ";
         fonts_str.pop_back();  // ' '
         fonts_str.pop_back();  // ','
     }
@@ -210,7 +212,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.ctrl_c_copy_img,
             EscapeString(File.hotkey),
             EscapeString(File.language),
-            EscapeString(fonts_str),
+            fonts_str,
             File.builtin_font,
             EscapeString(File.image_out_type.first),
             EscapeString(File.image_out_fmt),

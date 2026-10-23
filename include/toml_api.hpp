@@ -210,26 +210,28 @@ public:
      **/
     static std::string EscapeString(const std::string& s)
     {
-        std::ostringstream oss;
-        oss << toml::value<std::string>(s);  // includes surrounding quotes, fully escaped
-
-        // remove quotes
-        std::string str(oss.str());
-        str.pop_back();
-        str.erase(0, 1);
-
-        // escape Windows path separators
-        // aka. fucking backslashes because they need to be
-        // backward compatible ofc
-        for (size_t i = 0; i < str.size(); ++i)
+        // toml++ would print a literal 'string' where it can, which can't go between double quotes
+        std::string out;
+        out.reserve(s.size());
+        for (const char c : s)
         {
-            if (str[i] == '\\')
+            switch (c)
             {
-                str.insert(i + 1, 1, '\\');
-                ++i;  // skip the backslash we just inserted
+                case '"':  out += "\\\""; break;
+                case '\\': out += "\\\\"; break;
+                case '\b': out += "\\b"; break;
+                case '\t': out += "\\t"; break;
+                case '\n': out += "\\n"; break;
+                case '\f': out += "\\f"; break;
+                case '\r': out += "\\r"; break;
+                default:
+                    if (static_cast<unsigned char>(c) < 0x20 || c == 0x7F)
+                        out += fmt::format("\\u{:04X}", static_cast<unsigned char>(c));
+                    else
+                        out += c;
             }
         }
-        return str;
+        return out;
     }
 
     /**
