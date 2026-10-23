@@ -17,6 +17,7 @@ TARGET     ?= $(NAME)
 DEBUG           ?= 0
 DISABLE_PLUGINS ?= 0
 BUILD_EXAMPLES  ?= 0
+BUILD_TESTS     ?= 0
 
 ifeq ($(DEBUG),1)
     BUILDDIR   := build/debug
@@ -31,9 +32,10 @@ CMAKE_CONFIGURE_FLAGS := \
     -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
     -DDISABLE_PLUGINS=$(DISABLE_PLUGINS) \
     -DBUILD_EXAMPLES=$(BUILD_EXAMPLES) \
+    -DBUILD_TESTS=$(BUILD_TESTS) \
     -DCMAKE_INSTALL_PREFIX=$(PREFIX)
 
-.PHONY: all configure build clean distclean dist genver updatever install uninstall
+.PHONY: all configure build test clean distclean dist genver updatever install uninstall
 
 all: build
 
@@ -46,6 +48,10 @@ configure: $(BUILDDIR)/CMakeCache.txt
 
 build: configure
 	$(CMAKE) --build $(BUILDDIR) --parallel $(JOBS)
+
+# Needs BUILD_TESTS=1 when the build folder is first configured
+test: build
+	cd $(BUILDDIR) && ctest --output-on-failure
 
 # Generates include/version.h, which the build also does before compiling
 genver:

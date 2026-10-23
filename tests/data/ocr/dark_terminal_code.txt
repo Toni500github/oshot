@@ -1,0 +1,6 @@
+int main(int argc, char** argv) {
+    auto cap = capture_screen();
+    if (!cap) return EXIT_FAILURE;
+    printf("%d x %d\n", cap->w, cap->h);
+    return 0;
+}

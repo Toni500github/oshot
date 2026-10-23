@@ -1,0 +1,69 @@
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "src/**"
+      - "include/**"
+      - "tests/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/tests.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "include/**"
+      - "tests/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/tests.yml"
+
+jobs:
+  text-extraction:
+    timeout-minutes: 30
+    name: Text extraction tests
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/toni500github/arch-dev:latest
+      options: --user 0
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Fix git safe directory
+        run: git config --global --add safe.directory '*'
+
+      # The models the tests read with: eng, plus ita and jpn for the language tests
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            git \
+            base-devel \
+            cmake \
+            ninja \
+            libx11 \
+            libxcb \
+            libpng \
+            glfw \
+            tesseract \
+            tesseract-data-eng \
+            tesseract-data-ita \
+            tesseract-data-jpn \
+            zbar \
+            libayatana-appindicator \
+            wayland-protocols \
+            wayland \
+            libxkbcommon \
+            libxrandr
+
+      - name: Build tests
+        run: |
+          ./scripts/generateVersion.sh
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON
+          cmake --build build --target oshot_tests
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure

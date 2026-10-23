@@ -1,0 +1,5 @@
+Name Qty Price
+Resistor 10k 120 0.02
+Capacitor 1uF 45 0.11
+ATmega328P 8 2.35
+LM7805 20 0.48

@@ -1,0 +1,1 @@
+Copy text to clipboard

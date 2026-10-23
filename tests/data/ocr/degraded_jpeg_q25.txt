@@ -1,0 +1,6 @@
+Tesseract is an optical character recognition engine
+originally developed at Hewlett-Packard between 1985
+and 1994. It was open sourced in 2005 and has been
+sponsored by Google since 2006. Version 4 added an
+LSTM based recognizer, which is considerably more
+accurate on real world images than the legacy engine.

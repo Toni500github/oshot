@@ -77,6 +77,7 @@ endmacro()
 add_option(DISABLE_PLUGINS "Disable plugins support" ON ON)
 add_option(MACOS_OPENGL "Draw the overlay with OpenGL instead of Metal on macOS, for VMs without Metal" OFF ON)
 add_option(BUILD_EXAMPLES "Build the C, C++, cimgui and scan-results example plugins (needs plugins)" OFF OFF)
+add_option(BUILD_TESTS "Build the text extraction tests (tests/, run with ctest)" OFF OFF)
 
 # Arch-style default; Debian sets it empty, as the license goes into
 # /usr/share/doc/oshot/copyright there
@@ -915,6 +916,14 @@ if(NOT DISABLE_PLUGINS)
             )
         endif()
     endif()
+endif()
+
+# -----------------------------
+# Tests
+# -----------------------------
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
 endif()
 
 # -----------------------------

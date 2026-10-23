@@ -1,0 +1,4 @@
+ERROR: build failed
+OK: 42 tests passed
+INFO: linking liboshot
+WARN: deprecated call
