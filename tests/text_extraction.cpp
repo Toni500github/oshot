@@ -141,6 +141,8 @@ static std::u32string check_ocr(const std::string& name, const double max_cer)
     const std::u32string& got = res.ok() ? normalize(res.get().data) : std::u32string();
 
     const double rate = cer(want, got);
+    fmt::println(
+        "  {:<28} CER {:5.1f}%  limit {:2.0f}%  {}", name, rate * 100, max_cer * 100, rate <= max_cer ? "ok" : "FAIL");
     INFO(name << ": CER " << rate * 100 << "%, read:\n" << (res.ok() ? res.get().data : ""));
     CHECK(rate <= max_cer);
     return got;
@@ -155,8 +157,9 @@ static void check_ocr_group(const std::string_view prefix, const double max_cer)
         check_ocr(name, max_cer);
 }
 
-// Decode an image of the test set and check it gives exactly its payloads
-static void check_barcode(ZbarAPI& zbar, const std::string& name)
+// Decode an image of the test set and check it gives exactly its payloads.
+// known_failure only changes what the progress line says
+static void check_barcode(ZbarAPI& zbar, const std::string& name, const bool known_failure = false)
 {
     const capture_result_t& img = load_image(data_dir / "barcode" / (name + ".png"));
 
@@ -173,6 +176,14 @@ static void check_barcode(ZbarAPI& zbar, const std::string& name)
     Result<zbar_result_t>           res   = zbar.ExtractTextsCapture(img);
     const std::vector<std::string>& datas = res.ok() ? res.get().datas : std::vector<std::string>();
     std::multiset<std::string>      got(datas.begin(), datas.end());
+
+    fmt::println("  {:<28} {} of {} payloads  {}",
+                 name,
+                 got.size(),
+                 want.size(),
+                 got == want     ? "ok"
+                 : known_failure ? "FAIL (known)"
+                                 : "FAIL");
 
     // An empty result is a pass for the negative images, not an error
     INFO(name << (res.ok() ? "" : ": " + res.error_v()));
@@ -256,6 +267,8 @@ TEST_CASE("OCR: the selection's margins don't change the text", "[ocr][jitter]")
         for (const std::string& name : names)
             outputs.insert(check_ocr(name, 0.03));
 
+        fmt::println(
+            "  jitter_{}_*: {} different output(s)  {}", key, outputs.size(), outputs.size() == 1 ? "ok" : "FAIL");
         INFO("jitter_" << key << "_*: " << outputs.size() << " different outputs");
         CHECK(outputs.size() == 1);
     }
@@ -301,6 +314,6 @@ TEST_CASE("Barcodes: images without codes decode nothing", "[barcode][neg]")
 TEST_CASE("Barcodes: known failures", "[barcode][!mayfail]")
 {
     ZbarAPI zbar;
-    check_barcode(zbar, "bar_code39");
-    check_barcode(zbar, "bar_ean13_tiny");
+    check_barcode(zbar, "bar_code39", true);
+    check_barcode(zbar, "bar_ean13_tiny", true);
 }

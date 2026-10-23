@@ -4,8 +4,8 @@ Tests of the text extraction pipeline (`OcrAPI` and `ZbarAPI` in `src/text_extra
 [Catch2](https://github.com/catchorg/Catch2) v3.16.1's amalgamated files in `catch2/`.
 
 ```bash
-make BUILD_TESTS=1 test           # or: cmake -B build -DBUILD_TESTS=ON && cmake --build build && ctest --test-dir build
-build/release/tests/oshot_tests   # every test
+make BUILD_TESTS=1 test           # or: cmake -B build -DBUILD_TESTS=ON && cmake --build build && ctest --test-dir build -V
+build/release/tests/oshot_tests   # every test, with a line per image
 build/release/tests/oshot_tests "[barcode]" -s   # by tag, printing every check
 ```
 

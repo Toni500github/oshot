@@ -32,4 +32,5 @@ if(WIN32)
     target_sources(oshot_tests PRIVATE ${CMAKE_BINARY_DIR}/manifest.rc)
 endif()
 
-add_test(NAME text_extraction COMMAND oshot_tests)
+# In the order they are written, which keeps the log readable (Catch2 shuffles by default)
+add_test(NAME text_extraction COMMAND oshot_tests --order decl)

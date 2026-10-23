@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <memory>
 
@@ -15,6 +16,34 @@ OcrAPI& test_ocr()
     static OcrAPI ocr;
     return ocr;
 }
+
+// Prints each test case's name before its checks, and its results after:
+// Catch2 alone prints nothing for the ones that pass
+class ProgressListener : public Catch::EventListenerBase
+{
+public:
+    using EventListenerBase::EventListenerBase;
+
+    void testCaseStarting(const Catch::TestCaseInfo& info) override
+    {
+        fmt::println("\n{}", info.name);
+        m_start = std::chrono::steady_clock::now();
+    }
+
+    void testCaseEnded(const Catch::TestCaseStats& stats) override
+    {
+        const std::chrono::duration<double> took = std::chrono::steady_clock::now() - m_start;
+        fmt::println("  -> {} passed, {} failed ({:.1f} s)",
+                     stats.totals.assertions.passed,
+                     stats.totals.assertions.failed + stats.totals.assertions.failedButOk,
+                     took.count());
+        std::fflush(stdout);
+    }
+
+private:
+    std::chrono::steady_clock::time_point m_start;
+};
+CATCH_REGISTER_LISTENER(ProgressListener)
 
 int main(int argc, char* argv[])
 {

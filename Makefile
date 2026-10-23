@@ -51,7 +51,7 @@ build: configure
 
 # Needs BUILD_TESTS=1 when the build folder is first configured
 test: build
-	cd $(BUILDDIR) && ctest --output-on-failure
+	cd $(BUILDDIR) && ctest -V
 
 # Generates include/version.h, which the build also does before compiling
 genver:
