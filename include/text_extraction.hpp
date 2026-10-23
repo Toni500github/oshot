@@ -110,8 +110,6 @@ private:
         bool operator==(const ocr_config_t&) const = default;
     };
 
-    using TextPtr = std::unique_ptr<char, void (*)(char*)>;
-
     // What the engine was last initialized with
     std::optional<ocr_config_t> m_config;
 
