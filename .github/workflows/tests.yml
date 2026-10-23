@@ -6,6 +6,7 @@ on:
     paths:
       - "src/**"
       - "include/**"
+      - "oshotpm/**"
       - "tests/**"
       - "CMakeLists.txt"
       - ".github/workflows/tests.yml"
@@ -13,20 +14,26 @@ on:
     paths:
       - "src/**"
       - "include/**"
+      - "oshotpm/**"
       - "tests/**"
       - "CMakeLists.txt"
       - ".github/workflows/tests.yml"
 
 jobs:
-  text-extraction:
+  tests:
     timeout-minutes: 30
-    name: Text extraction tests
+    name: Tests (${{ matrix.plugins && 'plugins' || 'no plugins' }})
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/toni500github/arch-dev:latest
       options: --user 0
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # The plugin index, manifest and state.toml tests are only in plugin builds
+        plugins: [false, true]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -62,7 +69,8 @@ jobs:
       - name: Build tests
         run: |
           ./scripts/generateVersion.sh
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON \
+            -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }}
           cmake --build build --target oshot_tests
 
       - name: Run tests

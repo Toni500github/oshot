@@ -673,6 +673,13 @@ void release_shared_default_logger();
 std::string replace_str(std::string& str, const std::string_view from, const std::string_view to);
 
 /**
+ * Split a string at every delimiter. Empty fields are kept, except after a trailing delimiter
+ * @param text The string to split
+ * @param delim The delimiter
+ **/
+std::vector<std::string> split(const std::string_view text, const char delim);
+
+/**
  * Make the whole string uppercase (ASCII only)
  * @param str The string to convert
  **/

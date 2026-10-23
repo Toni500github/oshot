@@ -1,11 +1,23 @@
-# Tests of the text extraction pipeline (OCR and barcodes), with
-# -DBUILD_TESTS=ON. Catch2 is vendored as its amalgamated files in catch2/
+# oshot's tests, with -DBUILD_TESTS=ON (see README.md). Catch2 is vendored
+# as its amalgamated files in catch2/
 add_library(catch2 STATIC catch2/catch_amalgamated.cpp)
 target_include_directories(catch2 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # main.cpp has its own main(), to set up g_config
 target_compile_definitions(catch2 PRIVATE CATCH_AMALGAMATED_CUSTOM_MAIN)
 
-add_executable(oshot_tests main.cpp text_extraction.cpp)
+add_executable(
+    oshot_tests
+    main.cpp
+    config.cpp
+    hotkey.cpp
+    screen_capture.cpp
+    text_extraction.cpp
+    util.cpp
+)
+# oshotpm's code is only in plugin builds
+if(NOT DISABLE_PLUGINS)
+    target_sources(oshot_tests PRIVATE manifest.cpp plugin_index.cpp)
+endif()
 add_dependencies(oshot_tests generate_version)
 target_compile_options(
     oshot_tests
@@ -33,4 +45,4 @@ if(WIN32)
 endif()
 
 # In the order they are written, which keeps the log readable (Catch2 shuffles by default)
-add_test(NAME text_extraction COMMAND oshot_tests --order decl)
+add_test(NAME oshot_tests COMMAND oshot_tests --order decl)

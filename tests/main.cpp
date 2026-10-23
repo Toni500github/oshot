@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <memory>
 
@@ -7,6 +8,7 @@
 #include "common.hpp"
 #include "config.hpp"
 #include "fmt/format.h"
+#include "platform.hpp"
 #include "spdlog/spdlog.h"
 
 namespace fs = std::filesystem;
@@ -15,6 +17,23 @@ OcrAPI& test_ocr()
 {
     static OcrAPI ocr;
     return ocr;
+}
+
+static fs::path s_temp_dir;
+
+const fs::path& test_temp_dir()
+{
+    return s_temp_dir;
+}
+
+// setenv() isn't in the Windows CRT
+static void set_env(const char* name, const std::string& value)
+{
+#if OSHOT_WINDOWS
+    _putenv_s(name, value.c_str());
+#else
+    setenv(name, value.c_str(), 1);
+#endif
 }
 
 // Prints each test case's name before its checks, and its results after:
@@ -50,12 +69,19 @@ int main(int argc, char* argv[])
     // No warnings about creating the config below
     spdlog::set_level(spdlog::level::err);
 
-    // text_extraction.cpp reads g_config->Runtime. A config in a throwaway
+    s_temp_dir = fs::temp_directory_path() /
+                 fmt::format("oshot_tests_{}", std::chrono::steady_clock::now().time_since_epoch().count());
+    fs::create_directories(s_temp_dir);
+
+    // get_config_dir() and get_cache_dir() follow these outside Windows, so
+    // StateManager's state.toml lands in the throwaway folder too
+    set_env("XDG_CONFIG_HOME", (s_temp_dir / "xdg-config").string());
+    set_env("XDG_CACHE_HOME", (s_temp_dir / "xdg-cache").string());
+
+    // text_extraction.cpp reads g_config->Runtime. A config in the throwaway
     // folder leaves the user's own untouched
-    const fs::path config_dir =
-        fs::temp_directory_path() /
-        fmt::format("oshot_tests_{}", std::chrono::steady_clock::now().time_since_epoch().count());
-    g_config = std::make_unique<Config>(config_dir / "config.toml", config_dir);
+    const fs::path config_dir = s_temp_dir / "config";
+    g_config                  = std::make_unique<Config>(config_dir / "config.toml", config_dir);
 
     const int ret = Catch::Session().run(argc, argv);
 
@@ -64,6 +90,6 @@ int main(int argc, char* argv[])
     g_config.reset();
 
     std::error_code ec;
-    fs::remove_all(config_dir, ec);
+    fs::remove_all(s_temp_dir, ec);
     return ret;
 }

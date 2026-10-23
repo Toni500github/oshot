@@ -12,30 +12,12 @@
 #include "catch2/catch_amalgamated.hpp"
 #include "common.hpp"
 #include "config.hpp"
-#include "fmt/os.h"
 #include "utf8.h"
 #include "util.hpp"
 
 // The test set: ocr/<name>.png with its text in ocr/<name>.txt, and
 // barcode/<name>.png with one payload per line in barcode/<name>.txt
 static const fs::path data_dir = OSHOT_TESTS_DATA_DIR;
-
-static std::string read_file(const fs::path& path)
-{
-    fmt::file   f(path.string(), fmt::file::RDONLY);
-    std::string out(size_t(f.size()), '\0');
-    size_t      len = 0;
-    while (len < out.size())
-    {
-        const size_t n = f.read(out.data() + len, out.size() - len);
-        if (n == 0)
-            break;
-        len += n;
-    }
-    // Windows reads in text mode, without the \r of each \r\n
-    out.resize(len);
-    return out;
-}
 
 // The images in a folder whose name starts with prefix, sorted
 static std::vector<std::string> list_images(const std::string_view folder, const std::string_view prefix)
