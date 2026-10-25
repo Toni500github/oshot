@@ -343,6 +343,20 @@ jobs:
             curl:p
 
       # Build
+      # A static libtesseract, since Homebrew's bottles need a newer macOS than
+      # MACOSX_DEPLOYMENT_TARGET (15.7.5 on arm64) and there's none for Intel, and
+      # Ubuntu 22.04's 4.1.1 is slower and makes the .deb depend on libtesseract4,
+      # which Debian 12+ and Ubuntu 24.04+ don't have
+      - name: Build Tesseract (macOS, AppImage, deb)
+        if: runner.os == 'macOS' || matrix.target == 'linux-appimage' || matrix.target == 'debian-package'
+        run: |
+          echo "TESSERACT_PREFIX=$RUNNER_TEMP/tesseract" >> "$GITHUB_ENV"
+          ./scripts/build_tesseract.sh "$RUNNER_TEMP/tesseract"
+          # Found before Ubuntu's tesseract.pc, by CMake here and under dpkg-buildpackage
+          if [ "$RUNNER_OS" = Linux ]; then
+            echo "PKG_CONFIG_PATH=$RUNNER_TEMP/tesseract/lib/pkgconfig" >> "$GITHUB_ENV"
+          fi
+
       # Distro GLFW is X11-only on Ubuntu 22.04 (3.3) and depends on the host for the
       # zip: link a static GLFW with X11 and Wayland, so oshot never needs XWayland
       - name: Build GLFW with X11 and Wayland (Linux)
@@ -359,6 +373,10 @@ jobs:
           cmake --build build
           # The static GLFW must be the one linked in, not a system libglfw
           if ldd build/oshot | grep libglfw; then echo "oshot links a shared libglfw" >&2; exit 1; fi
+          # The AppImage's static libtesseract too, not Ubuntu's
+          if [ -n "$TESSERACT_PREFIX" ] && ldd build/oshot | grep libtesseract; then
+            echo "oshot links a shared libtesseract" >&2; exit 1
+          fi
 
       - name: Build deb package (Linux)
         if: matrix.target == 'debian-package'
@@ -375,14 +393,10 @@ jobs:
           if dpkg-deb -f "$DEB" Depends | grep libglfw; then
             echo "the .deb depends on libglfw3" >&2; exit 1
           fi
-
-      # Homebrew's tesseract bottles need a newer macOS than MACOSX_DEPLOYMENT_TARGET
-      # (15.7.5 on arm64) and there's none for Intel: build a static libtesseract
-      - name: Build Tesseract (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          echo "TESSERACT_PREFIX=$RUNNER_TEMP/tesseract" >> "$GITHUB_ENV"
-          ./scripts/build_tesseract.sh "$RUNNER_TEMP/tesseract"
+          # Nor Ubuntu 22.04's libtesseract4, which newer releases don't have
+          if dpkg-deb -f "$DEB" Depends | grep libtesseract; then
+            echo "the .deb depends on libtesseract" >&2; exit 1
+          fi
 
       - name: Build project (macOS)
         if: runner.os == 'macOS'
