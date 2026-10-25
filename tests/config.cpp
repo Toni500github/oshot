@@ -7,8 +7,8 @@
 #include "common.hpp"
 #include "util.hpp"
 
-// What LoadConfigFile() makes of what GenerateConfig() wrote: the extension
-// uppercased, and a relative theme file under the config folder
+// What LoadConfigFile() makes of what GenerateConfig() wrote. The extension gets
+// uppercased, and a relative theme file ends up under the config folder
 static Config::config_file_t as_loaded(Config::config_file_t file, const fs::path& dir)
 {
     file.image_out_type.first = str_toupper(file.image_out_type.first);

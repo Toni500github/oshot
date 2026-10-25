@@ -71,7 +71,7 @@ enum class UiWarning : uint32_t  // NOLINT
 struct plugin_process_t;
 
 // A plugin's run_process() children, shared with the threads waiting for
-// them, which only reach the plugin through here: they can outlive it
+// them, which only reach the plugin through here (they can outlive it)
 struct plugin_processes_t
 {
     std::mutex mutex;
@@ -82,7 +82,7 @@ struct plugin_processes_t
     // The on_exit calls of the processes that exited, run by RunUiTasks()
     std::vector<std::function<void()>> exited;
 
-    // Set when the plugin unloads: no more processes start, and on_exit isn't called
+    // Set when the plugin unloads. No more processes start after that, and on_exit isn't called
     bool closed = false;
 
     std::map<int64_t, std::shared_ptr<plugin_process_t>> running;
@@ -118,7 +118,7 @@ struct plugin_runtime_t
     std::vector<setting_value_t> settings_saved;
     std::vector<setting_value_t> settings_editing;
 
-    // While render() or render_preferences() runs: the ui_* functions only work then
+    // True while render() or render_preferences() runs, the only time the ui_* functions work
     bool in_ui = false;
 
     // The ui_begin_section() calls not ended yet, and whether each one is open
@@ -229,8 +229,8 @@ Result<plugin_info_t> inspect_plugin_library(const fs::path& path);
 void load_plugins(const StateManager& state);
 
 /**
- * Unload every plugin: on_capture_end() if a capture is open, kill their
- * processes, destroy(). Call it before main() returns, while the logger exists
+ * Unload every plugin. That means on_capture_end() if a capture is open, killing
+ * their processes, then destroy(). Call it before main() returns, while the logger exists
  **/
 void unload_plugins();
 

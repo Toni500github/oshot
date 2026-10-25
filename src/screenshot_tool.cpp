@@ -243,8 +243,8 @@ static bool create_timed_button(const std::string_view label1,
     return false;
 }
 
-// ImGuiCond_Appearing, plus again whenever the display size changes: on Wayland
-// the overlay only becomes fullscreen after its first frame has been drawn
+// ImGuiCond_Appearing, plus again whenever the display size changes (on Wayland
+// the overlay only becomes fullscreen after its first frame has been drawn)
 static ImGuiCond center_cond(ImVec2& last_display)
 {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
@@ -306,7 +306,7 @@ Result<> ScreenshotTool::Start()
     Result<capture_result_t> result{ Err() };
     m_session = get_session_type();
 
-    // g_ss_tool outlives a capture: the tray runs every one of them with it
+    // g_ss_tool outlives a capture, since the tray runs every one of them with it
     ResetSelection();
     m_anno_sel.handle_hover    = HandleHovered::kNone;
     m_anno_sel.dragging_handle = HandleHovered::kNone;
@@ -428,7 +428,7 @@ Result<> ScreenshotTool::StartWindow()
 #endif
 
 #ifndef DISABLE_PLUGINS
-    // No-ops for PluginManager calls made before any StartPluginTask(): an empty std::function throws
+    // No-ops for PluginManager calls made before any StartPluginTask() because an empty std::function throws
     PluginCallbacks cb;
     cb.on_status  = [](const std::string_view) {};
     cb.on_success = [](const std::string_view) {};
@@ -577,7 +577,7 @@ void ScreenshotTool::RenderOverlay()
     {
         const char* text_tools_name = _("Text tools###text_tools");
 
-        // Where it was last shown, if it is about to (re)appear: from this session or from imgui.ini
+        // Where it was last shown (this session or imgui.ini), if it's about to (re)appear
         std::optional<ImRect> last_rect;
         if (const ImGuiWindow* window = ImGui::FindWindowByName(text_tools_name))
         {
@@ -590,8 +590,8 @@ void ScreenshotTool::RenderOverlay()
             last_rect = ImRect(pos, ImVec2(pos.x + float(settings->Size.x), pos.y + float(settings->Size.y)));
         }
 
-        // It stays where it was left, unless it would cover the new selection: then, like the first time,
-        // it opens on the side of the screen with more room next to the selection.
+        // It stays where it was left, unless it would cover the new selection. In that case, like the first
+        // time, it opens on the side of the screen with more room next to the selection.
         // Decided before Begin(), as moving it afterwards shows it in the old place for a frame
         constexpr float         margin    = 60.0f;
         const float             display_w = ImGui::GetIO().DisplaySize.x;
@@ -668,7 +668,7 @@ void ScreenshotTool::Cancel()
     for (auto& tex : m_tool_textures)
         delete_texture(tex);
 
-    // Only our references: the fonts stay in ImGui's atlas
+    // Only our references, the fonts themselves stay in ImGui's atlas
     m_font_cache.clear();
 
     if (m_on_cancel)
@@ -724,7 +724,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     m_state = ToolState::Selecting;
 
 #ifndef DISABLE_PLUGINS
-    // Another image: a new capture for the plugins
+    // Another image means a new capture as far as plugins are concerned
     EndPluginsCapture();
     StartPluginsCapture();
 #endif
@@ -787,7 +787,7 @@ void ScreenshotTool::OnCleanFrame()
     if (op == SavingOp::kNone)
         return;
 
-    // Failed: keep the selection and annotations for another try. Not with
+    // If it failed, keep the selection and annotations for another try. Not with
     // --instant-copy/--instant-save, which would request it again every frame
     const bool done = !m_on_complete || m_on_complete(op, img, g_config->File.image_out_type.second);
     if (done || g_config->Runtime.instant_copy_save != SavingOp::kNone)
@@ -1081,8 +1081,8 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
                     }
 
                     case ToolType::Pencil:
-                        // The points' bounds: they're scaled below, and start/end
-                        // aren't used to draw a pencil
+                        // Use the points' bounds; they're scaled below, and start/end
+                        // aren't used to draw a pencil anyway
                         m_anno_sel.selection = { .start = { .x = bbox.Min.x, .y = bbox.Min.y },
                                                  .end   = { .x = bbox.Max.x, .y = bbox.Max.y } };
                         break;
@@ -1164,7 +1164,7 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
             case ToolType::Pencil:
             {
                 // Scale the points from the drag-start snapshot into the new box.
-                // Only while dragging: drag_start_selection is stale otherwise
+                // Only while dragging, drag_start_selection is stale otherwise
                 if (was_dragging && !m_anno_sel.drag_start_points.empty())
                 {
                     const selection_rect_t& old_box = m_anno_sel.drag_start_selection;
@@ -1299,8 +1299,8 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
         sel.dragging_handle = HandleHovered::kNone;
         m_input_owner       = InputOwner::kNone;
 
-        // Only a click or a slip of the mouse is too small: a single line of text
-        // can be 10 px high, and used to leave the selection without its toolbar
+        // Only a click or a slip of the mouse counts as too small. A single line of text
+        // can be 10 px high, and a bigger limit used to leave the selection without its toolbar
         constexpr float min_size = 3.0f;
         if (sel.is_ann || (sel.selection.get_width() >= min_size && sel.selection.get_height() >= min_size))
             m_state = sel.idle_state;
@@ -1722,7 +1722,7 @@ void ScreenshotTool::UpdateAnnsToolbarPos()
     const float  sel_w   = m_main_sel.selection.get_width();
     const float  sel_h   = m_main_sel.selection.get_height();
 
-    // The buttons go outside the selection: skip the borders where they'd leave the screen
+    // The buttons go outside the selection, so skip the borders where they'd leave the screen
     std::array<bool, idx(SelectionBorder::COUNT)> on_screen{};
     on_screen[idx(SelectionBorder::Bottom)] = sel_y + sel_h + TOOLBAR_OFFSET + btn.y <= display.y;
     on_screen[idx(SelectionBorder::Right)]  = sel_x + sel_w + TOOLBAR_OFFSET + btn.x <= display.x;
@@ -1768,7 +1768,7 @@ void ScreenshotTool::ClampSelectionToImage(selection_info_t& sel)
 {
     selection_rect_t& s = sel.selection;
 
-    // Moved: push it back whole instead of shrinking it
+    // When it's moved, push it back whole instead of shrinking it
     if (sel.dragging_handle == HandleHovered::Move)
     {
         const float dx =
@@ -1811,7 +1811,7 @@ void ScreenshotTool::RefreshOcrModels()
         return;
     }
 
-    // get_filtered_filenames() appends: a rescan listed every model twice
+    // get_filtered_filenames() appends to the list (a rescan used to show every model twice)
     m_ocr_models_list.clear();
     get_filtered_filenames(
         m_inputs.ocr_path,
@@ -2214,7 +2214,7 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
 
     if ((ImGui::GetTime() - last_change_time) < 2.f)
     {
-        // Drawn every frame: fmt's buffer keeps a label this short on the stack
+        // Drawn every frame, and fmt's buffer keeps a label this short on the stack
         fmt::memory_buffer str;
         fmt::format_to(std::back_inserter(str), "{:.0f}x{:.0f}+{:.0f}+{:.0f}", sel_w, sel_h, sel_x, sel_y);
         if (g_config->File.image_out_size_fmt != "off")
@@ -2656,7 +2656,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
             if (m_tools_borders[i].empty())
                 continue;
 
-            // On the stack: drawn every frame, and too long for std::string's inline buffer
+            // Kept on the stack since it's drawn every frame and is too long for std::string's inline buffer
             std::array<char, 32> name{};
             fmt::format_to_n(name.data(), name.size() - 1, "##annotation_toolbar_n{}", i);
 
@@ -3898,7 +3898,7 @@ void ScreenshotTool::DrawPreferencesWindow()
     ImGui::SetNextWindowSize(font_relative(40, 34), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(_("Preferences###preferences_window"), &window_open, ImGuiWindowFlags_NoSavedSettings))
     {
-        // [x] or Esc: close, or ask first if there are unsaved changes.
+        // [x] or Esc closes it, or asks first if there are unsaved changes.
         // OpenPopup() must be called between Begin() and End()
         if (!window_open || ImGui::IsKeyPressed(ImGuiKey_Escape))
         {
@@ -3995,7 +3995,7 @@ void ScreenshotTool::DrawPreferencesWindow()
     }
     ImGui::End();
 
-    // Closed: the next open starts fresh
+    // Once closed, the next open starts fresh
     if (!m_show_window.Has(SubWindow::Preferences))
     {
         prev_window_open = false;
@@ -4493,7 +4493,7 @@ void ScreenshotTool::FetchIndexAsync()
 
 void ScreenshotTool::StartPluginTask(std::string title, std::function<Result<>(PluginManager&)> task)
 {
-    // The buttons that start a task are disabled while one runs: just a safety net
+    // The buttons that start a task are disabled while one runs, this is just a safety net
     if (m_install_state && m_install_state->running)
         return;
 
@@ -4605,7 +4605,7 @@ void ScreenshotTool::NotifyPluginsOfOcr(const ocr_result_t* res)
 
 void ScreenshotTool::NotifyPluginsOfSelection()
 {
-    // Selected and not being dragged: a drag owns the input until the mouse is released
+    // Selected and not being dragged (a drag owns the input until the mouse is released)
     const bool has_selection = m_main_sel.selection.get_width() > 0 && m_main_sel.selection.get_height() > 0;
     if (m_state != ToolState::Selected || m_input_owner == InputOwner::Selection || !has_selection)
         return;
@@ -4890,7 +4890,7 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
         std::string install_id;
         bool        install_update = false;
         size_t      shown          = 0;
-        // state.toml changes under a running install: don't read it meanwhile
+        // state.toml changes under a running install, so don't read it meanwhile
         if (busy)
             ImGui::TextDisabled("%s", _("Working, see the Plugins status window."));
         for (const index_plugin_t& p : m_index_state->index.plugins)
@@ -5221,7 +5221,7 @@ void ScreenshotTool::DrawPluginInstallStatus()
     ImGui::End();  // even when Begin() returns false: collapsed or clipped
 
     // Don't let the person close the window out from under a running
-    // install: the worker thread would keep pushing events into a queue
+    // install. The worker thread would keep pushing events into a queue
     // nothing is draining, and a pending confirm would hang forever with no
     // popup left to answer it from.
     if (!open && m_install_state->running)

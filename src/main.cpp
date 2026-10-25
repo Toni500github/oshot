@@ -281,14 +281,14 @@ bool app_quitting()
     return quit.load();
 }
 
-// Async-signal-safe: only raise the flag, the capture and tray loops act on
-// it. Once the tray is up, Tray::SetQuitSignalCallback() takes over.
+// Has to stay async-signal-safe, so it only raises the flag and lets the
+// capture and tray loops act on it. Once the tray is up, Tray::SetQuitSignalCallback() takes over.
 static void on_quit_signal(int)
 {
     quit.store(true);
 }
 
-// Crash: restore the display mode, then re-raise so the OS still generates a core dump
+// On a crash, restore the display mode first, then re-raise so the OS still generates a core dump
 static void on_crash_signal(int sig)
 {
     extern_glfwTerminate();
@@ -320,21 +320,21 @@ static void exit_handler_nc()
     if (!capture_active.load())
         extern_glfwTerminate();
     release_shared_default_logger();
-    // Not the throwing overload: an exception here would terminate. On Windows
+    // Use the non-throwing overload, since an exception here would terminate. On Windows
     // the file can still be open (e.g. exit() from die() while main's logger is alive)
     fs::remove(fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid()), ec);
 }
 
 int run_main_tool();
 
-// After every capture: the tray process waits for the next one, and would
+// Called after every capture. The tray process sits waiting for the next one and would
 // otherwise keep the last screenshot and the OCR model until then
 static void release_capture_memory()
 {
     g_ss_tool.EndCapture();
 #if defined(__GLIBC__)
     // glibc keeps freed memory for reuse, mostly in the capture_worker thread's
-    // arena where the overlay allocated it: give back the free pages in there.
+    // arena where the overlay allocated it, so hand the free pages in there back.
     // The arena's free top only shrinks with the fixed threshold set in oshot_main()
     malloc_trim(0);
 #endif
@@ -406,8 +406,8 @@ static int run_without_overlay()
             return EXIT_SUCCESS;
         }
 
-        // No save dialog: the --instant-save folder, or the one the overlay
-        // last saved to, then print where it went
+        // There's no save dialog here. Use the --instant-save folder (or the one the
+        // overlay last saved to) and print where the image went
         const fs::path dir = rt.instant_save_dir.empty()
                                  ? g_cache->GetValue(CacheEntry::ImgSavePath, get_home_pictures_dir().string())
                                  : rt.instant_save_dir;
@@ -528,8 +528,8 @@ void capture_worker()
     }
 }
 
-// The tray menu takes a moment to fade out after the click: a capture started
-// from it right away has the menu in the screenshot
+// The tray menu takes a moment to fade out after the click, and a capture started
+// right away would have the menu in the screenshot
 static constexpr std::chrono::milliseconds TRAY_MENU_FADE{ 300 };
 
 // What in the tray started a capture
@@ -559,7 +559,7 @@ static void sync_hotkey()
     }();
     if (res.ok())
     {
-        // Not status(): that's in the user's language, and logs stay English
+        // status() is translated, but logs stay in English
         spdlog::info("Global hotkey: {}", hk.get().empty() ? "disabled" : hotkey::to_string(hk.get()));
         return;
     }
@@ -629,8 +629,8 @@ static void spawn_gui_instance(const std::string& source)
     spdlog::info("A capture is already open, starting another overlay: {} --gui", exe.string());
 
 #if OSHOT_WINDOWS
-    // We got the hotkey/tray click, so we may take the foreground: pass that on,
-    // otherwise the new overlay can open behind the current one
+    // We got the hotkey/tray click, so we're allowed to take the foreground. Pass that
+    // on, otherwise the new overlay can open behind the current one
     AllowSetForegroundWindow(ASFW_ANY);
 #endif
 
@@ -643,10 +643,10 @@ static void spawn_gui_instance(const std::string& source)
     }).detach();
 }
 
-// Start a capture from the tray (menu or global hotkey): a fresh screenshot,
-// or the `source` image if not empty. Always sets the source, otherwise an
+// Start a capture from the tray (menu or global hotkey), either a fresh screenshot
+// or the `source` image when it's not empty. Always sets the source, otherwise an
 // image opened once would be reopened by every later capture.
-// `click`: from the menu, wait for it to go away first
+// With `click` set, we wait for the menu to go away first
 static void capture_from_tray(const std::string& source, TrayClick click)
 {
     if (click == TrayClick::Icon)
@@ -666,8 +666,8 @@ static void capture_from_tray(const std::string& source, TrayClick click)
     bool wait_fade = click == TrayClick::Menu;
 #  if OSHOT_WINDOWS
     // The overflow flyout, if the icon is in it, stays open over the capture.
-    // Close it with Esc, like the user would: hiding it directly leaves Explorer
-    // thinking it's open, and the next click on its arrow does nothing
+    // Send it an Esc like the user would. Hiding it directly leaves Explorer
+    // thinking it's open, and then the next click on its arrow does nothing
     HWND overflow = FindWindowW(L"NotifyIconOverflowWindow", nullptr);
     if (click != TrayClick::None && overflow && IsWindowVisible(overflow))
     {
@@ -680,8 +680,8 @@ static void capture_from_tray(const std::string& source, TrayClick click)
         std::this_thread::sleep_for(TRAY_MENU_FADE);
 
     // The GLFW event pump inside run_main_tool() also dispatches the tray's
-    // messages, so a second capture can't run in here: it would be nested
-    // inside the first one. Stack another overlay process on top instead.
+    // messages, so a second capture can't run in here (it would end up nested
+    // inside the first one). Stack another overlay process on top instead.
     if (capture_active.load())
     {
         spawn_gui_instance(source);
@@ -734,7 +734,7 @@ static std::string wide_to_utf8(const wchar_t* w)
     return out;
 }
 
-// GUI-subsystem app: no console, help/version/errors are shown as dialogs
+// A GUI-subsystem app has no console, so help/version/errors are shown as dialogs
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
     // Per-monitor DPI awareness before the first capture: GLFW only sets it in
@@ -761,10 +761,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
         }
     }
 
-    // GUI-subsystem app: stdout/stderr only exist when redirected (scripts
+    // In a GUI-subsystem app stdout/stderr only exist when redirected (scripts
     // reading --extract-text). Otherwise write to the console oshot was
-    // started from, if any, or to NUL: writing to a missing stream fails and
-    // fmt::print() throws
+    // started from, if any, or to NUL, because writing to a missing stream
+    // fails and fmt::print() throws
     const auto has_stream = [](DWORD id) {
         HANDLE h = GetStdHandle(id);
         return h != nullptr && h != INVALID_HANDLE_VALUE;
@@ -807,9 +807,9 @@ int main(int argc, char* argv[])  // NOLINT(bugprone-exception-escape)
 
 static int oshot_main(int argc, char* argv[])  // NOLINT
 {
-    // On every return, after the captures: g_ss_tool is only destroyed after Tesseract's
-    // static caches (FreeBSD aborted on exit after an OCR, Linux printed "LEAK!" warnings),
-    // and g_plugins after spdlog's registry, which a plugin's destroy() may still log to
+    // Runs on every return, after the captures. Left to the global destructors, g_ss_tool would
+    // go after Tesseract's static caches (FreeBSD aborted on exit after an OCR, Linux printed
+    // "LEAK!" warnings), and g_plugins after spdlog's registry, which a plugin's destroy() may still log to
     struct ExitCleanup
     {
         ~ExitCleanup()
@@ -821,7 +821,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
         }
     } exit_cleanup;
 
-    // Not relative to the working directory: when started at sign-in on Windows it's System32
+    // Don't make it relative to the working directory, which is System32 when started at sign-in on Windows
     const fs::path& log_path = fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid());
     fs::create_directories(log_path.parent_path(), ec);
     std::shared_ptr<spdlog::sinks::basic_file_sink_mt> file;
@@ -865,7 +865,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     logger->flush_on(spdlog::level::trace);
     spdlog::set_default_logger(logger);
     set_shared_default_logger(logger);
-    // Only now that spdlog's registries exist: exit handlers run in reverse order, so they
+    // Registered only now that spdlog's registries exist. Exit handlers run in reverse order, so they
     // still exist in exit_handler_nc(). Registered earlier, liboshot_common's own registry
     // (macOS Release builds have one, see set_shared_default_logger()) was already
     // destroyed there, and release_shared_default_logger() aborted on its mutex
@@ -926,8 +926,8 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     if (no_overlay)
         return run_without_overlay();
 
-    // Before taking the tray lock: any number of --gui overlays can run at
-    // once, and one shouldn't keep a tray from starting while it's open
+    // Do this before taking the tray lock. Any number of --gui overlays can run at
+    // once, and an open one shouldn't keep a tray from starting
     if (g_config->Runtime.only_launch_gui)
         return run_capture();
 
@@ -975,7 +975,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     init_dialogs();
 
 #if OSHOT_WINDOWS
-    // Absolute path: when started at sign-in the working directory is System32.
+    // Needs an absolute path, since the working directory is System32 when started at sign-in.
     // Fall back to the icon embedded in oshot.exe (see assets/windows/oshot.rc.in).
     fs::path tray_ico = get_exe_dir() / "oshot.ico";
     if (!fs::exists(tray_ico, ec))
@@ -1032,7 +1032,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
                         .onClicked   = [&](TrayMenu*) { request_quit(); },
                         .subMenu = {} };
 
-    // Locals: the tray only uses them while its loop below runs
+    // Locals are fine here, the tray only uses them while its loop below runs
     tray.menu      = { &capture_item, &open_item, &quit_item };
     tray.onClicked = [] { capture_from_tray({}, TrayClick::Icon); };
 
@@ -1055,7 +1055,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     }
     else
     {
-        // e.g. no StatusNotifier host: still finish the capture the user asked for
+        // e.g. there's no StatusNotifier host. Still finish the capture the user asked for
         warn("Systray initialization failed, exiting after the current capture");
 #if !OSHOT_TOOL_ON_MAIN_THREAD
         std::unique_lock lk(mtx);

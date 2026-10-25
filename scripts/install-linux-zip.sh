@@ -9,7 +9,7 @@ set -e
 PREFIX="${PREFIX:-/usr/local}"
 cd "$(dirname "$0")"
 
-# Best effort: menus and icon themes pick up the changes without a re-login
+# Best effort, so menus and icon themes pick up the changes without a re-login
 refresh_caches() {
     if command -v update-desktop-database >/dev/null 2>&1; then
         update-desktop-database -q "$PREFIX/share/applications" 2>/dev/null || true

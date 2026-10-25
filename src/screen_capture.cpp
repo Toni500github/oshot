@@ -113,7 +113,7 @@ Result<region_t> parse_region(std::string_view str)
     region_t          r{};
     char              tail = 0;
 
-    // %c catches trailing garbage: a full match leaves it unassigned
+    // %c catches trailing garbage; a full match leaves it unassigned
     if (std::sscanf(s.c_str(), "%dx%d+%d+%d%c", &r.w, &r.h, &r.x, &r.y, &tail) != 4 &&
         std::sscanf(s.c_str(), "%d,%d %dx%d%c", &r.x, &r.y, &r.w, &r.h, &tail) != 4)
         return Err("Invalid region '{}', expected WxH+X+Y or \"X,Y WxH\"", str);
@@ -988,7 +988,7 @@ Result<capture_result_t> capture_full_screen_windows()
 
             if (!found_fallback)
             {
-                // Keep our own reference: the loop's com_ptrs release theirs on the next iteration
+                // Keep our own reference, because the loop's com_ptrs release theirs on the next iteration
                 found_fallback       = true;
                 fallback_adapter.ptr = adapter.ptr;
                 fallback_adapter.ptr->AddRef();

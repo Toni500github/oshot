@@ -44,7 +44,7 @@ struct region_t
     bool operator==(const region_t&) const = default;
 };
 
-// An RGBA image: a screenshot or an opened file
+// An RGBA image, either a screenshot or an opened file
 struct capture_result_t
 {
     std::vector<uint8_t> data;  // RGBA, w * h * 4 bytes

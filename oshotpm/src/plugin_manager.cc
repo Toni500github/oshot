@@ -397,7 +397,7 @@ Result<fs::path> PluginManager::FindPrebuilt(const plugin_t& plugin, const fs::p
         return Ok(lib);
     }
 
-    // No [prebuilt] table: the library sits in output-dir, or next to the manifest
+    // Without a [prebuilt] table the library sits in output-dir, or next to the manifest
     const fs::path lib_dir = dir / plugin.output_dir;
     if (!is_inside(dir, lib_dir))
         return Err("'{}' has an output-dir outside the archive: '{}'", plugin.name, plugin.output_dir);
@@ -405,7 +405,7 @@ Result<fs::path> PluginManager::FindPrebuilt(const plugin_t& plugin, const fs::p
 }
 
 // Copies the library into the plugin's directory and returns its file name.
-// Copied, not moved: the source may be the person's own folder or an
+// Copied, not moved, since the source may be the person's own folder or an
 // archive, and the plugins dir can be on another filesystem than the cache.
 Result<std::string> PluginManager::CopyLibrary(const std::string& id, const fs::path& library)
 {
@@ -694,7 +694,7 @@ Result<> PluginManager::InstallIndexVersion(const index_plugin_t&  plugin,
     const auto artifact = version.artifacts.find(OSHOT_TARGET);
     if (artifact != version.artifacts.end())
     {
-        // Prebuilt: nothing to build, only to check
+        // Prebuilt, so there's nothing to build, only to check
         const index_artifact_t& art  = artifact->second;
         const fs::path          file = work.path / fs::path(art.url).filename();
         m_callbacks.on_status(fmt::format("Downloading {} {} for {}", plugin.name, version.version, OSHOT_TARGET));
@@ -850,7 +850,7 @@ Result<> PluginManager::UpdateRepo(const manifest_t& repo)
     std::error_code ec;
     std::string     name;
 
-    // The clone is gone (cache cleared): clone it again
+    // The clone is gone (cache cleared?), so clone it again
     if (!fs::exists(dir / ".git", ec))
     {
         std::string         remote;
@@ -908,7 +908,7 @@ Result<> PluginManager::UpdateAll()
 
     std::vector<std::string> failed;
     bool                     checked_git = false;
-    // A copy: updating changes the state
+    // A copy, because updating changes the state
     const std::vector<manifest_t> repos = m_state_manager.GetAllRepos();
     for (const manifest_t& repo : repos)
     {

@@ -1033,7 +1033,7 @@ std::string get_default_ocr_path()
             if (entry.path().extension() == ".traineddata")
                 return std::string(dir) + '/';
     }
-    // No models installed yet: keep the path most distros use
+    // No models installed yet, so keep the path most distros use
     return "/usr/share/tessdata/";
 #else
     // Windows and macOS ship eng.traineddata, which Config seeds into the config dir

@@ -150,7 +150,7 @@ static bool hide_window_()
 
     // Wayland compositors may ignore minimize requests (sway does), and macOS
     // minimizes with an animation that the dialog's modal loop never lets finish.
-    // Both left the dialog behind the fullscreen overlay: unmap it instead.
+    // Both left the dialog behind the fullscreen overlay, so unmap it instead.
     // glfwHideWindow() and glfwShowWindow() ignore fullscreen windows
     if (OSHOT_MACOS || on_wayland())
     {
@@ -209,7 +209,7 @@ int run_main_tool()
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
     g_ss_tool.SetReadPixels([&](const region_t& region) {
-        // region is in screenshot pixels, the origin in screen units: on a scaled
+        // region is in screenshot pixels and the origin in screen units. On a scaled
         // output the framebuffer has GetImageScale() pixels per screen unit
         const point_t o = g_ss_tool.GetImageOrigin();
         const float   k = g_ss_tool.GetImageScale();
@@ -224,8 +224,8 @@ int run_main_tool()
         glReadPixels(rx, ry, region.w, region.h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
         // glReadPixels() returns the rows bottom to top. Flip them here rather than
-        // with stbi_flip_vertically_on_write(): the clipboard on Windows takes the
-        // raw pixels and never goes through stb
+        // with stbi_flip_vertically_on_write(), because the clipboard on Windows takes
+        // the raw pixels and never goes through stb
         for (int y = 0; y < region.h / 2; ++y)
         {
             unsigned char* top = pixels.data() + (size_t(y) * row);
@@ -305,11 +305,11 @@ int run_main_tool()
         fullscreen = true;
         glfwWindowHintString(GLFW_WAYLAND_APP_ID, "oshot");  // matches oshot.desktop, for window rules and icons
         // On a scaled output (e.g. 1.5x) the framebuffer has more pixels than the
-        // window has units: draw the screenshot at its full resolution there
+        // window has units, so draw the screenshot at its full resolution there
         g_ss_tool.SetFullResolutionImage(true);
     }
 #  elif OSHOT_MACOS
-    // Same as the Metal backend: a plain window stays below the menu bar and the Dock
+    // Same as the Metal backend, a plain window stays below the menu bar and the Dock
     fullscreen = true;
 #  endif
 
@@ -321,7 +321,7 @@ int run_main_tool()
     GLFWerrorfun error_callback = glfwSetErrorCallback(
         [](int i_error, const char* description) { spdlog::warn("GLFW Error {}: {}", i_error, description); });
 
-    // No monitor: a borderless window instead of exclusive fullscreen, which
+    // No monitor means a borderless window instead of exclusive fullscreen, which
     // ignores the window hints and gets input from the other monitors too
     window = glfwCreateWindow(mode->width, mode->height, "oshot", fullscreen ? monitor : nullptr, nullptr);
 #  if !OSHOT_MACOS && !defined(IMGUI_IMPL_OPENGL_ES2) && !defined(IMGUI_IMPL_OPENGL_ES3)
@@ -381,7 +381,7 @@ int run_main_tool()
 
     bool clean_frame    = false;
     bool dialogs_inited = false;
-    // app_quitting(): tray Quit or a signal while capturing
+    // app_quitting() covers tray Quit and signals received while capturing
     while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive() && !app_quitting())
     {
         // Poll and handle events (inputs, window resize, etc.)
@@ -430,7 +430,7 @@ int run_main_tool()
 
         glfwSwapBuffers(window);
 
-        // Set up dialogs only once the overlay is on screen: on Linux this
+        // Set up dialogs only once the overlay is on screen. On Linux this
         // starts GTK, which would otherwise delay the capture and the overlay
         // by tens of milliseconds. An error before this sets them up itself.
         if (!dialogs_inited)

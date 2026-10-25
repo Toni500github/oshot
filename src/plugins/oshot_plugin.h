@@ -97,7 +97,7 @@ extern "C" {
 /**
  * Whether oshot_ocr_result_t has `words` and `n_words`. Fields appended to a
  * struct oshot passes to a callback come with host functions of the same
- * oshot version, so a plugin checks one of those: these came with mem_alloc.
+ * oshot version, so a plugin checks one of those (these came with mem_alloc).
  **/
 #define OSHOT_OCR_HAS_WORDS(host) OSHOT_HOST_HAS(host, mem_alloc)
 
@@ -129,10 +129,10 @@ typedef enum
 
 /**
  * What a host function that can fail returns. Such a function takes an
- * `oshot_str_t* err` as its last argument: on failure oshot stores a message
+ * `oshot_str_t* err` as its last argument. On failure oshot stores a message
  * there (a host string, free it with str_free), or logs the message under
  * the plugin's ID if err is NULL. err is written only on failure.
- * Codes may be added later: treat anything but OSHOT_OK as a failure.
+ * Codes may be added later, so treat anything but OSHOT_OK as a failure.
  **/
 typedef enum
 {
@@ -198,7 +198,7 @@ typedef struct
 } oshot_capture_t;
 
 /**
- * A word Tesseract read. The layout is fixed: oshot passes an array of them.
+ * A word Tesseract read. The layout is fixed, since oshot passes an array of them.
  * The box is in the scanned image's pixels (see "Coordinates" above).
  **/
 typedef struct
@@ -211,7 +211,7 @@ typedef struct
 } oshot_ocr_word_t;
 
 /**
- * A QR code or barcode ZBar decoded. The layout is fixed: oshot passes an
+ * A QR code or barcode ZBar decoded. The layout is fixed, as oshot passes an
  * array of them. The box is in the scanned image's pixels (see "Coordinates"
  * above), around the points ZBar located the code at.
  **/
@@ -263,7 +263,7 @@ typedef enum
  * config.toml under `key`. The plugin reads it with get_bool, get_string,
  * get_int64 or get_double with the same key and fallback. Every pointer
  * must stay valid while the plugin is loaded (string literals, static arrays).
- * The layout is fixed: oshot reads the array with this struct's size.
+ * The layout is fixed because oshot reads the array with this struct's size.
  **/
 typedef struct
 {
@@ -347,7 +347,7 @@ typedef struct
      * A copy of the screenshot inside the selection, or of the whole screenshot
      * without one. Annotations aren't included. rgba is NULL if it couldn't be
      * copied, or no overlay is open (in on_capture_end()). It copies the whole
-     * image: don't call it every frame. UI thread only.
+     * image, so don't call it every frame. UI thread only.
      **/
     oshot_capture_t (*get_capture)(oshot_ctx_t* ctx);
     void (*capture_free)(oshot_capture_t* cap);
@@ -355,10 +355,10 @@ typedef struct
     /**
      * Widgets, drawn with oshot's style and fonts. Check OSHOT_HOST_HAS(host,
      * ui_text) before using them. UI thread only, and only inside render()
-     * and render_preferences(): anywhere else they do nothing and log once.
+     * and render_preferences(); anywhere else they do nothing and log once.
      *
      * Labels and text are drawn as they are, never read as format strings.
-     * A label must be unique within the plugin's section: add "##suffix" to
+     * A label must be unique within the plugin's section. Add "##suffix" to
      * tell apart widgets with the same text ("Copy##url"), the part after
      * "##" isn't shown. Functions returning bool return true when the person
      * pressed or changed the widget in this frame.
@@ -395,7 +395,7 @@ typedef struct
 
     /**
      * Memory that oshot can free, and memory from oshot that the plugin can
-     * free: on Windows a plugin and oshot may use different C runtimes, so
+     * free. On Windows a plugin and oshot may use different C runtimes, so
      * plugin malloc() and oshot's free() don't mix. mem_free(NULL) does
      * nothing. Any thread.
      **/
@@ -426,7 +426,7 @@ typedef struct
     oshot_err_t (*open_url)(oshot_ctx_t* ctx, oshot_str_t url, oshot_str_t* err);
 
     /**
-     * Starts a program, without a shell: argv[0] is the program (looked up
+     * Starts a program, without a shell. argv[0] is the program (looked up
      * in PATH if it has no directory) and argv[1..argc) its arguments, passed
      * as they are. Its stdin is empty and it inherits oshot's environment.
      * Any thread.
@@ -451,7 +451,7 @@ typedef struct
                                oshot_str_t* err);
 
     /**
-     * Stops a process run_process() started: its on_exit still gets called,
+     * Stops a process run_process() started. Its on_exit still gets called,
      * with killed = true. OSHOT_ERR_NOT_FOUND if it has already exited. On
      * unix it gets SIGTERM, as do the processes it started. Any thread.
      **/
@@ -479,14 +479,14 @@ typedef struct
     /* All optional. */
 
     /**
-     * Called once after loading. Store host and ctx in your state: every host
-     * call needs them. Return false to refuse loading (log why first).
+     * Called once after loading. Store host and ctx in your state, since every
+     * host call needs them. Return false to refuse loading (log why first).
      **/
     bool (*init)(const oshot_host_t* host, oshot_ctx_t* ctx, void** state);
 
     /**
-     * Called once before unloading, if init() succeeded: free `state` and stop
-     * the plugin's threads.
+     * Called once before unloading, if init() succeeded. Free `state` and stop
+     * the plugin's threads here.
      **/
     void (*destroy)(void* state);
 
@@ -498,7 +498,7 @@ typedef struct
 
     /**
      * After oshot extracted text from the selection. Also when it read
-     * nothing or OCR failed: then text is empty, n_words 0, confidence and
+     * nothing or OCR failed, then text is empty, n_words 0, confidence and
      * psm -1 (since on_barcodes_done was added; oshot doesn't call older
      * plugins then).
      **/
@@ -517,7 +517,7 @@ typedef struct
     /* Added after the first version: oshot checks struct_size before reading them. */
 
     /**
-     * Settings oshot draws, saves and discards in Preferences > Plugins: a
+     * Settings oshot draws, saves and discards in Preferences > Plugins, as a
      * static array of n_settings, in the order they're shown. NULL for none.
      **/
     const oshot_setting_t* settings;
@@ -525,14 +525,14 @@ typedef struct
 
     /**
      * After the person saved this plugin's preferences (settings and
-     * render_preferences) to config.toml: re-read the values that matter.
+     * render_preferences) to config.toml. Re-read the values that matter.
      **/
     void (*on_settings_saved)(void* state);
 
     /**
-     * After oshot scanned the selection for QR codes and barcodes: one entry
+     * After oshot scanned the selection for QR codes and barcodes, with one entry
      * per code found, also when two have the same data. n is 0 (and codes
-     * NULL) when it found none. The array is borrowed: only valid during the call.
+     * NULL) when it found none. The array is borrowed and only valid during the call.
      **/
     void (*on_barcodes_done)(void* state, const oshot_barcode_t* codes, size_t n);
 
@@ -545,7 +545,7 @@ typedef struct
     void (*on_capture_start)(void* state);
 
     /**
-     * The capture ended and its overlay is closed: drop what belongs to it.
+     * The capture ended and its overlay is closed, so drop what belongs to it.
      * The tray keeps plugins loaded across captures, so state left over would
      * show up in the next one. Called for every on_capture_start(), and before
      * destroy() if oshot exits during a capture.

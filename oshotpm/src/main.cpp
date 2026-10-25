@@ -492,10 +492,10 @@ static int oshotpm_main(int argc, char** argv)
 
 int main(int argc, char* argv[])
 {
-    // A command line tool: errors and questions go to the terminal, never to dialogs
+    // It's a command line tool, so errors and questions go to the terminal, never to dialogs
     disable_dialogs();
 
-    // e.g. std::filesystem or fmt::output_file errors: report them instead of std::terminate()
+    // e.g. std::filesystem or fmt::output_file errors. Report them instead of std::terminate()
     try
     {
         return oshotpm_main(argc, argv);

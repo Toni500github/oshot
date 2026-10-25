@@ -100,7 +100,7 @@ impl Plugin {
     }
 
     /// Width and height of the selection. get_capture() copies the whole
-    /// image: only on demand, never every frame.
+    /// image, so only on demand, never every frame.
     fn capture_size(&self) -> (i32, i32) {
         unsafe {
             let mut cap = host_fn!(self.host, get_capture)(self.ctx);

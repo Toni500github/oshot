@@ -147,7 +147,7 @@ private:
     // Copies the library into the plugin's directory and returns its file name
     Result<std::string> CopyLibrary(const std::string& id, const fs::path& library);
 
-    // Asks whether to trust the plugin. `notice`: more to warn about, e.g. that the plugin uses the network
+    // Asks whether to trust the plugin. `notice` adds more to warn about, e.g. that the plugin uses the network
     Result<> ConfirmTrust(std::string_view notice = {});
 
     // Lists the packages the manifest needs and asks whether they're installed

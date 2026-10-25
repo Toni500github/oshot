@@ -42,7 +42,7 @@ static_assert(OSHOT_IMGUI_VERSION == IMGUI_VERSION_NUM,
               "Update OSHOT_IMGUI_VERSION in src/plugins/oshot_plugin.h together with imgui");
 
 // From libcimgui. oshot itself doesn't need cimgui, but calling into it makes
-// liboshot_common depend on it, so it's loaded before any plugin is: plugins
+// liboshot_common depend on it, so it's loaded before any plugin is. Plugins
 // then find its symbols without linking it (or without finding it on their
 // own, e.g. inside the AppImage).
 extern "C" const char* igGetVersion(void);
@@ -178,7 +178,7 @@ static bool call_plugin_ui(plugin_runtime_t& rt, F&& fn)
                                 "oshot closed what it could",
                                 unbalanced_stacks(before, after)));
 
-        // Recovered without asserting or showing ImGui's error tooltip every frame: it's logged above
+        // Recover without asserting or showing ImGui's error tooltip every frame, it's already logged above
         ImGuiIO&   io      = ImGui::GetIO();
         const bool assert  = std::exchange(io.ConfigErrorRecoveryEnableAssert, false);
         const bool tooltip = std::exchange(io.ConfigErrorRecoveryEnableTooltip, false);

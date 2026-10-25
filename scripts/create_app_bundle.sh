@@ -145,7 +145,7 @@ main() {
         done
     done
 
-    # OCR models: copied into ~/.config/oshot/models on first launch
+    # OCR models, which get copied into ~/.config/oshot/models on first launch
     if [ -n "${OSHOT_MODELS_DIR:-}" ]; then
         mkdir -p "${RESOURCES}/tessdata"
         cp -f "${OSHOT_MODELS_DIR}"/*.traineddata "${RESOURCES}/tessdata/"

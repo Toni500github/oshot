@@ -20,7 +20,7 @@ pub const OSHOT_UI_PASSWORD: u32 = 1 << 3;
 
 pub const OSHOT_PROCESS_OUTPUT_MAX: usize = 4 * 1024 * 1024;
 
-/// Opaque: identifies the plugin in every host call
+/// Opaque handle that identifies the plugin in every host call
 #[repr(C)]
 pub struct oshot_ctx_t {
     _private: [u8; 0],
@@ -33,7 +33,7 @@ pub const OSHOT_LOG_INFO: oshot_log_level_t = 1;
 pub const OSHOT_LOG_WARN: oshot_log_level_t = 2;
 pub const OSHOT_LOG_ERROR: oshot_log_level_t = 3;
 
-// Not a Rust enum: oshot may return codes added after these bindings
+// Not a Rust enum, since oshot may return codes added after these bindings
 pub type oshot_err_t = c_int;
 pub const OSHOT_OK: oshot_err_t = 0;
 pub const OSHOT_ERR_INVALID: oshot_err_t = 1;
@@ -240,7 +240,7 @@ pub struct oshot_host_t {
     pub get_capture: Option<unsafe extern "C" fn(ctx: Ctx) -> oshot_capture_t>,
     pub capture_free: Option<unsafe extern "C" fn(cap: *mut oshot_capture_t)>,
 
-    // Added after the first version: check host_has!() first
+    // Added after the first version, so check host_has!() first
     pub ui_text: Option<unsafe extern "C" fn(ctx: Ctx, text: oshot_str_t, flags: u32)>,
     pub ui_button: Option<unsafe extern "C" fn(ctx: Ctx, label: oshot_str_t) -> bool>,
     pub ui_checkbox: Option<unsafe extern "C" fn(ctx: Ctx, label: oshot_str_t, value: *mut bool) -> bool>,

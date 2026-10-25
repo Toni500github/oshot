@@ -72,7 +72,7 @@ static bool hide_window_()
         glfwGetWindowAttrib(window, GLFW_ICONIFIED))
         return false;
 
-    // Not minimized: macOS minimizes with an animation that the dialog's modal
+    // Don't minimize it. macOS minimizes with an animation that the dialog's modal
     // loop never lets finish, which left the dialog behind the overlay.
     // glfwHideWindow() and glfwShowWindow() ignore fullscreen windows
     hidden_monitor = glfwGetWindowMonitor(window);
@@ -197,8 +197,8 @@ int run_main_tool()
     GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
 
-    // Fullscreen on the monitor: macOS keeps a plain window below the menu bar, which
-    // drew the screenshot one menu bar too low, and GLFW_FLOATING is still under the
+    // Go fullscreen on the monitor, since macOS keeps a plain window below the menu bar (that
+    // drew the screenshot one menu bar too low) and GLFW_FLOATING is still under the
     // Dock. GLFW's fullscreen covers both (NSMainMenuWindowLevel + 1) and keeps the
     // video mode, since it's the current one
     window = glfwCreateWindow(mode->width, mode->height, "oshot", monitor, nullptr);
@@ -308,7 +308,7 @@ int run_main_tool()
     // Render loop
     MTLRenderPassDescriptor* rpd         = [MTLRenderPassDescriptor new];
     bool                     clean_frame = false;
-    // app_quitting(): tray Quit or a signal while capturing
+    // app_quitting() covers tray Quit and signals received while capturing
     while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive() && !app_quitting())
     {
         glfwPollEvents();

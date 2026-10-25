@@ -31,7 +31,7 @@ declare -A seen
 while [ ${#todo[@]} -gt 0 ]; do
     file="${todo[-1]}"
     unset 'todo[-1]'
-    # Not a process substitution: an objdump failure must stop the script, not give a partial bundle
+    # Not a process substitution, because an objdump failure must stop the script, not give a partial bundle
     imports="$("$objdump" -p "$file" | sed -n 's/^[[:space:]]*DLL Name: //p' | tr -d '\r')"
     while read -r dll; do
         if [ -z "$dll" ]; then continue; fi

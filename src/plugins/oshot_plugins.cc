@@ -345,7 +345,7 @@ static oshot_capture_t get_capture(oshot_ctx_t* ctx)
     oshot_capture_t ret{};  // rgba == nullptr: no capture
     if (!ui_thread_check(ctx, "get_capture"))
         return ret;
-    // No overlay, e.g. in on_capture_end(): the selection is in its ImGui context
+    // No overlay (e.g. in on_capture_end()), and the selection lives in its ImGui context
     if (!ImGui::GetCurrentContext())
         return ret;
 

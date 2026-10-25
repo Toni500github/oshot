@@ -76,7 +76,7 @@ struct sv_hash
 template <typename T>
 using string_map = std::unordered_map<std::string, T, sv_hash, std::equal_to<>>;
 
-// A language's translations, copied out of tinygettext's Dictionary: tr() needs strings
+// A language's translations, copied out of tinygettext's Dictionary, since tr() needs strings
 // that stay put, and lookups that don't allocate or log on every frame
 struct catalog_t
 {
@@ -105,8 +105,8 @@ fs::path                      g_locale_dir;
 // ------------------------------
 
 /**
- * Collect the placeholders of a format string: fmt's {} with auto indexes numbered,
- * and printf's % (for ImGui::Text() and friends), so a translation can be checked against its msgid
+ * Collect the placeholders of a format string (fmt's {} with auto indexes numbered,
+ * and printf's % for ImGui::Text() and friends), so a translation can be checked against its msgid
  * @return The {} ones sorted (a translation may reorder them) followed by the % ones in order,
  *         or nullopt if a brace is unbalanced or auto and manual indexes are mixed
  **/
@@ -151,7 +151,7 @@ std::optional<std::vector<std::string>> placeholders(std::string_view s)
                 continue;
             }
 
-            // No ' ' flag: it would make a literal "100% done" look like "% d"
+            // No ' ' flag here, or a literal "100% done" would look like "% d"
             std::size_t j = i + 1;
             while (j < s.size() && std::string_view("-+#0123456789.*hlLqjzt").find(s[j]) != std::string_view::npos)
                 ++j;
@@ -233,6 +233,7 @@ std::optional<po_source_t> read_catalog(const std::string& code)
 std::vector<std::string> catalog_codes()
 {
     std::vector<std::string> codes;
+    codes.reserve(g_embedded_po_count);
     for (std::size_t i = 0; i < g_embedded_po_count; ++i)
         codes.emplace_back(g_embedded_po[i].code);
 
@@ -265,7 +266,7 @@ void load_catalog(const std::string& code, catalog_t& cat)
     try
     {
         std::istringstream in(src->data);
-        // Fuzzy entries are guesses waiting for review: never show them, like gettext
+        // Fuzzy entries are guesses waiting for review, so never show them (same as gettext)
         tg::POParser::parse(src->name, in, dict, /*use_fuzzy=*/false);
     }
     catch (const std::exception& e)
@@ -278,7 +279,7 @@ void load_catalog(const std::string& code, catalog_t& cat)
         cat.plural_forms = dict.get_plural_forms();
 
     dict.foreach ([&](const std::string& msgid, const std::vector<std::string>& msgstrs) {
-        // A plural's msgid_plural isn't kept by tinygettext: every form is checked against
+        // tinygettext doesn't keep a plural's msgid_plural, so every form is checked against
         // the singular, so both English forms have to use the same placeholders
         const auto& expected = placeholders(msgid);
         for (const std::string& msgstr : msgstrs)
@@ -348,7 +349,7 @@ std::vector<std::string> pick_catalogs(std::string locale, const std::vector<std
 // Route tinygettext's messages to spdlog. Its lines end with a newline
 void set_tinygettext_logging()
 {
-    // Info is a line per string it can't translate: we don't use its lookups anyway
+    // Info is a line per string it can't translate, and we don't use its lookups anyway
     tg::Log::set_log_info_callback(nullptr);
     tg::Log::set_log_warning_callback([](const std::string& s) {
         spdlog::warn("tinygettext: {}", std::string_view(s).substr(0, s.find_last_not_of('\n') + 1));

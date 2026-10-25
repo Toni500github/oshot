@@ -38,7 +38,7 @@
 
 #include "util.hpp"
 
-// A prebuilt file of a version: a bare library or an archive
+// A prebuilt file of a version, either a bare library or an archive
 struct index_artifact_t
 {
     std::string url;
@@ -66,7 +66,7 @@ struct index_version_t
     // The oldest oshot version it works with
     std::string min_oshot;
 
-    // Withdrawn: pick_version() skips it, and updating warns if it's the installed one
+    // Withdrawn versions are skipped by pick_version(), and updating warns if it's the installed one
     bool        yanked = false;
     std::string yanked_reason;
 

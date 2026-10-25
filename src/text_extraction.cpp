@@ -92,8 +92,8 @@ static int color_dist2(const rgb_t& a, const rgb_t& b)
     return (dr * dr) + (dg * dg) + (db * db);
 }
 
-// The image's main colors, most common first: the most populated bins of a
-// 4 bits per channel histogram, each averaged to its real color
+// The image's main colors, most common first. These are the most populated bins
+// of a 4 bits per channel histogram, each averaged to its real color
 static std::vector<rgb_t> main_colors(const std::vector<rgb_t>& px)
 {
     constexpr size_t max_colors = 8;
@@ -134,11 +134,11 @@ static std::vector<rgb_t> main_colors(const std::vector<rgb_t>& px)
 }
 
 // Grayscale where each pixel is its color distance from the background around
-// it: dark text on white for any pair of colors (white on blue, red on black,
-// black on yellow...), in every panel of a screenshot that mixes light, dark
-// and colored areas, without guessing when to invert.
+// it. That gives dark text on white for any pair of colors (white on blue, red on
+// black, black on yellow...), in every panel of a screenshot that mixes light,
+// dark and colored areas, without guessing when to invert.
 // The local background is whichever main color covers the most of a `window`
-// px square around each 4x4 cell: text covers less of it than its background,
+// px square around each 4x4 cell, because text covers less of it than its background,
 // and next to a straight edge between two areas a pixel's own side always
 // covers at least half.
 static PIX* distance_from_background(const std::vector<rgb_t>& px,
@@ -204,7 +204,7 @@ static PIX* distance_from_background(const std::vector<rgb_t>& px,
 
     // The big window misses the corners of an area (its own color covers a
     // quarter of the window there), so a color that fills most of a window a
-    // quarter that size wins: text strokes never fill that much of it
+    // quarter that size wins (text strokes never fill that much of it)
     const int        radius       = std::max(1, window / (2 * cell));
     const int        small_radius = std::max(1, radius / 4);
     std::vector<int> cell_bg(size_t(cw) * ch, 0);
@@ -239,7 +239,7 @@ static PIX* distance_from_background(const std::vector<rgb_t>& px,
 
 // Grayscale where each pixel is its color distance from `text`, so that color
 // is black and anything far from it white. For text that has no background
-// color of its own: outlined text on a game scene or a meme, or on a gradient.
+// color of its own, like outlined text on a game scene, a meme or a gradient.
 // Returns nullptr if `text` covers most of the image, as it's the background
 static PIX* distance_from_text_color(const std::vector<rgb_t>& px, const rgb_t& text, int w, int h)
 {
@@ -308,7 +308,7 @@ static int text_threshold(PIX* gray)
 }
 
 // Text drawn as outlines only, as white letters with a black border on a light
-// picture look when read through the border's color: fill the inside of each
+// picture look when read through the border's color. So fill the inside of each
 // letter, which is what lies inside an odd number of outlines, so an 'O'
 // keeps its hole. The paper is walked from the edges of the image inwards,
 // one outline at a time
@@ -539,7 +539,7 @@ Result<> OcrAPI::Configure(const char* data_path, const char* model, tesseract::
 }
 
 // A box Tesseract found in the image normalize_for_ocr() made, in the pixels
-// of the image it was made from: rotated back, unpadded, unscaled and clamped
+// of the image it was made from (rotated back, unpadded, unscaled and clamped)
 static ocr_word_t map_box_to_source(int                    left,
                                     int                    top,
                                     int                    right,
@@ -559,7 +559,7 @@ static ocr_word_t map_box_to_source(int                    left,
     };
     for (const auto& [px, py] : corners)
     {
-        // pixRotate() turned the image clockwise by angle: turn the corner back
+        // pixRotate() turned the image clockwise by angle, so turn the corner back
         const float dx = float(px) - cx, dy = float(py) - cy;
         const float x = ((cx + (dx * c) + (dy * s)) - float(xform.pad)) / xform.scale;
         const float y = ((cy - (dx * s) + (dy * c)) - float(xform.pad)) / xform.scale;
@@ -691,7 +691,7 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
     const std::vector<rgb_t> colors = main_colors(px);
 
     // The background window must be a few glyphs wide, which we only know
-    // once we've seen the text: measure it, then redo it for big text
+    // once we've seen the text. Measure it first, then redo it for big text
     constexpr int default_window = 64;
     PixPtr        gray(distance_from_background(px, colors, cap.w, cap.h, default_window));
     if (!gray)
@@ -712,7 +712,7 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
     ocr_result_t best = std::move(first.get());
 
     // Text on a busy or graded background, which has no color of its own to
-    // measure from: try each main color as the text color instead, and keep
+    // measure from. Try each main color as the text color instead and keep
     // whichever reading Tesseract is the most sure of. Clean text, even small
     // or degraded, is read at 85% or more and never gets here
     constexpr int    retry_below = 85;

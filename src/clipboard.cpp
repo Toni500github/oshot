@@ -88,8 +88,8 @@ Result<int> start_linux_copy(SessionType session, const std::string& mime_type)
         return Err("Failed to fork: {}", strerror(errno));
     }
 
-    // Reap it once it exits, or it stays defunct while the tray runs: xclip
-    // forks to the background and exits right away, wl-copy once replaced
+    // Reap it once it exits, or it stays defunct while the tray runs (xclip
+    // forks to the background and exits right away, wl-copy once replaced)
     std::thread([clip_pid] { waitpid(clip_pid, nullptr, 0); }).detach();
 
     return Ok(copy_pipe[1]);

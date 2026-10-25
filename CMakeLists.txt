@@ -28,7 +28,7 @@ endif()
 # -----------------------------
 
 # Enable LTO for a target in Release builds.
-# Never on Windows: one link mixing LTO and non-LTO objects (oshot_common
+# Never on Windows, where one link mixing LTO and non-LTO objects (oshot_common
 # needs -Wl,--export-all-symbols, or is an OBJECT library merged into
 # oshot.exe) hits GCC/MinGW bugs folding weak COMDAT symbols, like spdlog's
 # thread_local statics and template instantiations.
@@ -124,9 +124,9 @@ message(STATUS "LEPTONICA_INCLUDE_DIRS after: ${LEPTONICA_INCLUDE_DIRS}")
 
 if(UNIX AND NOT APPLE)
     find_package(X11 REQUIRED)
-    # Imported targets carry the full library paths: on the BSDs these
-    # live in /usr/local/lib, which the linker doesn't search by default
-    # Ayatana first: from 0.6 it has the "activate" signal, without it a left
+    # Imported targets carry the full library paths. On the BSDs these
+    # live in /usr/local/lib, which the linker doesn't search by default.
+    # Ayatana first, because from 0.6 it has the "activate" signal. Without it a left
     # click on the tray icon in StatusNotifier hosts can only open the menu
     pkg_check_modules(APPINDICATOR IMPORTED_TARGET ayatana-appindicator3-0.1)
     if(NOT APPINDICATOR_FOUND)
@@ -267,7 +267,7 @@ endif()
 # -----------------------------
 # oshot_common: everything but main()
 # -----------------------------
-# With plugins it's a SHARED library: oshot, oshotpm and the libraries they
+# With plugins it's a SHARED library, since oshot, oshotpm and the libraries they
 # load must share one copy of the globals in globals.cpp (g_ss_tool,
 # g_config, g_cache, ...), and an OBJECT library would copy them into each
 # of its users, making the copies drift apart and get destroyed twice.
@@ -406,7 +406,7 @@ target_link_libraries(
     PRIVATE Threads::Threads
 )
 if(NOT DISABLE_PLUGINS)
-    # cimgui: plugins use it, and oshot loading it means they find it without
+    # Plugins use cimgui, and oshot loading it means they find it without
     # linking it (Linux/BSD/macOS) or having to locate it (AppImage)
     target_link_libraries(oshot_common PRIVATE dylib cimgui)
 endif()
@@ -817,7 +817,7 @@ enable_lto(tiny-process-library)
 # Plugin SDK and example plugin
 # -----------------------------
 if(NOT DISABLE_PLUGINS)
-    # The plugin SDK in the build tree: what packages ship next to oshot and
+    # The plugin SDK in the build tree, i.e. what packages ship next to oshot and
     # what oshotpm passes to plugin builds as OSHOT_SDK. Windows plugins also
     # need cimgui's import library.
     set(OSHOT_SDK_DIR "${CMAKE_BINARY_DIR}/sdk")

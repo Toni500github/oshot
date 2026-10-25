@@ -52,7 +52,7 @@ TEST_CASE("parse_hex_rgba()", "[util][color]")
                                  "#ff8000000",
                                  "#gg0000",
                                  "#ff800g",
-                                 // strtoul() alone would take these: a sign, spaces or a 0x prefix
+                                 // strtoul() alone would accept these (a sign, spaces or a 0x prefix)
                                  "#0x1234",
                                  "#+12345",
                                  "#-12345",

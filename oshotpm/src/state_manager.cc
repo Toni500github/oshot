@@ -50,7 +50,7 @@ void StateManager::Reload()
     if (!fs::exists(m_path, ec))
         return;
 
-    // A broken state file shouldn't keep oshot from starting: plugins just don't load
+    // A broken state file shouldn't keep oshot from starting; plugins just don't load
     MUST_OK(m_toml.LoadFile(m_path.string()), spdlog::error("Failed to read {}: {}", m_path.string(), _r.error_v()));
 }
 

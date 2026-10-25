@@ -49,7 +49,7 @@ trap 'rm -rf "$TMP"' EXIT
 # Template
 # ------------------------------
 
-# Our sources only: the vendored libraries in */libs are left out
+# Our sources only (the vendored libraries in */libs are left out)
 find src include -path '*/libs' -prune -o \( -name '*.cpp' -o -name '*.hpp' -o -name '*.mm' \) -print |
     LC_ALL=C sort >"$TMP/sources"
 

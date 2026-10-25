@@ -175,7 +175,7 @@ name = "No versions"
         CHECK(index.plugins[2].id == "io.github.user.zeta");
         CHECK(index.Find("Not A Valid ID") == nullptr);
 
-        // No name: the ID
+        // No name, so it falls back to the ID
         const index_plugin_t* alpha = index.Find("io.github.user.alpha");
         REQUIRE(alpha != nullptr);
         CHECK(alpha->name == "io.github.user.alpha");

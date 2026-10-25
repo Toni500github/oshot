@@ -220,8 +220,8 @@ struct selection_rect_t
 
 struct annotation_t
 {
-    // Opposite corners. Circles and counter bubbles: the center and a point on
-    // the circle. Lines and arrows: the endpoints, in drawing direction
+    // Opposite corners. For circles and counter bubbles it's the center and a point
+    // on the circle; for lines and arrows, the endpoints in drawing direction
     point_t start;
     point_t end;
 
@@ -301,7 +301,7 @@ struct plugin_install_state_t
     std::mutex                         events_mutex;
     std::deque<plugin_install_event_t> pending_events;
 
-    // A PluginCallbacks::confirm question: the worker waits on confirm_cv
+    // A PluginCallbacks::confirm question. The worker waits on confirm_cv
     // until the status window's popup answers it
     std::mutex              confirm_mutex;
     std::condition_variable confirm_cv;
@@ -319,7 +319,7 @@ struct plugin_index_state_t
     // Guards the fields below
     std::mutex mutex;
 
-    // offline: the last downloaded copy
+    // Set when offline and this is the last downloaded copy
     bool stale = false;
 
     bool           loading = false;
@@ -426,14 +426,14 @@ public:
     // Draws a frame of the overlay and handles its input
     void RenderOverlay();
 
-    // Ends the capture: frees the textures and calls the SetOnCancel() callback
+    // Ends the capture, freeing the textures and calling the SetOnCancel() callback
     void Cancel();
 
     // Frees the OCR engine. Must run before the process exits, see OcrAPI::End()
     void EndOcr() { m_ocr_api.End(); }
 
-    // Frees what only the capture that just ended needs: the screenshot, its
-    // annotations and the OCR engine. The tray keeps g_ss_tool between captures
+    // Frees what only the capture that just ended needs (the screenshot, its
+    // annotations and the OCR engine). The tray keeps g_ss_tool between captures
     void EndCapture();
 
     // Replaces the screenshot with an image file and starts a new selection.
@@ -448,7 +448,7 @@ public:
     // Backend setters
     // ------------------------------
     // Called by OnCleanFrame() with what to do, the active region with its annotations, and the image format.
-    // Returns false if it failed: the overlay then stays open, so the user can try again
+    // Returns false if it failed, in which case the overlay stays open so the user can try again
     void SetOnComplete(std::function<bool(SavingOp, const capture_result_t&, ImageExt)> cb)
     {
         m_on_complete = std::move(cb);
@@ -488,16 +488,16 @@ public:
     [[nodiscard]] bool WantsCleanFrame() const { return IsCompleted() || m_pending_scan != ScanType::kNone; }
 
     // Called by the backend once the frame WantsCleanFrame() asked for has been
-    // rendered: reads the active region from it, for the pending scan and save/copy
+    // rendered. Reads the active region from it for the pending scan and save/copy
     void OnCleanFrame();
 
     // ------------------------------
     // Getters
     // ------------------------------
-    // Top-left corner of the screenshot on screen: it's drawn centered
+    // Top-left corner of the screenshot on screen (it's drawn centered)
     [[nodiscard]] const point_t GetImageOrigin() const { return { .x = m_image_origin.x, .y = m_image_origin.y }; }
 
-    // Screenshot pixels per screen unit: above 1 on a scaled (HiDPI) output when
+    // Screenshot pixels per screen unit. It's above 1 on a scaled (HiDPI) output when
     // the backend renders at full resolution, see SetFullResolutionImage()
     [[nodiscard]] float GetImageScale() const { return m_image_scale; }
 
@@ -744,7 +744,7 @@ private:
     // ------------------------------
     // State updates
     // ------------------------------
-    // Centers the screenshot in the viewport: sets m_image_origin, m_image_end and m_image_scale
+    // Centers the screenshot in the viewport by setting m_image_origin, m_image_end and m_image_scale
     void UpdateWindowBg();
 
     // Spreads the toolbar buttons over the selection's borders
@@ -753,7 +753,7 @@ private:
     // Swaps the selection's start and end so start is the top-left corner
     void NormalizeSelection(selection_info_t& sel);
 
-    // Keeps the selection on the screenshot: around a smaller image opened with -f there is nothing to capture
+    // Keeps the selection on the screenshot; around a smaller image opened with -f there's nothing to capture
     void ClampSelectionToImage(selection_info_t& sel);
 
     // Drops the main selection, its drag state and the current tool

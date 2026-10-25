@@ -566,7 +566,7 @@ inline bool ask_user_yn(bool def, const std::string_view fmt, Args&&... args)
             fmt::print("{} {}: ", str, inputs_str);
         }
 
-        // CTRL-D or no input left: a "no", so callers can cancel and clean up
+        // CTRL-D or no input left counts as a "no", so callers can cancel and clean up
         if (std::cin.eof())
         {
             fmt::print("\n");
@@ -619,7 +619,7 @@ static void create_dialog(const char* title, const NvdDialogType type, const std
 
     // The overlay is always on top, so the dialog would open behind it.
     // On Windows, hiding it hands the foreground to another window, which then
-    // stays in front of the dialog: let the overlay own the dialog instead
+    // stays in front of the dialog. Let the overlay own the dialog instead
 #if OSHOT_WINDOWS
     nvd_set_parent(dialog_parent_window());
 #else

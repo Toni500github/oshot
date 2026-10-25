@@ -119,7 +119,7 @@ struct plugin_t
     std::vector<std::string> authors;
 };
 
-// A plugin repository: its manifest, or its entry in state.toml once installed
+// A plugin repository, as described by its manifest (or its entry in state.toml once installed)
 struct manifest_t
 {
     // The repository name. See Manifest::IsValidName()

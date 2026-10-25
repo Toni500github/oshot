@@ -69,7 +69,7 @@ main() {
     check_file assets/linux/oshot.desktop
     check_file assets/linux/io.github.toni500github.oshot.metainfo.xml
 
-    # A plugin build links liboshot_common: ship the plugin manager and libcimgui
+    # A plugin build links liboshot_common, so ship the plugin manager and libcimgui
     # (which C plugins link against) inside the AppImage too
     DEPLOY_ARGS=()
     if readelf -d "$1" | grep -q 'liboshot_common'; then

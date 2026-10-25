@@ -120,7 +120,7 @@ static const wl_registry_listener registry_listener = { .global        = registr
 
 std::deque<monitor_t> wl_get_monitors()
 {
-    // Start fresh: a previous call's outputs and manager belong to a closed
+    // Start fresh. A previous call's outputs and manager belong to a closed
     // connection, and keeping them would list every monitor again
     monitors.clear();
     s_xdg_output_manager = nullptr;

@@ -106,7 +106,7 @@ const Plugin = struct {
                 self.uppercaseText(hostSlice(text));
             }
 
-            // get_capture() copies the whole image: only on demand, never every frame
+            // get_capture() copies the whole image, so only on demand, never every frame
             var cap = self.host.get_capture.?(self.ctx);
             defer self.host.capture_free.?(&cap);
             self.cap_w = cap.w;

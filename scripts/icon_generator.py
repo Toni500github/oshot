@@ -192,11 +192,11 @@ def create_icon_from_image(image_path, use_rgba=False, threshold=128):
                     has_transparency = a < 255
 
                     if has_transparency:
-                        # Shape is encoded in alpha: snap opaque pixels to white
+                        # Shape is encoded in alpha, so snap opaque pixels to white
                         snapped_a = 255 if a >= threshold else 0
                         pixels.extend([snapped_a, snapped_a, snapped_a, snapped_a])
                     else:
-                        # Fully opaque image: dark pixels are the icon, light pixels are background
+                        # Fully opaque image. Dark pixels are the icon, light pixels are background
                         # Invert brightness so dark → white icon
                         white = 255 if brightness < (255 - threshold) else 0
                         snapped_a = white
