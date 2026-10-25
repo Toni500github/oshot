@@ -691,7 +691,7 @@ set_target_properties(
     tinygettext
     PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
 )
-target_include_directories(tinygettext PUBLIC include/libs/tinygettext)
+target_include_directories(tinygettext PUBLIC include/libs)
 # The .po files are UTF-8 (xgettext, msgmerge and Weblate write them so), and the
 # strings go to ImGui as UTF-8: no charset conversion, so no iconv to ship on Windows/macOS.
 # PUBLIC: it changes a type in iconv.hpp, which i18n.cpp includes through po_parser.hpp
