@@ -60,6 +60,15 @@
 #  include <omp.h>
 #endif
 
+// Tesseract 4 declares ETEXT_DESC outside its namespace, 5 inside it, and
+// unqualified lookup here finds whichever exists
+namespace ocr_compat
+{
+using namespace tesseract;
+using monitor_t = ETEXT_DESC;
+}  // namespace ocr_compat
+using ocr_monitor_t = ocr_compat::monitor_t;
+
 // --------------------
 // OCR
 // --------------------
@@ -697,7 +706,7 @@ static Result<ocr_result_t> recognize(tesseract::TessBaseAPI& api,
                                       const text_layout_t&    layout,
                                       float                   src_w,
                                       float                   src_h,
-                                      tesseract::ETEXT_DESC*  monitor = nullptr)
+                                      ocr_monitor_t*          monitor = nullptr)
 {
     using TextPtr = std::unique_ptr<char, void (*)(char*)>;
 
@@ -840,9 +849,8 @@ static void add_lines(
     // Tesseract's text has a line per text line, with its own spacing (none
     // between CJK characters, but before a Latin word)
     std::vector<std::string> texts;
-    for (const auto part : std::views::split(r.data, '\n'))
+    for (std::string t : split(r.data, '\n'))
     {
-        std::string t(part.begin(), part.end());
         trim(t);
         if (!t.empty())
             texts.push_back(std::move(t));
@@ -1181,7 +1189,7 @@ public:
     {
         // Its own copy, as Leptonica's reference counts aren't thread-safe
         return Submit([gray = PixPtr(pixCopy(nullptr, pass.gray.get())), layout = pass.layout, src_w, src_h](
-                          tesseract::TessBaseAPI& api, tesseract::ETEXT_DESC* monitor) -> read_t {
+                          tesseract::TessBaseAPI& api, ocr_monitor_t* monitor) -> read_t {
             if (!gray)
                 return std::nullopt;
             Result<ocr_result_t> res = recognize(api, gray.get(), layout, src_w, src_h, monitor);
@@ -1193,7 +1201,7 @@ public:
     ticket_t Read(const line_crop_t& line)
     {
         return Submit([crop = PixPtr(pixCopy(nullptr, line.crop.get())), w = line.box.w, h = line.box.h](
-                          tesseract::TessBaseAPI& api, tesseract::ETEXT_DESC* monitor) -> read_t {
+                          tesseract::TessBaseAPI& api, ocr_monitor_t* monitor) -> read_t {
             if (!crop)
                 return std::nullopt;
             text_layout_t layout     = measure_text(crop.get());
@@ -1233,9 +1241,9 @@ public:
 private:
     struct job_t
     {
-        uint64_t                                                                    id;
-        uint64_t                                                                    generation;
-        std::packaged_task<read_t(tesseract::TessBaseAPI&, tesseract::ETEXT_DESC*)> task;
+        uint64_t                                                            id;
+        uint64_t                                                            generation;
+        std::packaged_task<read_t(tesseract::TessBaseAPI&, ocr_monitor_t*)> task;
     };
 
     template <typename F>
@@ -1262,7 +1270,7 @@ private:
             uint64_t                     generation;
         } cancel{ m_generation, job.generation };
 
-        tesseract::ETEXT_DESC monitor;
+        ocr_monitor_t monitor;
         monitor.cancel_this = &cancel;
         monitor.cancel      = [](void* data, int) {
             const auto* c = static_cast<cancel_t*>(data);
