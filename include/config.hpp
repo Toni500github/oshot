@@ -93,6 +93,9 @@ public:
         // builtin-font: ImGui's ProggyClean as the main font, system fonts only fill in what it lacks
         bool builtin_font = false;
 
+        // font-size: the interface font's size in pixels, 0 for the main font's own size (see interface_font_size())
+        int font_size = 0;
+
         // image-out-ext as written in the config, and parsed
         std::pair<std::string, ImageExt> image_out_type = { "png", ImageExt::PNG };
 

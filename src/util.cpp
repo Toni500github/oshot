@@ -40,7 +40,10 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
+#include <functional>
 #include <mutex>
+#include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -1041,33 +1044,78 @@ std::string get_default_ocr_path()
 #endif
 }
 
+// The system and user font folders, searched for a font given by file name
+static std::vector<fs::path> font_search_dirs()
+{
+#if OSHOT_WINDOWS
+    static constexpr auto dirs = std::to_array<std::string_view>({
+        "C:\\Windows\\Fonts\\",
+        "C:\\Windows\\Resources\\Themes\\Fonts\\",
+        "$LOCALAPPDATA\\Microsoft\\Windows\\Fonts\\",
+    });
+#elif OSHOT_MACOS
+    static constexpr auto dirs = std::to_array<std::string_view>({
+        "/System/Library/Fonts/",
+        "/Library/Fonts/",
+        "~/Library/Fonts/",
+    });
+#else
+    static constexpr auto dirs = std::to_array<std::string_view>({
+        "/usr/share/fonts/",
+        "/usr/local/share/fonts/",
+        "~/.fonts/",
+        "~/.local/share/fonts/",
+    });
+#endif
+
+    std::vector<fs::path> ret;
+    for (const std::string_view dir : dirs)
+        ret.emplace_back(expand_var(std::string(dir)));
+    return ret;
+}
+
+// Calls `fn` with every regular file under `root`, skipping hidden folders
+static void for_each_file_under(const fs::path& root, const std::function<bool(const fs::path&)>& fn)
+{
+    std::error_code ec;
+    if (!fs::exists(root, ec) || ec)
+        return;
+
+    for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
+         it != fs::recursive_directory_iterator();
+         it.increment(ec))
+    {
+        if (ec)
+        {
+            ec.clear();
+            continue;
+        }
+
+        const fs::directory_entry& e = *it;
+        if (e.is_directory(ec) && is_hidden_directory(e))
+        {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (e.is_regular_file(ec) && !fn(e.path()))
+            return;
+    }
+}
+
 fs::path get_font_path(const std::string& font)
 {
     if (font.empty())
         return {};
 
-#if OSHOT_WINDOWS
-    static constexpr std::array<std::string_view, 2> default_search_paths = {
-        "C:\\Windows\\Fonts\\",
-        "C:\\Windows\\Resources\\Themes\\Fonts\\",
-    };
-#else
-    static constexpr std::array<std::string_view, 4> default_search_paths = {
-        "/usr/share/fonts/",
-        "/usr/local/share/fonts/",
-        "~/.fonts/",
-        "~/.local/share/fonts/",
-    };
-#endif
-
     fs::path font_path(font);
     if (fs::exists(font_path))
         return font_path;
 
+    const std::vector<fs::path>& dirs = font_search_dirs();
+
     // A file directly in a font directory
-    for (const std::string_view root_sv : default_search_paths)
+    for (const fs::path& root : dirs)
     {
-        const fs::path& root      = expand_var(std::string(root_sv));
         const fs::path& candidate = root / font_path;
         std::error_code ec;
         if (fs::exists(candidate, ec) && !ec)
@@ -1075,38 +1123,50 @@ fs::path get_font_path(const std::string& font)
     }
 
     // Anywhere under one, by file name
-    for (const std::string_view root_sv : default_search_paths)
+    fs::path found;
+    for (const fs::path& root : dirs)
     {
-        const fs::path& root = expand_var(std::string(root_sv));
-        std::error_code ec;
-        if (!fs::exists(root, ec) || ec)
-            continue;
-
-        for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
-             it != fs::recursive_directory_iterator();
-             it.increment(ec))
-        {
-            if (ec)
-            {
-                ec.clear();
-                continue;
-            }
-
-            const fs::directory_entry& e = *it;
-            if (e.is_directory(ec) && is_hidden_directory(e))
-            {
-                it.disable_recursion_pending();
-                continue;
-            }
-            if (!e.is_regular_file(ec))
-                continue;
-
-            if (e.path().filename() == font_path)
-                return e.path();
-        }
+        for_each_file_under(root, [&](const fs::path& p) {
+            if (p.filename() == font_path)
+                found = p;
+            return found.empty();
+        });
+        if (!found.empty())
+            return found;
     }
 
     return {};
+}
+
+std::vector<fs::path> list_font_files()
+{
+    std::vector<fs::path>           ret;
+    std::unordered_set<std::string> names;
+    for (const fs::path& root : font_search_dirs())
+    {
+        for_each_file_under(root, [&](const fs::path& p) {
+            const std::string ext = str_tolower(p.extension().string());
+            // The first of the same name, as get_font_path() would find by name
+            if ((ext == ".ttf" || ext == ".otf" || ext == ".ttc") && names.insert(p.filename().string()).second)
+                ret.push_back(p);
+            return true;
+        });
+    }
+    return ret;
+}
+
+ImFont* add_font_file(ImFontAtlas* atlas, const fs::path& path, const float size, const ImFontConfig* cfg)
+{
+    // A file stb_truetype can't parse (WOFF, a bitmap font) is an error ImGui asserts on, unless told not to
+    ImGuiIO&     io       = ImGui::GetIO();
+    const bool   assert   = std::exchange(io.ConfigErrorRecoveryEnableAssert, false);
+    const bool   tooltip  = std::exchange(io.ConfigErrorRecoveryEnableTooltip, false);
+    ImFontConfig font_cfg = cfg ? *cfg : ImFontConfig();
+    font_cfg.Flags |= ImFontFlags_NoLoadError;
+    ImFont* font                        = atlas->AddFontFromFileTTF(path.string().c_str(), size, &font_cfg);
+    io.ConfigErrorRecoveryEnableAssert  = assert;
+    io.ConfigErrorRecoveryEnableTooltip = tooltip;
+    return font;
 }
 
 // A system font file, and the font's index in it for a collection (.ttc)
@@ -1232,7 +1292,7 @@ void build_font_atlas(ImGuiIO& io)
             continue;
         }
 
-        ImFont* f = io.Fonts->AddFontFromFileTTF(path.string().c_str(), 16.0f, &font_cfg);
+        ImFont* f = add_font_file(io.Fonts, path, 16.0f, &font_cfg);
         if (!f)
         {
             spdlog::warn("Font '{}' failed to load", font);
@@ -1272,7 +1332,7 @@ void build_font_atlas(ImGuiIO& io)
     for (const font_file_t& font : system_fonts)
     {
         font_cfg.FontNo = font.index;
-        ImFont* f       = io.Fonts->AddFontFromFileTTF(font.path.c_str(), system_size, &font_cfg);
+        ImFont* f       = add_font_file(io.Fonts, font.path, system_size, &font_cfg);
         if (!f)
             continue;
 

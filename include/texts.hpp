@@ -260,6 +260,10 @@ fonts = [{}]
 # The fonts above still come first, and system fonts still fill in the characters it lacks (e.g. Cyrillic).
 builtin-font = {}
 
+# Size of the interface font in pixels, from 10 to 32, e.g. 18 for larger text.
+# 0 uses the main font's own size: 16, or 13 with builtin-font, the only size where that pixel font stays sharp.
+font-size = {}
+
 # Extension of the output image when saving/copying.
 # Case insensitive.
 # Accepts: "png", "jpeg", "bmp", "tga"

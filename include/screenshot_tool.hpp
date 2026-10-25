@@ -521,7 +521,8 @@ public:
     // Returns an empty one on macOS, where the Metal backend makes them
     Result<ImTextureRef> CreateTexture(ImTextureID tex, std::span<const uint8_t> data, int w, int h);
 
-    // Fonts by path and size, added to the atlas the first time. Sizes under 16 share one entry
+    // Fonts by path and size, added to the atlas the first time. Sizes under 16 share one entry.
+    // The default font for a file that can't be loaded
     ImFont* CacheAndGetFont(const std::string& font_name, const float font_size);
 
     // The default font for an empty path, nullptr if CacheAndGetFont() didn't load it yet

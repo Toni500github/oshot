@@ -34,13 +34,16 @@
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <future>
 #include <initializer_list>
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <thread>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -148,7 +151,9 @@ static void draw_input_text_path(const char*                      label,
                                  const std::array<const char*, N> filters,
                                  const std::function<void()>&     if_edited,
                                  std::string&                     path,
-                                 ImGuiInputFlags                  flags)
+                                 ImGuiInputFlags                  flags,
+                                 ImGuiInputTextCallback           callback  = nullptr,
+                                 void*                            user_data = nullptr)
 {
     auto handle_drop = [&]() {
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && !g_dropped_paths.empty())
@@ -162,7 +167,7 @@ static void draw_input_text_path(const char*                      label,
 
     const float button_size = ImGui::GetFrameHeight();
     ImGui::PushItemWidth(ImGui::CalcItemWidth() - button_size);
-    if (ImGui::InputText(input_id, &path, flags) && if_edited)
+    if (ImGui::InputText(input_id, &path, flags, callback, user_data) && if_edited)
         if_edited();
     ImGui::PopItemWidth();
     handle_drop();
@@ -210,9 +215,11 @@ static void draw_input_text_file(const char*                      label,
                                  const std::array<const char*, N> filters,
                                  const std::function<void()>&     if_edited,
                                  std::string&                     path,
-                                 ImGuiInputFlags                  flags = 0)
+                                 ImGuiInputFlags                  flags     = 0,
+                                 ImGuiInputTextCallback           callback  = nullptr,
+                                 void*                            user_data = nullptr)
 {
-    draw_input_text_path<N>(label, input_id, true, filters, if_edited, path, flags);
+    draw_input_text_path<N>(label, input_id, true, filters, if_edited, path, flags, callback, user_data);
 }
 
 static void draw_input_text_folder(const char*                  label,
@@ -264,6 +271,13 @@ static std::unordered_map<std::string, int>& color_name_map()
     return map;
 }
 
+// The interface font size: font-size, else `own_size`, the main font's own one
+static float interface_font_size(const float own_size)
+{
+    const int size = g_config->File.font_size;
+    return size > 0 ? float(std::clamp(size, 10, 32)) : own_size;
+}
+
 void apply_imgui_theme()
 {
     ScreenshotTool::StyleDefaultColor();
@@ -295,6 +309,9 @@ void apply_imgui_theme()
         style.WindowBorderSize = ov.window_border;
     if (ov.frame_border >= 0.f)
         style.FrameBorderSize = ov.frame_border;
+
+    // For the next frame, since a frame puts back the size it started with (ImGui's own style editor does the same)
+    style._NextFrameFontSizeBase = interface_font_size(ImGui::GetDefaultFont()->LegacySize);
 }
 
 // ------------------------------
@@ -904,14 +921,20 @@ ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const floa
         return font;
     }
 
-    font = ImGui::GetIO().Fonts->AddFontFromFileTTF(
-        font_path.c_str(), font_size, nullptr, ImGui::GetIO().Fonts->GetGlyphRangesDefault());
+    ImFontConfig cfg;
+    cfg.GlyphRanges = ImGui::GetIO().Fonts->GetGlyphRangesDefault();
+    font            = add_font_file(ImGui::GetIO().Fonts, font_path, font_size, &cfg);
+    if (!font)
+    {
+        // Cached too, so the warning shows once
+        spdlog::warn("Font '{}' failed to load, using the default one", font_path);
+        font = ImGui::GetDefaultFont();
+    }
 
     const float safe_size = std::max(font_size, 16.0f);
     std::pair   key(font_path, safe_size);
     m_font_cache[key] = { .font_path = font_path, .font = font, .loaded = true };
-    if (font)
-        ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
+    ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
 
     return font;
 }
@@ -2573,7 +2596,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
                 ImGui::InputFloat("##fontsize", &m_tool_thickness[idx(m_current_tool)], 2.0f, 2.0f, "%.0f px");
                 ImGui::SameLine();
                 ImGui::TextUnformatted(_("Font Size"));
-                static constexpr auto font_filters = std::to_array({ "*.ttf", "*.otf", "*.woff", "*.woff2" });
+                static constexpr auto font_filters = std::to_array({ "*.ttf", "*.otf", "*.ttc" });
                 draw_input_text_file(
                     _("Font name/path"),
                     "##font_path_ann_settings",
@@ -3162,28 +3185,489 @@ static void draw_hotkey_recorder(std::string& hotkey_str, bool window_just_opene
 }
 #endif
 
+// A font file loaded on its own for the preview in Preferences. Only the last one asked for
+// stays in the atlas, since a CJK collection takes about 20 MB
+struct font_preview_t
+{
+    fs::path path;            // the file last asked for, loaded or not
+    ImFont*  font = nullptr;  // nullptr if ImGui couldn't load it
+};
+static font_preview_t font_preview;
+
+static void release_preview_font()
+{
+    ImFontAtlas* atlas = ImGui::GetIO().Fonts;
+    if (font_preview.font && atlas->Fonts.contains(font_preview.font))
+        atlas->RemoveFont(font_preview.font);
+    font_preview = {};
+}
+
+static ImFont* load_preview_font(const fs::path& path)
+{
+    // The ImGui context of an earlier capture took the font with its atlas
+    if (font_preview.font && !ImGui::GetIO().Fonts->Fonts.contains(font_preview.font))
+        font_preview = {};
+    if (path == font_preview.path)
+        return font_preview.font;
+
+    release_preview_font();
+    font_preview.path = path;
+    std::error_code ec;
+    if (path.empty() || !fs::is_regular_file(path, ec))
+        return nullptr;
+
+    font_preview.font = add_font_file(ImGui::GetIO().Fonts, path, 16.0f);
+    if (font_preview.font)
+        ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
+    return font_preview.font;
+}
+
+// A writing system, a character only it has, and a line to preview it. No line for the scripts
+// ImGui can't lay out (right to left, or letters joined or combined)
+struct font_script_t
+{
+    const char* name;
+    ImWchar     probe;
+    const char* sample;
+};
+
+// clang-format off
+static constexpr auto font_scripts = std::to_array<font_script_t>({
+    { .name=N_("Latin"),      .probe=0x0041, .sample="The quick brown fox jumps over the lazy dog" },
+    { .name=N_("Greek"),      .probe=0x03A9, .sample="ΞΕΣΚΕΠΑΖΩ ΤΗΝ ΨΥΧΟΦΘΟΡΑ ΒΔΕΛΥΓΜΙΑ" },  // capitals have no accents a font may lack
+    { .name=N_("Cyrillic"),   .probe=0x0416, .sample="Съешь же ещё этих мягких французских булок" },
+    { .name=N_("Arabic"),     .probe=0x0628, .sample="نص حكيم له سر قاطع وذو شأن عظيم مكتوب على ثوب أخضر ومغلف بجلد أزرق" },
+    { .name=N_("Hebrew"),     .probe=0x05D0, .sample="עטלף אבק נס דרך מזגן שהתפוצץ כי חם" },
+    { .name=N_("Devanagari"), .probe=0x0915, .sample="ऋषियों को सताने वाले दुष्ट राक्षसों के राजा रावण का सर्वनाश करने वाले विष्णुवतार भगवान श्रीराम, अयोध्या के महाराज दशरथ के बड़े सपुत्र थे।" },
+    { .name=N_("Thai"),       .probe=0x0E01, .sample="ะ า ิ ี ึ ื ุ ู เ แ โ ใ ไ ำ ๅ ฤ ฤๅ ฦ ฦๅ" },
+    { .name=N_("Chinese"),    .probe=0x4E2D, .sample="我能吞下玻璃而不伤身体" },
+    { .name=N_("Japanese"),   .probe=0x3042, .sample="いろはにほへと ちりぬるを" },
+    { .name=N_("Korean"),     .probe=0xAC00, .sample="다람쥐 헌 쳇바퀴에 타고파" },
+});
+// clang-format on
+
+// A small label, filled when `on`, only outlined when not
+static void draw_chip(const char* label, const bool on)
+{
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const ImVec2      text  = ImGui::CalcTextSize(label);
+    const ImVec2      pad(style.FramePadding.x * 0.75f, style.FramePadding.y * 0.5f);
+    const ImVec2      min = ImGui::GetCursorScreenPos();
+    const ImVec2      max(min.x + text.x + pad.x * 2, min.y + text.y + pad.y * 2);
+    ImGui::Dummy(ImVec2(max.x - min.x, max.y - min.y));
+
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    if (on)
+        draw_list->AddRectFilled(min, max, ImGui::GetColorU32(ImGuiCol_Button), style.FrameRounding);
+    else
+        draw_list->AddRect(min, max, ImGui::GetColorU32(ImGuiCol_Border), style.FrameRounding);
+    draw_list->AddText(
+        ImVec2(min.x + pad.x, min.y + pad.y), ImGui::GetColorU32(on ? ImGuiCol_Text : ImGuiCol_TextDisabled), label);
+}
+
+// The card that shows a font: its path, the scripts it has and sample lines in it at `size`
+static void draw_font_preview(const std::string& title,
+                              const char*        role,
+                              const fs::path&    path,
+                              ImFont*            font,
+                              const float        size)
+{
+    static std::string preview_text;
+
+    ImGui::BeginChild("##font_preview", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
+    ImGui::TextUnformatted(title.c_str());
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", role);
+
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    if (!path.empty())
+        ImGui::TextWrapped("%s", path.string().c_str());
+    ImGui::PopStyleColor();
+
+    if (!font)
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, (0xFF6666FF_rgba).to_imvec4());
+        ImGui::TextWrapped("%s",
+                           path.empty()
+                               ? _("Not found: not an existing file, nor a file in the system font folders")
+                               : _("Can't be loaded: only TrueType and OpenType fonts work (.ttf, .otf, .ttc)"));
+        ImGui::PopStyleColor();
+        ImGui::EndChild();
+        return;
+    }
+
+    // The scripts it has, as chips wrapped to the card's width
+    ImGui::Spacing();
+    const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+    for (size_t i = 0; i < font_scripts.size(); ++i)
+    {
+        const font_script_t& script     = font_scripts[i];
+        const char*          name       = i18n::tr(script.name);
+        const bool           has        = font->IsGlyphInFont(script.probe);
+        const float          chip_width = ImGui::CalcTextSize(name).x + ImGui::GetStyle().FramePadding.x * 1.5f;
+        if (i > 0 && ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + chip_width <= right)
+            ImGui::SameLine();
+        draw_chip(name, has);
+        ImGui::SetItemTooltip("%s",
+                              has ? _("Has this script") : _("Lacks this script, a font after it can fill it in"));
+    }
+    ImGui::Spacing();
+
+    ImGui::BeginChild("##font_samples",
+                      ImVec2(0, 0),
+                      ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_FrameStyle);
+    ImGui::PushFont(font, size);
+    if (!preview_text.empty())
+        ImGui::TextWrapped("%s", preview_text.c_str());
+    for (const font_script_t& script : font_scripts)
+    {
+        if (!script.sample || !font->IsGlyphInFont(script.probe))
+            continue;
+        ImGui::TextWrapped("%s", script.sample);
+        if (&script == &font_scripts[0])  // Latin
+            ImGui::TextWrapped("%s", "0123456789 àéîõü ÆØß ?!&@#");
+    }
+    ImGui::PopFont();
+    ImGui::EndChild();
+
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputTextWithHint("##preview_text", _("Type to preview your own text"), &preview_text);
+    ImGui::EndChild();
+}
+
+// Up and Down in the font input move the highlighted suggestion, -1 for none
+static int font_suggestion_keys(ImGuiInputTextCallbackData* data)
+{
+    int& highlighted = *static_cast<int*>(data->UserData);
+    highlighted += data->EventKey == ImGuiKey_UpArrow ? -1 : 1;
+    return 0;
+}
+
+static void draw_preference_fonts(const bool window_just_opened)
+{
+    // What stb_truetype loads
+    static constexpr auto font_filters    = std::to_array({ "*.ttf", "*.otf", "*.ttc" });
+    static constexpr int  max_suggestions = 8;
+
+    static std::string           new_font;
+    static std::vector<fs::path> resolved_font_paths;  // get_font_path() of each font, in the list's order
+    static size_t                selected       = 0;
+    static bool                  should_refocus = false;
+
+    // The installed fonts, listed in the background each time the window opens
+    static std::future<std::vector<fs::path>> listing;
+    static std::vector<fs::path>              installed;
+
+    // The installed fonts whose name has the typed text, for suggestion_query
+    static std::vector<fs::path> suggestions;
+    static std::string           suggestion_query;
+    static int                   highlighted = 0;
+
+    std::vector<std::string>& fonts = g_config->File.fonts;
+    if (window_just_opened)
+    {
+        new_font.clear();
+        if (!listing.valid())
+            listing = std::async(std::launch::async, list_font_files);
+    }
+    if (window_just_opened || resolved_font_paths.size() != fonts.size())
+    {
+        resolved_font_paths.clear();
+        for (const std::string& f : fonts)
+            resolved_font_paths.push_back(get_font_path(f));
+    }
+    selected = std::min(selected, fonts.empty() ? 0 : fonts.size() - 1);
+
+    bool listed_now = false;
+    if (listing.valid() && listing.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+    {
+        installed  = listing.get();
+        listed_now = true;
+    }
+
+    // A path isn't searched, only a name. Matches that start with the text come first
+    const bool is_path = new_font.find_first_of("/\\") != std::string::npos;
+    if (new_font != suggestion_query || listed_now)
+    {
+        suggestion_query = new_font;
+        highlighted      = 0;
+        suggestions.clear();
+        if (!new_font.empty() && !is_path)
+        {
+            const std::string                                 query = str_tolower(new_font);
+            std::vector<std::tuple<int, std::string, size_t>> matches;  // rank, lowercase name, index in installed
+            for (size_t i = 0; i < installed.size(); ++i)
+            {
+                const std::string name  = installed[i].filename().string();
+                const std::string lower = str_tolower(name);
+                const size_t      pos   = lower.find(query);
+                if (pos == std::string::npos || std::ranges::find(fonts, name) != fonts.end())
+                    continue;
+                matches.emplace_back(lower == query ? 0 : pos == 0 ? 1 : 2, lower, i);
+            }
+            std::ranges::sort(matches);
+            for (size_t i = 0; i < matches.size() && i < max_suggestions; ++i)
+                suggestions.push_back(installed[std::get<2>(matches[i])]);
+        }
+    }
+    highlighted = std::clamp(highlighted, -1, int(suggestions.size()) - 1);
+
+    // The highlighted suggestion, or the text as typed
+    const auto pending_font = [&]() -> std::string {
+        if (suggestion_query == new_font && highlighted >= 0 && size_t(highlighted) < suggestions.size())
+            return suggestions[size_t(highlighted)].filename().string();
+        return new_font;
+    };
+
+    const auto add_font = [&](const std::string& font) {
+        if (font.empty() || std::ranges::find(fonts, font) != fonts.end())
+            return;
+        fonts.push_back(font);
+        resolved_font_paths.push_back(get_font_path(font));
+        selected = fonts.size() - 1;
+        new_font.clear();
+        should_refocus = true;
+    };
+
+    // Moves a font to another place, shifting the ones in between
+    const auto move_font = [&](const size_t from, const size_t to) {
+        const auto rotate = [&](auto& v) {
+            const auto first = v.begin() + static_cast<ptrdiff_t>(std::min(from, to));
+            const auto last  = v.begin() + static_cast<ptrdiff_t>(std::max(from, to)) + 1;
+            if (from < to)
+                std::rotate(first, first + 1, last);
+            else
+                std::rotate(first, last - 1, last);
+        };
+        rotate(fonts);
+        rotate(resolved_font_paths);
+        selected = to;
+    };
+
+    // A path shows only its file name, the preview has the rest
+    const auto display_name = [](const std::string& font) { return fs::path(font).filename().string(); };
+
+    ImGui::Dummy(ImVec2(0, 8));
+    ImGui::SeparatorText(_("Fonts"));
+    ImGui::TextWrapped("%s",
+                       _("The first font draws the interface, the next ones fill in the characters it lacks, "
+                         "e.g. NotoSansCJK-Regular.ttc after Roboto-Regular.ttf for Chinese or Japanese. "
+                         "The system UI font fills in what is still missing."));
+    ImGui::Spacing();
+
+    ImGui::Checkbox(_("Use the built-in font##config_builtin_font"), &g_config->File.builtin_font);
+    ImGui::SameLine();
+    HelpMarker(
+        _("ImGui's ProggyClean, a small pixel font, instead of the system UI font.\n"
+          "The fonts below still come first, and system fonts still fill in the characters it lacks."));
+
+    // The size build_font_atlas() will load the main font at: 16 px, or 13 for ProggyClean
+    const float own_size   = g_config->File.builtin_font && fonts.empty() ? 13.0f : 16.0f;
+    const float font_size  = interface_font_size(own_size);
+    int         shown_size = int(font_size);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(_("Font size"));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
+    if (ImGui::SliderInt("##config_font_size", &shown_size, 10, 32, "%d px", ImGuiSliderFlags_AlwaysClamp))
+        g_config->File.font_size = shown_size;
+    ImGui::SameLine();
+    if (g_config->File.font_size > 0)
+    {
+        if (ImGui::SmallButton(_("Default")))
+            g_config->File.font_size = 0;
+    }
+    else
+    {
+        ImGui::TextDisabled("%s", _("default"));
+    }
+    ImGui::SameLine();
+    HelpMarker(
+        _("The size of all the text in oshot's windows, applied when saved. The preview below uses it.\n"
+          "The default is the main font's own size, 16 px, or 13 px with the built-in font, "
+          "which is blurry at any other size."));
+    ImGui::Spacing();
+
+    // The list and the preview side by side when there's room, else the preview goes below
+    const ImGuiStyle& style        = ImGui::GetStyle();
+    const float       avail        = ImGui::GetContentRegionAvail().x;
+    const bool        side_by_side = avail >= ImGui::GetFontSize() * 34.0f;
+    const float       list_width   = side_by_side ? std::floor(avail * 0.45f) : avail;
+    // The theme's Header color is close to the background, too faint to mark a selection
+    const ImU32 selection_color = ImGui::GetColorU32(ImGuiCol_Button, 0.45f);
+
+    ImGui::BeginGroup();
+    const float row_height = ImGui::GetTextLineHeight() + style.CellPadding.y * 2.0f;
+    const float rows       = float(std::clamp(fonts.size(), size_t(3), size_t(6)));
+    if (ImGui::BeginTable("##font_list",
+                          3,
+                          ImGuiTableFlags_BordersOuter | ImGuiTableFlags_ScrollY,
+                          ImVec2(list_width, row_height * rows + 2.0f)))  // + the borders
+    {
+        ImGui::TableSetupColumn("##number", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("##name", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("##role", ImGuiTableColumnFlags_WidthFixed);
+
+        std::optional<std::pair<size_t, size_t>> dragged;  // moved after the loop, which still reads the list
+        for (size_t i = 0; i < fonts.size(); ++i)
+        {
+            ImGui::PushID(int(i));
+            ImGui::TableNextRow();
+
+            ImGui::TableNextColumn();
+            ImGui::PushStyleColor(ImGuiCol_Header, selection_color);
+            if (ImGui::Selectable(fmt::format("{}", i + 1).c_str(), selected == i, ImGuiSelectableFlags_SpanAllColumns))
+                selected = i;
+            ImGui::PopStyleColor();
+            if (ImGui::BeginDragDropSource())
+            {
+                ImGui::SetDragDropPayload("OSHOT_FONT_ROW", &i, sizeof(i));
+                ImGui::TextUnformatted(display_name(fonts[i]).c_str());
+                ImGui::EndDragDropSource();
+            }
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("OSHOT_FONT_ROW"))
+                    dragged = { *static_cast<const size_t*>(payload->Data), i };
+                ImGui::EndDragDropTarget();
+            }
+
+            ImGui::TableNextColumn();
+            if (resolved_font_paths[i].empty())
+                ImGui::TextColored((0xFF6666FF_rgba), "%s", display_name(fonts[i]).c_str());
+            else
+                ImGui::TextUnformatted(display_name(fonts[i]).c_str());
+
+            ImGui::TableNextColumn();
+            ImGui::TextDisabled("%s", i == 0 ? _("Main") : _("Fallback"));
+            ImGui::PopID();
+        }
+        if (fonts.empty())
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("%s", _("No fonts added, the system UI font is used."));
+        }
+        ImGui::EndTable();
+
+        if (dragged)
+            move_font(dragged->first, dragged->second);
+    }
+
+    ImGui::BeginDisabled(fonts.empty() || selected == 0);
+    if (ImGui::ArrowButton("##font_up", ImGuiDir_Up))
+        move_font(selected, selected - 1);
+    ImGui::SetItemTooltip("%s", _("Move up, or drag the row"));
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(selected + 1 >= fonts.size());
+    if (ImGui::ArrowButton("##font_down", ImGuiDir_Down))
+        move_font(selected, selected + 1);
+    ImGui::SetItemTooltip("%s", _("Move down, or drag the row"));
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(fonts.empty());
+    if (ImGui::Button(_("Remove")))
+    {
+        fonts.erase(fonts.begin() + static_cast<ptrdiff_t>(selected));
+        resolved_font_paths.erase(resolved_font_paths.begin() + static_cast<ptrdiff_t>(selected));
+        selected = std::min(selected, fonts.empty() ? 0 : fonts.size() - 1);
+    }
+    ImGui::EndDisabled();
+
+    ImGui::Spacing();
+    if (should_refocus)
+    {
+        ImGui::SetKeyboardFocusHere(0);
+        should_refocus = false;
+    }
+    // Enter adds the highlighted suggestion, else the text. A file from "..." or a dropped one is added right away.
+    // The input and its "..." button fill the line up to the Add font button (3 = the gap before the empty label)
+    ImGui::PushItemWidth(list_width - button_width({ _("Add font") }) - style.ItemSpacing.x - 3.0f);
+    draw_input_text_file(
+        "",
+        "##font_path",
+        font_filters,
+        [&] { add_font(pending_font()); },
+        new_font,
+        ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory,
+        font_suggestion_keys,
+        &highlighted);
+    ImGui::PopItemWidth();
+    ImGui::SameLine();
+    const std::string pending   = pending_font();
+    const bool        duplicate = std::ranges::find(fonts, pending) != fonts.end();
+    ImGui::BeginDisabled(pending.empty() || duplicate);
+    if (ImGui::Button(_("Add font")))
+        add_font(pending);
+    if (duplicate)
+        ImGui::SetItemTooltip("%s", _("Already in the list"));
+    ImGui::EndDisabled();
+
+    // Clicking a suggestion adds it
+    if (!suggestions.empty())
+    {
+        ImGui::BeginChild(
+            "##font_suggestions", ImVec2(list_width, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
+        for (size_t i = 0; i < suggestions.size(); ++i)
+        {
+            const std::string name = suggestions[i].filename().string();
+            ImGui::PushID(int(i));
+            ImGui::PushStyleColor(ImGuiCol_Header, selection_color);
+            if (ImGui::Selectable(name.c_str(), highlighted == int(i)))
+                add_font(name);
+            ImGui::PopStyleColor();
+            ImGui::SetItemTooltip("%s", suggestions[i].string().c_str());
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", suggestions[i].parent_path().string().c_str());
+            ImGui::PopID();
+        }
+        ImGui::EndChild();
+    }
+
+    const char* hint = nullptr;
+    if (new_font.empty() || is_path)
+        hint = _("Type to search the installed fonts, or enter a font file's path");
+    else if (listing.valid())
+        hint = _("Searching the font folders...");
+    else if (suggestions.empty())
+        hint = _("No installed font matches, Enter adds the name as typed");
+    else
+        hint = _("Up and Down choose a font, Enter adds it");
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + list_width);
+    ImGui::TextDisabled("%s", hint);
+    ImGui::PopTextWrapPos();
+    ImGui::EndGroup();
+
+    if (side_by_side)
+        ImGui::SameLine();
+    else
+        ImGui::Spacing();
+
+    // The selected font, else the font in use
+    ImGui::BeginGroup();
+    if (!fonts.empty())
+        draw_font_preview(display_name(fonts[selected]),
+                          selected == 0 ? _("main font") : _("fallback font"),
+                          resolved_font_paths[selected],
+                          load_preview_font(resolved_font_paths[selected]),
+                          font_size);
+    else
+    {
+        release_preview_font();
+        draw_font_preview(_("Interface font"), _("in use now"), {}, ImGui::GetIO().FontDefault, font_size);
+    }
+    ImGui::EndGroup();
+}
+
 static void draw_preference_edit_config(const std::function<void()>& refresh_models_func, bool window_just_opened)
 {
     static constexpr auto image_prev_units = std::to_array({ "off", "auto", "B", "KiB", "MiB", "KB", "MB" });
-    static constexpr auto font_filters     = std::to_array({ "*.ttf", "*.otf", "*.ttc", "*.woff", "*.woff2" });
     static constexpr auto toml_filters     = std::to_array({ "*.toml" });
 
-    static int                   image_ext_sel    = 0;
-    static int                   image_preuni_sel = 0;
-    static std::string           new_font;
-    static Result<std::string>   r = get_config_image_out_fmt();
-    static std::vector<fs::path> resolved_font_paths;
-    static bool                  should_refocus = false;
-
-    // Rebuild cache on open or when the list changes
-    auto rebuild_font_cache = [&]() {
-        resolved_font_paths.clear();
-        for (const std::string& f : g_config->File.fonts)
-            resolved_font_paths.push_back(get_font_path(f));
-    };
-
-    if (window_just_opened)
-        rebuild_font_cache();
+    static int                 image_ext_sel    = 0;
+    static int                 image_preuni_sel = 0;
+    static Result<std::string> r                = get_config_image_out_fmt();
 
     ImGui::SeparatorText(_("Edit default config"));
     ImGui::Spacing();
@@ -3500,78 +3984,7 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
         ImGui::TreePop();
     }
 
-    // --- Fonts section ---
-    ImGui::Dummy(ImVec2(0, 8));
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    ImGui::TextWrapped("%s",
-                       _("Fonts for the application. Accepts an absolute path or a font name.\n"
-                         "Combine multiple entries for multi-language support, e.g. "
-                         "Roboto-Regular.ttf and NotoSerifCJK-Regular.ttc for CJK alongside Latin."));
-    ImGui::Spacing();
-
-    ImGui::Checkbox(_("Use the built-in font##config_builtin_font"), &g_config->File.builtin_font);
-    ImGui::SameLine();
-    HelpMarker(
-        _("ImGui's ProggyClean, a small pixel font, instead of the system UI font.\n"
-          "The fonts below still come first, and system fonts still fill in the characters it lacks."));
-    ImGui::Spacing();
-
-    // Scrollable font list with remove buttons
-    std::vector<std::string>& fonts       = g_config->File.fonts;
-    const float               list_height = ImGui::GetTextLineHeightWithSpacing() * 4.5f;
-    ImGui::BeginChild("##font_list", ImVec2(0, list_height), true);
-    for (size_t i = 0; i < fonts.size(); ++i)
-    {
-        ImGui::PushID(int(i));
-        if (ImGui::SmallButton("x"))
-        {
-            fonts.erase(fonts.begin() + static_cast<ptrdiff_t>(i));
-            rebuild_font_cache();  // invalidate
-            ImGui::PopID();
-            break;
-        }
-        ImGui::SameLine();
-        ImGui::TextUnformatted(fonts[i].c_str());
-        ImGui::SameLine();
-        const fs::path& fp = (i < resolved_font_paths.size()) ? resolved_font_paths[i] : fs::path{};
-        if (fp.empty())
-            ImGui::TextColored((0xFF6666FF_rgba), "%s", _("Font not found"));
-        else if (!fs::path(fonts[i]).is_absolute())
-            ImGui::TextDisabled(_("Found in %s"), fp.string().c_str());
-        ImGui::PopID();
-    }
-
-    if (fonts.empty())
-        ImGui::TextDisabled("%s", _("(no fonts configured - application default will be used)"));
-
-    ImGui::EndChild();
-
-    ImGui::Spacing();
-    ImGui::TextUnformatted(_("Font path: "));
-    ImGui::SameLine(0, 0);
-    if (should_refocus)
-    {
-        ImGui::SetKeyboardFocusHere(0);
-        should_refocus = false;
-    }
-    // The input and its "..." button fill the line up to the Add font button (3 = the gap before the empty label)
-    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - button_width({ _("Add font") }) -
-                         ImGui::GetStyle().ItemSpacing.x - 3.0f);
-    draw_input_text_file("", "##font_path", font_filters, [&] {}, new_font, ImGuiInputTextFlags_EnterReturnsTrue);
-    ImGui::PopItemWidth();
-    ImGui::SameLine();
-    if (ImGui::Button(_("Add font")))
-    {
-        if (!new_font.empty() && std::ranges::find(fonts, new_font) == fonts.end())
-        {
-            fonts.push_back(new_font);
-            rebuild_font_cache();  // invalidate
-        }
-        new_font.clear();
-        should_refocus = true;
-    }
+    draw_preference_fonts(window_just_opened);
 }
 
 #ifndef DISABLE_PLUGINS
@@ -3809,6 +4222,7 @@ void ScreenshotTool::DrawPreferencesWindow()
     if (!m_show_window.Has(SubWindow::Preferences))
     {
         prev_window_open = false;
+        release_preview_font();
         return;
     }
 

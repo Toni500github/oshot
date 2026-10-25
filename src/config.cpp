@@ -115,6 +115,7 @@ void Config::LoadConfigFile(const std::string& filename)
     File.language         = GetValue<std::string>("default.language", "auto");
     File.fonts            = GetValueArrayStr("default.fonts", {});
     File.builtin_font     = GetValue<bool>("default.builtin-font", false);
+    File.font_size        = GetValue<int>("default.font-size", 0);
 
     const char* t = getenv("TESSDATA_PREFIX");
     if (!File.pref_conf_to_env && t)
@@ -214,6 +215,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             EscapeString(File.language),
             fonts_str,
             File.builtin_font,
+            File.font_size,
             EscapeString(File.image_out_type.first),
             EscapeString(File.image_out_fmt),
             EscapeString(File.image_out_size_fmt),

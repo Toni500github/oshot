@@ -131,6 +131,9 @@ namespace fs = std::filesystem;
 struct capture_result_t;
 struct ImVec4;
 struct ImGuiIO;
+struct ImFont;
+struct ImFontAtlas;
+struct ImFontConfig;
 enum class ImageExt;
 enum class SavingOp;
 
@@ -881,6 +884,12 @@ std::string get_default_ocr_path();
 fs::path get_font_path(const std::string& font);
 
 /**
+ * List the TrueType and OpenType fonts in the system and user font directories
+ * @return One path per file name, the one get_font_path() finds for that name
+ **/
+std::vector<fs::path> list_font_files();
+
+/**
  * fs::remove_all() that also deletes read-only files (on Windows), and only logs on failure
  * @param path The file or directory to remove
  * @return false if something couldn't be removed
@@ -1011,6 +1020,17 @@ void extern_glfwSwapInterval(int v);
  * @param io The ImGui IO whose atlas to rebuild
  **/
 void build_font_atlas(ImGuiIO& io);
+
+/**
+ * ImFontAtlas::AddFontFromFileTTF() that returns nullptr for a file it can't load,
+ * where ImGui would assert in a debug build
+ * @param atlas The atlas to add the font to
+ * @param path The font file
+ * @param size The font's reference size in pixels
+ * @param cfg Options for the font, e.g. MergeMode, or nullptr for the defaults
+ * @return The font, or nullptr
+ **/
+ImFont* add_font_file(ImFontAtlas* atlas, const fs::path& path, float size, const ImFontConfig* cfg = nullptr);
 
 // ------------------------------
 // Misc

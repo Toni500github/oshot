@@ -41,6 +41,7 @@ static void check_same(const Config::config_file_t& got, const Config::config_fi
     CHECK(got.language == want.language);
     CHECK(got.fonts == want.fonts);
     CHECK(got.builtin_font == want.builtin_font);
+    CHECK(got.font_size == want.font_size);
     CHECK(got.image_out_type.first == want.image_out_type.first);
     CHECK(got.image_out_type.second == want.image_out_type.second);
     CHECK(got.image_out_fmt == want.image_out_fmt);
@@ -94,6 +95,7 @@ TEST_CASE("Config: the generated config loads back the same", "[config]")
         f.language           = "pt_BR";
         f.fonts              = { "Noto Sans", R"(A "quoted" \ font)" };
         f.builtin_font       = !f.builtin_font;
+        f.font_size          = 20;
         f.image_out_type     = { "jpeg", ImageExt::JPEG };
         f.image_out_fmt      = "shot_{:%F}";
         f.image_out_size_fmt = "MiB";
