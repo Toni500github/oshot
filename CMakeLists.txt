@@ -325,6 +325,7 @@ add_dependencies(oshot_common generate_version)
 if(OSHOT_OPTION_DEFINITIONS)
     target_compile_definitions(oshot_common PUBLIC ${OSHOT_OPTION_DEFINITIONS})
 endif()
+target_compile_definitions(oshot_common PRIVATE $<$<CONFIG:Debug>:DEBUG=1>)
 
 if(NOT DISABLE_PLUGINS)
     set_target_properties(

@@ -67,10 +67,12 @@ struct ocr_result_t
     std::vector<ocr_word_t> words;
 };
 
+class OcrEnginePool;
+
 class OcrAPI
 {
 public:
-    OcrAPI() : m_api(std::make_unique<tesseract::TessBaseAPI>()) {}
+    OcrAPI();
     ~OcrAPI();
 
     // non-copyable (Tesseract is stateful)
@@ -95,7 +97,7 @@ public:
     Result<ocr_result_t> ExtractTextCapture(const capture_result_t& cap);
 
     /**
-     * Free the engine and its model; the next Configure() loads it again.
+     * Free the engines and their model; the next Configure() loads it again.
      * Call it before the process exits: Tesseract's own static caches are
      * destroyed before a global OcrAPI, and ending it after them aborts
      **/
@@ -104,8 +106,9 @@ public:
 private:
     struct ocr_config_t
     {
-        std::string path;
-        std::string model;
+        std::string              path;
+        std::string              model;
+        tesseract::OcrEngineMode oem;
 
         bool operator==(const ocr_config_t&) const = default;
     };
@@ -115,6 +118,10 @@ private:
 
     std::unique_ptr<tesseract::TessBaseAPI> m_api;
     bool                                    m_initialized = false;
+
+    // More engines with the same model, for text on a busy background. Made by
+    // the first OCR that needs them
+    std::unique_ptr<OcrEnginePool> m_pool;
 };
 
 // ------------------------------
