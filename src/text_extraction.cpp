@@ -56,6 +56,9 @@
 #if defined(__GLIBC__)
 #  include <malloc.h>
 #endif
+#ifdef _OPENMP
+#  include <omp.h>
+#endif
 
 // --------------------
 // OCR
@@ -708,6 +711,13 @@ static Result<ocr_result_t> recognize(tesseract::TessBaseAPI& api,
     const tesseract::PageSegMode psm    = choose_psm(layout);
     // The glyphs are now the size of ~10pt text at 300 DPI, whatever the screen
     constexpr int effective_dpi = 300;
+
+#ifdef _OPENMP
+    // Tesseract's LSTM opens an OpenMP parallel region for each step along a
+    // line, and waking its threads costs more than they save (~40% of the CPU,
+    // and slower). The setting is per thread, so it's made here
+    omp_set_max_active_levels(0);
+#endif
 
     api.SetPageSegMode(psm);
     api.SetImage(pix.get());

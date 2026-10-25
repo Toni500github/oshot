@@ -406,6 +406,16 @@ target_link_libraries(
         ${GLFW_TARGET}
     PRIVATE Threads::Threads
 )
+# Tesseract runs its LSTM on OpenMP threads, which makes it slower. The
+# OpenMP runtime lets text_extraction.cpp turn that off. macOS's Tesseract
+# (static, built with Apple clang) has no OpenMP
+if(NOT APPLE)
+    find_package(OpenMP COMPONENTS CXX)
+    if(OpenMP_CXX_FOUND)
+        target_link_libraries(oshot_common PRIVATE OpenMP::OpenMP_CXX)
+    endif()
+endif()
+
 if(NOT DISABLE_PLUGINS)
     # Plugins use cimgui, and oshot loading it means they find it without
     # linking it (Linux/BSD/macOS) or having to locate it (AppImage)
