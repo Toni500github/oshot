@@ -230,10 +230,14 @@ sudo ./oshot/install.sh --uninstall   # removes it again
 yay -S oshot-bin
 ```
 
+#### Clipboard
+
+oshot copies through `xclip` on X11 and `wl-copy` (from `wl-clipboard`) on Wayland, which keep serving the copied
+text or image after oshot closes. Install the one for your session; the `.deb` recommends both.
+
 #### Wayland
 
 On GNOME and most other desktops, screenshots go through the desktop's screenshot portal (the first capture may ask for permission). KDE uses Spectacle. Where no screenshot portal is available (e.g. some Sway/Hyprland setups), install `grim`.
-For copying to the clipboard, install `wl-clipboard`.
 
 oshot doesn't need XWayland. Capturing, picking a monitor, copying and dialogs all talk to Wayland directly, and the
 release packages (AppImage, `.deb` and zip) include GLFW 3.5 built for both X11 and Wayland, so the overlay is a native
@@ -283,11 +287,11 @@ Requires a C++20 compiler.
 
 ### Dependencies
 
-**All platforms:** `glfw3`, `tesseract`, `leptonica`, `zbar`, `OpenGL`, `libpng`
+**All platforms:** `glfw3`, `tesseract`, `leptonica`, `zbar`, `OpenGL`
 
-**Linux / BSD extras:** `libx11`, `libxrandr`, `gio-2.0`, `gtk+-3.0`, `dbus-1`, `libappindicator3` / `ayatana-appindicator3`, `wayland`, `wayland-protocols`
+**Linux / BSD extras:** `libx11`, `libxrandr`, `gio-2.0`, `gtk+-3.0`, `dbus-1`, `fontconfig`, `libappindicator3` / `ayatana-appindicator3`, `wayland`, `wayland-protocols`
 
-**macOS frameworks:** `Cocoa`, `Metal`, `QuartzCore`, `CoreGraphics`, `IOKit`
+**macOS frameworks:** `Cocoa`, `Metal`, `QuartzCore`, `CoreGraphics`, `IOKit`, `Carbon`, `UserNotifications`
 
 **Windows:** `d3d11`, `dxgi`, `shcore`, `ws2_32`
 
@@ -300,7 +304,7 @@ sudo apt-get install -y \
   libglfw3-dev \
   libtesseract-dev libleptonica-dev \
   libzbar-dev \
-  libgtk-3-dev libdbus-1-dev libayatana-appindicator3-dev \
+  libgtk-3-dev libdbus-1-dev libfontconfig-dev libayatana-appindicator3-dev \
   libwayland-dev libwayland-bin wayland-protocols
 ```
 
@@ -343,7 +347,6 @@ pacman -S --needed \
   mingw-w64-ucrt-x86_64-ninja \
   mingw-w64-ucrt-x86_64-cmake \
   mingw-w64-ucrt-x86_64-glfw \
-  mingw-w64-ucrt-x86_64-libpng \
   mingw-w64-ucrt-x86_64-tesseract-ocr \
   mingw-w64-ucrt-x86_64-zbar
 ```
@@ -381,9 +384,9 @@ This `opengl32.dll` is for x64 only; on Windows on ARM, install the OpenGL compa
 
 Use the AppImage build.
 
-### Linux: clipboard issues
+### Linux: copying does nothing
 
-Run `oshot --tray` and launch captures from the tray icon instead.
+Install `xclip` (X11) or `wl-clipboard` (Wayland), see [Clipboard](#clipboard).
 
 ### NixOS: Tesseract can't find language data
 

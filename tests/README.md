@@ -30,7 +30,8 @@ looked up in `$TESSDATA_PREFIX`, else in the folder oshot uses by default; on Wi
 `XDG_CACHE_HOME` into it. On Windows the config folder doesn't follow them, so the `StateManager` test is skipped
 there rather than writing to the real `state.toml`.
 
-CI (`.github/workflows/tests.yml`) runs them in the Arch Linux container with the `eng`, `ita` and `jpn` models.
+CI (`.github/workflows/tests.yml`) runs them in the Arch Linux container, with and without plugins, with the `eng`,
+`ita` and `jpn` models.
 
 ## OCR and barcode data
 
