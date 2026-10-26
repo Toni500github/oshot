@@ -109,7 +109,7 @@ void Config::LoadConfigFile(const std::string& filename)
     File.old_toolbar_pos  = GetValue<bool>("default.legacy-toolbar-pos", false);
     File.pref_conf_to_env = GetValue<bool>("default.config-over-env", false);
     File.render_anns      = GetValue<bool>("default.annotations-in-text-tools", true);
-    File.ctrl_c_copy_img  = GetValue<bool>("default.ctrl-c-copy-img", false);
+    File.ctrl_c_copy_img  = GetValue<bool>("default.ctrl-c-copy-img", true);
     File.allow_out_edit   = GetValue<bool>("default.allow-text-edit", false);
     File.hotkey           = GetValue<std::string>("default.hotkey", File.hotkey);
     File.language         = GetValue<std::string>("default.language", "auto");
