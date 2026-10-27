@@ -71,6 +71,34 @@ bool Manifest::IsSupported(const plugin_t& plugin)
            std::ranges::find(plugin.platforms, OSHOT_PLATFORM) != plugin.platforms.end();
 }
 
+std::string capability_label(const std::string_view capability)
+{
+    if (capability == "network")
+        return "uses the internet";
+    if (capability == "files")
+        return "uses your files";
+    if (capability == "processes")
+        return "runs programs";
+    return std::string(capability);
+}
+
+std::string capabilities_notice(const std::string_view name, const std::map<std::string, std::string>& capabilities)
+{
+    if (capabilities.empty())
+        return {};
+
+    std::string notice = fmt::format("According to its author, '{}':", name);
+    for (const auto& [capability, reason] : capabilities)
+    {
+        const std::string_view what = capability == "network"     ? "connects to the internet"
+                                      : capability == "files"     ? "reads or writes your files"
+                                      : capability == "processes" ? "runs other programs"
+                                                                  : std::string_view(capability);
+        notice += fmt::format("\n- {}: {}", what, reason);
+    }
+    return notice;
+}
+
 Manifest::Manifest(fs::path path) : m_path(std::move(path))
 {}
 
@@ -158,6 +186,22 @@ Result<plugin_t> Manifest::GetPlugin(const std::string_view name) const
         for (const auto& [target, path] : *prebuilt)
             if (const auto* str = path.as_string())
                 plugin.prebuilt.emplace(target.str(), str->get());
+
+    if (const toml::node* caps = tbl.get("capabilities"))
+    {
+        if (!caps->is_table())
+            return Err("plugin '{}': capabilities must be a table, like [{}.capabilities]", name, name);
+        for (const auto& [capability, reason] : *caps->as_table())
+        {
+            const auto* str = reason.as_string();
+            if (!str || str->get().empty())
+                return Err("plugin '{}': the capability '{}' needs a reason, like {} = \"Downloads translations\"",
+                           name,
+                           capability.str(),
+                           capability.str());
+            plugin.capabilities.emplace(capability.str(), str->get());
+        }
+    }
 
     if (!IsValidID(plugin.id))
         return Err(

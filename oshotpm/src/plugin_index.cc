@@ -314,6 +314,16 @@ static std::vector<std::string> str_array(const toml::table& tbl, std::string_vi
     return out;
 }
 
+static std::map<std::string, std::string> str_table(const toml::table& tbl, std::string_view key)
+{
+    std::map<std::string, std::string> out;
+    if (const toml::table* t = tbl[key].as_table())
+        for (const auto& [k, v] : *t)
+            if (const auto* s = v.as_string(); s && !s->get().empty())
+                out.emplace(k.str(), s->get());
+    return out;
+}
+
 static std::string str(const toml::table& tbl, std::string_view key)
 {
     if (const toml::node* node = tbl.get(key))
@@ -363,7 +373,7 @@ Result<plugin_index_t> parse_plugin_index(const std::string& path)
         p.owners      = str_array(*tbl, "owners");
         p.authors     = str_array(*tbl, "authors");
         p.tags        = str_array(*tbl, "tags");
-        p.network     = (*tbl)["network"].value_or(false);
+        p.capabilities = str_table(*tbl, "capabilities");
         if (p.name.empty())
             p.name = p.id;
 

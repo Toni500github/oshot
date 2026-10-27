@@ -16,3 +16,6 @@ build-steps = [
     "cmake --build build --config Release",
 ]
 output-dir = "build/out"
+
+[scan-results.capabilities]
+processes = "Runs `uname -a` (`cmd /c ver` on Windows) to show how run_process() works"

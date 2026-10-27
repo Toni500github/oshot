@@ -21,7 +21,8 @@ What a plugin can do:
 - keep settings in its own `config.toml`, and other state in oshot's cache;
 - do anything else a native program can, e.g. use the network from its own threads.
 
-Plugins run inside oshot with the same permissions: oshot can't sandbox them.
+Plugins run inside oshot with the same permissions: oshot can't sandbox them. Declare what yours does on its own, and why,
+in the manifest's [`capabilities`](#the-manifest), so people see it before installing.
 
 ## Terms
 
@@ -330,8 +331,16 @@ build-steps = [
     "cmake --build build --config Release",
 ]
 output-dir = "build/out"                    # must contain exactly one library after the build
+
+[translate.capabilities]                    # what it does on its own, and why
+network = "Sends the text to translate.example.com to translate it"
 ```
 
+- `[<plugin>.capabilities]` declares what the plugin does beyond oshot's API, each with the reason it needs to:
+  `network` (connects to the internet), `files` (reads or writes files outside its own folder and oshot's cache) and
+  `processes` (runs other programs, `run_process()` included). The reason can't be empty. oshot and oshotpm show them
+  before installing and in the list of installed plugins. Nothing checks them, since a native library can do
+  anything, so they're a promise to the people installing it.
 - Each build step runs in the repository's root, with `sh -c` (`cmd.exe` on Windows), and the first failing step stops
   the install. `build-steps-<platform>` (e.g. `build-steps-windows`) replaces `build-steps` on that platform. CMake
   commands like the ones above work with both shells.
@@ -351,7 +360,7 @@ platform after checking its checksum and the library's ID, ABI and ImGui version
 there's no prebuilt file. `oshotpm update` and the browser offer newer versions and warn about withdrawn ones.
 
 To list a plugin, open a pull request there with a `plugins/<ID>.toml`: its README explains the format and what's
-checked. The [test plugin](https://github.com/Toni500github/oshot-plugin-test) is a complete example, with a release
+checked. Its `[capabilities]` are the same as the manifest's, and are what oshot shows for index plugins. The [test plugin](https://github.com/Toni500github/oshot-plugin-test) is a complete example, with a release
 workflow that builds every target.
 
 ### Other ways

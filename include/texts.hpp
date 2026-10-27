@@ -417,6 +417,14 @@ build-steps = [
 # It must contain exactly one library (.so, .dll or .dylib, .so also on macOS): the plugin.
 output-dir = "build/out"
 
+# What the plugin does on its own and why, shown to the person before installing it.
+# Capabilities: "network" (connects to the internet), "files" (reads or writes files outside its own
+# folder and oshot's cache) and "processes" (runs other programs, run_process() included), each with
+# the reason. oshot can't check or limit them, so be honest because people decide whether to trust
+# the plugin from this.
+[my-plugin.capabilities]
+#network = "Downloads translations from translate.example.com"
+
 # Prebuilt archives: the library for each target, relative to the archive root.
 # Without this table, the library is looked up in output-dir.
 #[my-plugin.prebuilt]

@@ -109,6 +109,10 @@ struct plugin_t
     // Platforms the plugin supports, or "all"
     std::vector<std::string> platforms;
 
+    // What the author says the plugin does on its own, and why: capability -> reason,
+    // from [<plugin name>.capabilities]. See capability_label(). Nothing checks it
+    std::map<std::string, std::string> capabilities;
+
     // Only set for installed plugins, by StateManager
     std::string repository;
     std::string version;  // installed from the plugin index only
@@ -140,6 +144,29 @@ struct manifest_t
 };
 
 constexpr char const MANIFEST_NAME[] = "oshot-plugin.toml";  // NOLINT
+
+// Capabilities a manifest or the plugin index can declare, each with the reason the
+// plugin needs it: things a plugin does beyond oshot's API, shown before installing.
+// oshot can't enforce them, since plugins are native code. Unknown names are kept
+// and shown as they are.
+//   network     connects to the internet
+//   files       reads or writes files outside its own folder and oshot's cache
+//   processes   runs other programs
+
+/**
+ * Get a short label for a capability
+ * @param capability The capability, e.g. "network"
+ * @return e.g. "uses the internet", or the capability itself if unknown
+ **/
+std::string capability_label(const std::string_view capability);
+
+/**
+ * Describe what a plugin declares, for the install confirmation
+ * @param name The plugin name
+ * @param capabilities Its capabilities and their reasons
+ * @return e.g. "According to its author, 'foo':\n- connects to the internet: Downloads translations", or empty
+ **/
+std::string capabilities_notice(const std::string_view name, const std::map<std::string, std::string>& capabilities);
 
 // An oshot-plugin.toml
 class Manifest

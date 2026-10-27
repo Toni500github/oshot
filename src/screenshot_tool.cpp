@@ -4863,6 +4863,26 @@ static void draw_tag(const char* label, const rgba_t col)
     ImGui::Dummy(size);
 }
 
+// What a plugin declares it does on its own, as tags with the reason in their tooltip.
+// `same_line` continues the current line
+static void draw_capability_tags(const std::map<std::string, std::string>& capabilities, bool same_line)
+{
+    for (const auto& [capability, reason] : capabilities)
+    {
+        if (same_line)
+            ImGui::SameLine();
+        same_line = true;
+
+        const char* label = capability == "network"     ? _("Uses the internet")
+                            : capability == "files"     ? _("Uses your files")
+                            : capability == "processes" ? _("Runs programs")
+                                                        : capability.c_str();
+        draw_tag(label, 0x725919FF_rgba);
+        ImGui::SetItemTooltip(
+            "%s\n\n%s", reason.c_str(), _("According to its author. oshot can't check or limit what plugins do."));
+    }
+}
+
 // Right-aligns the next item of width `w` on the current line
 static void align_right(const float w)
 {
@@ -5174,6 +5194,7 @@ void ScreenshotTool::DrawManagePluginsWindow()
                             draw_tag(license.c_str(), 0x334c7fFF_rgba);
                         }
                     }
+                    draw_capability_tags(plugin.capabilities, /*same_line=*/!plugin.licenses.empty());
 
                     if (missing)
                         ImGui::TextColored(Colors::RED, "%s", _("The library is missing: reinstall the plugin"));
@@ -5352,11 +5373,7 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
 
             if (!p.license.empty())
                 draw_tag(p.license.c_str(), 0x334c7fFF_rgba);
-            if (p.network)
-            {
-                ImGui::SameLine();
-                draw_tag(_("Uses the internet"), 0x725919FF_rgba);
-            }
+            draw_capability_tags(p.capabilities, /*same_line=*/!p.license.empty());
             for (const std::string& tag : p.tags)
             {
                 ImGui::SameLine();

@@ -122,7 +122,10 @@ license = "MIT"
 owners = ["user"]
 authors = ["User <user@example.com>"]
 tags = ["text", "ocr"]
-network = true
+
+[plugins."io.github.user.zeta".capabilities]
+network = "Downloads translations"
+files = ""
 
 [[plugins."io.github.user.zeta".versions]]
 version = "1.2.0"
@@ -192,7 +195,8 @@ name = "No versions"
         CHECK(zeta->owners == std::vector<std::string>{ "user" });
         CHECK(zeta->authors == std::vector<std::string>{ "User <user@example.com>" });
         CHECK(zeta->tags == std::vector<std::string>{ "text", "ocr" });
-        CHECK(zeta->network);
+        // Without a reason, a capability is dropped
+        CHECK(zeta->capabilities == std::map<std::string, std::string>{ { "network", "Downloads translations" } });
 
         // Newest first, without the version that has no version string
         REQUIRE(zeta->versions.size() == 3);

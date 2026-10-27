@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oshot 0.5.0-rc2\n"
 "Report-Msgid-Bugs-To: https://github.com/Toni500github/oshot/issues\n"
-"POT-Creation-Date: 2026-10-25 22:25+0100\n"
+"POT-Creation-Date: 2026-10-27 18:00+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -22,56 +22,56 @@ msgstr ""
 msgid "Copy Text"
 msgstr ""
 
-#: include/util.hpp:491
+#: include/util.hpp:489
 msgid "oshot Fatal Error"
 msgstr ""
 
-#: include/util.hpp:507
+#: include/util.hpp:505
 msgid "oshot Error"
 msgstr ""
 
-#: include/util.hpp:522
+#: include/util.hpp:520
 msgid "oshot Warning"
 msgstr ""
 
-#: include/util.hpp:537
+#: include/util.hpp:535
 msgid "oshot Info"
 msgstr ""
 
-#: include/util.hpp:558 include/util.hpp:589
+#: include/util.hpp:556 include/util.hpp:587
 msgid "Confirmation"
 msgstr ""
 
-#: src/hotkey.cpp:329 src/hotkey.cpp:382 src/screenshot_tool.cpp:3772
-#: src/screenshot_tool.cpp:5148
+#: src/hotkey.cpp:335 src/hotkey.cpp:388 src/screenshot_tool.cpp:3772
+#: src/screenshot_tool.cpp:5168
 msgid "Disabled"
 msgstr ""
 
-#: src/hotkey.cpp:336
+#: src/hotkey.cpp:342
 msgid "Not registered: the tray isn't running"
 msgstr ""
 
-#: src/hotkey.cpp:359
+#: src/hotkey.cpp:365
 #, c++-format
 msgid "{} is already used by Windows or another app"
 msgstr ""
 
-#: src/hotkey.cpp:360 src/hotkey.cpp:417
+#: src/hotkey.cpp:366 src/hotkey.cpp:423
 #, c++-format
 msgid "Failed to register {} (error {})"
 msgstr ""
 
-#: src/hotkey.cpp:364 src/hotkey.cpp:421
+#: src/hotkey.cpp:370 src/hotkey.cpp:427
 #, c++-format
 msgid "Active: {}"
 msgstr ""
 
-#: src/hotkey.cpp:389
+#: src/hotkey.cpp:395
 #, c++-format
 msgid "{} isn't available on Mac keyboards"
 msgstr ""
 
-#: src/hotkey.cpp:416
+#: src/hotkey.cpp:422
 #, c++-format
 msgid "{} is already used by macOS or another app"
 msgstr ""
@@ -95,7 +95,7 @@ msgstr ""
 msgid "Open Image"
 msgstr ""
 
-#: src/main.cpp:1016 src/screenshot_tool.cpp:2757 src/util.cpp:530
+#: src/main.cpp:1016 src/screenshot_tool.cpp:2757 src/util.cpp:562
 msgid "Images"
 msgstr ""
 
@@ -147,7 +147,7 @@ msgstr ""
 msgid "Doesn't exist or is empty"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2326 src/util.cpp:503
+#: src/screenshot_tool.cpp:2326 src/util.cpp:535
 msgid "Copied!"
 msgstr ""
 
@@ -950,7 +950,7 @@ msgstr ""
 msgid "Defaults"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4207 src/screenshot_tool.cpp:5557
+#: src/screenshot_tool.cpp:4207 src/screenshot_tool.cpp:5576
 msgid "Plugins"
 msgstr ""
 
@@ -974,7 +974,7 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4354 src/util.cpp:514 src/util.cpp:545
+#: src/screenshot_tool.cpp:4354 src/util.cpp:546 src/util.cpp:577
 msgid "Saved!"
 msgstr ""
 
@@ -995,7 +995,7 @@ msgid "Discard"
 msgstr ""
 
 #: src/screenshot_tool.cpp:4375 src/screenshot_tool.cpp:4390
-#: src/screenshot_tool.cpp:5232
+#: src/screenshot_tool.cpp:5253
 msgid "Cancel"
 msgstr ""
 
@@ -1013,7 +1013,7 @@ msgstr ""
 msgid "Download OCR Model"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4448 src/screenshot_tool.cpp:5480
+#: src/screenshot_tool.cpp:4448 src/screenshot_tool.cpp:5497
 msgid "Source"
 msgstr ""
 
@@ -1123,276 +1123,288 @@ msgstr ""
 msgid "Crop"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4964
+#: src/screenshot_tool.cpp:4876
+msgid "Uses the internet"
+msgstr ""
+
+#: src/screenshot_tool.cpp:4877
+msgid "Uses your files"
+msgstr ""
+
+#: src/screenshot_tool.cpp:4878
+msgid "Runs programs"
+msgstr ""
+
+#: src/screenshot_tool.cpp:4882
+msgid "According to its author. oshot can't check or limit what plugins do."
+msgstr ""
+
+#: src/screenshot_tool.cpp:4984
 msgid "Done. Changes apply the next time oshot starts."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5055
+#: src/screenshot_tool.cpp:5075
 msgid "Manage plugins"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5059
+#: src/screenshot_tool.cpp:5079
 msgid "Working, see the Plugins status window. This list refreshes once it's done."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5065
+#: src/screenshot_tool.cpp:5085
 msgid "Browse plugins..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5068
+#: src/screenshot_tool.cpp:5088
 msgid "Install from a URL or file..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5071
+#: src/screenshot_tool.cpp:5091
 msgid "Check for updates"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5072
+#: src/screenshot_tool.cpp:5092
 msgid "Updating plugins"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5076
+#: src/screenshot_tool.cpp:5096
 msgid "Changes apply the next time oshot starts. If oshot runs in the tray, quit it from the tray menu first."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5091
+#: src/screenshot_tool.cpp:5111
 msgid "No plugins installed."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5105 src/screenshot_tool.cpp:5368
+#: src/screenshot_tool.cpp:5125 src/screenshot_tool.cpp:5385
 msgid "Homepage:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5112
+#: src/screenshot_tool.cpp:5132
 msgid "Installed from a folder or an archive: install it again to update it"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5114
+#: src/screenshot_tool.cpp:5134
 #, c-format
 msgid "Commit %.7s"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5117 src/screenshot_tool.cpp:5118
+#: src/screenshot_tool.cpp:5137 src/screenshot_tool.cpp:5138
 msgid "Uninstall all"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5123
+#: src/screenshot_tool.cpp:5143
 #, c++-format
 msgid "'{}' and its {} plugin"
 msgid_plural "'{}' and its {} plugins"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/screenshot_tool.cpp:5152
+#: src/screenshot_tool.cpp:5172
 msgid "Missing"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5157
+#: src/screenshot_tool.cpp:5177
 msgid "Enabled"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5157
+#: src/screenshot_tool.cpp:5177
 msgid "Not loaded"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5166 src/screenshot_tool.cpp:5351
+#: src/screenshot_tool.cpp:5186 src/screenshot_tool.cpp:5372
 #, c-format
 msgid "By %s"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5170
+#: src/screenshot_tool.cpp:5190
 msgid "License:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5179
+#: src/screenshot_tool.cpp:5200
 msgid "The library is missing: reinstall the plugin"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5182
+#: src/screenshot_tool.cpp:5203
 msgid "Not loaded: restart oshot, or see View Logs if it failed to load"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5184
+#: src/screenshot_tool.cpp:5205
 msgid "Disable"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5184
+#: src/screenshot_tool.cpp:5205
 msgid "Enable"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5185 src/screenshot_tool.cpp:5196
-#: src/screenshot_tool.cpp:5238
+#: src/screenshot_tool.cpp:5206 src/screenshot_tool.cpp:5217
+#: src/screenshot_tool.cpp:5259
 msgid "Uninstall"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5223 src/screenshot_tool.cpp:5226
+#: src/screenshot_tool.cpp:5244 src/screenshot_tool.cpp:5247
 msgid "Uninstall?"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5228
+#: src/screenshot_tool.cpp:5249
 #, c-format
 msgid "Uninstall %s?"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5229
+#: src/screenshot_tool.cpp:5250
 msgid "Their settings are deleted too."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5240
+#: src/screenshot_tool.cpp:5261
 #, c++-format
 msgid "Uninstalling {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5269
+#: src/screenshot_tool.cpp:5290
 msgid "Browse plugins"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5278
+#: src/screenshot_tool.cpp:5299
 msgid "Refresh"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5283
+#: src/screenshot_tool.cpp:5304
 msgid "Downloading the plugin index..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5287
+#: src/screenshot_tool.cpp:5308
 msgid "Search"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5291
+#: src/screenshot_tool.cpp:5312
 msgid "Plugins listed in the oshot plugin index. Listed doesn't mean audited: plugins run with the same permissions as oshot, so only install the ones you trust."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5297
+#: src/screenshot_tool.cpp:5318
 msgid "Offline: this is the last downloaded copy of the index."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5309
+#: src/screenshot_tool.cpp:5330
 msgid "Working, see the Plugins status window."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5358
-msgid "Uses the internet"
-msgstr ""
-
-#: src/screenshot_tool.cpp:5375
+#: src/screenshot_tool.cpp:5392
 #, c-format
 msgid "Can't be installed here: %s"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5377
+#: src/screenshot_tool.cpp:5394
 #, c-format
 msgid "Prebuilt for %s"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5379
+#: src/screenshot_tool.cpp:5396
 msgid "Built from source when installed: needs git, CMake and a C compiler"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5385
+#: src/screenshot_tool.cpp:5402
 #, c++-format
 msgid "Your version ({}) was withdrawn"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5386
+#: src/screenshot_tool.cpp:5403
 #, c++-format
 msgid "Your version ({}) was withdrawn: {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5393
+#: src/screenshot_tool.cpp:5410
 #, c-format
 msgid "Installed from %s"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5397
+#: src/screenshot_tool.cpp:5414
 #, c++-format
 msgid "Update {} -> {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5408
+#: src/screenshot_tool.cpp:5425
 #, c++-format
 msgid "Installed {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5417
+#: src/screenshot_tool.cpp:5434
 #, c++-format
 msgid "Install {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5433
+#: src/screenshot_tool.cpp:5450
 msgid "The plugin index is empty."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5433
+#: src/screenshot_tool.cpp:5450
 msgid "No plugin matches."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5439
+#: src/screenshot_tool.cpp:5456
 #, c++-format
 msgid "Updating {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5439 src/screenshot_tool.cpp:5486
+#: src/screenshot_tool.cpp:5456 src/screenshot_tool.cpp:5503
 #, c++-format
 msgid "Installing {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5463
+#: src/screenshot_tool.cpp:5480
 msgid "Install plugins"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5467
+#: src/screenshot_tool.cpp:5484
 msgid "A git URL, a folder with an oshot-plugin.toml, or a prebuilt plugin archive (.zip, .tar.gz, .tar.xz). From git or a folder, the plugin is built on this computer, which needs git and its build tools."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5472
+#: src/screenshot_tool.cpp:5489
 msgid "Plugins run with the same permissions as oshot. Only install them from people you trust."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5485
+#: src/screenshot_tool.cpp:5502
 msgid "Install"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5495
+#: src/screenshot_tool.cpp:5512
 msgid "Working, see the status window..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5522
+#: src/screenshot_tool.cpp:5540
 msgid "Output"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5599
+#: src/screenshot_tool.cpp:5618
 msgid "Working..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5610 src/screenshot_tool.cpp:5613
+#: src/screenshot_tool.cpp:5629 src/screenshot_tool.cpp:5632
 msgid "Confirm"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5617
+#: src/screenshot_tool.cpp:5636
 msgid "Yes"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5625
+#: src/screenshot_tool.cpp:5644
 msgid "No"
 msgstr ""
 
-#: src/util.cpp:503
+#: src/util.cpp:535
 msgid "Screenshot copied to clipboard"
 msgstr ""
 
-#: src/util.cpp:514 src/util.cpp:545
+#: src/util.cpp:546 src/util.cpp:577
 msgid "Screenshot saved successfully"
 msgstr ""
 
-#: src/util.cpp:526
+#: src/util.cpp:558
 msgid "Save File"
 msgstr ""
 
-#: src/util.cpp:539
+#: src/util.cpp:571
 msgid "Canceled"
 msgstr ""
 
-#: src/util.cpp:539
+#: src/util.cpp:571
 msgid "Save canceled by user"
 msgstr ""

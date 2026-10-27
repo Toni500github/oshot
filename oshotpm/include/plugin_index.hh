@@ -78,8 +78,8 @@ struct index_version_t
 
 struct index_plugin_t
 {
-    // The author says it connects to the internet
-    bool network = false;
+    // What the author says it does on its own and why (capability -> reason), as in a manifest
+    std::map<std::string, std::string> capabilities;
 
     // newest first
     std::vector<index_version_t> versions;

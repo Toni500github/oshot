@@ -490,7 +490,11 @@ Result<> PluginManager::InstallFromDir(const fs::path&      dir,
     if (plugins.empty())
         return Err("None of the plugins in '{}' support {}", repo.name, OSHOT_PLATFORM);
 
-    TRY(ConfirmTrust());
+    std::vector<std::string> notices;
+    for (const plugin_t* plugin : plugins)
+        if (std::string notice = capabilities_notice(plugin->name, plugin->capabilities); !notice.empty())
+            notices.push_back(std::move(notice));
+    TRY(ConfirmTrust(fmt::format("{}", fmt::join(notices, "\n"))));
     if (src.origin != Origin::Archive)
         TRY(ConfirmDependencies(repo));
 
@@ -684,9 +688,7 @@ Result<> PluginManager::InstallIndexVersion(const index_plugin_t&  plugin,
                                             const index_version_t& version,
                                             bool                   is_update)
 {
-    const std::string notice =
-        plugin.network ? fmt::format("'{}' connects to the internet, according to its author.", plugin.name) : "";
-    TRY(ConfirmTrust(notice));
+    TRY(ConfirmTrust(capabilities_notice(plugin.name, plugin.capabilities)));
 
     WorkDirGuard work(NewWorkDir("index"));
     fs::path     library;
@@ -774,12 +776,13 @@ Result<> PluginManager::InstallIndexVersion(const index_plugin_t&  plugin,
     TRY(file);
 
     plugin_t entry;
-    entry.id          = plugin.id;
-    entry.name        = plugin.name;
-    entry.description = plugin.description;
-    entry.authors     = plugin.authors.empty() ? plugin.owners : plugin.authors;
-    entry.licenses    = { plugin.license };
-    entry.version     = version.version;
+    entry.id           = plugin.id;
+    entry.name         = plugin.name;
+    entry.description  = plugin.description;
+    entry.authors      = plugin.authors.empty() ? plugin.owners : plugin.authors;
+    entry.licenses     = { plugin.license };
+    entry.capabilities = plugin.capabilities;
+    entry.version      = version.version;
     m_state_manager.SetPlugin(INDEX_REPO_NAME, entry, file.get());
 
     manifest_t repo;

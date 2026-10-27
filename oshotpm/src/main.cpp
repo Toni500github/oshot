@@ -220,6 +220,27 @@ static void parseargs(int argc, char* argv[])
 }
 // NOLINTEND
 
+// Prints what a plugin declares it does, e.g. " [uses the internet, runs programs]"
+static void print_capabilities(const std::map<std::string, std::string>& capabilities)
+{
+    if (capabilities.empty())
+        return;
+
+    std::vector<std::string> labels;
+    labels.reserve(capabilities.size());
+    for (const auto& [capability, _] : capabilities)
+        labels.push_back(capability_label(capability));
+    fmt::print(" {}[{}]{}", col(ansi::yellow), fmt::join(labels, ", "), col(ansi::reset));
+}
+
+// Prints each capability with the reason its author gives, for --verbose
+static void print_capability_reasons(const std::map<std::string, std::string>& capabilities,
+                                     const std::string_view                    indent)
+{
+    for (const auto& [capability, reason] : capabilities)
+        fmt::println("{}{}{}:{} {}", indent, col(ansi::yellow), capability_label(capability), col(ansi::reset), reason);
+}
+
 static void list_all_plugins(const StateManager& state)
 {
     const std::vector<manifest_t>& repos = state.GetAllRepos();
@@ -257,6 +278,7 @@ static void list_all_plugins(const StateManager& state)
                 fmt::print(" {}(disabled){}", col(ansi::red), col(ansi::reset));
             if (plugin.library.empty() || !fs::exists(plugin.library, ec))
                 fmt::print(" {}(library missing, reinstall it){}", col(ansi::red), col(ansi::reset));
+            print_capabilities(plugin.capabilities);
             fmt::print("\n");
 
             if (!plugin.description.empty())
@@ -273,6 +295,7 @@ static void list_all_plugins(const StateManager& state)
                                  col(ansi::reset),
                                  fmt::join(plugin.platforms, ", "));
                 fmt::println("      {}Library:{}   {}", col(ansi::cyan), col(ansi::reset), plugin.library.string());
+                print_capability_reasons(plugin.capabilities, "      ");
             }
         }
     }
@@ -327,8 +350,7 @@ static bool search_index(const StateManager& state, const PluginCallbacks& cb)
         {
             fmt::print(" {}(installed from {}){}", col(ansi::green), installed->repository, col(ansi::reset));
         }
-        if (p.network)
-            fmt::print(" {}[uses the internet]{}", col(ansi::yellow), col(ansi::reset));
+        print_capabilities(p.capabilities);
         fmt::print("\n");
 
         if (!p.description.empty())
@@ -347,6 +369,7 @@ static bool search_index(const StateManager& state, const PluginCallbacks& cb)
             fmt::println("    {}Owners:{}   {}", col(ansi::cyan), col(ansi::reset), fmt::join(p.owners, ", "));
             fmt::println("    {}License:{}  {}", col(ansi::cyan), col(ansi::reset), p.license);
             fmt::println("    {}Homepage:{} {}", col(ansi::cyan), col(ansi::reset), p.homepage);
+            print_capability_reasons(p.capabilities, "    ");
             for (const index_version_t& v : p.versions)
             {
                 fmt::print("    {}{}{} {}", col(ansi::cyan), v.version, col(ansi::reset), v.date);

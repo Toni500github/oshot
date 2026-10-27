@@ -9,7 +9,8 @@
 #include "state_manager.hh"
 
 using Catch::Matchers::ContainsSubstring;
-using strings = std::vector<std::string>;
+using strings      = std::vector<std::string>;
+using capabilities = std::map<std::string, std::string>;
 
 TEST_CASE("Manifest::IsValidName()", "[plugins][manifest]")
 {
@@ -69,6 +70,18 @@ TEST_CASE("Manifest::IsSupported()", "[plugins][manifest]")
           (std::string_view(OSHOT_PLATFORM) == "dragonfly" || std::string_view(OSHOT_PLATFORM) == "netbsd"));
 }
 
+TEST_CASE("capabilities_notice()", "[plugins][manifest]")
+{
+    CHECK(capabilities_notice("p", {}).empty());
+    CHECK(capabilities_notice("p", { { "network", "Downloads translations" } }) ==
+          "According to its author, 'p':\n- connects to the internet: Downloads translations");
+    CHECK(capabilities_notice("p", { { "processes", "Runs uname" }, { "camera", "Takes photos" } }) ==
+          "According to its author, 'p':\n- camera: Takes photos\n- runs other programs: Runs uname");
+
+    CHECK(capability_label("processes") == "runs programs");
+    CHECK(capability_label("camera") == "camera");
+}
+
 // Parse a manifest from its text
 static Result<manifest_t> parse(const std::string& toml)
 {
@@ -104,6 +117,10 @@ build-steps = ["make"]
 build-steps-{0} = ["make {0}"]
 prebuilt = {{ linux-x86_64 = "linux/libupper.so", windows-x86_64 = "windows/upper.dll" }}
 
+[upper.capabilities]
+network = "Downloads word lists"
+processes = "Runs a spell checker"
+
 [lower]
 id = "io.github.user.lower"
 build-steps = ["make lower"]
@@ -126,6 +143,8 @@ build-steps = ["make lower"]
         CHECK(upper->licenses == strings{ "MIT" });
         CHECK(upper->authors == strings{ "User" });
         CHECK(upper->platforms == strings{ "all" });
+        CHECK(upper->capabilities ==
+              capabilities{ { "network", "Downloads word lists" }, { "processes", "Runs a spell checker" } });
         // build-steps-<platform> wins over build-steps
         CHECK(upper->build_steps == strings{ std::string("make ") + OSHOT_PLATFORM });
         CHECK(upper->prebuilt.size() == 2);
@@ -135,6 +154,7 @@ build-steps = ["make lower"]
         REQUIRE(lower != repo.plugins.end());
         CHECK(lower->build_steps == strings{ "make lower" });
         CHECK(lower->platforms.empty());
+        CHECK(lower->capabilities.empty());
     }
 
     SECTION("Invalid manifests")
@@ -150,6 +170,11 @@ build-steps = ["make lower"]
             { "[repository]\nname = \"r\"\n[p]\nid = \"a.b\"\n[q]\nid = \"a.b\"\n", "'a.b' is used twice" },
             { "[repository]\nname = \"r\"\n[p]\nid = \"a.b\"\nplatforms = [\"amiga\"]\n", "unknown platform 'amiga'" },
             { "foo = 1\n[repository]\nname = \"r\"\n" + plugin, "'foo' is not a table" },
+            { "[repository]\nname = \"r\"\n" + plugin + "[p.capabilities]\nnetwork = \"\"\n",
+              "'network' needs a reason" },
+            { "[repository]\nname = \"r\"\n" + plugin + "[p.capabilities]\nnetwork = true\n",
+              "'network' needs a reason" },
+            { "[repository]\nname = \"r\"\n" + plugin + "capabilities = [\"network\"]\n", "must be a table" },
             { "[repository]\nname = \"r\"\n[\"bad name\"]\nid = \"a.b\"\n", "plugin name 'bad name' is invalid" },
             { "[repository\nname = \"r\"\n", "" },
         };
@@ -192,6 +217,7 @@ static plugin_t make_plugin(const std::string& id)
     p.authors     = { "User" };
     p.licenses    = { "MIT" };
     p.platforms   = { "all" };
+    p.capabilities = { { "network", "Downloads updates" } };
     return p;
 }
 
@@ -229,6 +255,7 @@ TEST_CASE("StateManager", "[plugins][state]")
         CHECK(alpha->authors == strings{ "User" });
         CHECK(alpha->licenses == strings{ "MIT" });
         CHECK(alpha->platforms == strings{ "all" });
+        CHECK(alpha->capabilities == capabilities{ { "network", "Downloads updates" } });
         CHECK(alpha->repository == "repo-a");
         CHECK(alpha->enabled);
         // Only the file name, in the plugin's own folder

@@ -110,6 +110,9 @@ const std::vector<manifest_t>& StateManager::GetAllRepos() const
             plugin.authors     = str_array(*tbl, "authors");
             plugin.licenses    = str_array(*tbl, "licenses");
             plugin.platforms   = str_array(*tbl, "platforms");
+            if (const toml::table* caps = (*tbl)["capabilities"].as_table())
+                for (const auto& [capability, reason] : *caps)
+                    plugin.capabilities.emplace(capability.str(), reason.value_or(std::string()));
             plugin.repository  = repo;
             plugin.version     = (*tbl)["version"].value_or(std::string());
 
@@ -174,6 +177,13 @@ void StateManager::SetPlugin(const std::string& repo, const plugin_t& plugin, co
                        { "enabled", enabled } };
     if (!plugin.version.empty())
         entry.insert_or_assign("version", plugin.version);
+    if (!plugin.capabilities.empty())
+    {
+        toml::table caps;
+        for (const auto& [capability, reason] : plugin.capabilities)
+            caps.insert_or_assign(capability, reason);
+        entry.insert_or_assign("capabilities", std::move(caps));
+    }
     plugins.insert_or_assign(plugin.id, std::move(entry));
     m_is_changed = true;
 }
