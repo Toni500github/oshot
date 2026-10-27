@@ -61,7 +61,7 @@ struct language_t
 };
 
 // The characters a catalog uses, from the narrowest to the widest set of fonts that can draw them
-enum class Charset
+enum class Charset : uint8_t
 {
     Latin1,    // ImGui's built-in font draws them
     European,  // Latin, Greek and Cyrillic, which Helvetica covers

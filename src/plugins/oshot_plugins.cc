@@ -42,6 +42,7 @@
 #include "fmt/format.h"
 #include "imgui.h"
 #include "imgui_stdlib.h"
+#include "nvdialog/nvdialog_error.h"
 #include "nvdialog/nvdialog_notification.h"
 #include "platform.hpp"
 #include "plugin.hpp"

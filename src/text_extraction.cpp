@@ -161,7 +161,7 @@ static std::vector<rgb_t> main_colors(const std::vector<rgb_t>& px)
     for (size_t k = 0; k < max_colors; ++k)
     {
         // Text and antialiasing, not an area
-        if (k > 0 && hist[bins[k]] * 200 < samples)
+        if (k > 0 && hist[bins[k]] * 200ULL < samples)
             break;
 
         const auto& sum   = sums[bins[k]];
@@ -484,9 +484,9 @@ static text_layout_t measure_text(PIX* gray)
     // blobs are mostly specks of a drawing or photo around the text, which
     // would have it scaled up 4x for nothing
     std::ranges::sort(sizes);
-    const int64_t total = std::accumulate(sizes.begin(), sizes.end(), int64_t(0),
-                                          [](int64_t sum, const auto& s) { return sum + s.second; });
-    int64_t       area  = 0;
+    const int64_t total = std::accumulate(
+        sizes.begin(), sizes.end(), int64_t(0), [](int64_t sum, const auto& s) { return sum + s.second; });
+    int64_t area = 0;
     for (const auto& [h, a] : sizes)
     {
         area += a;
@@ -687,7 +687,14 @@ static ocr_word_t map_box_to_source(int                    left,
     min_y = std::clamp(min_y, 0.0f, src_h);
     max_x = std::clamp(max_x, min_x, src_w);
     max_y = std::clamp(max_y, min_y, src_h);
-    return ocr_word_t{ .x = min_x, .y = min_y, .w = max_x - min_x, .h = max_y - min_y };
+    return ocr_word_t{ .text       = {},
+                       .x          = min_x,
+                       .y          = min_y,
+                       .w          = max_x - min_x,
+                       .h          = max_y - min_y,
+                       .confidence = {},
+                       .line       = {},
+                       .block      = {} };
 }
 
 // From "  hello world  \n  " to "hello world"
@@ -832,14 +839,17 @@ struct ocr_line_t
     std::vector<ocr_word_t> words;
     float                   left = 0, top = 0, right = 0, bottom = 0;
     size_t                  sure       = 0;
-    int                     confidence = 0;  // mean over its words
+    int                     confidence = 0;      // mean over its words
     bool                    has_text   = false;  // see merge_lines()
 };
 
 // Add the lines of `r` to `lines`, moved by (dx, dy). `sep` goes between
 // words if their line's text can't be taken from Tesseract's
-static void add_lines(
-    std::vector<ocr_line_t>& lines, const ocr_result_t& r, std::string_view sep, float dx = 0, float dy = 0)
+static void add_lines(std::vector<ocr_line_t>& lines,
+                      const ocr_result_t&      r,
+                      std::string_view         sep,
+                      float                    dx = 0,
+                      float                    dy = 0)
 {
     const auto space = [](unsigned char c) { return std::isspace(c); };
     // Any byte of a multibyte UTF-8 character counts, for the scripts that aren't ASCII,
@@ -1026,9 +1036,8 @@ static std::vector<line_box_t> find_lines(PIX* gray, int threshold)
     for (const line_box_t& g : glyphs)
     {
         const int mid = g.y + (g.h / 2);
-        auto      row = std::ranges::find_if(rows, [&](const row_t& r) {
-            return mid >= r.top && mid <= r.bottom && g.h * 2 >= r.h && g.h <= r.h * 2;
-        });
+        auto      row = std::ranges::find_if(
+            rows, [&](const row_t& r) { return mid >= r.top && mid <= r.bottom && g.h * 2 >= r.h && g.h <= r.h * 2; });
         if (row == rows.end())
         {
             rows.push_back({ .top = g.y, .bottom = g.y + g.h, .h = g.h, .glyphs = { g } });
@@ -1079,7 +1088,7 @@ struct ocr_pass_t
 
 static ocr_pass_t make_pass(PIX* gray)
 {
-    return { PixPtr(gray), gray ? measure_text(gray) : text_layout_t{} };
+    return { .gray = PixPtr(gray), .layout = gray ? measure_text(gray) : text_layout_t{} };
 }
 
 // A line of a pass, cut out to be read on its own
@@ -1118,7 +1127,7 @@ static std::vector<line_crop_t> crop_lines(const ocr_pass_t& pass)
             pixSetInRect(crop.get(), band);
             boxDestroy(&band);
         }
-        crops.push_back({ b, std::move(crop) });
+        crops.push_back({ .box = b, .crop = std::move(crop) });
     }
 
     return crops;
@@ -1182,7 +1191,7 @@ public:
     OcrEnginePool(const OcrEnginePool&)            = delete;
     OcrEnginePool& operator=(const OcrEnginePool&) = delete;
 
-    size_t Size() const { return m_threads.size() + 1; }
+    [[nodiscard]] size_t Size() const { return m_threads.size() + 1; }
 
     // Read a pass, as the whole image of `src_w` x `src_h` px
     ticket_t Read(const ocr_pass_t& pass, float src_w, float src_h)
@@ -1268,7 +1277,7 @@ private:
         {
             const std::atomic<uint64_t>& current;
             uint64_t                     generation;
-        } cancel{ m_generation, job.generation };
+        } cancel{ .current = m_generation, .generation = job.generation };
 
         ocr_monitor_t monitor;
         monitor.cancel_this = &cancel;
@@ -1370,8 +1379,8 @@ static std::vector<ocr_pass_t> text_color_passes(const std::vector<rgb_t>& px,
 
     std::vector<size_t> order(colors.size());
     std::iota(order.begin(), order.end(), 0);
-    std::ranges::stable_sort(order, std::ranges::greater{},
-                             [&](size_t i) { return color_dist2(colors[i], colors[0]); });
+    std::ranges::stable_sort(
+        order, std::ranges::greater{}, [&](size_t i) { return color_dist2(colors[i], colors[0]); });
 
     std::vector<ocr_pass_t> passes;
     for (size_t i : order)
@@ -1399,7 +1408,7 @@ static void read_busy_text(OcrEnginePool&            engines,
 {
     using read_t = OcrEnginePool::read_t;
 
-    const float             src_w = float(w), src_h = float(h);
+    const auto              src_w = float(w), src_h = float(h);
     const bool              speculate = engines.Size() > 1;
     std::vector<ocr_line_t> lines;  // every line any pass read, to merge at the end
     add_lines(lines, best, sep);
@@ -1407,6 +1416,7 @@ static void read_busy_text(OcrEnginePool&            engines,
     // Each main color as the text color, keeping the best reading
     const std::vector<ocr_pass_t>        candidates = text_color_passes(px, colors, w, h);
     std::vector<OcrEnginePool::ticket_t> reads;
+    reads.reserve(candidates.size());
     for (const ocr_pass_t& pass : candidates)
         reads.push_back(engines.Read(pass, src_w, src_h));
 
@@ -1454,7 +1464,9 @@ static void read_busy_text(OcrEnginePool&            engines,
         if (auto it = std::ranges::find(fills, from, &filled_t::from); it != fills.end())
             return *it;
         filled_t& f = fills.emplace_back(
-            filled_t{ from, make_pass(fill_outlined_text(from->gray.get(), from->layout.threshold)) });
+            filled_t{ .from = from,
+                      .pass = make_pass(fill_outlined_text(from->gray.get(), from->layout.threshold)),
+                      .read = {} });
         if (f.pass.gray)
             f.read = engines.Read(f.pass, src_w, src_h);
         return f;

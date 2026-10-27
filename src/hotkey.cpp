@@ -29,7 +29,11 @@
 #include <array>
 #include <utility>
 
-#include "i18n.hpp"
+#include "fmt/format.h"
+
+#if OSHOT_HAS_GLOBAL_HOTKEY
+#  include "i18n.hpp"
+#endif
 
 // clang-format off
 #if OSHOT_WINDOWS
@@ -93,6 +97,7 @@ bool is_fkey(ImGuiKey k)
     return k >= ImGuiKey_F1 && k <= ImGuiKey_F12;
 }
 
+// NOLINTBEGIN(modernize-return-braced-init-list)
 std::string key_name(ImGuiKey k)
 {
     if (is_letter(k))
@@ -110,6 +115,7 @@ std::string key_name(ImGuiKey k)
 
     return {};
 }
+// NOLINTEND(modernize-return-braced-init-list)
 
 ImGuiKey key_from_name(const std::string& lower)
 {

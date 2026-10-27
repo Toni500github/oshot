@@ -125,7 +125,7 @@ void plugin_runtime_t::WarnOnce(UiWarning warning, std::string_view msg)
 // The ImGui stacks whose size differs, e.g. "window, ID"
 static std::string unbalanced_stacks(const ImGuiErrorRecoveryState& a, const ImGuiErrorRecoveryState& b)
 {
-    const std::pair<short ImGuiErrorRecoveryState::*, const char*> stacks[] = {
+    const auto stacks = std::to_array<std::pair<short ImGuiErrorRecoveryState::*, const char*>>({
         { &ImGuiErrorRecoveryState::SizeOfWindowStack, "window" },
         { &ImGuiErrorRecoveryState::SizeOfIDStack, "ID" },
         { &ImGuiErrorRecoveryState::SizeOfTreeStack, "tree" },
@@ -137,7 +137,7 @@ static std::string unbalanced_stacks(const ImGuiErrorRecoveryState& a, const ImG
         { &ImGuiErrorRecoveryState::SizeOfItemFlagsStack, "item flags" },
         { &ImGuiErrorRecoveryState::SizeOfBeginPopupStack, "popup" },
         { &ImGuiErrorRecoveryState::SizeOfDisabledStack, "disabled" },
-    };
+    });
 
     std::string ret;
     for (const auto& [field, name] : stacks)
@@ -275,7 +275,7 @@ static Result<> validate_settings(const oshot_plugin_t* plugin)
             case OSHOT_SETTING_FLOAT:  kind = OSHOT_VAL_DOUBLE; break;
             case OSHOT_SETTING_STRING:
             case OSHOT_SETTING_CHOICE: kind = OSHOT_VAL_STRING; break;
-            default: return Err("setting '{}' has an unknown kind {}", s.key, static_cast<int>(s.kind));
+            default:                   return Err("setting '{}' has an unknown kind {}", s.key, static_cast<int>(s.kind));
         }
         if (s.fallback.kind != kind)
             return Err("setting '{}' has a fallback of the wrong kind", s.key);

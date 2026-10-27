@@ -5519,11 +5519,12 @@ void ScreenshotTool::DrawPluginInstallStatus()
             if (ev.kind == plugin_install_event_t::Kind::Output)
             {
                 if (m_install_events.empty())
-                    m_install_events.push_back({ .kind = ev.kind, .text = _("Output"), .in_progress = false });
+                    m_install_events.push_back(
+                        { .kind = ev.kind, .text = _("Output"), .details = {}, .in_progress = false, .output = {} });
                 std::string& out = m_install_events.back().output;
                 out += ev.text;
-                if (out.size() > 64 * 1024)
-                    out.erase(0, out.size() - 48 * 1024);
+                if (out.size() > 64ULL * 1024)
+                    out.erase(0, out.size() - 48ULL * 1024);
                 continue;
             }
 
@@ -5548,7 +5549,8 @@ void ScreenshotTool::DrawPluginInstallStatus()
                 m_install_events.push_back({ .kind        = ev.kind,
                                              .text        = ev.text,
                                              .details     = {},
-                                             .in_progress = ev.kind == plugin_install_event_t::Kind::Status });
+                                             .in_progress = ev.kind == plugin_install_event_t::Kind::Status,
+                                             .output      = {} });
             }
         }
     }
@@ -5559,7 +5561,7 @@ void ScreenshotTool::DrawPluginInstallStatus()
         for (size_t i = 0; i < m_install_events.size(); i++)
         {
             const install_node_t& node = m_install_events[i];
-            ImGui::PushID(static_cast<int>(i));
+            ImGui::PushID(int(i));
 
             DrawEventIcon(node.kind);
             ImGui::SameLine();

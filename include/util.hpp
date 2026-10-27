@@ -37,9 +37,7 @@
 #include "fmt/base.h"
 #include "fmt/color.h"
 #include "i18n.hpp"
-#include "nvdialog/nvdialog_core.h"
 #include "nvdialog/nvdialog_dialog.h"
-#include "nvdialog/nvdialog_error.h"
 #include "platform.hpp"
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "spdlog/spdlog.h"
@@ -138,12 +136,12 @@ enum class ImageExt;
 enum class SavingOp;
 
 // Used by the templates and structs below, documented further down
-bool        init_dialogs() noexcept;
-static void create_dialog(const char* title, const NvdDialogType type, const std::string& str) noexcept;
-void        extern_glfwTerminate();
-bool        hide_window();
-void        show_window();
-void*       dialog_parent_window();
+bool  init_dialogs() noexcept;
+void  create_dialog(const char* title, const NvdDialogType type, const std::string& str) noexcept;
+void  extern_glfwTerminate();
+bool  hide_window();
+void  show_window();
+void* dialog_parent_window();
 
 // I'm not including <gtk/gtk.h> just for a couple of functions
 extern "C" {
@@ -615,35 +613,7 @@ void disable_dialogs() noexcept;
  * @param type The dialog's icon (NVD_DIALOG_SIMPLE, NVD_DIALOG_WARNING or NVD_DIALOG_ERROR)
  * @param str The message
  **/
-static void create_dialog(const char* title, const NvdDialogType type, const std::string& str) noexcept
-{
-    if (!init_dialogs())
-        return;
-
-    // The overlay is always on top, so the dialog would open behind it.
-    // On Windows, hiding it hands the foreground to another window, which then
-    // stays in front of the dialog. Let the overlay own the dialog instead
-#if OSHOT_WINDOWS
-    nvd_set_parent(dialog_parent_window());
-#else
-    const bool hidden = hide_window();
-#endif
-
-    NvdDialogBox* dialog = nvd_dialog_box_new(title, str.c_str(), type);
-    nvd_show_dialog(dialog);
-    nvd_free_object(dialog);
-#if OSHOT_FREEDESKTOP
-    while (gtk_events_pending())
-        gtk_main_iteration();
-#endif
-
-#if OSHOT_WINDOWS
-    nvd_set_parent(nullptr);
-#else
-    if (hidden)
-        show_window();
-#endif
-}
+void create_dialog(const char* title, const NvdDialogType type, const std::string& str) noexcept;
 
 /**
  * Make `logger` spdlog's default logger in liboshot_common too.

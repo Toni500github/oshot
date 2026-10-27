@@ -62,7 +62,7 @@ struct embedded_po_t
     const char* data;
     std::size_t size;
 };
-extern const embedded_po_t g_embedded_po[];
+extern const embedded_po_t g_embedded_po[];  // NOLINT
 extern const std::size_t   g_embedded_po_count;
 
 namespace
