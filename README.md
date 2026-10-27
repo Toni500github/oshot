@@ -418,9 +418,13 @@ oshot is a solo project. I've been building it since December 2025 in whatever t
 A few people who use it daily have sent fixes, and the people in the r/unixporn Discord thread helped shape a lot of it,
 but most days it's just me. For now, at least: see [Contributing](#contributing).
 
-Since that time is short, I use AI coding tools (ChatGPT, Claude, DeepSeek) for a large part of the code and most of the
-build and packaging setup. The help from that Discord thread is the reason less of it is AI-generated than it would
-have been.
+Up to v0.5.0-rc2, I wrote most of oshot myself. I used AI tools (ChatGPT, Claude, DeepSeek) when I was stuck on a bug,
+to polish the UI or to fix my English, and the help from that Discord thread is the reason less of it is AI-generated
+than it would have been.
+
+Since then, with university taking most of my time, I've used Claude Code for most of the large work: packaging for
+every platform, cross-platform build fixes, the plugin system and the plugin index, global hotkeys and translations.
+Those parts are mostly AI-written, which today adds up to roughly half of oshot's own code.
 
 Nothing ships without me reading it and running it. I test every change on Linux (X11 and Wayland), Windows and macOS,
 in VMs and on real hardware. I once nearly wrecked my school's monitor because a missing `glfwTerminate()` left it
