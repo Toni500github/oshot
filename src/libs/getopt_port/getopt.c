@@ -26,7 +26,7 @@
  *
  ******************************************************************************/
 
-#include "getopt.h"
+#include "getopt_port.h"
 
 #include <stddef.h>
 #include <string.h>

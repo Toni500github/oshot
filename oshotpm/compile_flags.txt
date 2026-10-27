@@ -5,7 +5,6 @@
 -I../include/libs/clip
 -I../include/libs/nvdialog
 -I../include/libs/tiny-process-library
--I../include/libs/cimgui
 -Iinclude
 -Wall
 -Wextra

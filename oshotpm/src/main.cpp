@@ -50,12 +50,12 @@
  *  91 | extern int getopt (int ___argc, char *const *___argv, const char *__shortopts)
  *     |            ^~~~~~
  * In file included from oshot/oshotpm/src/main.cpp:33:
- * oshot/include/libs/getopt_port/getopt.h:50:5: note: from previous declaration ‘int getopt(int, char* const*, const char*)’
+ * oshot/include/libs/getopt_port.h:50:5: note: from previous declaration ‘int getopt(int, char* const*, const char*)’
  *  50 | int getopt(int argc, char* const argv[], const char* optstring);
  *     |     ^~~~~~
  */
 // clang-format off
-#include "getopt_port/getopt.h"
+#include "getopt_port.h"
 // clang-format on
 
 enum OPs : std::uint8_t

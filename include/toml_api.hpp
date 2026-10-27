@@ -35,7 +35,7 @@
 #include "util.hpp"
 
 #define TOML_HEADER_ONLY 0
-#include "toml++/toml.hpp"
+#include "toml++.hpp"
 
 enum class ValueType : std::uint8_t
 {

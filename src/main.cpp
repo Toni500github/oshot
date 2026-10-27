@@ -73,7 +73,7 @@
 #include "fmt/base.h"
 #include "fmt/compile.h"
 #include "fmt/format.h"
-#include "getopt_port/getopt.h"
+#include "getopt_port.h"
 #include "i18n.hpp"
 #include "oshot_png.h"
 #include "screen_capture.hpp"

@@ -619,7 +619,7 @@ endif()
 if(NOT DISABLE_PLUGINS)
     add_library(cimgui SHARED src/libs/cimgui/cimgui.cpp)
 
-    target_include_directories(cimgui PUBLIC include/libs include/libs/cimgui)
+    target_include_directories(cimgui PUBLIC include/libs)
     target_link_libraries(cimgui PUBLIC imgui)
     set_target_properties(
         cimgui
@@ -834,7 +834,7 @@ if(NOT DISABLE_PLUGINS)
     set(OSHOT_SDK_DIR "${CMAKE_BINARY_DIR}/sdk")
     set(OSHOT_SDK_HEADERS_SRC
         "${CMAKE_SOURCE_DIR}/src/plugins/oshot_plugin.h"
-        "${CMAKE_SOURCE_DIR}/include/libs/cimgui/cimgui.h"
+        "${CMAKE_SOURCE_DIR}/include/libs/cimgui.h"
     )
     set(OSHOT_SDK_HEADERS
         "${OSHOT_SDK_DIR}/include/oshot/oshot_plugin.h"
@@ -954,7 +954,7 @@ else()
     install(
         FILES
             "${CMAKE_CURRENT_SOURCE_DIR}/src/plugins/oshot_plugin.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/libs/cimgui/cimgui.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/libs/cimgui.h"
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
     )
 endif()
