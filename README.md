@@ -5,44 +5,55 @@
 <h1 align="center">oshot</h1>
 
 <p align="center">
-<b>The screenshot tool that can read.</b><br>
-Capture, annotate, extract text and decode QR/barcodes in one overlay.<br>
-Native and offline, on Linux, Windows and macOS.
+<b>Screenshot tool for extracting text and QR codes</b><br>
+Select an area of your screen, then copy the text, QR code or barcode inside it.<br>
+Runs locally on Linux, BSD, Windows and macOS.
 </p>
 
 <p align="center">
   <a href="https://github.com/Toni500github/oshot/releases/latest"><img src="https://img.shields.io/github/v/release/Toni500github/oshot?label=release" /></a>
-  <a href="https://github.com/Toni500github/oshot/releases"><img src="https://img.shields.io/github/downloads/Toni500github/oshot/total?label=downloads" /></a>
-  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-blue" />
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20BSD%20%7C%20Windows%20%7C%20macOS-blue" />
   <a href="LICENSE"><img src="https://img.shields.io/github/license/Toni500github/oshot" /></a>
   <img src="https://img.shields.io/github/actions/workflow/status/Toni500github/oshot/build.yml" />
 </p>
 
 <p align="center">
   <a href="#installation">Install</a> ·
-  <a href="#features">Features</a> ·
+  <a href="#why-oshot">Why oshot</a> ·
   <a href="#how-does-it-compare">Compare</a> ·
+  <a href="#how-oshot-is-developed">How it's developed</a> ·
   <a href="#contributing">Contributing</a>
 </p>
 
+<!-- TODO: replace the video below with the demo GIF:
+<p align="center">
+  <img src="assets/screenshots/demo.gif" width="800"
+       alt="Selecting an error dialog and pasting its text into a terminal, then selecting a QR code on a web page and getting its link" />
+</p>
+-->
 https://github.com/user-attachments/assets/8367490a-f7b0-4320-86e9-8ef8764a56b5
 
-Press a hotkey, drag over anything on your screen, and take it with you: as text, as a decoded QR code or barcode, or as an
-annotated image. Everything runs on your machine. No uploads, no account, no browser.
+oshot v0.5.0 is in release candidates. The builds aren't code-signed, so Windows and macOS warn on first launch
+([what to do](#installation)).
 
 ## Why oshot?
 
 - **One tool instead of three.** A screenshot tool, an OCR app and the QR scanner on your phone, all working from the
   same selection.
-- **Copy what you can't select.** Text in apps that block selection, VMs and remote desktops, videos, slides, error
-  dialogs and images.
-- **Private by default.** OCR (Tesseract) and barcode decoding (ZBar) run locally. oshot only goes online when you ask
-  it to download an OCR language or install a plugin.
-- **Native and light.** C++ and Dear ImGui, no Qt, no Electron, no Python runtime.
-- **One overlay on every OS.** Linux (X11 and Wayland), Windows and macOS share the same overlay and config file. The
-  BSDs build from source.
-- **Extensible (optional).** The `-plugins` builds load plugins through a plain C ABI, so they can be written in any
-  language that can export C functions.
+- **Copy what you can't select.** Error dialogs, videos, slides, images, and VMs or remote desktops that don't share
+  the clipboard.
+- **The same tool on every desktop.** One overlay, the same keys and one config file on Linux (X11, and Wayland on
+  GNOME, KDE, Hyprland, Sway and others), Windows 10 and 11 and macOS 15+. On Wayland the release packages run
+  without XWayland.
+- **Scriptable.** `oshot --extract-text` and `oshot --extract-barcode` print what's on the screen, or in an image file,
+  without opening the overlay. Add `--selection "$(slop)"` to read one region.
+- **Private by default.** Tesseract and ZBar run on your machine. oshot only goes online when you ask it to download an
+  OCR language or install a plugin.
+- **Plugins, if you want them.** The `-plugins` builds load plugins through a plain C ABI, so they can be written in
+  any language that can export C functions. The API is still experimental.
+
+oshot can't record the screen, upload captures or pin them. Flameshot and ShareX do some or all
+of that; see [How does it compare?](#how-does-it-compare).
 
 | Extract text | Decode QR codes and barcodes | Annotate |
 | :----------: | :--------------------------: | :------: |
@@ -424,7 +435,7 @@ than it would have been.
 
 Since then, with university taking most of my time, I've used Claude Code for most of the large work: packaging for
 every platform, cross-platform build fixes, the plugin system and the plugin index, global hotkeys and translations.
-Those parts are mostly AI-written, which today adds up to roughly half of oshot's own code.
+Those parts are mostly AI-written.
 
 Nothing ships without me reading it and running it. I test every change on Linux (X11 and Wayland), Windows and macOS,
 in VMs and on real hardware. I once nearly wrecked my school's monitor because a missing `glfwTerminate()` left it
