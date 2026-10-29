@@ -974,7 +974,7 @@ if(UNIX AND NOT APPLE)
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo
     )
     install(
-        FILES assets/linux/oshot.svg
+        FILES assets/oshot.svg
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps
     )
     install(

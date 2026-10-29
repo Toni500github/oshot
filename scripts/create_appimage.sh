@@ -64,7 +64,7 @@ main() {
 
     rm -rf AppDir
     mkdir -p AppDir/usr/bin/
-    check_file assets/linux/oshot.svg
+    check_file assets/oshot.svg
     check_file assets/linux/oshot-256.png
     check_file assets/linux/oshot.desktop
     check_file assets/linux/io.github.toni500github.oshot.metainfo.xml
@@ -106,7 +106,7 @@ EOF
     cp -f "$1" AppDir/usr/bin/
 
     # The SVG for desktops that scale icons, a 256px PNG for the AppImage's own icon
-    install -Dm644 assets/linux/oshot.svg AppDir/usr/share/icons/hicolor/scalable/apps/oshot.svg
+    install -Dm644 assets/oshot.svg AppDir/usr/share/icons/hicolor/scalable/apps/oshot.svg
     install -Dm644 assets/linux/oshot-256.png AppDir/usr/share/icons/hicolor/256x256/apps/oshot.png
 
     # AppStream metadata, read by software centers and the AppImage catalog.
