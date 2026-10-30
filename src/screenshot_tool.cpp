@@ -2712,10 +2712,13 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
             ImGui::SetNextWindowPos(
                 ImVec2(first_btn_pos[i].x - style.WindowPadding.x, first_btn_pos[i].y - style.WindowPadding.y));
+            // The overlay leaves no window padding, so the border would clip the buttons' outer pixel and rounding
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
             ImGui::Begin(name.data(),
                          nullptr,
                          ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                              ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize);
+            ImGui::PopStyleVar();
 
             for (const ToolType tool : m_tools_borders[i])
                 set_tool_button(tool, i % 2 == 0);
@@ -2762,10 +2765,12 @@ void ScreenshotTool::DrawAnnotationToolbar()
         const float toolbar_x = std::clamp(sel_x, 0.0f, std::max(0.0f, display.x - toolbar_w));
 
         ImGui::SetNextWindowPos({ toolbar_x, toolbar_y });
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
         ImGui::Begin("##annotation_toolbar",
                      nullptr,
                      ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                          ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::PopStyleVar();
 
         for (size_t i = 1; i < idx(ToolType::COUNT); ++i)
             set_tool_button(toe<ToolType>(i), true);
