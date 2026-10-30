@@ -84,7 +84,11 @@ NvdNotification *nvd_notification_win32(const char *title, const char *msg,
 
 void nvd_send_notification_win32(NvdNotification *notification) {
 	NVD_ASSERT(notification != NULL);
-        NVD_ASSERT(Shell_NotifyIcon(NIM_ADD, notification->raw) == TRUE);
+        /* oshot: nothing removes the icon the first notification adds, and it
+         * outlives the process, so adding it again fails and later notifications
+         * never showed. Update the existing one instead. */
+        if (!Shell_NotifyIcon(NIM_ADD, notification->raw))
+                NVD_ASSERT(Shell_NotifyIcon(NIM_MODIFY, notification->raw) == TRUE);
 }
 
 /*
