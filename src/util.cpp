@@ -88,7 +88,10 @@
 #  pragma comment(lib, "ws2_32.lib")
 #else
 #  if OSHOT_MACOS
+// AssertMacros.h (pulled in by CoreServices) defines check()/verify()/require() otherwise
+#    define __ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES 0
 #    include <CoreFoundation/CoreFoundation.h>
+#    include <CoreServices/CoreServices.h>
 #    include <CoreGraphics/CoreGraphics.h>
 #    include <mach-o/dyld.h>
 #  elif defined(__FreeBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
@@ -923,6 +926,24 @@ void extern_glfwSwapInterval(int v)
     if (main_tool::_extern_glfwSwapInterval)
         main_tool::_extern_glfwSwapInterval(v);
 }
+
+#if OSHOT_MACOS
+static void (*quit_handler_fn)() = nullptr;
+
+static OSErr on_quit_event(const AppleEvent*, AppleEvent*, SRefCon)
+{
+    if (quit_handler_fn)
+        quit_handler_fn();
+    return noErr;
+}
+
+void install_quit_handler(void (*on_quit)())
+{
+    static const AEEventHandlerUPP upp = NewAEEventHandlerUPP(on_quit_event);
+    quit_handler_fn                    = on_quit;
+    AEInstallEventHandler(kCoreEventClass, kAEQuitApplication, upp, 0, false);
+}
+#endif
 
 std::string expand_var(std::string ret)
 {

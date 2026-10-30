@@ -976,6 +976,17 @@ void* dialog_parent_window();
 /* Call glfwTerminate(), if a backend registered it */
 void extern_glfwTerminate();
 
+#if OSHOT_MACOS
+/**
+ * Handle the system's quit request (shutdown, logout) ourselves. NSApp's own
+ * handler asks the app delegate, and GLFW's always cancels it (it only closes
+ * its windows), which made macOS abort the shutdown. Finishing the app launch
+ * in the first glfwInit() replaces the handler, so install it again after that
+ * @param on_quit Called on the main thread when the request arrives
+ **/
+void install_quit_handler(void (*on_quit)());
+#endif
+
 /**
  * Call glfwSwapInterval(), if a backend registered it
  * @param v 1 to enable vsync, 0 to disable it

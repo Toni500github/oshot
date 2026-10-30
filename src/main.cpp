@@ -297,9 +297,9 @@ static void on_crash_signal(int sig)
     raise(sig);
 }
 
-// Quit from the tray menu or a signal (tray thread). A capture in progress
-// sees app_quitting() and closes itself.
-static void request_quit()
+// Quit from the tray menu, a signal or the system (tray or main thread).
+// A capture in progress sees app_quitting() and closes itself.
+void request_quit()
 {
     {
         std::scoped_lock lk(mtx);
@@ -1064,6 +1064,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
 #endif
 #if OSHOT_MACOS
         Tray::SetReopenCallback([] { capture_from_tray(); });
+        install_quit_handler(request_quit);
 #endif
         while (!app_quitting() && trayMaker.Loop(true))
         {

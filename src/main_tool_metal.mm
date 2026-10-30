@@ -109,6 +109,7 @@ static id<MTLTexture> create_metal_texture(id<MTLDevice> device, const uint8_t* 
 }
 
 bool app_quitting();  // main.cpp
+void request_quit();  // main.cpp
 
 int run_main_tool()
 {
@@ -184,6 +185,7 @@ int run_main_tool()
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
         return EXIT_FAILURE;
+    install_quit_handler(request_quit);
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);  // skip GL context
 

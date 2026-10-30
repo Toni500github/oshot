@@ -193,6 +193,7 @@ static void* dialog_parent_()
 }
 
 bool app_quitting();  // main.cpp
+void request_quit();  // main.cpp
 
 int run_main_tool()
 {
@@ -257,6 +258,9 @@ int run_main_tool()
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
         return EXIT_FAILURE;
+#  if OSHOT_MACOS
+    install_quit_handler(request_quit);
+#  endif
 
     // Decide GL+GLSL versions
 #  if defined(IMGUI_IMPL_OPENGL_ES2)
