@@ -75,7 +75,6 @@
 #include "fmt/format.h"
 #include "getopt_port.h"
 #include "i18n.hpp"
-#include "oshot_png.h"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "spdlog/sinks/basic_file_sink.h"
@@ -87,6 +86,7 @@
 #include "tiny-process-library/process.hpp"
 #include "tinyfiledialogs.h"
 #include "tray.hpp"
+#include "tray_icon_png.h"
 #include "util.hpp"
 
 using namespace Tray;
@@ -976,8 +976,8 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
 
 #if OSHOT_WINDOWS
     // Needs an absolute path, since the working directory is System32 when started at sign-in.
-    // Fall back to the icon embedded in oshot.exe (see assets/windows/oshot.rc.in).
-    fs::path tray_ico = get_exe_dir() / "oshot.ico";
+    // Fall back to the app icon embedded in oshot.exe (see assets/windows/oshot.rc.in).
+    fs::path tray_ico = get_exe_dir() / "oshot-tray.ico";
     if (!fs::exists(tray_ico, ec))
         tray_ico = get_exe_path();
     TrayIcon tray = { "oshot.png", tray_ico.string(), "oshot", {} };
@@ -986,7 +986,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     fs::create_directories(png_path.parent_path(), ec);
     std::ofstream out(png_path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
 
-    out.write(reinterpret_cast<const char*>(oshot_png), std::streamsize(oshot_png_len));
+    out.write(reinterpret_cast<const char*>(tray_icon_png), std::streamsize(tray_icon_png_len));
     out.close();
     TrayIcon tray = { .iconFilePng = png_path.string(), .iconFileIco = "oshot.ico", .tooltip = "oshot", .menu = {} };
 #endif

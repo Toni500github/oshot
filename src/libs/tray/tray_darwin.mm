@@ -121,6 +121,8 @@ void TrayMaker::Update()
     if (image)
     {
         [image setSize:NSMakeSize(16, 16)];
+        // Only the alpha counts, so macOS draws it dark or light to match the menu bar
+        [image setTemplate:YES];
         statusItem.button.image = image;
     }
     else
