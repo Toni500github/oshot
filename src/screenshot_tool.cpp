@@ -333,6 +333,7 @@ Result<> ScreenshotTool::Start()
     m_current_actions           = {};
     m_pending_scan              = ScanType::kNone;
     m_completed_op              = SavingOp::kNone;
+    m_final_image_requested     = false;
     m_popup_open                = false;
     m_show_window.Clear(SubWindow::OutputMenuSelection);
 
@@ -403,7 +404,9 @@ Result<> ScreenshotTool::StartWindow()
                         .barcode_text              = "",
                         .zbar_scan_result          = {},
                         .ann_font                  = "",
-                        .resolved_ann_font_path    = "" };
+                        .resolved_ann_font_path    = "",
+                        .ocr_original              = "",
+                        .barcode_original          = "" };
     m_current_color = (rgba_t(g_cache->GetValue(CacheEntry::AnnColor, Colors::RED.to_rgba())));
 
     m_imgui_id_texts.insert_or_assign(OSHOT_TEXT_OCR, &m_inputs.ocr_results.data);
@@ -654,6 +657,10 @@ void ScreenshotTool::RenderOverlay()
     }
     m_show_window.Set(SubWindow::MainTextTools, open);
 
+#ifndef DISABLE_PLUGINS
+    DrawPluginReports();
+#endif
+
     HandleShortcutsInput();
 
     // ImGui's NewFrame() already closed the menu or popup that was open on this Esc:
@@ -684,6 +691,11 @@ void ScreenshotTool::Cancel()
     delete_texture(m_texture_id);
     for (auto& tex : m_tool_textures)
         delete_texture(tex);
+#ifndef DISABLE_PLUGINS
+    for (auto& [key, tex] : m_plugin_icons)
+        delete_texture(tex);
+    m_plugin_icons.clear();
+#endif
 
     // Only our references, the fonts themselves stay in ImGui's atlas
     m_font_cache.clear();
@@ -800,6 +812,12 @@ void ScreenshotTool::OnCleanFrame()
     else if (scan == ScanType::Barcode)
         RunBarcodeScan(img);
 
+#ifndef DISABLE_PLUGINS
+    if (std::exchange(m_final_image_requested, false))
+        for (auto& [id, rt] : g_plugins)
+            rt.DeliverFinalImage(img);
+#endif
+
     const SavingOp op = std::exchange(m_completed_op, SavingOp::kNone);
     if (op == SavingOp::kNone)
         return;
@@ -853,6 +871,12 @@ capture_result_t ScreenshotTool::GetFinalImage()
     }
 
     return result;
+}
+
+bool ScreenshotTool::CanReadFinalImage() const
+{
+    return m_state != ToolState::Idle && !m_screenshot.data.empty() &&
+           !m_show_window.Has(SubWindow::OutputMenuSelection);
 }
 
 region_t ScreenshotTool::GetActiveRegion() const
@@ -2131,6 +2155,7 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
     ClearError(ectx, OcrError::FailedToOCR);
     m_inputs.ocr_results = std::move(result.get());
 #ifndef DISABLE_PLUGINS
+    TransformText(m_inputs.ocr_results.data, m_inputs.ocr_original, OSHOT_TEXT_OCR);
     NotifyPluginsOfOcr(&m_inputs.ocr_results);
 #endif
 }
@@ -2158,6 +2183,8 @@ void ScreenshotTool::RunBarcodeScan(const capture_result_t& img)
         m_inputs.barcode_text += data + "\n\n";
 
 #ifndef DISABLE_PLUGINS
+    TransformText(m_inputs.barcode_text, m_inputs.barcode_original, OSHOT_TEXT_BARCODE);
+
     std::vector<oshot_barcode_t> codes;
     codes.reserve(m_inputs.zbar_scan_result.codes.size());
     for (const barcode_t& c : m_inputs.zbar_scan_result.codes)
@@ -2692,6 +2719,11 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
             for (const ToolType tool : m_tools_borders[i])
                 set_tool_button(tool, i % 2 == 0);
+#ifndef DISABLE_PLUGINS
+            // The plugins' buttons continue after oshot's last one
+            if (m_tools_borders[i].back() == ToolType::SaveImage)
+                DrawPluginToolbarButtons(i % 2 == 0);
+#endif
 
             ImGui::End();
         }
@@ -2704,6 +2736,9 @@ void ScreenshotTool::DrawAnnotationToolbar()
         size_t n_buttons = 0;
         for (size_t i = 1; i < idx(ToolType::COUNT); ++i)
             n_buttons += has_toolbar_button(toe<ToolType>(i)) ? 1 : 0;
+#ifndef DISABLE_PLUGINS
+        n_buttons += CountPluginToolbarButtons();
+#endif
         const float toolbar_w =
             (float(n_buttons) * (btn.x + style.ItemSpacing.x)) - style.ItemSpacing.x + (style.WindowPadding.x * 2.0f);
         const float toolbar_h = btn.y + (style.WindowPadding.y * 2.0f);
@@ -2734,6 +2769,9 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
         for (size_t i = 1; i < idx(ToolType::COUNT); ++i)
             set_tool_button(toe<ToolType>(i), true);
+#ifndef DISABLE_PLUGINS
+        DrawPluginToolbarButtons(true);
+#endif
 
         ImGui::End();
     }
@@ -2829,6 +2867,10 @@ void ScreenshotTool::DrawMenuItems()
                 m_show_window.Set(SubWindow::Logs);
             ImGui::EndMenu();
         }
+
+#ifndef DISABLE_PLUGINS
+        DrawPluginActionsMenu();
+#endif
 
         if (ImGui::BeginMenu(_("Help")))
         {
@@ -2995,6 +3037,19 @@ void ScreenshotTool::DrawOcrTools()
         }
     }
 
+#ifndef DISABLE_PLUGINS
+    DrawOriginalToggle(m_inputs.ocr_original, m_show_ocr_original);
+    if (m_show_ocr_original)
+    {
+        ImGui::InputTextMultiline("##ocr_original",
+                                  &m_inputs.ocr_original,
+                                  ImVec2(-1, ImGui::GetTextLineHeight() * 8),
+                                  ImGuiInputTextFlags_ReadOnly);
+        CreateCopyTextButton(m_inputs.ocr_original);
+        ImGui::PopID();
+        return;
+    }
+#endif
     ImGui::InputTextMultiline("##" OSHOT_TEXT_OCR,
                               &m_inputs.ocr_results.data,
                               ImVec2(-1, ImGui::GetTextLineHeight() * 8),
@@ -3029,6 +3084,19 @@ void ScreenshotTool::DrawBarDecodeTools()
         ImGui::TreePop();
     }
 
+#ifndef DISABLE_PLUGINS
+    DrawOriginalToggle(m_inputs.barcode_original, m_show_barcode_original);
+    if (m_show_barcode_original)
+    {
+        ImGui::InputTextMultiline("##barcode_original",
+                                  &m_inputs.barcode_original,
+                                  ImVec2(-1, ImGui::GetTextLineHeight() * 8),
+                                  ImGuiInputTextFlags_ReadOnly);
+        CreateCopyTextButton(m_inputs.barcode_original);
+        ImGui::PopID();
+        return;
+    }
+#endif
     ImGui::InputTextMultiline("##" OSHOT_TEXT_BARCODE,
                               &m_inputs.barcode_text,
                               ImVec2(-1, ImGui::GetTextLineHeight() * 8),
@@ -4065,9 +4133,69 @@ static void draw_plugin_settings(plugin_runtime_t& rt)
     }
 }
 
-static void draw_preference_plugin(auto& plugin_dirty, bool& prefs_modified)
+// The text transformer chain as g_text_transformers has it: each plugin ID and whether its transformer is on
+static std::vector<std::pair<std::string, bool>> current_text_transformers()
 {
-    bool any = false;
+    std::vector<std::pair<std::string, bool>> ret;
+    ret.reserve(g_text_transformers.size());
+    for (const text_transformer_t& t : g_text_transformers)
+        ret.emplace_back(t.rt->id, t.enabled);
+    return ret;
+}
+
+// Draws the text transformers in the order being edited, with buttons to move them and switch them off
+static void draw_text_transformers(std::vector<std::pair<std::string, bool>>& chain, bool busy)
+{
+    if (chain.empty())
+        return;
+
+    ImGui::SeparatorText(_("Text transformers"));
+    ImGui::TextWrapped("%s",
+                       _("They rewrite the text OCR and the QR/barcode scan read before it's shown, from top to "
+                         "bottom. Each one gets the text the one above it returned."));
+    if (busy)
+        ImGui::TextDisabled("%s", _("Wait for the plugin operation to finish to change them."));
+
+    ImGui::BeginDisabled(busy);
+    std::optional<std::pair<size_t, size_t>> swap;
+    for (size_t i = 0; i < chain.size(); ++i)
+    {
+        auto& [id, enabled] = chain[i];
+        const auto it       = g_plugins.find(id);
+        const char* name    = it != g_plugins.end() ? it->second.plugin->name : id.c_str();
+
+        ImGui::PushID(id.c_str());
+        ImGui::BeginDisabled(i == 0);
+        if (ImGui::ArrowButton("##up", ImGuiDir_Up))
+            swap.emplace(i - 1, i);
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(i + 1 == chain.size());
+        if (ImGui::ArrowButton("##down", ImGuiDir_Down))
+            swap.emplace(i, i + 1);
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::Checkbox(fmt::format("{}. {}", i + 1, name).c_str(), &enabled);
+        ImGui::SetItemTooltip("%s", id.c_str());
+        ImGui::PopID();
+    }
+    ImGui::EndDisabled();
+    // After the loop, which holds references into the vector
+    if (swap)
+        std::swap(chain[swap->first], chain[swap->second]);
+    ImGui::Spacing();
+}
+
+static void draw_preference_plugin(auto&                                      plugin_dirty,
+                                   bool&                                      prefs_modified,
+                                   std::vector<std::pair<std::string, bool>>& transformers,
+                                   bool                                       busy)
+{
+    draw_text_transformers(transformers, busy);
+    if (transformers != current_text_transformers())
+        prefs_modified = true;
+
+    bool any = !transformers.empty();
     for (auto& [id, rt] : g_plugins)
     {
         const oshot_plugin_t* pl           = rt.plugin;
@@ -4109,6 +4237,35 @@ static void draw_preference_plugin(auto& plugin_dirty, bool& prefs_modified)
     if (!any)
         ImGui::TextDisabled(
             "%s", g_plugins.empty() ? _("No plugins are loaded.") : _("None of the loaded plugins have settings."));
+}
+
+// Writes the edited chain to state.toml and applies it. Saved IDs of plugins that
+// aren't loaded (disabled ones) keep their place after the loaded ones
+static void save_text_transformers(StateManager& state, const std::vector<std::pair<std::string, bool>>& chain)
+{
+    state.Reload();
+    const text_transformers_t saved = state.GetTextTransformers();
+
+    text_transformers_t t;
+    auto in_chain = [&](const std::string& id) {
+        return std::ranges::find(chain, id, &std::pair<std::string, bool>::first) != chain.end();
+    };
+    for (const auto& [id, enabled] : chain)
+    {
+        t.order.push_back(id);
+        if (!enabled)
+            t.disabled.push_back(id);
+    }
+    for (const std::string& id : saved.order)
+        if (!in_chain(id))
+            t.order.push_back(id);
+    for (const std::string& id : saved.disabled)
+        if (!in_chain(id))
+            t.disabled.push_back(id);
+
+    state.SetTextTransformers(t);
+    MUST_OK(state.SaveState(), spdlog::error("Failed to save the text transformers' order: {}", _r.error_v()));
+    sort_text_transformers(state);
 }
 #endif
 
@@ -4218,6 +4375,11 @@ void ScreenshotTool::DrawPreferencesWindow()
     static Config::config_file_t                 config_snapshot;  // config state at the moment the window opened
     static Config::theme_overrides_t             theme_snapshot;   // theme state at the moment the window opened
     static std::unordered_map<std::string, bool> plugin_dirty;
+#ifndef DISABLE_PLUGINS
+    static std::vector<std::pair<std::string, bool>> transformers;  // the chain as Preferences shows it until saved
+    // state.toml can't be written while a plugin task uses it on its worker thread
+    const bool plugin_busy = m_install_state && m_install_state->running;
+#endif
 
     if (!m_show_window.Has(SubWindow::Preferences))
     {
@@ -4259,6 +4421,9 @@ void ScreenshotTool::DrawPreferencesWindow()
         }
 
 #ifndef DISABLE_PLUGINS
+        if (!plugin_busy && transformers != current_text_transformers())
+            save_text_transformers(m_plugin_manager.GetStateManager(), transformers);
+
         for (auto& [id, rt] : g_plugins)
         {
             if (!plugin_dirty[id])
@@ -4280,6 +4445,7 @@ void ScreenshotTool::DrawPreferencesWindow()
         g_config->File            = config_snapshot;
         g_config->theme_overrides = theme_snapshot;
 #ifndef DISABLE_PLUGINS
+        transformers = current_text_transformers();
         for (auto& [id, rt] : g_plugins)
         {
             if (!plugin_dirty[id])
@@ -4300,6 +4466,7 @@ void ScreenshotTool::DrawPreferencesWindow()
 #ifndef DISABLE_PLUGINS
         // Edits left from a window that closed without Save or Discard are dropped
         plugin_dirty.clear();
+        transformers = current_text_transformers();
         for (auto& [id, rt] : g_plugins)
             rt.LoadSettings();
 #endif
@@ -4345,7 +4512,9 @@ void ScreenshotTool::DrawPreferencesWindow()
             case PrefTab::kNone:    break;
             case PrefTab::Defaults: draw_preference_edit_config([&] { RefreshOcrModels(); }, window_just_opened); break;
 #ifndef DISABLE_PLUGINS
-            case PrefTab::Plugins: draw_preference_plugin(plugin_dirty, prefs_modified); break;
+            case PrefTab::Plugins:
+                draw_preference_plugin(plugin_dirty, prefs_modified, transformers, plugin_busy);
+                break;
 #endif
             case PrefTab::Theme: draw_theme_editor(); break;
         }
@@ -4991,13 +5160,18 @@ void ScreenshotTool::StartPluginTask(std::string title, std::function<Result<>(P
 
 void ScreenshotTool::StartPluginsCapture()
 {
-    m_plugin_selection = {};
+    m_plugin_selection      = {};
+    m_show_ocr_original     = false;
+    m_show_barcode_original = false;
+    set_plugin_overlay_open(true);
     for (auto& [id, rt] : g_plugins)
         rt.CaptureStart();
 }
 
 void ScreenshotTool::EndPluginsCapture()
 {
+    // Results reported from here on, or by threads still running, become notifications
+    set_plugin_overlay_open(false);
     for (auto& [id, rt] : g_plugins)
         rt.CaptureEnd();
 }
@@ -5052,6 +5226,225 @@ void ScreenshotTool::NotifyPluginsOfSelection()
     for (auto& [id, rt] : g_plugins)
         if (OSHOT_PLUGIN_HAS(rt.plugin, on_selection_changed) && rt.plugin->on_selection_changed)
             rt.plugin->on_selection_changed(rt.state, float(sel.x), float(sel.y), float(sel.w), float(sel.h));
+}
+
+void ScreenshotTool::TransformText(std::string& text, std::string& original, const char* buffer_id)
+{
+    original = text;
+    text     = run_text_transformers(text, buffer_id);
+    // Nothing to show under the Original toggle
+    if (text == original)
+        original.clear();
+}
+
+void ScreenshotTool::RunPluginAction(plugin_runtime_t& rt, int32_t action)
+{
+    plugin_runtime_t* p = &rt;
+    std::scoped_lock  lock(rt.tasks_mutex);
+    rt.tasks.emplace_back([p, action] {
+        // It may have been unregistered since the click
+        const plugin_action_t* a = p->FindAction(action);
+        if (!a)
+            return;
+        const auto fn   = a->fn;
+        void*      user = a->user;
+        fn(user, action);
+    });
+}
+
+size_t ScreenshotTool::CountPluginToolbarButtons() const
+{
+    size_t n = 0;
+    for (const auto& [id, rt] : g_plugins)
+        n += std::ranges::count(rt.actions, OSHOT_PLACE_TOOLBAR, &plugin_action_t::place);
+    return n;
+}
+
+// The label's first character, upper-cased if it's ASCII, for a button without an icon
+static std::string first_letter(const std::string& label)
+{
+    size_t len = 1;
+    while (len < label.size() && (static_cast<unsigned char>(label[len]) & 0xC0) == 0x80)
+        ++len;
+    std::string ret = label.substr(0, len);
+    if (ret.size() == 1)
+        ret[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(ret[0])));
+    return ret;
+}
+
+void ScreenshotTool::DrawPluginToolbarButtons(bool same_line)
+{
+    for (auto& [id, rt] : g_plugins)
+    {
+        for (const plugin_action_t& action : rt.actions)
+        {
+            if (action.place != OSHOT_PLACE_TOOLBAR)
+                continue;
+
+            // Made on first use in each overlay. On macOS CreateTexture() makes none, so the letter is drawn
+            const auto key = std::make_pair(id, action.id);
+            auto       it  = m_plugin_icons.find(key);
+            if (it == m_plugin_icons.end() && !action.icon.empty())
+            {
+                const Result<ImTextureRef>& tex = CreateTexture(0, action.icon, action.icon_w, action.icon_h);
+                it = m_plugin_icons.emplace(key, tex.ok() ? tex.get() : ImTextureRef{}).first;
+            }
+            const ImTextureID tex_id = it != m_plugin_icons.end() ? it->second.GetTexID() : ImTextureID{};
+
+            ImGui::PushID(id.c_str());
+            ImGui::PushID(action.id);
+            const bool clicked = tex_id ? ImGui::ImageButton("##btn", tex_id, TOOL_BUTTON_SIZE2)
+                                        : ImGui::Button(first_letter(action.label).c_str(), GetToolButtonSize());
+            ImGui::SetItemTooltip("%s", action.label.c_str());
+            ImGui::PopID();
+            ImGui::PopID();
+
+            if (clicked)
+                RunPluginAction(rt, action.id);
+            if (same_line)
+                ImGui::SameLine();
+        }
+    }
+}
+
+void ScreenshotTool::DrawPluginActionsMenu()
+{
+    size_t n_plugins = 0;
+    for (const auto& [id, rt] : g_plugins)
+        if (std::ranges::count(rt.actions, OSHOT_PLACE_TEXT_TOOLS, &plugin_action_t::place) > 0)
+            ++n_plugins;
+    if (n_plugins == 0 || !ImGui::BeginMenu(_("Plugins")))
+        return;
+
+    for (auto& [id, rt] : g_plugins)
+    {
+        bool named = false;
+        for (const plugin_action_t& action : rt.actions)
+        {
+            if (action.place != OSHOT_PLACE_TEXT_TOOLS)
+                continue;
+            // With several plugins, each one's entries go under its name
+            if (n_plugins > 1 && !std::exchange(named, true))
+                ImGui::SeparatorText(rt.plugin->name);
+
+            ImGui::PushID(id.c_str());
+            ImGui::PushID(action.id);
+            if (ImGui::MenuItem(action.label.c_str()))
+                RunPluginAction(rt, action.id);
+            ImGui::PopID();
+            ImGui::PopID();
+        }
+    }
+    ImGui::EndMenu();
+}
+
+void ScreenshotTool::DrawPluginReports()
+{
+    // A result without anything to copy goes away after this; one with something stays until closed
+    constexpr auto RESULT_SHOWN = 10s;
+
+    struct line_t
+    {
+        plugin_runtime_t* rt;
+        plugin_report_t   report;
+    };
+
+    // Copied, as plugin threads may report while it's drawn
+    const auto          now = std::chrono::steady_clock::now();
+    std::vector<line_t> lines;
+    for (auto& [id, rt] : g_plugins)
+    {
+        std::scoped_lock lock(rt.reports_mutex);
+        std::erase_if(rt.reports, [&](const plugin_report_t& r) {
+            return r.done && r.copyable.empty() && now - r.finished > RESULT_SHOWN;
+        });
+        for (const plugin_report_t& r : rt.reports)
+            lines.push_back({ .rt = &rt, .report = r });
+    }
+    if (lines.empty())
+        return;
+
+    constexpr float margin  = 10.0f;
+    const ImVec2    display = ImGui::GetIO().DisplaySize;
+    ImGui::SetNextWindowPos(ImVec2(display.x - margin, display.y - margin), ImGuiCond_Always, ImVec2(1.0f, 1.0f));
+    ImGui::Begin("##plugin_reports",
+                 nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove);
+    // Above the text tools when they reach the corner, without taking the focus from them
+    ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+
+    // The line whose Copy was pressed, which says "Copied!" for a moment
+    static std::pair<std::string, int32_t> copied;
+    static bool                            armed = false;
+    for (size_t i = 0; i < lines.size(); ++i)
+    {
+        const auto& [rt, r] = lines[i];
+        if (i > 0)
+            ImGui::Separator();
+
+        ImGui::PushID(rt->id.c_str());
+        ImGui::PushID(r.action);
+
+        const plugin_action_t* action = rt->FindAction(r.action);
+        if (action)
+            ImGui::Text("%s: %s", rt->plugin->name, action->label.c_str());
+        else
+            ImGui::TextUnformatted(rt->plugin->name);
+
+        if (!r.done)
+        {
+            // A negative fraction makes ImGui animate it as unknown
+            const float fraction = r.fraction < 0.0f ? -1.0f * float(ImGui::GetTime()) : r.fraction;
+            ImGui::ProgressBar(fraction, font_relative(16, 0), r.text.empty() ? nullptr : r.text.c_str());
+        }
+        else
+        {
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
+            ImGui::TextColored(r.ok ? Colors::GREEN : Colors::RED, "%s", r.text.c_str());
+            if (!r.copyable.empty())
+                ImGui::TextDisabled("%s", r.copyable.c_str());
+            ImGui::PopTextWrapPos();
+
+            if (!r.copyable.empty())
+            {
+                const auto key       = std::make_pair(rt->id, r.action);
+                bool       line_armed = armed && copied == key;
+                if (create_timed_button(_("Copy"), _("Copied!"), line_armed))
+                {
+                    const Result<>& res = g_clipboard.CopyText(r.copyable);
+                    copied              = key;
+                    armed               = res.ok();
+                    if (!res.ok())
+                        spdlog::error("Failed to copy {}'s result: {}", rt->id, res.error_v());
+                }
+                else if (copied == key)
+                    armed = line_armed;  // cleared by create_timed_button() once its time is up
+                ImGui::SameLine();
+            }
+            if (ImGui::SmallButton(_("Close")))
+            {
+                std::scoped_lock lock(rt->reports_mutex);
+                std::erase_if(rt->reports, [&](const plugin_report_t& rep) { return rep.action == r.action; });
+            }
+        }
+
+        ImGui::PopID();
+        ImGui::PopID();
+    }
+    ImGui::End();
+}
+
+void ScreenshotTool::DrawOriginalToggle(const std::string& original, bool& show)
+{
+    if (original.empty())
+    {
+        show = false;
+        return;
+    }
+    ImGui::Checkbox(_("Original"), &show);
+    ImGui::SameLine();
+    HelpMarker(_("Show the text as it was read, before the plugins' text transformers changed it"));
 }
 
 void ScreenshotTool::DrawManagePluginsWindow()

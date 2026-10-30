@@ -30,9 +30,11 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <thread>
 #include <utility>
 
@@ -613,25 +615,34 @@ static oshot_err_t copy_image(oshot_ctx_t* ctx, const oshot_capture_t* image, os
     return OSHOT_OK;
 }
 
-static oshot_err_t notify(oshot_ctx_t* ctx, oshot_str_t title, oshot_str_t body, oshot_str_t* err)
+// Sends a desktop notification for notify() and report_result(). The lock keeps
+// report_result()'s calls from plugin threads from overlapping
+static oshot_err_t send_notification(
+    oshot_ctx_t* ctx, const std::string& title, const std::string& body, oshot_str_t* err, const char* func)
 {
-    if (!on_plugin_ui_thread())
-        return fail_off_ui_thread(ctx, err, "notify");
+    static std::mutex mutex;
+    std::scoped_lock  lock(mutex);
     if (!init_dialogs())
-        return fail(ctx, err, OSHOT_ERR_UNSUPPORTED, "notify", "notifications aren't available");
+        return fail(ctx, err, OSHOT_ERR_UNSUPPORTED, func, "notifications aren't available");
 
-    const std::string t = to_string(title), b = to_string(body);
-    NvdNotification*  notif = nvd_notification_new(t.c_str(), b.c_str(), NVD_NOTIFICATION_SIMPLE);
+    NvdNotification* notif = nvd_notification_new(title.c_str(), body.c_str(), NVD_NOTIFICATION_SIMPLE);
     if (!notif)
         return fail(ctx,
                     err,
                     OSHOT_ERR_FAILED,
-                    "notify",
+                    func,
                     "couldn't create the notification (nvdialog error {})",
                     static_cast<int>(nvd_get_error()));
     nvd_send_notification(notif);
     nvd_delete_notification(notif);
     return OSHOT_OK;
+}
+
+static oshot_err_t notify(oshot_ctx_t* ctx, oshot_str_t title, oshot_str_t body, oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "notify");
+    return send_notification(ctx, to_string(title), to_string(body), err, "notify");
 }
 
 // "scheme:...", with a scheme of at least 2 characters so a Windows path
@@ -808,6 +819,126 @@ static oshot_err_t kill_process(oshot_ctx_t* ctx, int64_t id, oshot_str_t* err)
     return OSHOT_OK;
 }
 
+static oshot_err_t request_final_image(oshot_ctx_t* ctx,
+                                       void (*on_ready)(void*, oshot_capture_t),
+                                       void*        user,
+                                       oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "request_final_image");
+    if (!on_ready)
+        return fail(ctx, err, OSHOT_ERR_INVALID, "request_final_image", "on_ready is NULL");
+    if (!ImGui::GetCurrentContext() || !g_ss_tool.CanReadFinalImage())
+        return fail(ctx, err, OSHOT_ERR_UNSUPPORTED, "request_final_image", "no selection can be read right now");
+
+    rt_of(ctx).image_requests.push_back({ .on_ready = on_ready, .user = user });
+    g_ss_tool.RequestFinalImage();
+    return OSHOT_OK;
+}
+
+static oshot_err_t register_action(oshot_ctx_t*           ctx,
+                                   oshot_place_t          where,
+                                   oshot_str_t            label,
+                                   const oshot_capture_t* icon,
+                                   void (*fn)(void*, int32_t),
+                                   void*        user,
+                                   int32_t*     id,
+                                   oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "register_action");
+    if (where != OSHOT_PLACE_TOOLBAR && where != OSHOT_PLACE_TEXT_TOOLS)
+        return fail(ctx, err, OSHOT_ERR_INVALID, "register_action", "unknown place {}", static_cast<int>(where));
+    if (!fn)
+        return fail(ctx, err, OSHOT_ERR_INVALID, "register_action", "fn is NULL");
+    const std::string text = to_string(label);
+    if (text.empty())
+        return fail(ctx, err, OSHOT_ERR_INVALID, "register_action", "the label is empty");
+    if (icon && (!icon->rgba || icon->w <= 0 || icon->h <= 0 || icon->w > OSHOT_ACTION_ICON_MAX ||
+                 icon->h > OSHOT_ACTION_ICON_MAX))
+        return fail(ctx,
+                    err,
+                    OSHOT_ERR_INVALID,
+                    "register_action",
+                    "the icon must have pixels and be 1 to {} pixels on each side",
+                    OSHOT_ACTION_ICON_MAX);
+
+    plugin_runtime_t& rt = rt_of(ctx);
+    plugin_action_t   action{ .icon   = {},
+                              .label  = text,
+                              .fn     = fn,
+                              .user   = user,
+                              .id     = rt.next_action_id++,
+                              .icon_w = icon ? icon->w : 0,
+                              .icon_h = icon ? icon->h : 0,
+                              .place  = where };
+    if (icon)
+        action.icon.assign(icon->rgba, icon->rgba + (size_t(icon->w) * size_t(icon->h) * 4));
+    if (id)
+        *id = action.id;
+    spdlog::debug("{}: registered action {} '{}'", rt.id, action.id, text);
+    rt.actions.push_back(std::move(action));
+    return OSHOT_OK;
+}
+
+static oshot_err_t unregister_action(oshot_ctx_t* ctx, int32_t action, oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "unregister_action");
+
+    plugin_runtime_t& rt = rt_of(ctx);
+    if (std::erase_if(rt.actions, [action](const plugin_action_t& a) { return a.id == action; }) == 0)
+        return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "unregister_action", "no action has the ID {}", action);
+    return OSHOT_OK;
+}
+
+// 0, or an ID register_action() gave out (it may be unregistered by now, a late report is fine)
+static bool valid_action_id(oshot_ctx_t* ctx, int32_t action)
+{
+    return action >= 0 && action < rt_of(ctx).next_action_id;
+}
+
+static oshot_err_t report_progress(oshot_ctx_t* ctx, int32_t action, float fraction, oshot_str_t text, oshot_str_t* err)
+{
+    if (!valid_action_id(ctx, action))
+        return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "report_progress", "no action has the ID {}", action);
+    if (!plugin_overlay_open())
+        return OSHOT_OK;
+
+    rt_of(ctx).Report({ .text     = to_string(text),
+                        .finished = {},
+                        .copyable = {},
+                        .fraction = std::isnan(fraction) ? -1.0f : std::min(fraction, 1.0f),
+                        .action   = action,
+                        .done     = false,
+                        .ok       = false });
+    return OSHOT_OK;
+}
+
+static oshot_err_t report_result(
+    oshot_ctx_t* ctx, int32_t action, bool ok, oshot_str_t message, oshot_str_t copyable, oshot_str_t* err)
+{
+    if (!valid_action_id(ctx, action))
+        return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "report_result", "no action has the ID {}", action);
+
+    plugin_runtime_t& rt = rt_of(ctx);
+    std::string       msg = to_string(message), copy = to_string(copyable);
+    if (!plugin_overlay_open())
+    {
+        const std::string body = copy.empty() ? msg : fmt::format("{}\n{}", msg, copy);
+        return send_notification(ctx, rt.plugin->name, body, err, "report_result");
+    }
+
+    rt.Report({ .text     = std::move(msg),
+                .finished = std::chrono::steady_clock::now(),
+                .copyable = std::move(copy),
+                .fraction = 1.0f,
+                .action   = action,
+                .done     = true,
+                .ok       = ok });
+    return OSHOT_OK;
+}
+
 void plugin_runtime_t::KillProcesses()
 {
     std::unique_lock lock(processes->mutex);
@@ -881,6 +1012,11 @@ const oshot_host_t g_oshot_host = {
     .copy_image       = copy_image,
     .notify           = notify,
     .open_url         = open_url,
-    .run_process      = run_process,
-    .kill_process     = kill_process,
+    .run_process         = run_process,
+    .kill_process        = kill_process,
+    .request_final_image = request_final_image,
+    .register_action     = register_action,
+    .unregister_action   = unregister_action,
+    .report_progress     = report_progress,
+    .report_result       = report_result,
 };

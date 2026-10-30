@@ -188,9 +188,37 @@ void StateManager::SetPlugin(const std::string& repo, const plugin_t& plugin, co
     m_is_changed = true;
 }
 
+text_transformers_t StateManager::GetTextTransformers() const
+{
+    const toml::table* tbl = m_toml.GetTbl()["text-transformers"].as_table();
+    if (!tbl)
+        return {};
+    return { .order = str_array(*tbl, "order"), .disabled = str_array(*tbl, "disabled") };
+}
+
+void StateManager::SetTextTransformers(const text_transformers_t& transformers)
+{
+    const toml::table& plugins   = Plugins();
+    auto               installed = [&](const std::string& id) { return plugins.contains(id); };
+
+    toml::array order, disabled;
+    for (const std::string& id : transformers.order)
+        if (installed(id))
+            order.push_back(id);
+    for (const std::string& id : transformers.disabled)
+        if (installed(id))
+            disabled.push_back(id);
+
+    toml::table& tbl = TomlAPI::EnsureTable(m_toml.GetTbl(), "text-transformers");
+    tbl.insert_or_assign("order", std::move(order));
+    tbl.insert_or_assign("disabled", std::move(disabled));
+}
+
 void StateManager::RemovePlugin(std::string_view id)
 {
     Plugins().erase(id);
+    if (m_toml.GetTbl()["text-transformers"].as_table())
+        SetTextTransformers(GetTextTransformers());
     m_is_changed = true;
 }
 
@@ -203,6 +231,8 @@ void StateManager::RemoveRepo(std::string_view name)
             ids.emplace_back(id.str());
     for (const std::string& id : ids)
         plugins.erase(id);
+    if (!ids.empty() && m_toml.GetTbl()["text-transformers"].as_table())
+        SetTextTransformers(GetTextTransformers());
 
     Repos().erase(name);
     m_is_changed = true;
@@ -229,4 +259,24 @@ Result<> StateManager::SaveState()
     if (!m_toml.SaveFile(ss.str(), m_path.string()))
         return Err("Failed to write '{}'", m_path.string());
     return Ok();
+}
+
+std::vector<std::pair<std::string, bool>> arrange_text_transformers(std::span<const std::string> available,
+                                                                    const text_transformers_t&   saved)
+{
+    auto has = [](const auto& list, const std::string& id) { return std::ranges::find(list, id) != list.end(); };
+
+    std::vector<std::pair<std::string, bool>> ret;
+    for (const std::string& id : saved.order)
+        if (has(available, id) && std::ranges::find(ret, id, &std::pair<std::string, bool>::first) == ret.end())
+            ret.emplace_back(id, !has(saved.disabled, id));
+
+    std::vector<std::string> rest;
+    for (const std::string& id : available)
+        if (!has(saved.order, id))
+            rest.push_back(id);
+    std::ranges::sort(rest);
+    for (const std::string& id : rest)
+        ret.emplace_back(id, !has(saved.disabled, id));
+    return ret;
 }

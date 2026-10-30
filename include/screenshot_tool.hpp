@@ -50,6 +50,8 @@
 
 #ifndef DISABLE_PLUGINS
 #  include "plugin_manager.hh"
+
+struct plugin_runtime_t;
 #endif
 
 // Annotation tools and toolbar buttons, in toolbar order.
@@ -257,6 +259,10 @@ struct inputs_results_t
 
     std::string ann_font;
     std::string resolved_ann_font_path;  // ann_font found by get_font_path()
+
+    // The OCR and barcode text from before the plugins' text transformers ran
+    std::string ocr_original;
+    std::string barcode_original;
 };
 
 #ifndef DISABLE_PLUGINS
@@ -485,11 +491,20 @@ public:
 
     // Whether the next frame must be drawn with only the screenshot and the annotations,
     // for OnCleanFrame() to read back. Such a frame isn't presented
-    [[nodiscard]] bool WantsCleanFrame() const { return IsCompleted() || m_pending_scan != ScanType::kNone; }
+    [[nodiscard]] bool WantsCleanFrame() const
+    {
+        return IsCompleted() || m_pending_scan != ScanType::kNone || m_final_image_requested;
+    }
 
-    // Called by the backend once the frame WantsCleanFrame() asked for has been
-    // rendered. Reads the active region from it for the pending scan and save/copy
+    // Called by the backend once the frame WantsCleanFrame() asked for has been rendered. Reads
+    // the active region from it for the pending scan, save/copy and plugins' request_final_image()
     void OnCleanFrame();
+
+    // Read back the active region with its annotations on the next frame, for request_final_image()
+    void RequestFinalImage() { m_final_image_requested = true; }
+
+    // Whether RequestFinalImage() can work now: an image is shown and no output is being picked
+    [[nodiscard]] bool CanReadFinalImage() const;
 
     // ------------------------------
     // Getters
@@ -684,6 +699,9 @@ private:
     // Set by RequestComplete(), until OnCleanFrame()
     SavingOp m_completed_op = SavingOp::kNone;
 
+    // Set by RequestFinalImage(), until OnCleanFrame()
+    bool m_final_image_requested = false;
+
     std::function<void()>                                            m_on_cancel;
     std::function<void(const capture_result_t&)>                     m_on_image_reload;
     std::function<bool(SavingOp, const capture_result_t&, ImageExt)> m_on_complete;
@@ -709,6 +727,13 @@ private:
 
     // The selection plugins were last told about, see NotifyPluginsOfSelection()
     region_t m_plugin_selection;
+
+    // The textures of the plugins' toolbar icons, by plugin ID and action ID. Deleted by Cancel()
+    std::map<std::pair<std::string, int32_t>, ImTextureRef> m_plugin_icons;
+
+    // The text tools show the text from before the transformers
+    bool m_show_ocr_original     = false;
+    bool m_show_barcode_original = false;
 
     std::shared_ptr<plugin_index_state_t> m_index_state = std::make_shared<plugin_index_state_t>();
     std::thread                           m_install_thread;
@@ -844,6 +869,27 @@ private:
 
     // Calls on_ocr_done() with what OCR read, or with nothing (nullptr) after it read nothing or failed
     void NotifyPluginsOfOcr(const ocr_result_t* res);
+
+    // Runs the text transformers over a scan's text, keeping what it was in `original`
+    void TransformText(std::string& text, std::string& original, const char* buffer_id);
+
+    // Queues an action's fn() for the start of the next frame, so it can't change the actions being drawn
+    void RunPluginAction(plugin_runtime_t& rt, int32_t action);
+
+    // The plugins' OSHOT_PLACE_TOOLBAR buttons, after oshot's own
+    void DrawPluginToolbarButtons(bool same_line);
+
+    // The plugins' OSHOT_PLACE_TEXT_TOOLS entries, as a Plugins menu in the text tools' menu bar
+    void DrawPluginActionsMenu();
+
+    // The box in the overlay's corner with what report_progress() and report_result() said
+    void DrawPluginReports();
+
+    // Draws the "Original" toggle above an output whose text the transformers changed
+    void DrawOriginalToggle(const std::string& original, bool& show);
+
+    // How many OSHOT_PLACE_TOOLBAR actions the plugins have
+    [[nodiscard]] size_t CountPluginToolbarButtons() const;
 
     // Calls on_selection_changed() once the selection is done changing and differs
     // from what the plugins were last told

@@ -13,6 +13,8 @@ when oshot updates Dear ImGui. See [docs/plugins.md](../../docs/plugins.md) for 
 | [`zig`](zig) | Zig 0.17 | `zig build` | `io.github.toni500github.uppercase-zig` |
 | [`cimgui`](cimgui) | C11 | CMake | `io.github.toni500github.line-lengths` |
 | [`scan-results`](scan-results) | C11 | CMake | `io.github.toni500github.scan-results` |
+| [`text-transformers`](text-transformers) | C11 | CMake | `io.github.toni500github.join-lines`, `io.github.toni500github.extract-links` |
+| [`export-png`](export-png) | C11 | CMake | `io.github.toni500github.export-png` |
 
 [`cimgui`](cimgui) is a different plugin: it draws a histogram of the extracted text's line lengths with Dear ImGui
 through cimgui, which the widgets can't draw. It shows how to use cimgui and what it costs: the plugin only loads in
@@ -24,6 +26,19 @@ box, then `copy_image`), and the OCR words read with low confidence (`on_barcode
 It clears them when the capture ends (`on_capture_start`/`on_capture_end`) or the selection changes
 (`on_selection_changed`), sends a notification, and runs `uname -a` or a long `sleep` it can kill (`run_process`,
 `kill_process`), reporting what the host returns as `oshot_err_t`.
+
+[`text-transformers`](text-transformers) is one repository with two plugins, each a `transform_text`: Join lines
+rejoins words hyphenated at the end of a line and the lines of each paragraph in OCR text, and Extract links keeps
+only the links and email addresses (or passes the text through when it has none). oshot runs them in the order set
+in Preferences > Plugins, and the order matters: with Extract links first, a link split over two lines is cut in
+half before Join lines can rejoin it. Each manifest entry has its own `output-dir`, since an output folder must hold
+exactly one library.
+
+[`export-png`](export-png) is an action, a toolbar button with its own icon and the same entry in the text tools'
+Plugins menu (`register_action`). It asks for the selection with its annotations (`request_final_image`), writes it
+as a PNG into `<plugin folder>/exports` from a thread of its own with `report_progress`, and ends with
+`report_result` offering the file's path to copy. It writes only inside its own folder, so it declares no
+capability.
 
 Each folder is a repository of its own with an `oshot-plugin.toml`, so they can be installed side by side:
 

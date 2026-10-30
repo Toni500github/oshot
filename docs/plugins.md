@@ -6,14 +6,16 @@
 Plugins only work in the `-plugins` builds of oshot. A plugin is a shared library (`.so`, `.dll`, or `.dylib` or `.so` on macOS) with a plain
 C interface, so it can be written in any language that can export a C function: C, C++, Rust, Zig, and so on.
 [`examples/plugins`](../examples/plugins) has the same complete plugin in each of those four languages, one that
-uses cimgui, and one that uses the scan results and host services.
+uses cimgui, one that uses the scan results and host services, two text transformers and an export action.
 
 What a plugin can do:
 
 - draw its own section in the text tools window with oshot's widgets (buttons, text fields, sliders, ...);
 - declare its settings, which oshot shows in Preferences > Plugins and saves for it;
 - draw anything else with Dear ImGui itself, through [cimgui](https://github.com/cimgui/cimgui);
-- read and replace the OCR and barcode text, and read the selected image;
+- read and replace the OCR and barcode text, and read the selected image, with or without the annotations;
+- rewrite every new OCR and barcode text before it's shown, in a chain the person orders;
+- add buttons to the toolbar and entries to the text tools' menu, and show their progress and result in the overlay;
 - react when text has been extracted, with each word's position and confidence, and when QR codes or barcodes have
   been decoded, with their positions;
 - know when a capture starts and ends, and when the selection changes;
@@ -132,8 +134,10 @@ OSHOT_PLUGIN_EXPORT const oshot_plugin_t* oshot_plugin_entry(void) { return &des
   `host->str_free`. Memory oshot allocates is freed through oshot's functions.
 - Values are stored in `OSHOT_STORE_CONFIG` (the plugin's `config.toml`, saved when the person saves Preferences and
   when oshot exits) or `OSHOT_STORE_CACHE` (oshot's cache file).
-- `host->get_text()`/`set_text()` work on `OSHOT_TEXT_OCR` and `OSHOT_TEXT_BARCODE`.
-- `host->get_capture()` copies the whole selected image: call it when needed, not every frame.
+- `host->get_text()`/`set_text()` work on `OSHOT_TEXT_OCR` and `OSHOT_TEXT_BARCODE`. To rewrite each new text, use
+  a [text transformer](#text-transformers) instead of `set_text()`.
+- `host->get_capture()` copies the whole selected image, without annotations: call it when needed, not every frame.
+  `request_final_image()` gives the annotated one (see [Actions](#actions)).
 - Host functions that can fail return an `oshot_err_t` (see [Errors](#errors)).
 
 ### Scan results
@@ -151,6 +155,89 @@ data and its box. `n` is 0 when the scan found nothing, so the plugin can clear 
 Both arrays are borrowed: copy what you need, they're gone when the callback returns. The boxes are in the pixels of
 the image that was scanned, which is the image `get_capture()` returns for the same selection, with (0, 0) at its
 top-left corner. They don't depend on the screen's scaling (Wayland output scales, Retina).
+
+### Text transformers
+
+`transform_text(state, buffer_id, in, &out)` rewrites the text oshot extracted before it's shown: join paragraphs,
+fix hyphenation, keep only the links, translate a few words with a local table. After every OCR (`buffer_id` is
+`OSHOT_TEXT_OCR`) and QR/barcode scan (`OSHOT_TEXT_BARCODE`), oshot passes the text through each plugin's transformer
+in turn, each one getting what the one before returned:
+
+```c
+static bool my_transform(void* state, const char* buffer_id, oshot_str_t in, oshot_str_t* out)
+{
+    state_t* s = state;
+    if (strcmp(buffer_id, OSHOT_TEXT_OCR) != 0)
+        return false;                         /* pass the barcode text through */
+    char* upper = uppercase_copy(in.p, in.len);
+    *out = s->host->str_new(upper, in.len);   /* oshot frees it */
+    free(upper);
+    return true;
+}
+```
+
+- Return false to pass `in` through unchanged. Returning true with `*out` set replaces it; allocate `out` with
+  `host->str_new()`, oshot frees it. `{ NULL, 0 }` means an empty text.
+- The person orders the transformers in Preferences > Plugins, and can switch each one off without disabling its
+  plugin. oshot keeps that in `plugins/state.toml` under `[text-transformers]`. Transformers not ordered yet (a plugin
+  installed since) run after the others, sorted by ID.
+- It runs on the UI thread and the overlay waits for it, so keep it fast: oshot logs a transformer that takes over
+  100 ms, once per plugin. Slow work, like a translation over the network, belongs in an [action](#actions).
+- `on_ocr_done()` runs after the chain and gets the transformed text. Its `words` stay as Tesseract read them, so
+  their text no longer matches the transformed text.
+- `get_text()` returns the transformed text. A `set_text()` from `on_ocr_done()` still works and replaces what the
+  chain made, but with two plugins the last one wins, which is why the chain exists.
+- The text tools window keeps the text from before the chain: an "Original" checkbox above the output shows it when a
+  transformer changed something.
+
+[`examples/plugins/text-transformers`](../examples/plugins/text-transformers) has two: one rejoins hyphenated words
+and paragraphs, the other keeps only the links and email addresses. Run them in that order, or a link split over two
+lines gets cut in half.
+
+### Actions
+
+An action is a button in the toolbar next to the selection, or an entry in the Plugins menu of the text tools
+window, that runs a function of the plugin. It's how an upload or export plugin offers itself:
+
+```c
+static void on_click(void* user, int32_t action)
+{
+    state_t*    s   = user;
+    oshot_str_t err = { NULL, 0 };
+    if (s->host->request_final_image(s->ctx, on_image, s, &err) != OSHOT_OK)
+    {
+        s->host->report_result(s->ctx, action, false, err, oshot_str_borrow(NULL), NULL);
+        s->host->str_free(&err);
+    }
+}
+
+/* in init() */
+host->register_action(ctx, OSHOT_PLACE_TOOLBAR, oshot_str_borrow("Upload"), &icon, on_click, s, &s->action, NULL);
+```
+
+- `register_action(ctx, where, label, icon, fn, user, &id, err)` adds one, usually in `init()`, and
+  `unregister_action(ctx, id, err)` removes it. `fn(user, action)` runs on the UI thread at the start of the frame
+  after the click. Actions go away with the plugin.
+- `where` is `OSHOT_PLACE_TOOLBAR` or `OSHOT_PLACE_TEXT_TOOLS`. A toolbar button shows `icon`, an RGBA image (as
+  `oshot_capture_t`, up to `OSHOT_ACTION_ICON_MAX` pixels on each side) that oshot copies and draws at the toolbar's
+  button size, or the label's first letter when `icon` is NULL. The label is the button's tooltip and the menu entry's
+  text. The tray has no actions yet.
+- `request_final_image(ctx, on_ready, user, err)` asks for the selection as Save and Copy write it, annotations
+  included. That image only exists once oshot has drawn and read back a frame, so it arrives later:
+  `on_ready(user, image)` runs on the UI thread right after that frame. The image belongs to the plugin, which can
+  hand it to a thread and free it there with `capture_free()`. If the overlay closes first, `on_ready` gets an image
+  whose `rgba` is NULL. Outside an overlay (in `on_capture_end()`), and while the person picks a monitor on Wayland, it
+  returns `OSHOT_ERR_UNSUPPORTED`.
+- `report_progress(ctx, action, fraction, text, err)` and `report_result(ctx, action, ok, message, copyable, err)`
+  work from any thread. oshot shows them in a box in the overlay's bottom-right corner: a progress bar until the
+  result comes, then the message, in red if `ok` is false. A non-empty `copyable` (a link, a path) gets a Copy button;
+  oshot doesn't copy it by itself. A result without one goes away after 10 seconds, one with it when the person closes
+  it. Pass action 0 for work that isn't tied to an action; it's shown under the plugin's name.
+- If no overlay is open when `report_result()` is called (the person closed it while an upload ran), oshot sends the
+  result as a desktop notification, with `copyable` after the message. Progress without an overlay isn't shown.
+
+[`examples/plugins/export-png`](../examples/plugins/export-png) saves the annotated selection as a PNG in its folder
+from a thread, with progress, and offers the path to copy.
 
 ### Captures and the selection
 
@@ -172,6 +259,7 @@ oshot already does these right on every system, so plugins call them instead of 
 | -------- | ------------ | ------ |
 | `copy_text`, `copy_image` | Copy to the clipboard like oshot does (xclip or wl-copy on Linux, which keep serving it after oshot exits). The image is encoded in the format set in Preferences. | UI |
 | `notify(title, body)` | A desktop notification. | UI |
+| `report_progress`, `report_result` | Progress and results of an action, shown in the overlay (see [Actions](#actions)). | any |
 | `open_url(url)` | Open a URL (`https://`, `mailto:`, `file:///`, ...) with the default application. It must start with a scheme. | UI |
 | `run_process(argv, argc, cwd, on_exit, user, &id)` | Start a program, see below. | any |
 | `kill_process(id)` | Stop a process `run_process()` started. | any |
@@ -296,12 +384,15 @@ the same oshot version, so the plugin checks one of those: `OSHOT_OCR_HAS_WORDS(
 `OSHOT_HOST_HAS(host, mem_alloc)`, and the header says which function to check for each later addition. Structs
 oshot passes in arrays (`oshot_ocr_word_t`, `oshot_barcode_t`) and `oshot_setting_t` never change.
 
+A plugin with a `transform_text` or actions checks `OSHOT_HOST_HAS(host, report_result)`: an older oshot never calls
+the transformer and has no actions.
+
 ### Threads
 
 All callbacks run on oshot's UI thread. A plugin may start its own threads (for network requests, say). From those:
 
-- `log`, `get_data_dir`, `str_new`/`str_free`, `run_on_ui_thread`, `mem_alloc`/`mem_free`, `run_process` and
-  `kill_process` can be called;
+- `log`, `get_data_dir`, `str_new`/`str_free`, `run_on_ui_thread`, `mem_alloc`/`mem_free`, `capture_free`,
+  `run_process`, `kill_process`, `report_progress` and `report_result` can be called;
 - everything else is refused and logged (the `ui_*` functions only once), and the host services return
   `OSHOT_ERR_THREAD`: hand the result to `host->run_on_ui_thread(ctx, fn, user)`, which calls `fn(user)` on the UI
   thread at the start of the next overlay frame (in the tray, between captures, when the next one starts);

@@ -1,0 +1,30 @@
+[repository]
+name = "oshot-example-text-transformers"
+url = "https://github.com/Toni500github/oshot/tree/main/examples/plugins/text-transformers"
+
+[dependencies]
+all = ["cmake", "a C compiler"]
+
+[join-lines]
+id = "io.github.toni500github.join-lines"
+description = "Rejoins words hyphenated at line ends and the lines of each paragraph in OCR text, an example plugin"
+authors = ["Toni500github"]
+licenses = ["Unlicense"]
+platforms = ["all"]
+build-steps = [
+    "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
+    "cmake --build build --config Release",
+]
+output-dir = "build/out/join-lines"
+
+[extract-links]
+id = "io.github.toni500github.extract-links"
+description = "Keeps only the links and email addresses of the extracted text, an example plugin"
+authors = ["Toni500github"]
+licenses = ["Unlicense"]
+platforms = ["all"]
+build-steps = [
+    "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
+    "cmake --build build --config Release",
+]
+output-dir = "build/out/extract-links"

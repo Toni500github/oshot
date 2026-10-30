@@ -20,6 +20,8 @@ pub const OSHOT_UI_PASSWORD: u32 = 1 << 3;
 
 pub const OSHOT_PROCESS_OUTPUT_MAX: usize = 4 * 1024 * 1024;
 
+pub const OSHOT_ACTION_ICON_MAX: i32 = 256;
+
 /// Opaque handle that identifies the plugin in every host call
 #[repr(C)]
 pub struct oshot_ctx_t {
@@ -51,6 +53,11 @@ pub const OSHOT_VAL_DOUBLE: oshot_value_kind_t = 3;
 pub type oshot_store_t = c_int;
 pub const OSHOT_STORE_CONFIG: oshot_store_t = 0;
 pub const OSHOT_STORE_CACHE: oshot_store_t = 1;
+
+// Not a Rust enum either, since oshot may add places
+pub type oshot_place_t = c_int;
+pub const OSHOT_PLACE_TOOLBAR: oshot_place_t = 0;
+pub const OSHOT_PLACE_TEXT_TOOLS: oshot_place_t = 1;
 
 pub type oshot_setting_kind_t = c_int;
 pub const OSHOT_SETTING_BOOL: oshot_setting_kind_t = 0;
@@ -290,6 +297,48 @@ pub struct oshot_host_t {
         ) -> oshot_err_t,
     >,
     pub kill_process: Option<unsafe extern "C" fn(ctx: Ctx, id: i64, err: *mut oshot_str_t) -> oshot_err_t>,
+
+    // Actions and the final image: check host_has!(host, report_result) first
+    pub request_final_image: Option<
+        unsafe extern "C" fn(
+            ctx: Ctx,
+            on_ready: Option<unsafe extern "C" fn(user: *mut c_void, image: oshot_capture_t)>,
+            user: *mut c_void,
+            err: *mut oshot_str_t,
+        ) -> oshot_err_t,
+    >,
+    pub register_action: Option<
+        unsafe extern "C" fn(
+            ctx: Ctx,
+            place: oshot_place_t,
+            label: oshot_str_t,
+            icon: *const oshot_capture_t,
+            func: Option<unsafe extern "C" fn(user: *mut c_void, action: i32)>,
+            user: *mut c_void,
+            id: *mut i32,
+            err: *mut oshot_str_t,
+        ) -> oshot_err_t,
+    >,
+    pub unregister_action: Option<unsafe extern "C" fn(ctx: Ctx, action: i32, err: *mut oshot_str_t) -> oshot_err_t>,
+    pub report_progress: Option<
+        unsafe extern "C" fn(
+            ctx: Ctx,
+            action: i32,
+            fraction: f32,
+            text: oshot_str_t,
+            err: *mut oshot_str_t,
+        ) -> oshot_err_t,
+    >,
+    pub report_result: Option<
+        unsafe extern "C" fn(
+            ctx: Ctx,
+            action: i32,
+            ok: bool,
+            message: oshot_str_t,
+            copyable: oshot_str_t,
+            err: *mut oshot_str_t,
+        ) -> oshot_err_t,
+    >,
 }
 
 type State = *mut c_void;
@@ -318,6 +367,9 @@ pub struct oshot_plugin_t {
     pub on_capture_start: Option<unsafe extern "C" fn(state: State)>,
     pub on_capture_end: Option<unsafe extern "C" fn(state: State)>,
     pub on_selection_changed: Option<unsafe extern "C" fn(state: State, x: f32, y: f32, w: f32, h: f32)>,
+    pub transform_text: Option<
+        unsafe extern "C" fn(state: State, buffer_id: *const c_char, input: oshot_str_t, out: *mut oshot_str_t) -> bool,
+    >,
 }
 
 // The descriptor and the settings are statics whose pointers are to string

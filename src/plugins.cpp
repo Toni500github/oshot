@@ -35,6 +35,7 @@
 #  include "imgui_internal.h"
 #  include "manifest.hh"
 #  include "plugin.hpp"
+#  include "screen_capture.hpp"
 #  include "state_manager.hh"
 #  include "util.hpp"
 
@@ -47,7 +48,13 @@ static_assert(OSHOT_IMGUI_VERSION == IMGUI_VERSION_NUM,
 // own, e.g. inside the AppImage).
 extern "C" const char* igGetVersion(void);
 
-static std::thread::id g_plugin_ui_thread;
+static std::thread::id   g_plugin_ui_thread;
+static std::atomic<bool> g_plugin_overlay_open = false;
+
+std::vector<text_transformer_t> g_text_transformers;
+
+// A transformer slower than this is logged, since the chain blocks the UI thread
+static constexpr std::chrono::milliseconds SLOW_TRANSFORM{ 100 };
 
 // The size of oshot_plugin_t in the plugin API's first version, which every
 // plugin's descriptor has at least; fields after it are checked with OSHOT_PLUGIN_HAS
@@ -63,10 +70,22 @@ bool on_plugin_ui_thread()
     return std::this_thread::get_id() == g_plugin_ui_thread;
 }
 
+void set_plugin_overlay_open(bool open)
+{
+    g_plugin_overlay_open = open;
+}
+
+bool plugin_overlay_open()
+{
+    return g_plugin_overlay_open;
+}
+
 plugin_runtime_t::~plugin_runtime_t()
 {
     if (initialized)
     {
+        // Unloading drops them instead of calling them with no image
+        image_requests.clear();
         CaptureEnd();
         KillProcesses();
         if (plugin->destroy)
@@ -109,10 +128,55 @@ void plugin_runtime_t::CaptureStart()
 
 void plugin_runtime_t::CaptureEnd()
 {
+    // The overlay closed before the frame was read back
+    DeliverFinalImage({});
+    {
+        std::scoped_lock lock(reports_mutex);
+        reports.clear();
+    }
+
     if (!std::exchange(in_capture, false))
         return;
     if (OSHOT_PLUGIN_HAS(plugin, on_capture_end) && plugin->on_capture_end)
         plugin->on_capture_end(state);
+}
+
+void plugin_runtime_t::DeliverFinalImage(const capture_result_t& image)
+{
+    // Swapped out first, so an on_ready() that asks again waits for the next frame
+    std::vector<plugin_image_request_t> todo;
+    todo.swap(image_requests);
+    for (const plugin_image_request_t& req : todo)
+    {
+        oshot_capture_t cap{};
+        if (!image.data.empty() && image.w > 0 && image.h > 0)
+        {
+            cap.rgba = static_cast<uint8_t*>(std::malloc(image.data.size()));
+            if (cap.rgba)
+            {
+                std::memcpy(cap.rgba, image.data.data(), image.data.size());
+                cap.w = image.w;
+                cap.h = image.h;
+            }
+        }
+        req.on_ready(req.user, cap);
+    }
+}
+
+void plugin_runtime_t::Report(plugin_report_t report)
+{
+    std::scoped_lock lock(reports_mutex);
+    auto it = std::ranges::find(reports, report.action, &plugin_report_t::action);
+    if (it != reports.end())
+        *it = std::move(report);
+    else
+        reports.push_back(std::move(report));
+}
+
+const plugin_action_t* plugin_runtime_t::FindAction(int32_t action_id) const
+{
+    auto it = std::ranges::find(actions, action_id, &plugin_action_t::id);
+    return it != actions.end() ? &*it : nullptr;
 }
 
 void plugin_runtime_t::WarnOnce(UiWarning warning, std::string_view msg)
@@ -416,6 +480,72 @@ static void load_plugin(const plugin_t& info)
     spdlog::info("Loaded plugin '{}' from {}", info.id, info.library.string());
 }
 
+void sort_text_transformers(const StateManager& state)
+{
+    std::vector<std::string> available;
+    for (const auto& [id, rt] : g_plugins)
+        if (OSHOT_PLUGIN_HAS(rt.plugin, transform_text) && rt.plugin->transform_text)
+            available.push_back(id);
+
+    g_text_transformers.clear();
+    for (const auto& [id, enabled] : arrange_text_transformers(available, state.GetTextTransformers()))
+        g_text_transformers.push_back({ .rt = &g_plugins.at(id), .enabled = enabled });
+}
+
+std::string run_text_steps(std::string                                                               text,
+                           std::span<const text_step_t>                                              steps,
+                           std::chrono::milliseconds                                                 slow,
+                           const std::function<void(const text_step_t&, std::chrono::milliseconds)>& on_slow,
+                           const std::function<void(const text_step_t&)>&                            on_bad)
+{
+    for (const text_step_t& step : steps)
+    {
+        oshot_str_t out{ .p = nullptr, .len = 0 };
+        const auto  start   = std::chrono::steady_clock::now();
+        const bool  changed = step.fn({ .p = text.c_str(), .len = text.size() }, &out);
+        const auto  took = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
+        if (took > slow)
+            on_slow(step, took);
+
+        if (changed && (out.p || out.len == 0))
+            text.assign(out.p ? out.p : "", out.p ? out.len : 0);
+        else if (changed)
+            on_bad(step);
+        // Freed even when it returned false, in case it allocated anyway
+        g_oshot_host.str_free(&out);
+    }
+    return text;
+}
+
+std::string run_text_transformers(std::string text, const char* buffer_id)
+{
+    std::vector<text_step_t> steps;
+    for (const text_transformer_t& t : g_text_transformers)
+    {
+        if (!t.enabled)
+            continue;
+        plugin_runtime_t* rt = t.rt;
+        steps.push_back({ .id = rt->id, .fn = [rt, buffer_id](oshot_str_t in, oshot_str_t* out) {
+                             return rt->plugin->transform_text(rt->state, buffer_id, in, out);
+                         } });
+    }
+    if (steps.empty())
+        return text;
+
+    auto on_slow = [](const text_step_t& step, std::chrono::milliseconds took) {
+        g_plugins.at(step.id).WarnOnce(
+            UiWarning::SlowTransform,
+            fmt::format("transform_text() took {} ms, which freezes the overlay. Keep it under {} ms",
+                        took.count(),
+                        SLOW_TRANSFORM.count()));
+    };
+    auto on_bad = [](const text_step_t& step) {
+        g_plugins.at(step.id).WarnOnce(UiWarning::BadTransform,
+                                       "transform_text() returned true with a NULL `out`, its text was ignored");
+    };
+    return run_text_steps(std::move(text), steps, SLOW_TRANSFORM, on_slow, on_bad);
+}
+
 void load_plugins(const StateManager& state)
 {
     g_plugin_ui_thread = std::this_thread::get_id();
@@ -437,10 +567,12 @@ void load_plugins(const StateManager& state)
                 load_plugin(plugin);
         }
     }
+    sort_text_transformers(state);
 }
 
 void unload_plugins()
 {
+    g_text_transformers.clear();
     g_plugins.clear();
 }
 

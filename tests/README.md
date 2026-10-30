@@ -10,7 +10,8 @@ oshot's tests, with [Catch2](https://github.com/catchorg/Catch2) v3.16.1's amalg
 | `screen_capture.cpp` | `[capture]` | `parse_region()`, `crop_image()`, `crop_to_monitor()` (HiDPI, fractional, negative layouts), `rotate_rgba()` |
 | `util.cpp` | `[util]` | `split()`, `parse_hex_rgba()` |
 | `plugin_index.cpp` | `[plugins]` | `compare_versions()`, `sha256_file()`, `parse_plugin_index()`, `is_installable()`, `pick_version()` |
-| `manifest.cpp` | `[plugins]` | `Manifest` (names, IDs, `oshot-plugin.toml`) and `StateManager` (`state.toml`) |
+| `manifest.cpp` | `[plugins]` | `Manifest` (names, IDs, `oshot-plugin.toml`) and `StateManager` (`state.toml`, the text transformers' order included) |
+| `text_transformers.cpp` | `[plugins]` | `arrange_text_transformers()` (the saved order, new and missing plugins) and `run_text_steps()` (order, pass-through, empty and invalid results, slow steps) |
 
 The `[plugins]` ones are only built with plugins (`DISABLE_PLUGINS=OFF`).
 

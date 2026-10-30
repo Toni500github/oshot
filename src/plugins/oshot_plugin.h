@@ -104,6 +104,9 @@ extern "C" {
 /* At most this many bytes of a run_process() child's stdout, and of its stderr, are kept */
 #define OSHOT_PROCESS_OUTPUT_MAX ((size_t)4 * 1024 * 1024)
 
+/* The largest icon register_action() accepts, in pixels on each side */
+#define OSHOT_ACTION_ICON_MAX 256
+
 #if defined(OSHOT_HOST)
 #  define OSHOT_PLUGIN_EXPORT
 #elif defined(_WIN32) || defined(__CYGWIN__)
@@ -196,6 +199,13 @@ typedef struct
     int32_t  h;
     uint8_t* rgba;
 } oshot_capture_t;
+
+/* Where register_action() puts an action. More places may be added later */
+typedef enum
+{
+    OSHOT_PLACE_TOOLBAR,    /* a button in the toolbar next to the selection, after oshot's own */
+    OSHOT_PLACE_TEXT_TOOLS, /* an entry in the Plugins menu of the text tools window */
+} oshot_place_t;
 
 /**
  * A word Tesseract read. The layout is fixed, since oshot passes an array of them.
@@ -336,21 +346,25 @@ typedef struct
     void (*set_value)(oshot_ctx_t* ctx, oshot_store_t store, const char* key, const oshot_value_t* val);
 
     /**
-     * oshot's text outputs (OSHOT_TEXT_OCR, OSHOT_TEXT_BARCODE). get_text
-     * returns false for an unknown id; set_text returns false and logs an
-     * error for one. UI thread only.
+     * oshot's text outputs (OSHOT_TEXT_OCR, OSHOT_TEXT_BARCODE), as shown,
+     * after the transformers (see transform_text). get_text returns false for
+     * an unknown id; set_text returns false and logs an error for one. A
+     * set_text from on_ocr_done() replaces what the transformers made, and
+     * with several plugins the last one wins, so rewrite new text with
+     * transform_text instead. UI thread only.
      **/
     bool (*get_text)(oshot_ctx_t* ctx, const char* id, oshot_str_t* out);
     bool (*set_text)(oshot_ctx_t* ctx, const char* id, oshot_str_t value);
 
     /**
      * A copy of the screenshot inside the selection, or of the whole screenshot
-     * without one. Annotations aren't included. rgba is NULL if it couldn't be
-     * copied, or no overlay is open (in on_capture_end()). It copies the whole
-     * image, so don't call it every frame. UI thread only.
+     * without one. Annotations aren't included (see request_final_image()).
+     * rgba is NULL if it couldn't be copied, or no overlay is open (in
+     * on_capture_end()). It copies the whole image, so don't call it every
+     * frame. UI thread only.
      **/
     oshot_capture_t (*get_capture)(oshot_ctx_t* ctx);
-    void (*capture_free)(oshot_capture_t* cap);
+    void (*capture_free)(oshot_capture_t* cap); /* any thread, since request_final_image was added */
 
     /**
      * Widgets, drawn with oshot's style and fonts. Check OSHOT_HOST_HAS(host,
@@ -456,6 +470,84 @@ typedef struct
      * unix it gets SIGTERM, as do the processes it started. Any thread.
      **/
     oshot_err_t (*kill_process)(oshot_ctx_t* ctx, int64_t id, oshot_str_t* err);
+
+    /* Actions and the final image. Check OSHOT_HOST_HAS(host, report_result) before using them. */
+
+    /**
+     * Asks for the selection as Save and Copy would write it, with the
+     * annotations drawn on it. That image only exists once oshot has drawn and
+     * read back a frame, so it arrives later, in on_ready(). UI thread only.
+     *
+     * @param on_ready Called once on the UI thread, right after that frame
+     *        (before the next one). The image belongs to the plugin, which
+     *        frees it with capture_free(), from any thread. Its rgba is NULL
+     *        if the overlay closed before the frame was drawn. Not called if
+     *        the plugin is unloaded first.
+     * @param user Passed to on_ready
+     *
+     * OSHOT_ERR_UNSUPPORTED while no overlay is open (in on_capture_end()),
+     * or while the person picks a monitor on Wayland.
+     **/
+    oshot_err_t (*request_final_image)(oshot_ctx_t* ctx,
+                                       void (*on_ready)(void* user, oshot_capture_t image),
+                                       void*        user,
+                                       oshot_str_t* err);
+
+    /**
+     * Adds a button or menu entry that runs fn(user, action) on the UI thread
+     * when it's clicked, at the start of the next frame. Usually called in
+     * init(). Actions go away with unregister_action() and when the plugin is
+     * unloaded. UI thread only.
+     *
+     * @param label The menu entry's text, and the button's tooltip
+     * @param icon The button's image, copied by oshot and drawn at the toolbar's
+     *        button size; at most OSHOT_ACTION_ICON_MAX pixels on each side.
+     *        NULL draws the label's first letter instead. Menus don't use it
+     * @param id Set to the action's ID, for report_progress(), report_result()
+     *        and unregister_action(), unless NULL. IDs start at 1
+     **/
+    oshot_err_t (*register_action)(oshot_ctx_t*           ctx,
+                                   oshot_place_t          where,
+                                   oshot_str_t            label,
+                                   const oshot_capture_t* icon,
+                                   void (*fn)(void* user, int32_t action),
+                                   void*        user,
+                                   int32_t*     id,
+                                   oshot_str_t* err);
+
+    /* Removes an action. OSHOT_ERR_NOT_FOUND if it doesn't exist. UI thread only */
+    oshot_err_t (*unregister_action)(oshot_ctx_t* ctx, int32_t action, oshot_str_t* err);
+
+    /**
+     * Shows how far along an action is, in a status box in the overlay's
+     * corner, until report_result() replaces it. Calling it again updates the
+     * same line. Without an overlay it shows nothing. Any thread.
+     *
+     * @param action An ID from register_action(), or 0 for work that isn't
+     *        tied to an action (shown under the plugin's name)
+     * @param fraction 0-1, or negative when the plugin can't tell
+     * @param text A short status ("Uploading..."), may be empty
+     **/
+    oshot_err_t (*report_progress)(oshot_ctx_t* ctx, int32_t action, float fraction, oshot_str_t text, oshot_str_t* err);
+
+    /**
+     * Shows how an action ended, in the same status box. If no overlay is
+     * open (the person closed it while the work ran), oshot sends it as a
+     * desktop notification instead. Any thread.
+     *
+     * @param action As for report_progress()
+     * @param ok Whether it worked; failures are shown in red
+     * @param message What happened ("Saved", "Upload failed: 403")
+     * @param copyable Text the box offers to copy with a button, such as a
+     *        link or a path, or empty for none. oshot doesn't copy it by itself.
+     *        A notification includes it after the message
+     **/
+    oshot_err_t (*report_result)(oshot_ctx_t* ctx,
+                                 int32_t      action,
+                                 bool         ok,
+                                 oshot_str_t  message,
+                                 oshot_str_t  copyable,
+                                 oshot_str_t* err);
 } oshot_host_t;
 
 /* ------------------------------------------------------------------
@@ -497,10 +589,11 @@ typedef struct
     void (*render)(void* state);
 
     /**
-     * After oshot extracted text from the selection. Also when it read
-     * nothing or OCR failed, then text is empty, n_words 0, confidence and
-     * psm -1 (since on_barcodes_done was added; oshot doesn't call older
-     * plugins then).
+     * After oshot extracted text from the selection, with the text as the
+     * transformers left it (see transform_text) and the words as OCR read
+     * them. Also when it read nothing or OCR failed, then text is empty,
+     * n_words 0, confidence and psm -1 (since on_barcodes_done was added;
+     * oshot doesn't call older plugins then).
      **/
     void (*on_ocr_done)(void* state, const oshot_ocr_result_t* result);
 
@@ -558,6 +651,23 @@ typedef struct
      * whole screenshot.
      **/
     void (*on_selection_changed)(void* state, float x, float y, float w, float h);
+
+    /**
+     * Rewrites the text oshot extracted, before it's shown. After each OCR
+     * (buffer_id OSHOT_TEXT_OCR) and barcode scan (OSHOT_TEXT_BARCODE), oshot
+     * passes the text through every plugin's transform_text, in the order the
+     * person sets in Preferences > Plugins, each one getting what the one
+     * before returned. Then on_ocr_done() gets the result, while its words stay
+     * as OCR read them. The text tools can still show the text from before.
+     *
+     * Return false to pass `in` through unchanged. Return true after storing
+     * the new text in *out, allocated with host->str_new(); oshot frees it.
+     * `in` is borrowed for the call. It runs on the UI thread and blocks the
+     * overlay, so keep it fast (oshot logs a transformer that takes over
+     * 100 ms); slow work such as a translation over the network belongs in an
+     * action (register_action()).
+     **/
+    bool (*transform_text)(void* state, const char* buffer_id, oshot_str_t in, oshot_str_t* out);
 } oshot_plugin_t;
 
 /**

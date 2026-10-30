@@ -27,6 +27,7 @@
 
 #ifndef DISABLE_PLUGINS
 #  include <atomic>
+#  include <chrono>
 #  include <condition_variable>
 #  include <cstddef>
 #  include <functional>
@@ -65,6 +66,46 @@ enum class UiWarning : uint32_t  // NOLINT
     OpenSection   = 1 << 2,
     ExtraEnd      = 1 << 3,
     ImGuiStack    = 1 << 4,
+    SlowTransform = 1 << 5,
+    BadTransform  = 1 << 6,
+};
+
+// An action from register_action()
+struct plugin_action_t
+{
+    // The button's image, RGBA, icon_w * icon_h * 4 bytes; empty for none
+    std::vector<uint8_t> icon;
+
+    std::string   label;
+    void          (*fn)(void* user, int32_t action) = nullptr;
+    void*         user                              = nullptr;
+    int32_t       id                                = 0;
+    int32_t       icon_w                            = 0;
+    int32_t       icon_h                            = 0;
+    oshot_place_t place                             = OSHOT_PLACE_TOOLBAR;
+};
+
+// What report_progress() or report_result() last said about an action, shown in the overlay
+struct plugin_report_t
+{
+    // The progress text, or the result's message
+    std::string text;
+
+    // When the result came, for hiding it after a while
+    std::chrono::steady_clock::time_point finished;
+
+    std::string copyable;
+    float       fraction = -1.0f;  // negative: unknown
+    int32_t     action   = 0;      // 0: not tied to an action
+    bool        done     = false;  // a result, not progress
+    bool        ok       = false;
+};
+
+// A request_final_image() call waiting for the frame to be read back
+struct plugin_image_request_t
+{
+    void  (*on_ready)(void* user, oshot_capture_t image);
+    void* user;
 };
 
 // A child process run_process() started, see oshot_plugins.cc
@@ -127,6 +168,19 @@ struct plugin_runtime_t
     // UiWarning bits already logged; atomic because the ui_* functions can be called from any thread
     std::atomic<uint32_t> warned = 0;
 
+    // register_action()'s actions, in the order they were added. UI thread only
+    std::vector<plugin_action_t> actions;
+
+    // The ID the next register_action() returns. Atomic since report_*() check IDs against it from any thread
+    std::atomic<int32_t> next_action_id = 1;
+
+    // report_progress() and report_result(), one entry per action, written from any thread
+    std::mutex                   reports_mutex;
+    std::vector<plugin_report_t> reports;
+
+    // request_final_image() calls waiting for DeliverFinalImage(). UI thread only
+    std::vector<plugin_image_request_t> image_requests;
+
     std::string id;
     fs::path    config_path;
     bool        initialized  = false;
@@ -149,8 +203,31 @@ struct plugin_runtime_t
     /* Call plugin->on_capture_start(), if it has one */
     void CaptureStart();
 
-    /* Call plugin->on_capture_end() if CaptureStart() was called since the last time */
+    /**
+     * Call plugin->on_capture_end() if CaptureStart() was called since the last
+     * time, after answering the pending request_final_image() calls with no image
+     * and dropping the reports
+     **/
     void CaptureEnd();
+
+    /**
+     * Answer the pending request_final_image() calls, each with its own copy
+     * @param image The annotated selection, or an empty one when there's none
+     **/
+    void DeliverFinalImage(const capture_result_t& image);
+
+    /**
+     * Store what report_progress() or report_result() said, replacing the
+     * action's last report
+     * @param report The new report
+     **/
+    void Report(plugin_report_t report);
+
+    /**
+     * Find an action by ID
+     * @return The action, or nullptr
+     **/
+    [[nodiscard]] const plugin_action_t* FindAction(int32_t id) const;
 
     /**
      * Kill the processes run_process() started, wait a moment for them to
@@ -189,6 +266,20 @@ struct plugin_runtime_t
     void SaveConfig();
 };
 
+// A plugin's transform_text() in the chain, see arrange_text_transformers()
+struct text_transformer_t
+{
+    plugin_runtime_t* rt;
+    bool              enabled;
+};
+
+// One step of run_text_steps(): a transformer by its plugin's ID
+struct text_step_t
+{
+    std::string                                id;
+    std::function<bool(oshot_str_t, oshot_str_t*)> fn;
+};
+
 // What inspect_plugin_library() read from a plugin's descriptor
 struct plugin_info_t
 {
@@ -201,6 +292,9 @@ extern std::map<std::string, plugin_runtime_t> g_plugins;
 
 // The host function table every plugin gets in init()
 extern const oshot_host_t g_oshot_host;
+
+// The loaded plugins that have a transform_text(), in the order the user set
+extern std::vector<text_transformer_t> g_text_transformers;
 
 /**
  * Get the directory plugins are installed in
@@ -236,5 +330,44 @@ void unload_plugins();
 
 /* Check whether the caller is on the thread plugins were loaded on (their UI thread) */
 bool on_plugin_ui_thread();
+
+/**
+ * Set whether an overlay is open, so report_result() knows to fall back to a notification
+ * @param open True from a capture's start to its end
+ **/
+void set_plugin_overlay_open(bool open);
+
+/* Check whether an overlay is open, from any thread */
+bool plugin_overlay_open();
+
+/**
+ * Rebuild g_text_transformers from the loaded plugins and the order in state.toml
+ * @param state The installed plugins, with their [text-transformers] order
+ **/
+void sort_text_transformers(const StateManager& state);
+
+/**
+ * Pass text through transformers one after another, freeing what each returned
+ * @param text What the scan read
+ * @param steps The transformers, in order
+ * @param slow How long a step may take before on_slow is called
+ * @param on_slow Called with a step that took longer than `slow`, and how long it took
+ * @param on_bad Called with a step that returned true without valid text, which is then skipped
+ * @return The text after the last step
+ **/
+std::string run_text_steps(std::string                                                          text,
+                           std::span<const text_step_t>                                         steps,
+                           std::chrono::milliseconds                                            slow,
+                           const std::function<void(const text_step_t&, std::chrono::milliseconds)>& on_slow,
+                           const std::function<void(const text_step_t&)>&                       on_bad);
+
+/**
+ * Run the enabled transformers of g_text_transformers over a scan's text, logging
+ * the ones that are slow or broken once per plugin
+ * @param text What the scan read
+ * @param buffer_id OSHOT_TEXT_OCR or OSHOT_TEXT_BARCODE
+ * @return The transformed text
+ **/
+std::string run_text_transformers(std::string text, const char* buffer_id);
 
 #endif

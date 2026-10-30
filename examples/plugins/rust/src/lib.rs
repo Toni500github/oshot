@@ -223,6 +223,7 @@ static DESCRIPTOR: oshot_plugin_t = oshot_plugin_t {
     on_capture_start: None,
     on_capture_end: None,
     on_selection_changed: None,
+    transform_text: None,
 };
 
 /// The one symbol the library exports

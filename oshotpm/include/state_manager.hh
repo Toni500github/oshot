@@ -27,14 +27,31 @@
 #define _STATE_MANAGER_HH_
 
 #include <optional>
+#include <span>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "manifest.hh"
 #include "toml_api.hpp"
 #include "util.hpp"
 
+// The text transformer chain as state.toml's [text-transformers] stores it, by plugin ID
+struct text_transformers_t
+{
+    // The order they run in
+    std::vector<std::string> order;
+
+    // The ones switched off in Preferences, while their plugins stay enabled
+    std::vector<std::string> disabled;
+
+    bool operator==(const text_transformers_t&) const = default;
+};
+
 // state.toml: what's installed. One [repositories.<name>] table per source
 // (git URL, local folder or archive) and one [plugins."<id>"] table per
-// installed plugin, which points back at its repository.
+// installed plugin, which points back at its repository. Also the order
+// of the text transformers, in [text-transformers].
 // Changes stay in memory until SaveState()
 class StateManager
 {
@@ -63,6 +80,13 @@ public:
     [[nodiscard]] std::optional<manifest_t> FindRepo(std::string_view name) const;
     [[nodiscard]] std::optional<plugin_t>   FindPlugin(std::string_view id) const;
 
+    // The [text-transformers] table, empty lists if it's missing
+    [[nodiscard]] text_transformers_t GetTextTransformers() const;
+
+    // Replaces the [text-transformers] table, leaving out the IDs that aren't installed
+    void SetTextTransformers(const text_transformers_t& transformers);
+
+    // Removes the plugin, and its ID from [text-transformers]
     void     RemovePlugin(const std::string_view id);
     Result<> SetEnabled(const std::string_view id, bool enabled);
     Result<> SaveState();
@@ -78,5 +102,16 @@ private:
     toml::table& Repos() { return TomlAPI::EnsureTable(m_toml.GetTbl(), "repositories"); }
     toml::table& Plugins() { return TomlAPI::EnsureTable(m_toml.GetTbl(), "plugins"); }
 };
+
+/**
+ * Put the plugins that have a text transformer in the order the user saved.
+ * The saved order comes first, then the plugins missing from it, sorted by ID.
+ * IDs saved for plugins that aren't in `available` are skipped
+ * @param available The IDs of the plugins with a transformer
+ * @param saved What GetTextTransformers() returned
+ * @return Each ID with whether its transformer is on
+ **/
+std::vector<std::pair<std::string, bool>> arrange_text_transformers(std::span<const std::string> available,
+                                                                    const text_transformers_t&   saved);
 
 #endif

@@ -328,6 +328,28 @@ TEST_CASE("StateManager", "[plugins][state]")
         CHECK_FALSE(state.FindPlugin("io.github.user.orphan").has_value());
     }
 
+    SECTION("The text transformers' order")
+    {
+        CHECK(state.GetTextTransformers() == text_transformers_t{});
+
+        // IDs that aren't installed are left out
+        state.SetTextTransformers({ .order    = { "io.github.user.zeta", "io.github.user.missing", "io.github.user.alpha" },
+                                    .disabled = { "io.github.user.alpha", "io.github.user.missing" } });
+        const text_transformers_t expected{ .order    = { "io.github.user.zeta", "io.github.user.alpha" },
+                                            .disabled = { "io.github.user.alpha" } };
+        CHECK(state.GetTextTransformers() == expected);
+
+        REQUIRE(state.SaveState().ok());
+        CHECK_THAT(read_file(path), ContainsSubstring("[text-transformers]"));
+        CHECK(StateManager().GetTextTransformers() == expected);
+
+        // Uninstalling takes the plugin out of the order too
+        state.RemovePlugin("io.github.user.alpha");
+        CHECK(state.GetTextTransformers() == text_transformers_t{ .order = { "io.github.user.zeta" }, .disabled = {} });
+        state.RemoveRepo("repo-a");
+        CHECK(state.GetTextTransformers() == text_transformers_t{});
+    }
+
     SECTION("A local repository")
     {
         manifest_t local;
