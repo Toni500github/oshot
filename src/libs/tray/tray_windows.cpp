@@ -20,6 +20,7 @@ static UINT id = ID_TRAY_FIRST;
 static std::function<void(int)> hotkeyCallback;
 static std::function<void()> quitSignalCallback;
 static std::function<void()> iconClickCallback;
+static std::function<void()> themeChangeCallback;
 // Broadcast when Explorer (re)starts, the icon must be added again or it's gone for good
 static UINT WM_TASKBAR_CREATED = 0;
 static bool exited = false;
@@ -49,6 +50,11 @@ static LRESULT CALLBACK _tray_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARA
 		if (quitSignalCallback)
 			quitSignalCallback();
 		return 0;
+	case WM_SETTINGCHANGE:
+		// Broadcast with "ImmersiveColorSet" when the light/dark theme changes
+		if (lparam != 0 && themeChangeCallback && strcmp((const char *)lparam, "ImmersiveColorSet") == 0)
+			themeChangeCallback();
+		break;
 	case WM_TRAY_CALLBACK_MESSAGE:
 		if (lparam == WM_LBUTTONUP && iconClickCallback)
 		{
@@ -246,6 +252,22 @@ void Tray::SetQuitSignalCallback(std::function<void()> cb)
 }
 
 void Tray::SetReopenCallback(std::function<void()>) {}
+
+bool Tray::PanelIsDark()
+{
+	// The taskbar and Start follow it since Windows 10 1903, older versions have no such value
+	DWORD value = 1;
+	DWORD size = sizeof(value);
+	if (RegGetValueA(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+	                 "SystemUsesLightTheme", RRF_RT_REG_DWORD, NULL, &value, &size) != ERROR_SUCCESS)
+		return false;
+	return value == 0;
+}
+
+void Tray::SetThemeChangeCallback(std::function<void()> cb)
+{
+	themeChangeCallback = std::move(cb);
+}
 
 // Idempotent and callable from any thread: the window is closed through its
 // own message loop (WM_CLOSE -> DestroyWindow -> WM_DESTROY -> WM_QUIT),

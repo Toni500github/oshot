@@ -75,6 +75,7 @@
 #include "fmt/format.h"
 #include "getopt_port.h"
 #include "i18n.hpp"
+#include "oshot_png.h"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "spdlog/sinks/basic_file_sink.h"
@@ -974,22 +975,37 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     // screen, so this call gets there first and the worker's is a no-op.
     init_dialogs();
 
+    // The white icon on a dark panel. Anywhere else, or when that can't be told,
+    // the full-colour one, since it shows on any panel
 #if OSHOT_WINDOWS
-    // Needs an absolute path, since the working directory is System32 when started at sign-in.
-    // Fall back to the app icon embedded in oshot.exe (see assets/windows/oshot.rc.in).
-    fs::path tray_ico = get_exe_dir() / "oshot-tray.ico";
-    if (!fs::exists(tray_ico, ec))
-        tray_ico = get_exe_path();
-    TrayIcon tray = { "oshot.png", tray_ico.string(), "oshot", {} };
-#else
-    const fs::path& png_path = get_cache_dir() / "tray-icon.png";
-    fs::create_directories(png_path.parent_path(), ec);
-    std::ofstream out(png_path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
+    // Absolute paths, since the working directory is System32 when started at sign-in.
+    // The full-colour icon is the one embedded in oshot.exe (see assets/windows/oshot.rc.in)
+    const std::string white_icon = (get_exe_dir() / "oshot-tray.ico").string();
+    const std::string color_icon = get_exe_path().string();
+    TrayIcon          tray       = { "oshot.png", color_icon, "oshot", {} };
 
-    out.write(reinterpret_cast<const char*>(tray_icon_png), std::streamsize(tray_icon_png_len));
-    out.close();
-    TrayIcon tray = { .iconFilePng = png_path.string(), .iconFileIco = "oshot.ico", .tooltip = "oshot", .menu = {} };
+    const auto pick_tray_icon = [&] {
+        tray.iconFileIco = Tray::PanelIsDark() && fs::exists(white_icon, ec) ? white_icon : color_icon;
+    };
+#else
+    const auto write_png = [](const fs::path& path, const unsigned char* data, const unsigned int len) {
+        std::ofstream out(path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
+        out.write(reinterpret_cast<const char*>(data), std::streamsize(len));
+    };
+
+    const fs::path white_icon = get_cache_dir() / "tray-icon-white.png";
+    const fs::path color_icon = get_cache_dir() / "tray-icon.png";
+    fs::create_directories(white_icon.parent_path(), ec);
+    write_png(white_icon, tray_icon_png, tray_icon_png_len);
+    write_png(color_icon, oshot_png, oshot_png_len);
+    TrayIcon tray = { .iconFilePng = color_icon.string(), .iconFileIco = "oshot.ico", .tooltip = "oshot", .menu = {} };
+
+    // macOS draws the white one as a template image, dark or light to match the menu bar
+    const auto pick_tray_icon = [&] {
+        tray.iconFilePng = (OSHOT_MACOS || Tray::PanelIsDark() ? white_icon : color_icon).string();
+    };
 #endif
+    pick_tray_icon();
 
     TrayMenu capture_item{ .text        = _("Capture"),
                            .isEnabled   = true,
@@ -1039,6 +1055,10 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     if (trayMaker.Initialize(&tray))
     {
         Tray::SetQuitSignalCallback(request_quit);
+        Tray::SetThemeChangeCallback([&] {
+            pick_tray_icon();
+            trayMaker.Update();
+        });
 #if OSHOT_TOOL_ON_MAIN_THREAD
         sync_hotkey();
 #endif

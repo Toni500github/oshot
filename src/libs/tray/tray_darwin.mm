@@ -211,3 +211,10 @@ void Tray::SetReopenCallback(std::function<void()> cb)
 		  forEventClass:kCoreEventClass
 		     andEventID:kAEReopenApplication];
 }
+
+bool Tray::PanelIsDark()
+{
+	return false;
+}
+
+void Tray::SetThemeChangeCallback(std::function<void()>) {}

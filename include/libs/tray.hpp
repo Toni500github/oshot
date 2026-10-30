@@ -66,6 +66,16 @@ namespace Tray
 	// (Finder, Launchpad, Spotlight, `open -a`). Other code (GLFW's init) can
 	// replace the handler, so call this again after such code runs.
 	void SetReopenCallback(std::function<void()> cb);
+
+	// Whether the panel holding the icon is dark, so a white icon shows on it.
+	// Windows reads the taskbar's theme, Linux/BSD the desktop's color-scheme
+	// from the settings portal. false when it can't tell, and on macOS, which
+	// tints template icons by itself.
+	bool PanelIsDark();
+
+	// Run `cb` on the tray thread when PanelIsDark() may have changed.
+	// Windows and Linux/BSD only. Call after Initialize(), on the tray thread.
+	void SetThemeChangeCallback(std::function<void()> cb);
 }
 
 
