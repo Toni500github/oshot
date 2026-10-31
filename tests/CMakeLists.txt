@@ -16,7 +16,7 @@ add_executable(
 )
 # oshotpm's code is only in plugin builds
 if(NOT DISABLE_PLUGINS)
-    target_sources(oshot_tests PRIVATE manifest.cpp plugin_index.cpp text_transformers.cpp)
+    target_sources(oshot_tests PRIVATE manifest.cpp ocr_providers.cpp plugin_index.cpp text_transformers.cpp)
 endif()
 add_dependencies(oshot_tests generate_version)
 target_compile_options(

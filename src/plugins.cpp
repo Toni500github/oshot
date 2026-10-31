@@ -26,9 +26,11 @@
 #ifndef DISABLE_PLUGINS
 
 #  include <algorithm>
+#  include <cmath>
 #  include <cstddef>
 #  include <cstring>
 #  include <iterator>
+#  include <optional>
 #  include <set>
 
 #  include "imgui.h"
@@ -210,19 +212,19 @@ static std::string unbalanced_stacks(const ImGuiErrorRecoveryState& a, const ImG
     return ret;
 }
 
-// Runs a UI callback of the plugin inside its own ID scope, with the ui_*
-// functions enabled, then closes the sections and ImGui stacks it left open
-// so they don't break the rest of oshot's frame
+// Runs a UI callback of the plugin inside its own ID scope, with the ui_* or
+// draw_* functions enabled (`enabled`), then closes the sections and ImGui
+// stacks it left open so they don't break the rest of oshot's frame
 template <typename F>
-static bool call_plugin_ui(plugin_runtime_t& rt, F&& fn)
+static bool call_plugin_ui(plugin_runtime_t& rt, bool plugin_runtime_t::* enabled, F&& fn)
 {
     ImGui::PushID(rt.id.c_str());
     ImGuiErrorRecoveryState before;
     ImGui::ErrorRecoveryStoreState(&before);
 
-    rt.in_ui       = true;
+    rt.*enabled    = true;
     const bool ret = fn();
-    rt.in_ui       = false;
+    rt.*enabled    = false;
 
     if (!rt.sections.empty())
     {
@@ -257,7 +259,7 @@ static bool call_plugin_ui(plugin_runtime_t& rt, F&& fn)
 
 void plugin_runtime_t::Render()
 {
-    call_plugin_ui(*this, [this] {
+    call_plugin_ui(*this, &plugin_runtime_t::in_ui, [this] {
         plugin->render(state);
         return false;
     });
@@ -265,7 +267,21 @@ void plugin_runtime_t::Render()
 
 bool plugin_runtime_t::RenderPreferences()
 {
-    return call_plugin_ui(*this, [this] { return plugin->render_preferences(state); });
+    return call_plugin_ui(*this, &plugin_runtime_t::in_ui, [this] { return plugin->render_preferences(state); });
+}
+
+void plugin_runtime_t::RenderOverlay(const oshot_overlay_info_t& info)
+{
+    call_plugin_ui(*this, &plugin_runtime_t::in_overlay, [this, &info] {
+        plugin->render_overlay(state, &info);
+        return false;
+    });
+}
+
+const plugin_ocr_provider_t* plugin_runtime_t::FindOcrProvider(std::string_view provider_id) const
+{
+    auto it = std::ranges::find(ocr_providers, provider_id, &plugin_ocr_provider_t::id);
+    return it != ocr_providers.end() ? &*it : nullptr;
 }
 
 std::span<const oshot_setting_t> plugin_runtime_t::Settings() const
@@ -546,6 +562,308 @@ std::string run_text_transformers(std::string text, const char* buffer_id)
     return run_text_steps(std::move(text), steps, SLOW_TRANSFORM, on_slow, on_bad);
 }
 
+// ------------------------------
+// OCR engines
+// ------------------------------
+
+// Every OCR job until it's done and the overlay dropped it, so unload_plugins() can wait for them. UI thread only
+static std::vector<std::shared_ptr<OcrJob>> g_ocr_jobs;
+
+// The ID rules of oshot-plugin.toml's plugin IDs, without the '.' they require
+static bool is_valid_provider_id(std::string_view id)
+{
+    return !id.empty() && id.size() <= 64 && std::ranges::all_of(id, [](char c) {
+        return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.';
+    });
+}
+
+Result<> validate_ocr_provider(const oshot_ocr_provider_t* provider)
+{
+    // The fields of the first version, which every provider has
+    constexpr size_t min_size = offsetof(oshot_ocr_provider_t, user) + sizeof(void*);
+
+    if (!provider)
+        return Err("the provider is NULL");
+    if (provider->struct_size < min_size)
+        return Err("its struct_size is {}, expected at least {}", provider->struct_size, min_size);
+    if (!provider->id || !is_valid_provider_id(provider->id))
+        return Err("its ID '{}' is invalid: use lowercase letters, digits, '-', '_' and '.', at most 64",
+                   provider->id ? provider->id : "(null)");
+    if (!provider->name || provider->name[0] == '\0')
+        return Err("it has no name");
+    if (!provider->recognize)
+        return Err("recognize is NULL");
+    if (provider->n_languages > 0 && !provider->languages)
+        return Err("n_languages is {}, but languages is NULL", provider->n_languages);
+    if (provider->n_languages > 1024)
+        return Err("it has {} languages, more than the 1024 allowed", provider->n_languages);
+    for (size_t i = 0; i < provider->n_languages; ++i)
+        if (!provider->languages[i] || provider->languages[i][0] == '\0')
+            return Err("language {} is NULL or empty", i);
+    return Ok();
+}
+
+std::string ocr_engine_key(std::string_view plugin_id, std::string_view provider_id)
+{
+    return fmt::format("{}/{}", plugin_id, provider_id);
+}
+
+OcrEngineKind resolve_ocr_engine(std::string_view engine, std::span<const std::string> available)
+{
+    const size_t slash = engine.find('/');
+    if (engine.empty() || engine == "tesseract" || slash == std::string_view::npos || slash == 0 ||
+        slash + 1 == engine.size())
+        return OcrEngineKind::Tesseract;
+    return std::ranges::find(available, engine) != available.end() ? OcrEngineKind::Plugin : OcrEngineKind::Missing;
+}
+
+const plugin_ocr_provider_t* find_ocr_provider(std::string_view engine, plugin_runtime_t** rt)
+{
+    const size_t slash = engine.find('/');
+    if (slash == std::string_view::npos)
+        return nullptr;
+
+    auto it = g_plugins.find(std::string(engine.substr(0, slash)));
+    if (it == g_plugins.end())
+        return nullptr;
+    const plugin_ocr_provider_t* provider = it->second.FindOcrProvider(engine.substr(slash + 1));
+    if (provider && rt)
+        *rt = &it->second;
+    return provider;
+}
+
+std::string pick_ocr_language(std::span<const std::string> languages,
+                              const std::string&           picked,
+                              const std::string&           tesseract_model)
+{
+    for (const std::string* want : { &picked, &tesseract_model })
+        if (!want->empty() && std::ranges::find(languages, *want) != languages.end())
+            return *want;
+    return languages.empty() ? "" : languages.front();
+}
+
+std::vector<std::string> list_ocr_providers()
+{
+    std::vector<std::string> ret;
+    for (const auto& [id, rt] : g_plugins)
+        for (const plugin_ocr_provider_t& p : rt.ocr_providers)
+            ret.push_back(ocr_engine_key(id, p.id));
+    return ret;
+}
+
+void free_ocr_output(oshot_ocr_output_t& out)
+{
+    if (out.words)
+        for (size_t i = 0; i < out.n_words; ++i)
+            g_oshot_host.str_free(&out.words[i].text);
+    g_oshot_host.mem_free(out.words);
+    g_oshot_host.str_free(&out.text);
+    out.words   = nullptr;
+    out.n_words = 0;
+}
+
+ocr_result_t ocr_result_from_output(oshot_ocr_output_t&   out,
+                                    int                   img_w,
+                                    int                   img_h,
+                                    const ocr_prepared_t* prep,
+                                    bool*                 bad_words)
+{
+    ocr_result_t ret;
+    ret.psm        = -1;
+    ret.confidence = 0;
+    bool bad       = !out.words && out.n_words > 0;
+
+    const float src_w = prep ? float(prep->src_w) : float(img_w);
+    const float src_h = prep ? float(prep->src_h) : float(img_h);
+    for (size_t i = 0; out.words && i < out.n_words; ++i)
+    {
+        const oshot_ocr_word_t& w = out.words[i];
+        const bool finite = std::isfinite(w.x) && std::isfinite(w.y) && std::isfinite(w.w) && std::isfinite(w.h) &&
+                            w.w >= 0 && w.h >= 0;
+        if (!finite || !w.text.p || w.text.len == 0)
+        {
+            bad = true;
+            continue;
+        }
+
+        ocr_word_t word;
+        if (prep)
+        {
+            word = map_prepared_box(*prep, w.x, w.y, w.w, w.h);
+        }
+        else
+        {
+            const float x0 = std::clamp(w.x, 0.0f, src_w), y0 = std::clamp(w.y, 0.0f, src_h);
+            word.x = x0;
+            word.y = y0;
+            word.w = std::clamp(w.x + w.w, x0, src_w) - x0;
+            word.h = std::clamp(w.y + w.h, y0, src_h) - y0;
+        }
+        word.text       = std::string(w.text.p, w.text.len);
+        word.confidence = std::clamp(w.confidence, 0, 100);
+        word.line       = std::max(w.line, 0);
+        word.block      = std::max(w.block, 0);
+        ret.words.push_back(std::move(word));
+    }
+
+    if (out.text.p && out.text.len > 0)
+    {
+        ret.data.assign(out.text.p, out.text.len);
+    }
+    else
+    {
+        // Spaces within a line, a line break between lines and an empty line between blocks
+        for (size_t i = 0; i < ret.words.size(); ++i)
+        {
+            if (i > 0)
+            {
+                const ocr_word_t& prev = ret.words[i - 1];
+                if (ret.words[i].block != prev.block)
+                    ret.data += "\n\n";
+                else if (ret.words[i].line != prev.line)
+                    ret.data += '\n';
+                else
+                    ret.data += ' ';
+            }
+            ret.data += ret.words[i].text;
+        }
+    }
+
+    if (out.confidence >= 0)
+    {
+        ret.confidence = std::min(out.confidence, 100);
+    }
+    else if (!ret.words.empty())
+    {
+        double sum = 0;
+        for (const ocr_word_t& w : ret.words)
+            sum += w.confidence;
+        ret.confidence = int(std::round(sum / double(ret.words.size())));
+    }
+
+    if (bad_words)
+        *bad_words = bad;
+    free_ocr_output(out);
+    return ret;
+}
+
+OcrJob::OcrJob(std::string plugin_id, plugin_ocr_provider_t provider, capture_result_t image, std::string language)
+    : plugin_id(std::move(plugin_id)),
+      provider(std::move(provider)),
+      m_thread(&OcrJob::Run, this, std::move(image), std::move(language))
+{}
+
+OcrJob::~OcrJob()
+{
+    Cancel();
+    Wait();
+}
+
+void OcrJob::Wait()
+{
+    if (m_thread.joinable())
+        m_thread.join();
+}
+
+void OcrJob::Cancel()
+{
+    m_cancelled = true;
+}
+
+Result<ocr_result_t> OcrJob::TakeResult()
+{
+    if (!m_done)
+        return Err("the OCR engine is still reading");
+    return std::exchange(m_result, Err("already taken"));
+}
+
+void OcrJob::Run(capture_result_t image, std::string language)
+{
+    std::optional<ocr_prepared_t> prep;
+    if (provider.flags & OSHOT_OCR_PREPARED)
+    {
+        Result<ocr_prepared_t> p = prepare_ocr_image(image);
+        if (!p.ok())
+        {
+            m_result = Err(p.error_v());
+            m_done   = true;
+            return;
+        }
+        prep  = std::move(p.get());
+        image = {};
+    }
+
+    const capture_result_t& img = prep ? prep->image : image;
+    oshot_capture_t         cap{ .w = img.w, .h = img.h, .rgba = const_cast<uint8_t*>(img.data.data()) };
+
+    const oshot_ocr_request_t req{
+        .image    = &cap,
+        .language = { .p = language.c_str(), .len = language.size() },
+        .cancelled =
+            [](const oshot_ocr_request_t* r) { return static_cast<const std::atomic<bool>*>(r->host_data)->load(); },
+        .host_data = &m_cancelled,
+    };
+
+    oshot_ocr_output_t out{ .words = nullptr, .n_words = 0, .text = { .p = nullptr, .len = 0 }, .confidence = -1 };
+    oshot_str_t        err{ .p = nullptr, .len = 0 };
+    const auto         start = std::chrono::steady_clock::now();
+    const oshot_err_t  code  = provider.recognize(provider.user, &req, &out, &err);
+    const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
+
+    if (m_cancelled)
+    {
+        spdlog::debug("{}: OCR engine '{}' cancelled after {} ms", plugin_id, provider.id, took.count());
+        free_ocr_output(out);
+        m_result = Err("cancelled");
+    }
+    else if (code != OSHOT_OK)
+    {
+        std::string msg = err.p && err.len > 0 ? std::string(err.p, err.len) : fmt::format("error {}", int(code));
+        spdlog::warn("{}: OCR engine '{}' failed: {}", plugin_id, provider.id, msg);
+        free_ocr_output(out);
+        m_result = Err(std::move(msg));
+    }
+    else
+    {
+        bool         bad_words = false;
+        ocr_result_t res       = ocr_result_from_output(out, img.w, img.h, prep ? &*prep : nullptr, &bad_words);
+        if (bad_words)
+            spdlog::warn("{}: OCR engine '{}' returned words without text or with an invalid box, skipped them",
+                         plugin_id,
+                         provider.id);
+        spdlog::debug(
+            "{}: OCR engine '{}' read {} words in {} ms", plugin_id, provider.id, res.words.size(), took.count());
+        res.engine = provider.name;
+        m_result   = Ok(std::move(res));
+    }
+    g_oshot_host.str_free(&err);
+    m_done = true;
+}
+
+std::shared_ptr<OcrJob> start_ocr_job(const plugin_runtime_t&      rt,
+                                      const plugin_ocr_provider_t& provider,
+                                      capture_result_t             image,
+                                      std::string                  language)
+{
+    reap_ocr_jobs();
+    auto job = std::make_shared<OcrJob>(rt.id, provider, std::move(image), std::move(language));
+    g_ocr_jobs.push_back(job);
+    return job;
+}
+
+void cancel_ocr_jobs(std::string_view plugin_id, std::string_view provider_id)
+{
+    for (const std::shared_ptr<OcrJob>& job : g_ocr_jobs)
+        if (job->plugin_id == plugin_id && (provider_id.empty() || job->provider.id == provider_id))
+            job->Cancel();
+}
+
+void reap_ocr_jobs()
+{
+    // A job nobody else holds was cancelled or taken; only its thread may still run
+    std::erase_if(g_ocr_jobs, [](const std::shared_ptr<OcrJob>& job) { return job.use_count() == 1 && job->Done(); });
+}
+
 void load_plugins(const StateManager& state)
 {
     g_plugin_ui_thread = std::this_thread::get_id();
@@ -572,6 +890,13 @@ void load_plugins(const StateManager& state)
 
 void unload_plugins()
 {
+    // Their recognize() calls into the plugins, so they end first
+    for (const std::shared_ptr<OcrJob>& job : g_ocr_jobs)
+        job->Cancel();
+    for (const std::shared_ptr<OcrJob>& job : g_ocr_jobs)
+        job->Wait();
+    g_ocr_jobs.clear();
+
     g_text_transformers.clear();
     g_plugins.clear();
 }

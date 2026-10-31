@@ -4,13 +4,14 @@ oshot's tests, with [Catch2](https://github.com/catchorg/Catch2) v3.16.1's amalg
 
 | File | Tags | What |
 |---|---|---|
-| `text_extraction.cpp` | `[ocr]`, `[barcode]` | `OcrAPI` and `ZbarAPI` over the images in `data/` |
+| `text_extraction.cpp` | `[ocr]`, `[barcode]` | `OcrAPI` and `ZbarAPI` over the images in `data/`, and `prepare_ocr_image()`/`map_prepared_box()` (`[prepared]`) |
 | `config.cpp` | `[config]` | the config `GenerateConfig()` writes loads back the same, every option included |
 | `hotkey.cpp` | `[hotkey]` | `hotkey::parse()` and `to_string()` |
 | `screen_capture.cpp` | `[capture]` | `parse_region()`, `crop_image()`, `crop_to_monitor()` (HiDPI, fractional, negative layouts), `rotate_rgba()` |
 | `util.cpp` | `[util]` | `split()`, `parse_hex_rgba()` |
 | `plugin_index.cpp` | `[plugins]` | `compare_versions()`, `sha256_file()`, `parse_plugin_index()`, `is_installable()`, `pick_version()` |
 | `manifest.cpp` | `[plugins]` | `Manifest` (names, IDs, `oshot-plugin.toml`) and `StateManager` (`state.toml`, the text transformers' order included) |
+| `ocr_providers.cpp` | `[plugins]`, `[ocr-engines]` | `resolve_ocr_engine()` (Tesseract, a loaded engine, a missing one), `pick_ocr_language()`, `validate_ocr_provider()`, `ocr_result_from_output()` (joined text, mean confidence, skipped and clamped words) and `OcrJob` (result, cancelling, failures, `OSHOT_OCR_PREPARED`) |
 | `text_transformers.cpp` | `[plugins]` | `arrange_text_transformers()` (the saved order, new and missing plugins) and `run_text_steps()` (order, pass-through, empty and invalid results, slow steps) |
 
 The `[plugins]` ones are only built with plugins (`DISABLE_PLUGINS=OFF`).

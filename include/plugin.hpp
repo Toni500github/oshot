@@ -46,6 +46,7 @@
 #  endif
 #  include "../src/plugins/oshot_plugin.h"
 #  include "dylib.hpp"
+#  include "text_extraction.hpp"
 #  include "toml_api.hpp"
 
 class StateManager;
@@ -68,6 +69,8 @@ enum class UiWarning : uint32_t  // NOLINT
     ImGuiStack    = 1 << 4,
     SlowTransform = 1 << 5,
     BadTransform  = 1 << 6,
+    OutsideDraw   = 1 << 7,
+    BadOcrWords   = 1 << 8,
 };
 
 // An action from register_action()
@@ -106,6 +109,21 @@ struct plugin_image_request_t
 {
     void  (*on_ready)(void* user, oshot_capture_t image);
     void* user;
+};
+
+// An OCR engine from register_ocr_provider(), with oshot's own copies of its strings
+struct plugin_ocr_provider_t
+{
+    std::vector<std::string> languages;
+
+    // The ID within its plugin, and what the engine picker shows
+    std::string id;
+    std::string name;
+
+    oshot_err_t (*recognize)(void*, const oshot_ocr_request_t*, oshot_ocr_output_t*, oshot_str_t*) = nullptr;
+
+    void*    user  = nullptr;
+    uint32_t flags = 0;
 };
 
 // A child process run_process() started, see oshot_plugins.cc
@@ -162,6 +180,9 @@ struct plugin_runtime_t
     // True while render() or render_preferences() runs, the only time the ui_* functions work
     bool in_ui = false;
 
+    // True while render_overlay() runs, the only time the draw_* functions work
+    bool in_overlay = false;
+
     // The ui_begin_section() calls not ended yet, and whether each one is open
     std::vector<bool> sections;
 
@@ -180,6 +201,9 @@ struct plugin_runtime_t
 
     // request_final_image() calls waiting for DeliverFinalImage(). UI thread only
     std::vector<plugin_image_request_t> image_requests;
+
+    // register_ocr_provider()'s engines, in the order they were added. UI thread only
+    std::vector<plugin_ocr_provider_t> ocr_providers;
 
     std::string id;
     fs::path    config_path;
@@ -248,6 +272,19 @@ struct plugin_runtime_t
     bool RenderPreferences();
 
     /**
+     * The same for plugin->render_overlay(), with the draw_* functions enabled
+     * instead. Call it while the overlay draws, if the plugin has one
+     * @param info The selection and where the screenshot is drawn
+     **/
+    void RenderOverlay(const oshot_overlay_info_t& info);
+
+    /**
+     * Find one of its OCR engines by ID
+     * @return The engine, or nullptr
+     **/
+    [[nodiscard]] const plugin_ocr_provider_t* FindOcrProvider(std::string_view provider_id) const;
+
+    /**
      * Log a mistake in the plugin's UI code, the first time it happens
      * @param warning Which mistake
      * @param msg The message, after the plugin's ID
@@ -278,6 +315,65 @@ struct text_step_t
 {
     std::string                                id;
     std::function<bool(oshot_str_t, oshot_str_t*)> fn;
+};
+
+// What an `ocr-engine` value picks, see resolve_ocr_engine()
+enum class OcrEngineKind : uint8_t
+{
+    Tesseract,
+    Plugin,   // an engine a loaded plugin registered
+    Missing,  // a plugin's engine that isn't there (the plugin is disabled, uninstalled or didn't register it)
+};
+
+// A scan by a plugin's OCR engine, running recognize() on its own thread
+class OcrJob
+{
+public:
+    /**
+     * Start recognize() on a new thread
+     * @param plugin_id The engine's plugin, for the log
+     * @param provider The engine, copied
+     * @param image The selection, copied
+     * @param language What the request's language is set to
+     **/
+    OcrJob(std::string plugin_id, plugin_ocr_provider_t provider, capture_result_t image, std::string language);
+
+    // Cancels it and waits for recognize() to return
+    ~OcrJob();
+
+    OcrJob(const OcrJob&)            = delete;
+    OcrJob& operator=(const OcrJob&) = delete;
+
+    /* Make the request's cancelled() return true. Any thread */
+    void Cancel();
+
+    /* Wait for recognize() to return. Only from the thread that made the job */
+    void Wait();
+
+    /* Whether recognize() returned and the result is ready. Any thread */
+    [[nodiscard]] bool Done() const { return m_done; }
+
+    /**
+     * Take the result, once Done(). Its words are in the pixels of the image
+     * the job got, and its engine field is set to the engine's name
+     **/
+    Result<ocr_result_t> TakeResult();
+
+    // What the job runs, for unregister_ocr_provider()
+    const std::string           plugin_id;
+    const plugin_ocr_provider_t provider;
+
+private:
+    void Run(capture_result_t image, std::string language);
+
+    // Written by the thread before m_done is set, read only after
+    Result<ocr_result_t> m_result{ Err("not done") };
+
+    std::atomic<bool> m_cancelled = false;
+    std::atomic<bool> m_done      = false;
+
+    // Last, so it starts after the members above exist
+    std::thread m_thread;
 };
 
 // What inspect_plugin_library() read from a plugin's descriptor
@@ -345,6 +441,93 @@ bool plugin_overlay_open();
  * @param state The installed plugins, with their [text-transformers] order
  **/
 void sort_text_transformers(const StateManager& state);
+
+/**
+ * Check an OCR engine passed to register_ocr_provider() before oshot copies it
+ * @param provider What the plugin passed
+ **/
+Result<> validate_ocr_provider(const oshot_ocr_provider_t* provider);
+
+/**
+ * Get the `ocr-engine` value for a plugin's OCR engine
+ * @param plugin_id The plugin's ID
+ * @param provider_id The engine's ID within the plugin
+ * @return "<plugin id>/<provider id>"
+ **/
+std::string ocr_engine_key(std::string_view plugin_id, std::string_view provider_id);
+
+/**
+ * Tell what an `ocr-engine` value picks
+ * @param engine The value, e.g. from the config
+ * @param available ocr_engine_key() of every engine the loaded plugins registered
+ * @return Tesseract for "tesseract", an empty or malformed value; Plugin if it's
+ *         one of `available`; Missing otherwise
+ **/
+OcrEngineKind resolve_ocr_engine(std::string_view engine, std::span<const std::string> available);
+
+/**
+ * Find the plugin engine an `ocr-engine` value picks, among the loaded plugins
+ * @param engine The value
+ * @param rt Set to the engine's plugin, if found
+ * @return The engine, or nullptr when it's Tesseract or missing
+ **/
+const plugin_ocr_provider_t* find_ocr_provider(std::string_view engine, plugin_runtime_t** rt = nullptr);
+
+/**
+ * Pick the language a plugin's OCR engine reads in
+ * @param languages The engine's languages
+ * @param picked The one picked in the text tools, if any
+ * @param tesseract_model The Tesseract model in use, e.g. "eng"
+ * @return `picked` if the engine has it, else `tesseract_model` if it has that,
+ *         else its first language, or empty if it has none
+ **/
+std::string pick_ocr_language(std::span<const std::string> languages,
+                              const std::string&           picked,
+                              const std::string&           tesseract_model);
+
+/* Get ocr_engine_key() of every engine the loaded plugins registered, in plugin then registration order */
+std::vector<std::string> list_ocr_providers();
+
+/**
+ * Turn what an OCR engine's recognize() filled in into oshot's result, then
+ * free it. Words with no box or text are skipped, boxes are clamped to the image,
+ * an empty text is joined from the words and a confidence of -1 is their mean
+ * @param out What recognize() filled in, empty afterwards
+ * @param img_w, img_h The size of the image the engine read
+ * @param prep The prepared image the engine read, to map its boxes back; nullptr if it read the selection as is
+ * @param bad_words Set to true if some words were skipped
+ **/
+ocr_result_t ocr_result_from_output(oshot_ocr_output_t&   out,
+                                    int                   img_w,
+                                    int                   img_h,
+                                    const ocr_prepared_t* prep,
+                                    bool*                 bad_words);
+
+/* Free what recognize() filled in, with the host's allocator, and empty it */
+void free_ocr_output(oshot_ocr_output_t& out);
+
+/**
+ * Start a scan with a plugin's OCR engine. oshot keeps the job until it's done,
+ * and unload_plugins() waits for it
+ * @param rt The engine's plugin
+ * @param provider The engine
+ * @param image The selection
+ * @param language The language picked for it, or empty
+ **/
+std::shared_ptr<OcrJob> start_ocr_job(const plugin_runtime_t&      rt,
+                                      const plugin_ocr_provider_t& provider,
+                                      capture_result_t             image,
+                                      std::string                  language);
+
+/**
+ * Cancel the scans of a plugin's engine
+ * @param plugin_id The plugin
+ * @param provider_id The engine, or empty for all of the plugin's
+ **/
+void cancel_ocr_jobs(std::string_view plugin_id, std::string_view provider_id);
+
+/* Forget the jobs that are done and no one waits for. Call it on the UI thread now and then */
+void reap_ocr_jobs();
 
 /**
  * Pass text through transformers one after another, freeing what each returned

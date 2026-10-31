@@ -24,6 +24,7 @@ static void check_same(const Config::config_file_t& got, const Config::config_fi
 {
     CHECK(got.ocr_path == want.ocr_path);
     CHECK(got.ocr_model == want.ocr_model);
+    CHECK(got.ocr_engine == want.ocr_engine);
     CHECK(got.ocr_get_repo == want.ocr_get_repo);
     CHECK(got.delay == want.delay);
     CHECK(got.color_picker == want.color_picker);
@@ -78,6 +79,7 @@ TEST_CASE("Config: the generated config loads back the same", "[config]")
         // Backslashes, quotes and non-ASCII, which EscapeString() has to escape
         f.ocr_path           = R"(C:\Users\Тест\"oshot"\models)";
         f.ocr_model          = "ita+eng";
+        f.ocr_engine         = "io.github.user.engine/cloud";
         f.ocr_get_repo       = "tesseract-ocr/tessdata_best\twith\ncontrol\x01chars";
         f.delay              = 250;
         f.color_picker       = 1;

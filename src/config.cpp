@@ -97,6 +97,7 @@ void Config::LoadConfigFile(const std::string& filename)
     File.ocr_path         = GetValue<std::string>("default.ocr-path", File.ocr_path);
     File.ocr_get_repo     = GetValue<std::string>("default.ocr-repo-download", legacy_ocr_repo);
     File.ocr_model        = GetValue<std::string>("default.ocr-model", "eng");
+    File.ocr_engine       = GetValue<std::string>("default.ocr-engine", "tesseract");
     File.theme_file_path  = GetValue<std::string>("default.theme-file", "theme.toml");
     File.image_out_fmt    = GetValue<std::string>("default.image-out-fmt", "oshot_{:%F_%H-%M}");
     File.delay            = GetValue<int>("default.delay", -1);
@@ -198,6 +199,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
     f.print(AUTOCONFIG,
             EscapeString(File.ocr_path),
             EscapeString(File.ocr_model),
+            EscapeString(File.ocr_engine),
             EscapeString(File.ocr_get_repo),
             File.delay,
             File.color_picker,

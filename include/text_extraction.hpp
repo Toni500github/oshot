@@ -65,6 +65,32 @@ struct ocr_result_t
     std::string data;
 
     std::vector<ocr_word_t> words;
+
+    // The plugin OCR engine's name, empty for Tesseract
+    std::string engine;
+
+    // Where the scanned image's top-left corner is in the whole screenshot, set by the overlay
+    int origin_x = 0;
+    int origin_y = 0;
+};
+
+// How an image was scaled, padded and straightened for Tesseract, to map the boxes found in it back
+struct ocr_transform_t
+{
+    float scale = 1.0f;
+    int   pad   = 0;
+    float angle = 0.0f;  // radians, clockwise, about the center of the padded image
+};
+
+// The image prepare_ocr_image() made, and how to map its boxes back onto the source
+struct ocr_prepared_t
+{
+    // Grey, as RGBA
+    capture_result_t image;
+
+    ocr_transform_t xform;
+    int             src_w = 0;
+    int             src_h = 0;
 };
 
 class OcrEnginePool;
@@ -123,6 +149,22 @@ private:
     // the first OCR that needs them
     std::unique_ptr<OcrEnginePool> m_pool;
 };
+
+/**
+ * Make the image OCR reads first from a capture: grey with dark text on white,
+ * scaled to the glyph size Tesseract reads best, padded and straightened. For
+ * OCR engines from plugins that ask for it
+ * @param cap The RGBA image
+ **/
+Result<ocr_prepared_t> prepare_ocr_image(const capture_result_t& cap);
+
+/**
+ * Map a box found in a prepared image back onto the image it was made from
+ * @param prep What prepare_ocr_image() returned
+ * @param x, y, w, h The box, in the prepared image's pixels
+ * @return The box in the source's pixels, clamped to it (text and the rest left empty)
+ **/
+ocr_word_t map_prepared_box(const ocr_prepared_t& prep, float x, float y, float w, float h);
 
 // ------------------------------
 // Zbar (QR/Bar Codes)

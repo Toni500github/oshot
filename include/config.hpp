@@ -102,6 +102,7 @@ public:
         std::string              ocr_path        = get_default_ocr_path();
         std::string              ocr_get_repo    = "tesseract-ocr/tessdata";
         std::string              ocr_model       = "eng";
+        std::string              ocr_engine      = "tesseract";  // or "<plugin id>/<engine id>" for a plugin's engine
         std::string              theme_file_path = "theme.toml";
         std::string              image_out_fmt   = "oshot_{:%F_%H-%M}";
         int                      delay           = 0;

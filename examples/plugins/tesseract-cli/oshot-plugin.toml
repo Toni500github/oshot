@@ -1,0 +1,21 @@
+[repository]
+name = "oshot-example-tesseract-cli"
+url = "https://github.com/Toni500github/oshot/tree/main/examples/plugins/tesseract-cli"
+
+[dependencies]
+all = ["cmake", "a C compiler", "tesseract (the program, at run time)"]
+
+[tesseract-cli]
+id = "io.github.toni500github.tesseract-cli"
+description = "An OCR engine that runs the tesseract program, an example plugin"
+authors = ["Toni500github"]
+licenses = ["Unlicense"]
+platforms = ["all"]
+build-steps = [
+    "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
+    "cmake --build build --config Release",
+]
+output-dir = "build/out"
+
+[tesseract-cli.capabilities]
+processes = "Runs `tesseract` to read the text, with the image in a temporary file in its own folder"

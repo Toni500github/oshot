@@ -172,6 +172,10 @@ ocr-path = "{}"
 # Default OCR model.
 ocr-model = "{}"
 
+# Default OCR engine: "tesseract", or an engine a plugin adds, as
+# "<plugin id>/<engine id>". If that plugin isn't loaded, Tesseract is used.
+ocr-engine = "{}"
+
 # GitHub repository from where we are going to
 # download an OCR '.traineddata' model.
 # The models must be in the root directory of the repository.

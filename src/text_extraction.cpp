@@ -514,14 +514,6 @@ static text_layout_t measure_text(PIX* gray)
     return layout;
 }
 
-// What normalize_for_ocr() did to the image, to map Tesseract's boxes back onto it
-struct ocr_transform_t
-{
-    float scale = 1.0f;
-    int   pad   = 0;
-    float angle = 0.0f;  // radians, clockwise, about the center of the padded image
-};
-
 // Scale so the glyphs are about the size Tesseract reads best, pad the edges,
 // and straighten a skewed scan
 static PIX* normalize_for_ocr(PIX* gray, const text_layout_t& layout, ocr_transform_t& xform)
@@ -654,10 +646,10 @@ Result<> OcrAPI::Configure(const char* data_path, const char* model, tesseract::
 
 // A box Tesseract found in the image normalize_for_ocr() made, in the pixels
 // of the image it was made from (rotated back, unpadded, unscaled and clamped)
-static ocr_word_t map_box_to_source(int                    left,
-                                    int                    top,
-                                    int                    right,
-                                    int                    bottom,
+static ocr_word_t map_box_to_source(float                  left,
+                                    float                  top,
+                                    float                  right,
+                                    float                  bottom,
                                     const ocr_transform_t& xform,
                                     int                    proc_w,
                                     int                    proc_h,
@@ -668,13 +660,13 @@ static ocr_word_t map_box_to_source(int                    left,
     const float c = std::cos(xform.angle), s = std::sin(xform.angle);
 
     float                                    min_x = src_w, min_y = src_h, max_x = 0.0f, max_y = 0.0f;
-    const std::array<std::pair<int, int>, 4> corners = {
+    const std::array<std::pair<float, float>, 4> corners = {
         { { left, top }, { right, top }, { left, bottom }, { right, bottom } }
     };
     for (const auto& [px, py] : corners)
     {
         // pixRotate() turned the image clockwise by angle, so turn the corner back
-        const float dx = float(px) - cx, dy = float(py) - cy;
+        const float dx = px - cx, dy = py - cy;
         const float x = ((cx + (dx * c) + (dy * s)) - float(xform.pad)) / xform.scale;
         const float y = ((cy - (dx * s) + (dy * c)) - float(xform.pad)) / xform.scale;
         min_x         = std::min(min_x, x);
@@ -800,8 +792,8 @@ static Result<ocr_result_t> recognize(tesseract::TessBaseAPI& api,
             if (!word || !ri->BoundingBox(tesseract::RIL_WORD, &left, &top, &right, &bottom))
                 continue;
 
-            ocr_word_t& w = ret.words.emplace_back(
-                map_box_to_source(left, top, right, bottom, xform, proc_w, proc_h, src_w, src_h));
+            ocr_word_t& w = ret.words.emplace_back(map_box_to_source(
+                float(left), float(top), float(right), float(bottom), xform, proc_w, proc_h, src_w, src_h));
             w.text       = word.get();
             w.confidence = int(std::round(std::max(conf, 0.0f)));
             w.line       = std::max(line, 0);
@@ -1585,6 +1577,52 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
         return Err(fmt::format("No text recognized (PSM: {}, {}x{} px)", best.psm_str, cap.w, cap.h));
 
     return Ok(std::move(best));
+}
+
+Result<ocr_prepared_t> prepare_ocr_image(const capture_result_t& cap)
+{
+    if (cap.w <= 0 || cap.h <= 0 || cap.view().size() < size_t(cap.w) * cap.h * 4)
+        return Err("Image is empty");
+
+    std::vector<rgb_t> px(size_t(cap.w) * cap.h);
+    for (size_t i = 0; i < px.size(); ++i)
+        px[i] = opaque_rgb(cap.view().data() + (i * 4));
+
+    const ocr_pass_t pass = background_pass(px, main_colors(px), cap.w, cap.h);
+    if (!pass.gray)
+        return Err("Failed to convert image into Pix format");
+
+    ocr_prepared_t ret{ .image = {}, .xform = {}, .src_w = cap.w, .src_h = cap.h };
+    PixPtr         pix(normalize_for_ocr(pass.gray.get(), pass.layout, ret.xform));
+    if (!pix)
+        return Err("Failed to preprocess image");
+
+    if (pixGetDepth(pix.get()) != 8)
+        pix.reset(pixConvertTo8(pix.get(), 0));
+    if (!pix)
+        return Err("Failed to preprocess image");
+
+    const int       w = pixGetWidth(pix.get()), h = pixGetHeight(pix.get());
+    const int       wpl  = pixGetWpl(pix.get());
+    const l_uint32* data = pixGetData(pix.get());
+    ret.image            = { .data = std::vector<uint8_t>(size_t(w) * h * 4), .w = w, .h = h };
+    for (int y = 0; y < h; ++y)
+    {
+        const l_uint32* line = data + (ptrdiff_t(y) * wpl);
+        uint8_t*        out  = ret.image.data.data() + (size_t(y) * w * 4);
+        for (int x = 0; x < w; ++x, out += 4)
+        {
+            out[0] = out[1] = out[2] = uint8_t(GET_DATA_BYTE(line, x));
+            out[3]                   = 255;
+        }
+    }
+    return Ok(std::move(ret));
+}
+
+ocr_word_t map_prepared_box(const ocr_prepared_t& prep, float x, float y, float w, float h)
+{
+    return map_box_to_source(
+        x, y, x + w, y + h, prep.xform, prep.image.w, prep.image.h, float(prep.src_w), float(prep.src_h));
 }
 
 // ---------------

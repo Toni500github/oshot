@@ -35,6 +35,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <utility>
 
@@ -939,6 +940,153 @@ static oshot_err_t report_result(
     return OSHOT_OK;
 }
 
+/* ------------------------------------------------------------------
+ * OCR engines
+ * ------------------------------------------------------------------ */
+
+static oshot_err_t register_ocr_provider(oshot_ctx_t* ctx, const oshot_ocr_provider_t* provider, oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "register_ocr_provider");
+    if (Result<> valid = validate_ocr_provider(provider); !valid.ok())
+        return fail(ctx, err, OSHOT_ERR_INVALID, "register_ocr_provider", "{}", valid.error_v());
+
+    plugin_runtime_t& rt = rt_of(ctx);
+    if (rt.FindOcrProvider(provider->id))
+        return fail(
+            ctx, err, OSHOT_ERR_INVALID, "register_ocr_provider", "it already has an OCR engine '{}'", provider->id);
+
+    plugin_ocr_provider_t p{ .languages = {},
+                             .id        = provider->id,
+                             .name      = provider->name,
+                             .recognize = provider->recognize,
+                             .user      = provider->user,
+                             .flags     = provider->flags };
+    for (size_t i = 0; i < provider->n_languages; ++i)
+        p.languages.emplace_back(provider->languages[i]);
+
+    spdlog::debug("{}: registered OCR engine '{}' ({} languages)", rt.id, p.id, p.languages.size());
+    rt.ocr_providers.push_back(std::move(p));
+    return OSHOT_OK;
+}
+
+static oshot_err_t unregister_ocr_provider(oshot_ctx_t* ctx, const char* id, oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "unregister_ocr_provider");
+    if (!id)
+        return fail(ctx, err, OSHOT_ERR_INVALID, "unregister_ocr_provider", "the ID is NULL");
+
+    plugin_runtime_t& rt = rt_of(ctx);
+    if (std::erase_if(rt.ocr_providers, [id](const plugin_ocr_provider_t& p) { return p.id == id; }) == 0)
+        return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "unregister_ocr_provider", "it has no OCR engine '{}'", id);
+    cancel_ocr_jobs(rt.id, id);
+    return OSHOT_OK;
+}
+
+/* ------------------------------------------------------------------
+ * The selection and the overlay
+ * ------------------------------------------------------------------ */
+
+// Whether the selection can be read or set now: an overlay with an image, and no monitor being picked
+static oshot_err_t selection_check(oshot_ctx_t* ctx, oshot_str_t* err, const char* func)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, func);
+    if (!ImGui::GetCurrentContext() || !g_ss_tool.CanReadFinalImage())
+        return fail(ctx, err, OSHOT_ERR_UNSUPPORTED, func, "no overlay with a screenshot is open");
+    return OSHOT_OK;
+}
+
+static oshot_err_t get_selection(oshot_ctx_t* ctx, float* x, float* y, float* w, float* h, oshot_str_t* err)
+{
+    if (oshot_err_t code = selection_check(ctx, err, "get_selection"); code != OSHOT_OK)
+        return code;
+
+    const std::optional<region_t> sel = g_ss_tool.GetPluginSelection();
+    if (!sel)
+        return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "get_selection", "there's no selection");
+    if (x)
+        *x = float(sel->x);
+    if (y)
+        *y = float(sel->y);
+    if (w)
+        *w = float(sel->w);
+    if (h)
+        *h = float(sel->h);
+    return OSHOT_OK;
+}
+
+static oshot_err_t set_selection(oshot_ctx_t* ctx, float x, float y, float w, float h, oshot_str_t* err)
+{
+    if (oshot_err_t code = selection_check(ctx, err, "set_selection"); code != OSHOT_OK)
+        return code;
+    if (g_ss_tool.IsDraggingSelection())
+        return fail(ctx, err, OSHOT_ERR_UNSUPPORTED, "set_selection", "the person is dragging the selection");
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(w) || !std::isfinite(h) ||
+        !g_ss_tool.SetPluginSelection(x, y, w, h))
+        return fail(ctx, err, OSHOT_ERR_INVALID, "set_selection", "{}x{}+{}+{} isn't on the screenshot", w, h, x, y);
+    return OSHOT_OK;
+}
+
+// Logs once and returns false anywhere but inside render_overlay()
+static bool draw_check(oshot_ctx_t* ctx, const char* func)
+{
+    plugin_runtime_t& rt = rt_of(ctx);
+    if (!on_plugin_ui_thread())
+    {
+        rt.WarnOnce(UiWarning::OffThread,
+                    fmt::format("{}() called outside the UI thread, ignored. Use run_on_ui_thread()", func));
+        return false;
+    }
+    if (!rt.in_overlay)
+    {
+        rt.WarnOnce(UiWarning::OutsideDraw, fmt::format("{}() called outside render_overlay(), ignored", func));
+        return false;
+    }
+    return true;
+}
+
+// 0xRRGGBBAA as ImGui's color
+static ImU32 to_imgui_color(uint32_t rgba)
+{
+    return IM_COL32((rgba >> 24) & 0xFF, (rgba >> 16) & 0xFF, (rgba >> 8) & 0xFF, rgba & 0xFF);
+}
+
+static void draw_rect(oshot_ctx_t* ctx, float x, float y, float w, float h, uint32_t rgba, float thickness)
+{
+    if (!draw_check(ctx, "draw_rect"))
+        return;
+    ImDrawList*  dl  = ImGui::GetBackgroundDrawList();
+    const ImVec2 min = g_ss_tool.ImageToScreen(x, y), max = g_ss_tool.ImageToScreen(x + w, y + h);
+    if (thickness <= 0.0f)
+        dl->AddRectFilled(min, max, to_imgui_color(rgba));
+    else
+        dl->AddRect(min, max, to_imgui_color(rgba), 0.0f, thickness, ImDrawFlags_None);
+}
+
+static void draw_line(oshot_ctx_t* ctx, float x1, float y1, float x2, float y2, uint32_t rgba, float thickness)
+{
+    if (!draw_check(ctx, "draw_line"))
+        return;
+    ImGui::GetBackgroundDrawList()->AddLine(g_ss_tool.ImageToScreen(x1, y1),
+                                            g_ss_tool.ImageToScreen(x2, y2),
+                                            to_imgui_color(rgba),
+                                            thickness > 0.0f ? thickness : 1.0f);
+}
+
+static void draw_text(oshot_ctx_t* ctx, float x, float y, oshot_str_t text, uint32_t rgba, float size)
+{
+    if (!draw_check(ctx, "draw_text") || !text.p || text.len == 0)
+        return;
+    ImGui::GetBackgroundDrawList()->AddText(ImGui::GetFont(),
+                                            size > 0.0f ? size : ImGui::GetFontSize(),
+                                            g_ss_tool.ImageToScreen(x, y),
+                                            to_imgui_color(rgba),
+                                            text.p,
+                                            text.p + text.len);
+}
+
 void plugin_runtime_t::KillProcesses()
 {
     std::unique_lock lock(processes->mutex);
@@ -1019,4 +1167,11 @@ const oshot_host_t g_oshot_host = {
     .unregister_action   = unregister_action,
     .report_progress     = report_progress,
     .report_result       = report_result,
+    .register_ocr_provider   = register_ocr_provider,
+    .unregister_ocr_provider = unregister_ocr_provider,
+    .get_selection           = get_selection,
+    .set_selection           = set_selection,
+    .draw_rect               = draw_rect,
+    .draw_line               = draw_line,
+    .draw_text               = draw_text,
 };
