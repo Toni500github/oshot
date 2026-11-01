@@ -114,7 +114,7 @@ static const oshot_setting_t settings[] = {
 static const oshot_plugin_t descriptor = {
     .struct_size   = sizeof(oshot_plugin_t),
     .abi_version   = OSHOT_API_VERSION,
-    .imgui_version = 0, /* OSHOT_IMGUI_VERSION only if it calls cimgui */
+    .imgui_version = OSHOT_NO_IMGUI, /* OSHOT_IMGUI_VERSION only if it calls cimgui */
     .id            = "io.github.user.hello",
     .name          = "Hello",
     .init          = my_init,
@@ -356,7 +356,7 @@ functions. [`examples/plugins/cimgui`](../examples/plugins/cimgui) draws a histo
 - cimgui exposes ImGui's structs, so the plugin only works with the exact Dear ImGui version oshot is built with. It
   must set `imgui_version = OSHOT_IMGUI_VERSION`, and oshot refuses it when the versions differ.
 - oshot updates Dear ImGui only in minor releases (x.y.0), never in patch releases, so a cimgui plugin needs a rebuild
-  for each oshot minor release. Plugins that use only the widgets and settings keep `imgui_version = 0` and don't.
+  for each oshot minor release. Plugins that use only the widgets and settings keep `imgui_version = OSHOT_NO_IMGUI` and don't.
 - It links cimgui as described in [Building](#building).
 
 oshot checks Dear ImGui's stacks around `render()` and `render_preferences()`: a `Begin`/`Push` the plugin didn't end

@@ -74,6 +74,9 @@ extern "C" {
  **/
 #define OSHOT_IMGUI_VERSION 19284u
 
+/* Use this in the `imgui_version` fields if the plugin doesn't use ImGui (or cimgui)*/
+#define OSHOT_NO_IMGUI 0
+
 /* Text buffers that get_text()/set_text() accept */
 #define OSHOT_TEXT_OCR     "ocr_output"
 #define OSHOT_TEXT_BARCODE "barcode_output"
@@ -106,6 +109,9 @@ extern "C" {
 
 /* The largest icon register_action() accepts, in pixels on each side */
 #define OSHOT_ACTION_ICON_MAX 256
+
+/* Suggested icon size for toolbar */
+#define OSHOT_TOOLBAR_ICON_SIZE 24
 
 #if defined(OSHOT_HOST)
 #  define OSHOT_PLUGIN_EXPORT
@@ -528,7 +534,8 @@ typedef struct
      * @param fraction 0-1, or negative when the plugin can't tell
      * @param text A short status ("Uploading..."), may be empty
      **/
-    oshot_err_t (*report_progress)(oshot_ctx_t* ctx, int32_t action, float fraction, oshot_str_t text, oshot_str_t* err);
+    oshot_err_t (
+        *report_progress)(oshot_ctx_t* ctx, int32_t action, float fraction, oshot_str_t text, oshot_str_t* err);
 
     /**
      * Shows how an action ended, in the same status box. If no overlay is
@@ -557,7 +564,7 @@ typedef struct
 {
     uint32_t struct_size;   /* sizeof(oshot_plugin_t) */
     uint32_t abi_version;   /* OSHOT_API_VERSION */
-    uint32_t imgui_version; /* OSHOT_IMGUI_VERSION if the plugin calls cimgui, or 0 if it doesn't
+    uint32_t imgui_version; /* OSHOT_IMGUI_VERSION if the plugin calls cimgui, or OSHOT_NO_IMGUI if it doesn't
                                (it may still draw with the ui_* host functions) */
 
     /**
@@ -606,8 +613,6 @@ typedef struct
     bool (*render_preferences)(void* state);
     void (*on_save_preferences)(void* state);
     void (*on_discard_preferences)(void* state);
-
-    /* Added after the first version: oshot checks struct_size before reading them. */
 
     /**
      * Settings oshot draws, saves and discards in Preferences > Plugins, as a

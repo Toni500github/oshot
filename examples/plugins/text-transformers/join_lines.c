@@ -141,7 +141,7 @@ static void plugin_on_settings_saved(void* state)
 static const oshot_plugin_t descriptor = {
     .struct_size       = sizeof(oshot_plugin_t),
     .abi_version       = OSHOT_API_VERSION,
-    .imgui_version     = 0, /* no cimgui */
+    .imgui_version     = OSHOT_NO_IMGUI,
     .id                = "io.github.toni500github.join-lines",
     .name              = "Join lines",
     .init              = plugin_init,

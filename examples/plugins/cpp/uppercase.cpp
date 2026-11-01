@@ -8,7 +8,7 @@
  * - settings:      that option and a prefix, which oshot draws in Preferences > Plugins
  *                  and saves in the plugin's config.toml
  *
- * It draws only with the host's ui_* functions (imgui_version = 0).
+ * It draws only with the host's ui_* functions (imgui_version = OSHOT_NO_IMGUI).
  *
  * Build it with the CMakeLists.txt next to it, or install the folder with
  * `oshotpm install <this folder>`. See docs/plugins.md. Public domain (Unlicense).
@@ -135,8 +135,9 @@ private:
     {
         std::string out = m_prefix;
         out.reserve(out.size() + text.size());
-        std::transform(text.begin(), text.end(), std::back_inserter(out),
-                       [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        std::transform(text.begin(), text.end(), std::back_inserter(out), [](unsigned char c) {
+            return static_cast<char>(std::toupper(c));
+        });
 
         m_host->set_text(m_ctx, OSHOT_TEXT_OCR, borrow(out));
     }
@@ -187,7 +188,7 @@ void plugin_on_settings_saved(void* state) noexcept
 constexpr oshot_plugin_t descriptor = {
     .struct_size       = sizeof(oshot_plugin_t),
     .abi_version       = OSHOT_API_VERSION,
-    .imgui_version     = 0, /* no cimgui */
+    .imgui_version     = OSHOT_NO_IMGUI,
     .id                = "io.github.toni500github.uppercase-cpp",
     .name              = "Uppercase (C++)",
     .init              = plugin_init,

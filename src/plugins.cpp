@@ -166,7 +166,7 @@ void plugin_runtime_t::DeliverFinalImage(const capture_result_t& image)
 void plugin_runtime_t::Report(plugin_report_t report)
 {
     std::scoped_lock lock(reports_mutex);
-    auto it = std::ranges::find(reports, report.action, &plugin_report_t::action);
+    auto             it = std::ranges::find(reports, report.action, &plugin_report_t::action);
     if (it != reports.end())
         *it = std::move(report);
     else
@@ -368,12 +368,13 @@ Result<> validate_plugin_descriptor(const oshot_plugin_t* plugin)
         return Err("its oshot_plugin_t is {} bytes, expected at least {}: rebuild it with the current oshot_plugin.h",
                    plugin->struct_size,
                    PLUGIN_DESC_MIN_SIZE);
-    // 0: it draws with the ui_* host functions or not at all
-    if (plugin->imgui_version != 0 && plugin->imgui_version != IMGUI_VERSION_NUM)
+
+    if (plugin->imgui_version != OSHOT_NO_IMGUI && plugin->imgui_version != IMGUI_VERSION_NUM)
         return Err("it uses cimgui built for Dear ImGui {}, but oshot {} uses {}: rebuild it with this oshot's SDK",
                    plugin->imgui_version,
                    VERSION,
                    IMGUI_VERSION_NUM);
+
     if (!plugin->id || !Manifest::IsValidID(plugin->id))
         return Err("its ID '{}' is invalid", plugin->id ? plugin->id : "(null)");
     if (!plugin->name || plugin->name[0] == '\0')
@@ -503,7 +504,8 @@ std::string run_text_steps(std::string                                          
         oshot_str_t out{ .p = nullptr, .len = 0 };
         const auto  start   = std::chrono::steady_clock::now();
         const bool  changed = step.fn({ .p = text.c_str(), .len = text.size() }, &out);
-        const auto  took = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
+        const auto  took =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
         if (took > slow)
             on_slow(step, took);
 

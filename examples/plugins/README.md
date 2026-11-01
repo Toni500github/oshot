@@ -2,7 +2,7 @@
 
 The same plugin in four languages: it adds an "Uppercase the OCR output" button to the text tools window, can
 uppercase new text as soon as it's extracted, and declares a setting for that plus a prefix, which oshot shows in
-Preferences > Plugins and saves for it. It draws only with oshot's widgets (`imgui_version = 0`), so it keeps working
+Preferences > Plugins and saves for it. It draws only with oshot's widgets (`imgui_version = OSHOT_NO_IMGUI`), so it keeps working
 when oshot updates Dear ImGui. See [docs/plugins.md](../../docs/plugins.md) for the API.
 
 | Folder | Language | Build | ID |

@@ -6,7 +6,7 @@
  *                  and saves in the plugin's config.toml
  *
  * It draws only with the host's ui_* functions, so it works with any Dear ImGui
- * version oshot is built with (imgui_version = 0). ../cimgui is an example that
+ * version oshot is built with (imgui_version = OSHOT_NO_IMGUI). ../cimgui is an example that
  * draws with cimgui instead.
  *
  * Build it with the CMakeLists.txt next to it, or install the folder with
@@ -153,7 +153,7 @@ static void plugin_on_settings_saved(void* state)
 static const oshot_plugin_t descriptor = {
     .struct_size       = sizeof(oshot_plugin_t),
     .abi_version       = OSHOT_API_VERSION,
-    .imgui_version     = 0, /* no cimgui */
+    .imgui_version     = OSHOT_NO_IMGUI,
     .id                = "io.github.toni500github.uppercase",
     .name              = "Uppercase",
     .init              = plugin_init,

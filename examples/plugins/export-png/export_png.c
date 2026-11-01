@@ -38,7 +38,7 @@
 #include "oshot/oshot_plugin.h"
 #include "stb_image_write.h"
 
-#define ICON_SIZE 24
+#define ICON_SIZE OSHOT_TOOLBAR_ICON_SIZE
 
 typedef struct
 {
@@ -292,7 +292,7 @@ static void plugin_destroy(void* state)
 static const oshot_plugin_t descriptor = {
     .struct_size   = sizeof(oshot_plugin_t),
     .abi_version   = OSHOT_API_VERSION,
-    .imgui_version = 0, /* no cimgui */
+    .imgui_version = OSHOT_NO_IMGUI,
     .id            = "io.github.toni500github.export-png",
     .name          = "Export PNG",
     .init          = plugin_init,
