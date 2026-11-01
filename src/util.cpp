@@ -59,6 +59,7 @@
 #include "nvdialog/nvdialog_notification.h"
 #include "platform.hpp"
 #include "screen_capture.hpp"
+#include "screenshot_tool.hpp"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "tinyfiledialogs.h"
 

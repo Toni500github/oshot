@@ -491,9 +491,9 @@ static bool ui_slider_float(oshot_ctx_t* ctx, oshot_str_t label, double* value, 
                to_string(label).c_str(), ImGuiDataType_Double, value, &min, &max, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 }
 
-static bool ui_color(oshot_ctx_t* ctx, oshot_str_t label, std::array<float, 4> rgba)
+static bool ui_color(oshot_ctx_t* ctx, oshot_str_t label, float rgba[4])  // NOLINT
 {
-    return !rgba.empty() && ui_check(ctx, "ui_color") && ImGui::ColorEdit4(to_string(label).c_str(), rgba.data());
+    return rgba && ui_check(ctx, "ui_color") && ImGui::ColorEdit4(to_string(label).c_str(), rgba);
 }
 
 static void ui_progress(oshot_ctx_t* ctx, float fraction, oshot_str_t overlay)

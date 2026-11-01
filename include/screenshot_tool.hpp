@@ -861,7 +861,7 @@ private:
     // background thread. Wires fresh PluginCallbacks around a new
     // plugin_install_state_t so the render thread can drain progress from
     // it without touching ImGui from off the render thread.
-    void StartPluginTask(std::string title, std::function<Result<>(PluginManager&)> task);
+    void StartPluginTask(const std::string& title, std::function<Result<>(PluginManager&)> task);
 
     // Calls the plugins' on_capture_start(), or on_capture_end() for the ones that got it
     void StartPluginsCapture();
