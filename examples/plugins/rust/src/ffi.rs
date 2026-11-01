@@ -22,8 +22,6 @@ pub const OSHOT_PROCESS_OUTPUT_MAX: usize = 4 * 1024 * 1024;
 
 pub const OSHOT_ACTION_ICON_MAX: i32 = 256;
 
-pub const OSHOT_OCR_PREPARED: u32 = 1 << 0;
-
 /// Opaque handle that identifies the plugin in every host call
 #[repr(C)]
 pub struct oshot_ctx_t {
@@ -144,9 +142,6 @@ pub struct oshot_ocr_result_t {
     // Only there if ocr_has_words!(): an older oshot's struct ends before them
     pub words: *const oshot_ocr_word_t,
     pub n_words: usize,
-    // Only there if ocr_has_origin!()
-    pub origin_x: f32,
-    pub origin_y: f32,
 }
 
 #[repr(C)]
@@ -194,54 +189,6 @@ impl oshot_setting_t {
             flags: 0,
         }
     }
-}
-
-#[repr(C)]
-pub struct oshot_ocr_request_t {
-    pub image: *const oshot_capture_t,
-    pub language: oshot_str_t,
-    pub cancelled: Option<unsafe extern "C" fn(req: *const oshot_ocr_request_t) -> bool>,
-    pub host_data: *mut c_void,
-}
-
-#[repr(C)]
-pub struct oshot_ocr_output_t {
-    pub words: *mut oshot_ocr_word_t,
-    pub n_words: usize,
-    pub text: oshot_str_t,
-    pub confidence: i32,
-}
-
-#[repr(C)]
-pub struct oshot_ocr_provider_t {
-    pub struct_size: u32,
-    pub id: *const c_char,
-    pub name: *const c_char,
-    pub languages: *const *const c_char,
-    pub n_languages: usize,
-    pub flags: u32,
-    pub recognize: Option<
-        unsafe extern "C" fn(
-            user: *mut c_void,
-            req: *const oshot_ocr_request_t,
-            out: *mut oshot_ocr_output_t,
-            err: *mut oshot_str_t,
-        ) -> oshot_err_t,
-    >,
-    pub user: *mut c_void,
-}
-
-#[repr(C)]
-pub struct oshot_overlay_info_t {
-    pub sel_x: f32,
-    pub sel_y: f32,
-    pub sel_w: f32,
-    pub sel_h: f32,
-    pub image_w: f32,
-    pub image_h: f32,
-    pub scale: f32,
-    pub offset_x: f32,
-    pub offset_y: f32,
 }
 
 type Ctx = *mut oshot_ctx_t;
@@ -392,31 +339,6 @@ pub struct oshot_host_t {
             err: *mut oshot_str_t,
         ) -> oshot_err_t,
     >,
-
-    // OCR engines: check host_has!(host, unregister_ocr_provider) first
-    pub register_ocr_provider: Option<
-        unsafe extern "C" fn(ctx: Ctx, provider: *const oshot_ocr_provider_t, err: *mut oshot_str_t) -> oshot_err_t,
-    >,
-    pub unregister_ocr_provider:
-        Option<unsafe extern "C" fn(ctx: Ctx, id: *const c_char, err: *mut oshot_str_t) -> oshot_err_t>,
-
-    // The selection and the overlay: check host_has!(host, draw_text) first
-    pub get_selection: Option<
-        unsafe extern "C" fn(
-            ctx: Ctx,
-            x: *mut f32,
-            y: *mut f32,
-            w: *mut f32,
-            h: *mut f32,
-            err: *mut oshot_str_t,
-        ) -> oshot_err_t,
-    >,
-    pub set_selection:
-        Option<unsafe extern "C" fn(ctx: Ctx, x: f32, y: f32, w: f32, h: f32, err: *mut oshot_str_t) -> oshot_err_t>,
-    pub draw_rect: Option<unsafe extern "C" fn(ctx: Ctx, x: f32, y: f32, w: f32, h: f32, rgba: u32, thickness: f32)>,
-    pub draw_line:
-        Option<unsafe extern "C" fn(ctx: Ctx, x1: f32, y1: f32, x2: f32, y2: f32, rgba: u32, thickness: f32)>,
-    pub draw_text: Option<unsafe extern "C" fn(ctx: Ctx, x: f32, y: f32, text: oshot_str_t, rgba: u32, size: f32)>,
 }
 
 type State = *mut c_void;
@@ -448,7 +370,6 @@ pub struct oshot_plugin_t {
     pub transform_text: Option<
         unsafe extern "C" fn(state: State, buffer_id: *const c_char, input: oshot_str_t, out: *mut oshot_str_t) -> bool,
     >,
-    pub render_overlay: Option<unsafe extern "C" fn(state: State, info: *const oshot_overlay_info_t)>,
 }
 
 // The descriptor and the settings are statics whose pointers are to string
@@ -476,17 +397,6 @@ macro_rules! ocr_has_words {
 }
 #[allow(unused_imports)]
 pub(crate) use ocr_has_words;
-
-/// OSHOT_OCR_HAS_ORIGIN(): whether oshot_ocr_result_t has `origin_x` and
-/// `origin_y`, which came with draw_text
-#[allow(unused_macros)]
-macro_rules! ocr_has_origin {
-    ($host:expr) => {
-        $crate::ffi::host_has!($host, draw_text)
-    };
-}
-#[allow(unused_imports)]
-pub(crate) use ocr_has_origin;
 
 /// A function from oshot's host table. oshot fills in every field of the API
 /// version it was built with; a field added in a later version needs a

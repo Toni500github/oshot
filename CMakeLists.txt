@@ -865,9 +865,9 @@ if(NOT DISABLE_PLUGINS)
         )
     endif()
 
-    # The C, C++, cimgui, scan-results, text-transformers, export-png, tesseract-cli and word-boxes example
-    # plugins, with -DBUILD_EXAMPLES=ON; CI builds them so it checks they compile everywhere. Not installed.
-    # The Rust and Zig ones need their own toolchains.
+    # The C, C++, cimgui, scan-results, text-transformers and export-png example plugins, with -DBUILD_EXAMPLES=ON; CI
+    # builds them so it checks they compile everywhere. Not installed. The
+    # Rust and Zig ones need their own toolchains.
     if(BUILD_EXAMPLES)
         add_library(
             oshot_example_uppercase
@@ -911,20 +911,7 @@ if(NOT DISABLE_PLUGINS)
             examples/plugins/export-png/export_png.c
             ${OSHOT_SDK_HEADERS}
         )
-        add_library(
-            oshot_example_tesseract_cli
-            MODULE
-            examples/plugins/tesseract-cli/tesseract_cli.c
-            ${OSHOT_SDK_HEADERS}
-        )
-        add_library(
-            oshot_example_word_boxes
-            MODULE
-            examples/plugins/word-boxes/word_boxes.c
-            ${OSHOT_SDK_HEADERS}
-        )
         target_link_libraries(oshot_example_export_png PRIVATE Threads::Threads)
-        target_link_libraries(oshot_example_tesseract_cli PRIVATE Threads::Threads)
         set_target_properties(
             oshot_example_uppercase_cpp
             PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON
@@ -938,8 +925,6 @@ if(NOT DISABLE_PLUGINS)
             oshot_example_join_lines
             oshot_example_extract_links
             oshot_example_export_png
-            oshot_example_tesseract_cli
-            oshot_example_word_boxes
         )
             target_include_directories(
                 ${example}

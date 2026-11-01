@@ -40,8 +40,7 @@
  * on Linux and the BSDs, links with `-undefined dynamic_lookup` on macOS, and
  * links the libcimgui import library from the SDK (sdk/lib) on Windows.
  *
- * Threads: callbacks in oshot_plugin_t run on oshot's UI thread, and an OCR
- * engine's recognize() on a worker thread oshot starts for it. Host
+ * Threads: callbacks in oshot_plugin_t run on oshot's UI thread. Host
  * functions marked "any thread" may be called from threads the plugin
  * creates; the others only from inside a callback. To get back to the UI
  * thread from a worker, use run_on_ui_thread(). A plugin must stop its own
@@ -52,9 +51,8 @@
  *
  * Coordinates: OCR words and barcodes are in the pixels of the image that
  * was scanned, the same image get_capture() returns for that selection, with
- * (0, 0) at its top-left corner. The selection, and what the draw_* functions
- * draw on the overlay, are in the pixels of the whole screenshot. None of
- * them depend on the screen's scaling.
+ * (0, 0) at its top-left corner. The selection itself is in the pixels of
+ * the whole screenshot. Neither depends on the screen's scaling.
  **/
 
 #ifdef __cplusplus
@@ -103,22 +101,11 @@ extern "C" {
  **/
 #define OSHOT_OCR_HAS_WORDS(host) OSHOT_HOST_HAS(host, mem_alloc)
 
-/* Whether oshot_ocr_result_t has `origin_x` and `origin_y` (these came with draw_text) */
-#define OSHOT_OCR_HAS_ORIGIN(host) OSHOT_HOST_HAS(host, draw_text)
-
 /* At most this many bytes of a run_process() child's stdout, and of its stderr, are kept */
 #define OSHOT_PROCESS_OUTPUT_MAX ((size_t)4 * 1024 * 1024)
 
 /* The largest icon register_action() accepts, in pixels on each side */
 #define OSHOT_ACTION_ICON_MAX 256
-
-/**
- * Flag of oshot_ocr_provider_t: the engine gets the image oshot prepares for
- * Tesseract (grey, dark text on white, scaled up to ~24 px glyphs, padded and
- * straightened) instead of the selection as it is, and oshot maps the word
- * boxes back onto the selection.
- **/
-#define OSHOT_OCR_PREPARED (1u << 0)
 
 #if defined(OSHOT_HOST)
 #  define OSHOT_PLUGIN_EXPORT
@@ -255,13 +242,6 @@ typedef struct
     /* Only there if OSHOT_OCR_HAS_WORDS(host): an older oshot's struct ends before them */
     const oshot_ocr_word_t* words; /* in reading order */
     size_t                  n_words;
-
-    /**
-     * Only there if OSHOT_OCR_HAS_ORIGIN(host): where the scanned image's
-     * top-left corner is in the whole screenshot, so a word is at (origin_x +
-     * x, origin_y + y) there. The selection may have moved since the scan began.
-     **/
-    float origin_x, origin_y;
 } oshot_ocr_result_t;
 
 /* What a run_process() on_exit callback gets. Everything in it is borrowed: only valid during the call */
@@ -307,104 +287,6 @@ typedef struct
     size_t               n_choices;
     uint32_t             flags; /* STRING: OSHOT_UI_MULTILINE, OSHOT_UI_PASSWORD */
 } oshot_setting_t;
-
-typedef struct oshot_ocr_request oshot_ocr_request_t;
-
-/**
- * What an OCR engine's recognize() gets. Everything in it is borrowed: only
- * valid during the call.
- **/
-struct oshot_ocr_request
-{
-    /* The selection (as get_capture() returns it), or with OSHOT_OCR_PREPARED the prepared image */
-    const oshot_capture_t* image;
-
-    /* One of the engine's `languages`, the one the person picked, or empty if it has none */
-    oshot_str_t language;
-
-    /**
-     * Whether oshot stopped waiting for the result, because the overlay closed,
-     * another scan started or the engine was unregistered. Check it often and
-     * return as soon as it's true; what's returned then is dropped. Any thread.
-     **/
-    bool (*cancelled)(const oshot_ocr_request_t* req);
-
-    void* host_data; /* oshot's own, for cancelled() */
-};
-
-/**
- * What an OCR engine's recognize() fills in. oshot zeroes it, with confidence
- * -1, before the call. Boxes are in the pixels of the request's image.
- **/
-typedef struct
-{
-    /**
-     * The words in reading order, as an array from mem_alloc() with each text
-     * from str_new(). oshot frees both, also when recognize() fails. NULL for none
-     **/
-    oshot_ocr_word_t* words;
-    size_t            n_words;
-
-    /**
-     * The whole text, from str_new(), or empty to let oshot join the words:
-     * spaces within a line, a line break between lines, an empty line between
-     * blocks
-     **/
-    oshot_str_t text;
-
-    /* 0-100, or -1 for the mean of the words' confidence */
-    int32_t confidence;
-} oshot_ocr_output_t;
-
-/**
- * An OCR engine, offered next to Tesseract in the text tools and in
- * Preferences once registered with register_ocr_provider().
- **/
-typedef struct
-{
-    uint32_t struct_size; /* sizeof(oshot_ocr_provider_t) */
-
-    /**
-     * Unique within the plugin: lowercase letters, digits, '-', '_' and '.',
-     * at most 64 characters. The config stores the engine as "<plugin id>/<id>"
-     **/
-    const char* id;
-    const char* name; /* shown in the engine picker */
-
-    /**
-     * What the Model picker lists for it; NULL for no picker. oshot picks the
-     * language of the Tesseract model in use if it's there, else the first
-     **/
-    const char* const* languages;
-    size_t             n_languages;
-
-    uint32_t flags; /* OSHOT_OCR_PREPARED */
-
-    /**
-     * Reads the text in req->image into *out. Runs on a worker thread oshot
-     * starts for each scan, so it may take its time, but it must check
-     * req->cancelled(). Only the host functions marked "any thread" work in it.
-     * Return OSHOT_OK, or an error with a message in *err (from str_new()),
-     * which the text tools show.
-     **/
-    oshot_err_t (*recognize)(void* user, const oshot_ocr_request_t* req, oshot_ocr_output_t* out, oshot_str_t* err);
-    void* user; /* passed to recognize() */
-} oshot_ocr_provider_t;
-
-/* What render_overlay() gets. In the pixels of the whole screenshot, unless said otherwise */
-typedef struct
-{
-    float sel_x, sel_y, sel_w, sel_h; /* the selection; sel_w and sel_h are 0 when there's none */
-    float image_w, image_h;           /* the whole screenshot */
-
-    /**
-     * For drawing with cimgui: screenshot pixel (x, y) is at
-     * (offset_x + x * scale, offset_y + y * scale) in ImGui's coordinates.
-     * The draw_* host functions convert by themselves
-     **/
-    float scale;
-    float offset_x, offset_y;
-} oshot_overlay_info_t;
 
 /* ------------------------------------------------------------------
  * Host functions, passed to init(). Fields are only ever appended:
@@ -666,57 +548,6 @@ typedef struct
                                  oshot_str_t  message,
                                  oshot_str_t  copyable,
                                  oshot_str_t* err);
-
-    /* OCR engines. Check OSHOT_HOST_HAS(host, unregister_ocr_provider) before using them. */
-
-    /**
-     * Adds an OCR engine. oshot copies what `provider` points to, except
-     * `user`. Usually called in init(). The engine goes away with
-     * unregister_ocr_provider() and when the plugin is unloaded. UI thread only.
-     * OSHOT_ERR_INVALID if the plugin already has an engine with that ID.
-     **/
-    oshot_err_t (*register_ocr_provider)(oshot_ctx_t* ctx, const oshot_ocr_provider_t* provider, oshot_str_t* err);
-
-    /**
-     * Removes an OCR engine. A recognize() still running is cancelled, but may
-     * still be running when this returns. OSHOT_ERR_NOT_FOUND if the plugin
-     * has no engine with that ID. UI thread only.
-     **/
-    oshot_err_t (*unregister_ocr_provider)(oshot_ctx_t* ctx, const char* id, oshot_str_t* err);
-
-    /* The selection and the overlay. Check OSHOT_HOST_HAS(host, draw_text) before using them. */
-
-    /**
-     * The selection, in the pixels of the whole screenshot, as it is now (also
-     * while the person drags it). OSHOT_ERR_NOT_FOUND if there's none, and
-     * OSHOT_ERR_UNSUPPORTED while no overlay is open or the person picks a
-     * monitor on Wayland. UI thread only.
-     **/
-    oshot_err_t (*get_selection)(oshot_ctx_t* ctx, float* x, float* y, float* w, float* h, oshot_str_t* err);
-
-    /**
-     * Moves the selection, or makes one if there's none, as if the person had
-     * drawn it there. It's clamped to the screenshot, and every plugin's
-     * on_selection_changed() is called for it, this one's too.
-     * OSHOT_ERR_UNSUPPORTED while the person draws, moves or resizes the
-     * selection (their mouse wins), and in the cases get_selection() returns
-     * it for. OSHOT_ERR_INVALID if nothing of it is on the screenshot. UI
-     * thread only.
-     **/
-    oshot_err_t (*set_selection)(oshot_ctx_t* ctx, float x, float y, float w, float h, oshot_str_t* err);
-
-    /**
-     * Draw on the overlay, over the screenshot and the annotations and under
-     * oshot's windows. Positions are in the pixels of the whole screenshot,
-     * and what's outside it is cut off. Colors are 0xRRGGBBAA, thickness is in
-     * screen pixels. Never part of a saved or copied image. UI thread only, and
-     * only inside render_overlay(); anywhere else they do nothing and log once.
-     **/
-    /* A rectangle's outline, or a filled one if thickness <= 0 */
-    void (*draw_rect)(oshot_ctx_t* ctx, float x, float y, float w, float h, uint32_t rgba, float thickness);
-    void (*draw_line)(oshot_ctx_t* ctx, float x1, float y1, float x2, float y2, uint32_t rgba, float thickness);
-    /* (x, y) is the text's top-left corner; size is in screen pixels, 0 for oshot's font size */
-    void (*draw_text)(oshot_ctx_t* ctx, float x, float y, oshot_str_t text, uint32_t rgba, float size);
 } oshot_host_t;
 
 /* ------------------------------------------------------------------
@@ -837,13 +668,6 @@ typedef struct
      * action (register_action()).
      **/
     bool (*transform_text)(void* state, const char* buffer_id, oshot_str_t in, oshot_str_t* out);
-
-    /**
-     * Draws on the overlay every frame, with the draw_* host functions or
-     * cimgui (then imgui_version must be set). Called after the annotations,
-     * while the overlay is shown, not for the frames read back as the image.
-     **/
-    void (*render_overlay)(void* state, const oshot_overlay_info_t* info);
 } oshot_plugin_t;
 
 /**

@@ -37,7 +37,6 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -53,7 +52,6 @@
 #  include "plugin_manager.hh"
 
 struct plugin_runtime_t;
-class OcrJob;
 #endif
 
 // Annotation tools and toolbar buttons, in toolbar order.
@@ -252,8 +250,6 @@ struct inputs_results_t
 {
     std::string  ocr_path;
     std::string  ocr_model;
-    std::string  ocr_engine;           // as in the config's ocr-engine
-    std::string  ocr_engine_language;  // the language picked for a plugin's engine
     std::string  ocr_download_repo;
     std::string  ocr_model_downloaded_path;  // where the OCR model downloader saves models
     ocr_result_t ocr_results;
@@ -529,37 +525,6 @@ public:
     // Text buffers plugins read and write by ID (OSHOT_TEXT_OCR, OSHOT_TEXT_BARCODE)
     auto& GetImGuiIDTexts() { return m_imgui_id_texts; }
 
-#ifndef DISABLE_PLUGINS
-    // ------------------------------
-    // Plugins
-    // ------------------------------
-    // The selection in screenshot pixels, for get_selection(). Empty when there's none
-    [[nodiscard]] std::optional<region_t> GetPluginSelection() const;
-
-    // Whether the person is drawing, moving or resizing the selection, or an annotation
-    [[nodiscard]] bool IsDraggingSelection() const
-    {
-        return m_input_owner == InputOwner::Selection || m_input_owner == InputOwner::AnnSelection;
-    }
-
-    /**
-     * Move the selection, or make one, for set_selection()
-     * @param x, y, w, h In screenshot pixels, clamped to the screenshot
-     * @return false if none of it is on the screenshot
-     **/
-    bool SetPluginSelection(float x, float y, float w, float h);
-
-    /**
-     * Where a screenshot pixel is drawn, for the draw_* host functions
-     * @param x, y In screenshot pixels
-     * @return In ImGui's coordinates
-     **/
-    [[nodiscard]] ImVec2 ImageToScreen(float x, float y) const
-    {
-        return { m_image_origin.x + (x / m_image_scale), m_image_origin.y + (y / m_image_scale) };
-    }
-#endif
-
     [[nodiscard]] bool IsActive() const { return m_state != ToolState::Idle; }
     [[nodiscard]] bool IsCompleted() const { return m_completed_op != SavingOp::kNone; }
     capture_result_t&  GetRawScreenshot() { return m_screenshot; }
@@ -770,12 +735,6 @@ private:
     bool m_show_ocr_original     = false;
     bool m_show_barcode_original = false;
 
-    // The scan a plugin's OCR engine is running, until PollOcrJob() takes its result
-    std::shared_ptr<OcrJob> m_ocr_job;
-
-    // Where the running scan's image starts in the screenshot, see ocr_result_t::origin_x
-    region_t m_ocr_job_region;
-
     std::shared_ptr<plugin_index_state_t> m_index_state = std::make_shared<plugin_index_state_t>();
     std::thread                           m_install_thread;
     std::thread                           m_index_thread;
@@ -910,21 +869,6 @@ private:
 
     // Calls on_ocr_done() with what OCR read, or with nothing (nullptr) after it read nothing or failed
     void NotifyPluginsOfOcr(const ocr_result_t* res);
-
-    /**
-     * Start reading `img` with the OCR engine m_inputs.ocr_engine picks, if it's a plugin's
-     * @return false if it's Tesseract's, or the plugin's engine isn't loaded
-     **/
-    bool StartPluginOcr(const capture_result_t& img);
-
-    // Shows the result of m_ocr_job once it's done, like RunOcr() does Tesseract's
-    void PollOcrJob();
-
-    // Stops waiting for m_ocr_job, which is cancelled
-    void CancelOcrJob();
-
-    // Calls the plugins' render_overlay(), clipped to the screenshot
-    void DrawPluginOverlays();
 
     // Runs the text transformers over a scan's text, keeping what it was in `original`
     void TransformText(std::string& text, std::string& original, const char* buffer_id);

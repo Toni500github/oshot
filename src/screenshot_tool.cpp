@@ -314,49 +314,6 @@ void apply_imgui_theme()
     style._NextFrameFontSizeBase = interface_font_size(ImGui::GetDefaultFont()->LegacySize);
 }
 
-#ifndef DISABLE_PLUGINS
-// The Engine combo of the text tools and Preferences: Tesseract, then the plugins' OCR engines.
-// Returns true if `engine` (an ocr-engine value) changed
-static bool draw_ocr_engine_combo(const char* label, std::string& engine)
-{
-    const std::vector<std::string> engines = list_ocr_providers();
-    const OcrEngineKind            kind    = resolve_ocr_engine(engine, engines);
-
-    // "Name (plugin name)", or the value itself for one that isn't loaded
-    auto engine_name = [](const std::string& key) {
-        plugin_runtime_t*            rt = nullptr;
-        const plugin_ocr_provider_t* p  = find_ocr_provider(key, &rt);
-        if (!p)
-            return fmt::format(fmt::runtime(_("{} (not loaded)")), key);
-        return p->name == rt->plugin->name ? p->name : fmt::format("{} ({})", p->name, rt->plugin->name);
-    };
-
-    const std::string preview = kind == OcrEngineKind::Tesseract ? "Tesseract" : engine_name(engine);
-    bool              changed = false;
-    if (ImGui::BeginCombo(label, preview.c_str()))
-    {
-        if (ImGui::Selectable("Tesseract", kind == OcrEngineKind::Tesseract))
-        {
-            changed = engine != "tesseract";
-            engine  = "tesseract";
-        }
-        for (const std::string& key : engines)
-        {
-            const bool selected = kind == OcrEngineKind::Plugin && key == engine;
-            if (ImGui::Selectable(fmt::format("{}##{}", engine_name(key), key).c_str(), selected))
-            {
-                changed = engine != key;
-                engine  = key;
-            }
-            if (selected)
-                ImGui::SetItemDefaultFocus();
-        }
-        ImGui::EndCombo();
-    }
-    return changed;
-}
-#endif
-
 // ------------------------------
 // Lifecycle
 // ------------------------------
@@ -441,8 +398,6 @@ Result<> ScreenshotTool::StartWindow()
 
     m_inputs        = { .ocr_path                  = g_config->File.ocr_path,
                         .ocr_model                 = g_config->File.ocr_model,
-                        .ocr_engine                = g_config->File.ocr_engine,
-                        .ocr_engine_language       = "",
                         .ocr_download_repo         = g_config->File.ocr_get_repo,
                         .ocr_model_downloaded_path = g_config->GetConfigDirPath() + DIR_SEP_STR "models",
                         .ocr_results               = {},
@@ -521,8 +476,6 @@ void ScreenshotTool::RenderOverlay()
 #ifndef DISABLE_PLUGINS
     for (auto& [id, rt] : g_plugins)
         rt.RunUiTasks();
-    PollOcrJob();
-    reap_ocr_jobs();
 #endif
 
     const bool subwindow_shown = m_state == ToolState::Selected && m_show_window.Has(SubWindow::MainTextTools) &&
@@ -603,9 +556,6 @@ void ScreenshotTool::RenderOverlay()
 
         DrawAnnotations();
         DrawDarkOverlay();
-#ifndef DISABLE_PLUGINS
-        DrawPluginOverlays();
-#endif
         DrawAnnotationResizeBorder();
         DrawSelectionBorder();
         const bool swallowed_deselect_click = HandleAnnotationSelectionInput();
@@ -1888,9 +1838,8 @@ void ScreenshotTool::ClampSelectionToImage(selection_info_t& sel)
 
 void ScreenshotTool::SyncRuntimeFromConfig()
 {
-    m_inputs.ocr_path   = g_config->File.ocr_path;
-    m_inputs.ocr_model  = g_config->File.ocr_model;
-    m_inputs.ocr_engine = g_config->File.ocr_engine;
+    m_inputs.ocr_path  = g_config->File.ocr_path;
+    m_inputs.ocr_model = g_config->File.ocr_model;
     RefreshOcrModels();
 
     m_inputs.ann_font               = g_config->File.fonts.empty() ? "" : g_config->File.fonts[0];
@@ -2183,13 +2132,6 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
 {
     ErrorContext<OcrError>& ectx = m_ocr_errors;
 
-#ifndef DISABLE_PLUGINS
-    // A new scan, so the result of the one still running isn't wanted anymore
-    CancelOcrJob();
-    if (StartPluginOcr(img))
-        return;
-#endif
-
     const Result<>& configure_res = m_ocr_api.Configure(m_inputs.ocr_path.c_str(), m_inputs.ocr_model.c_str());
     if (!configure_res.ok())
     {
@@ -2212,10 +2154,6 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
 
     ClearError(ectx, OcrError::FailedToOCR);
     m_inputs.ocr_results = std::move(result.get());
-
-    const region_t region         = GetActiveRegion();
-    m_inputs.ocr_results.origin_x = region.x;
-    m_inputs.ocr_results.origin_y = region.y;
 #ifndef DISABLE_PLUGINS
     TransformText(m_inputs.ocr_results.data, m_inputs.ocr_original, OSHOT_TEXT_OCR);
     NotifyPluginsOfOcr(&m_inputs.ocr_results);
@@ -2979,69 +2917,36 @@ void ScreenshotTool::DrawOcrTools()
     const bool invalid_path  = HasError(ectx, OcrError::InvalidPath);
     const bool invalid_model = HasError(ectx, OcrError::InvalidModel);
 
-#ifndef DISABLE_PLUGINS
-    // --- Engine: Tesseract, or one from a plugin, which then has its own languages ---
-    const plugin_ocr_provider_t* engine = nullptr;
-    if (!list_ocr_providers().empty() || resolve_ocr_engine(m_inputs.ocr_engine, {}) != OcrEngineKind::Tesseract)
-    {
-        draw_ocr_engine_combo(_("Engine"), m_inputs.ocr_engine);
-        ImGui::SameLine();
-        HelpMarker(_("Tesseract, or an OCR engine a plugin adds. The default is set in Preferences"));
-
-        engine = find_ocr_provider(m_inputs.ocr_engine);
-        if (!engine && resolve_ocr_engine(m_inputs.ocr_engine, {}) != OcrEngineKind::Tesseract)
-            ImGui::TextColored(Colors::YELLOW, "%s", _("Its plugin isn't loaded, so Tesseract reads the text"));
-    }
-
-    if (engine)
-    {
-        std::string& lang = m_inputs.ocr_engine_language;
-        lang              = pick_ocr_language(engine->languages, lang, m_inputs.ocr_model);
-
-        if (!engine->languages.empty() && ImGui::BeginCombo(_("Model"), lang.c_str(), ImGuiComboFlags_HeightLarge))
-        {
-            for (const std::string& l : engine->languages)
-                if (ImGui::Selectable(l.c_str(), l == lang))
-                    lang = l;
-            ImGui::EndCombo();
-        }
-    }
-#else
-    constexpr const void* engine = nullptr;
-#endif
-
     // --- Path input ---
-    if (!engine)
+    push_error_style(invalid_path);
+    push_error_style(need_to_scan);
+    draw_input_text_folder(_("Path"), "##ocr_path", [&] { SetError(ectx, OcrError::NeedToScanDir); }, ocr_path);
+    if (need_to_scan && ImGui::Button(_("Scan")))
+        RefreshOcrModels();
+    ImGui::SameLine();
+    const auto& it    = std::ranges::find(m_ocr_models_list, ocr_model);
+    item_selected_idx = (it != m_ocr_models_list.end()) ? std::distance(m_ocr_models_list.begin(), it) : 0;
+    pop_error_label(invalid_path, _("Invalid!"));
+    pop_error_label(need_to_scan, _("Need to scan new directory"));
+    ImGui::SameLine();
+    HelpMarker(_("Full path to the OCR models (.traineddata). Supports drag-and-drop"));
+
+    if (invalid_path)
     {
-        push_error_style(invalid_path);
-        push_error_style(need_to_scan);
-        draw_input_text_folder(_("Path"), "##ocr_path", [&] { SetError(ectx, OcrError::NeedToScanDir); }, ocr_path);
-        if (need_to_scan && ImGui::Button(_("Scan")))
-            RefreshOcrModels();
-        ImGui::SameLine();
-        const auto& it    = std::ranges::find(m_ocr_models_list, ocr_model);
-        item_selected_idx = (it != m_ocr_models_list.end()) ? std::distance(m_ocr_models_list.begin(), it) : 0;
-        pop_error_label(invalid_path, _("Invalid!"));
-        pop_error_label(need_to_scan, _("Need to scan new directory"));
-        ImGui::SameLine();
-        HelpMarker(_("Full path to the OCR models (.traineddata). Supports drag-and-drop"));
+        ImGui::Spacing();
+        ImGui::TextColored((0x0AEFFFF_rgba), "%s", _("Suggestions:"));
+        ImGui::Indent();
 
-        if (invalid_path)
+        if (g_is_nix)
         {
+            constexpr const char* cmd = "nix build --no-link --print-out-paths nixpkgs#tesseract";
+            ImGui::TextWrapped(
+                "%s",
+                _("Run the following command in your terminal, then update the OCR path in the Preferences window:"));
+            ImGui::TextColored((0xFFCC33FF_rgba), cmd);
+            CreateCopyTextButton(cmd, _("Copy command"));
             ImGui::Spacing();
-            ImGui::TextColored((0x0AEFFFF_rgba), "%s", _("Suggestions:"));
-            ImGui::Indent();
-
-            if (g_is_nix)
-            {
-                constexpr const char* cmd = "nix build --no-link --print-out-paths nixpkgs#tesseract";
-                ImGui::TextWrapped("%s",
-                                   _("Run the following command in your terminal, then update the OCR path in the "
-                                     "Preferences window:"));
-                ImGui::TextColored((0xFFCC33FF_rgba), cmd);
-                CreateCopyTextButton(cmd, _("Copy command"));
-                ImGui::Spacing();
-            }
+        }
 
 #if !OSHOT_WINDOWS
         if (!g_is_flatpak)
@@ -3099,12 +3004,10 @@ void ScreenshotTool::DrawOcrTools()
             ImGui::TextColored(Colors::RED, "%s", _("Invalid!"));
         }
     }
-    }
 
     // --- Extract button + result details ---
-    if (engine || (!invalid_path && !invalid_model && !need_to_scan))
+    if (!invalid_path && !invalid_model && !need_to_scan)
     {
-        // While a plugin's engine reads, this starts over and drops what it would return
         if (ImGui::Button(_("Extract Text")))
             RequestScan(ScanType::Ocr);
 
@@ -3113,32 +3016,14 @@ void ScreenshotTool::DrawOcrTools()
         if (HasError(ectx, OcrError::FailedToOCR))
         {
             ImGui::SameLine();
-#ifndef DISABLE_PLUGINS
-            if (engine)
-                ImGui::TextColored(Colors::RED,
-                                   _("%s failed: %s"),
-                                   engine->name.c_str(),
-                                   GetError(ectx, OcrError::FailedToOCR).c_str());
-            else
-#endif
-                ImGui::TextColored(
-                    Colors::RED, _("Failed to initialize OCR: %s"), GetError(ectx, OcrError::FailedToOCR).c_str());
+            ImGui::TextColored(
+                Colors::RED, _("Failed to initialize OCR: %s"), GetError(ectx, OcrError::FailedToOCR).c_str());
         }
         else
         {
             ImGui::SameLine();
             HelpMarker(_("If results seem off, try Edit > Optimize OCR for..."));
         }
-
-#ifndef DISABLE_PLUGINS
-        if (m_ocr_job)
-        {
-            ImGui::TextColored(Colors::CYAN, _("Reading with %s..."), m_ocr_job->provider.name.c_str());
-            ImGui::SameLine();
-            if (ImGui::SmallButton(_("Cancel")))
-                CancelOcrJob();
-        }
-#endif
 
         if (m_inputs.ocr_results.confidence > 0 && ImGui::TreeNode(_("Details")))
         {
@@ -3152,10 +3037,7 @@ void ScreenshotTool::DrawOcrTools()
 
             ImGui::TextColored(confidence_color, "%d%%", m_inputs.ocr_results.confidence);
 
-            if (m_inputs.ocr_results.engine.empty())
-                ImGui::BulletText("PSM: %s", m_inputs.ocr_results.psm_str.c_str());
-            else
-                ImGui::BulletText(_("Engine: %s"), m_inputs.ocr_results.engine.c_str());
+            ImGui::BulletText("PSM: %s", m_inputs.ocr_results.psm_str.c_str());
             ImGui::TreePop();
         }
     }
@@ -3922,17 +3804,6 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     ImGui::TextUnformatted(_("Default OCR model"));
     ImGui::InputText("##config_ocr_model", &g_config->File.ocr_model);
     ImGui::Spacing();
-
-#ifndef DISABLE_PLUGINS
-    // --- OCR engine ---
-    ImGui::TextUnformatted(_("Default OCR engine"));
-    ImGui::SameLine();
-    HelpMarker(
-        _("Tesseract, or an OCR engine a plugin adds. Tesseract reads the text while the engine's plugin "
-          "isn't loaded."));
-    draw_ocr_engine_combo("##config_ocr_engine", g_config->File.ocr_engine);
-    ImGui::Spacing();
-#endif
 
     // --- Capture delay ---
     ImGui::TextUnformatted(_("Capture delay"));
@@ -5304,8 +5175,6 @@ void ScreenshotTool::StartPluginsCapture()
 
 void ScreenshotTool::EndPluginsCapture()
 {
-    CancelOcrJob();
-
     // Results reported from here on, or by threads still running, become notifications
     set_plugin_overlay_open(false);
     for (auto& [id, rt] : g_plugins)
@@ -5337,8 +5206,6 @@ void ScreenshotTool::NotifyPluginsOfOcr(const ocr_result_t* res)
         .psm        = res ? res->psm : -1,
         .words      = words.data(),
         .n_words    = words.size(),
-        .origin_x   = res ? float(res->origin_x) : 0.0f,
-        .origin_y   = res ? float(res->origin_y) : 0.0f,
     };
     for (auto& [id, rt] : g_plugins)
     {
@@ -5356,108 +5223,14 @@ void ScreenshotTool::NotifyPluginsOfSelection()
     if (m_state != ToolState::Selected || m_input_owner == InputOwner::Selection || !has_selection)
         return;
 
-    // Nothing of it is on the screenshot, e.g. for a frame while a scaled output's scale arrives
     const region_t sel = GetActiveRegion();
-    if (sel == m_plugin_selection || sel.w <= 0 || sel.h <= 0)
+    if (sel == m_plugin_selection)
         return;
     m_plugin_selection = sel;
 
     for (auto& [id, rt] : g_plugins)
         if (OSHOT_PLUGIN_HAS(rt.plugin, on_selection_changed) && rt.plugin->on_selection_changed)
             rt.plugin->on_selection_changed(rt.state, float(sel.x), float(sel.y), float(sel.w), float(sel.h));
-}
-
-std::optional<region_t> ScreenshotTool::GetPluginSelection() const
-{
-    if (m_main_sel.selection.get_width() <= 0 || m_main_sel.selection.get_height() <= 0)
-        return std::nullopt;
-    return GetActiveRegion();
-}
-
-bool ScreenshotTool::SetPluginSelection(float x, float y, float w, float h)
-{
-    const float x0 = std::max(x, 0.0f), y0 = std::max(y, 0.0f);
-    const float x1 = std::min(x + w, float(m_screenshot.w)), y1 = std::min(y + h, float(m_screenshot.h));
-    if (!(x1 - x0 >= 1.0f && y1 - y0 >= 1.0f))
-        return false;
-
-    const ImVec2 start = ImageToScreen(x0, y0), end = ImageToScreen(x1, y1);
-    m_main_sel.selection = { .start = { .x = start.x, .y = start.y }, .end = { .x = end.x, .y = end.y } };
-
-    // Like a click outside a selected annotation, which deselects it
-    m_current_annotation_resize = nullptr;
-    m_state                     = ToolState::Selected;
-    UpdateAnnsToolbarPos();
-    return true;
-}
-
-bool ScreenshotTool::StartPluginOcr(const capture_result_t& img)
-{
-    plugin_runtime_t*            rt       = nullptr;
-    const plugin_ocr_provider_t* provider = find_ocr_provider(m_inputs.ocr_engine, &rt);
-    if (!provider)
-        return false;
-
-    std::string language = pick_ocr_language(provider->languages, m_inputs.ocr_engine_language, m_inputs.ocr_model);
-
-    ClearError(m_ocr_errors, OcrError::FailedToOCR);
-    m_ocr_job_region = GetActiveRegion();
-    m_ocr_job        = start_ocr_job(*rt, *provider, img, std::move(language));
-    return true;
-}
-
-void ScreenshotTool::PollOcrJob()
-{
-    if (!m_ocr_job || !m_ocr_job->Done())
-        return;
-
-    Result<ocr_result_t> result = m_ocr_job->TakeResult();
-    m_ocr_job.reset();
-    if (!result.ok())
-    {
-        SetError(m_ocr_errors, OcrError::FailedToOCR, result.error_v());
-        NotifyPluginsOfOcr(nullptr);
-        return;
-    }
-
-    m_inputs.ocr_results          = std::move(result.get());
-    m_inputs.ocr_results.origin_x = m_ocr_job_region.x;
-    m_inputs.ocr_results.origin_y = m_ocr_job_region.y;
-    TransformText(m_inputs.ocr_results.data, m_inputs.ocr_original, OSHOT_TEXT_OCR);
-    NotifyPluginsOfOcr(&m_inputs.ocr_results);
-}
-
-void ScreenshotTool::CancelOcrJob()
-{
-    if (m_ocr_job)
-        m_ocr_job->Cancel();
-    m_ocr_job.reset();
-}
-
-void ScreenshotTool::DrawPluginOverlays()
-{
-    const std::optional<region_t> sel = GetPluginSelection();
-    const oshot_overlay_info_t    info{
-        .sel_x    = sel ? float(sel->x) : 0.0f,
-        .sel_y    = sel ? float(sel->y) : 0.0f,
-        .sel_w    = sel ? float(sel->w) : 0.0f,
-        .sel_h    = sel ? float(sel->h) : 0.0f,
-        .image_w  = float(m_screenshot.w),
-        .image_h  = float(m_screenshot.h),
-        .scale    = 1.0f / m_image_scale,
-        .offset_x = m_image_origin.x,
-        .offset_y = m_image_origin.y,
-    };
-
-    ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
-    for (auto& [id, rt] : g_plugins)
-    {
-        if (!OSHOT_PLUGIN_HAS(rt.plugin, render_overlay) || !rt.plugin->render_overlay)
-            continue;
-        draw_list->PushClipRect(m_image_origin, m_image_end, true);
-        rt.RenderOverlay(info);
-        draw_list->PopClipRect();
-    }
 }
 
 void ScreenshotTool::TransformText(std::string& text, std::string& original, const char* buffer_id)

@@ -6,8 +6,7 @@
 Plugins only work in the `-plugins` builds of oshot. A plugin is a shared library (`.so`, `.dll`, or `.dylib` or `.so` on macOS) with a plain
 C interface, so it can be written in any language that can export a C function: C, C++, Rust, Zig, and so on.
 [`examples/plugins`](../examples/plugins) has the same complete plugin in each of those four languages, one that
-uses cimgui, one that uses the scan results and host services, two text transformers, an export action, an OCR engine
-and one that draws on the overlay.
+uses cimgui, one that uses the scan results and host services, two text transformers and an export action.
 
 What a plugin can do:
 
@@ -16,8 +15,6 @@ What a plugin can do:
 - draw anything else with Dear ImGui itself, through [cimgui](https://github.com/cimgui/cimgui);
 - read and replace the OCR and barcode text, and read the selected image, with or without the annotations;
 - rewrite every new OCR and barcode text before it's shown, in a chain the person orders;
-- read the text itself, as an OCR engine the person picks instead of Tesseract;
-- draw on the overlay, over the screenshot, and read or move the selection;
 - add buttons to the toolbar and entries to the text tools' menu, and show their progress and result in the overlay;
 - react when text has been extracted, with each word's position and confidence, and when QR codes or barcodes have
   been decoded, with their positions;
@@ -145,16 +142,11 @@ OSHOT_PLUGIN_EXPORT const oshot_plugin_t* oshot_plugin_entry(void) { return &des
 
 ### Scan results
 
-`on_ocr_done()` gets the text, and since the host services came in, every word the OCR engine read (`words`,
-`n_words`): its text, box, confidence (0-100), and the indexes of its text line and block, in reading order. Check
+`on_ocr_done()` gets the text, and since the host services came in, every word Tesseract read (`words`, `n_words`):
+its text, box, confidence (0-100), and the indexes of its text line and block, in reading order. Check
 `OSHOT_OCR_HAS_WORDS(host)` before reading them: an older oshot passes a shorter `oshot_ocr_result_t`. It also runs
 when OCR read nothing or failed, with empty text, no words and a confidence and `psm` of -1, so the plugin can clear
-what it showed (plugins built before `on_barcodes_done` existed only get it with text). `psm` is also -1 when a
-plugin's [OCR engine](#ocr-engines) read the text.
-
-`origin_x` and `origin_y` say where the scanned image's top-left corner is in the whole screenshot, so a word is at
-`(origin_x + x, origin_y + y)` there, which is what the [draw functions](#drawing-on-the-overlay) take. The selection
-may have moved since the scan began (a plugin's engine can take a while). Check `OSHOT_OCR_HAS_ORIGIN(host)` first.
+what it showed (plugins built before `on_barcodes_done` existed only get it with text).
 
 `on_barcodes_done(state, codes, n)` runs after every QR code and barcode scan, with one `oshot_barcode_t` per code
 found (two codes with the same data are two entries): ZBar's name for its type (`"QR-Code"`, `"EAN-13"`, ...), its
@@ -191,8 +183,8 @@ static bool my_transform(void* state, const char* buffer_id, oshot_str_t in, osh
   installed since) run after the others, sorted by ID.
 - It runs on the UI thread and the overlay waits for it, so keep it fast: oshot logs a transformer that takes over
   100 ms, once per plugin. Slow work, like a translation over the network, belongs in an [action](#actions).
-- `on_ocr_done()` runs after the chain and gets the transformed text. Its `words` stay as the OCR engine read them,
-  so their text no longer matches the transformed text.
+- `on_ocr_done()` runs after the chain and gets the transformed text. Its `words` stay as Tesseract read them, so
+  their text no longer matches the transformed text.
 - `get_text()` returns the transformed text. A `set_text()` from `on_ocr_done()` still works and replaces what the
   chain made, but with two plugins the last one wins, which is why the chain exists.
 - The text tools window keeps the text from before the chain: an "Original" checkbox above the output shows it when a
@@ -257,102 +249,7 @@ In the tray, oshot keeps plugins loaded from one capture to the next, so a plugi
   `on_capture_start()` gets one, also when oshot exits during a capture (then before `destroy()`). `get_capture()`
   and `open_url()` don't work in it anymore.
 - `on_selection_changed(state, x, y, w, h)`: once the person has finished drawing, moving or resizing the selection,
-  not on every frame of the drag; also after Ctrl+A and `set_selection()`. It's in the pixels of the whole
-  screenshot.
-
-A plugin can also read and set the selection, in the same pixels, on the UI thread:
-
-- `get_selection(ctx, &x, &y, &w, &h, err)` returns it as it is now, also during a drag. `OSHOT_ERR_NOT_FOUND` when
-  there's none.
-- `set_selection(ctx, x, y, w, h, err)` moves it, or makes one when there's none, as if the person had drawn it there:
-  it's clamped to the screenshot, the toolbar moves with it, and every plugin's `on_selection_changed()` runs for it,
-  the caller's too. While the person draws, moves or resizes the selection it returns `OSHOT_ERR_UNSUPPORTED`, since
-  their mouse wins; `OSHOT_ERR_INVALID` if none of it is on the screenshot.
-- Both return `OSHOT_ERR_UNSUPPORTED` without an overlay (in `on_capture_end()`) and while the person picks a monitor
-  on Wayland.
-
-### OCR engines
-
-A plugin can read the text itself, with another OCR engine (PaddleOCR, a cloud service, the system's own) or another
-way of running Tesseract. It registers an engine, usually in `init()`, and the person picks it in the text tools'
-Engine combo, next to Tesseract, or as the default in Preferences (the config's `ocr-engine`, saved as
-`"<plugin id>/<engine id>"`):
-
-```c
-static const char* const languages[] = { "eng", "deu" };
-
-static oshot_err_t my_recognize(void* user, const oshot_ocr_request_t* req, oshot_ocr_output_t* out, oshot_str_t* err)
-{
-    state_t* s = user;
-    /* read req->image (RGBA) in req->language, checking req->cancelled(req) now and then */
-    out->words   = s->host->mem_alloc(n * sizeof(oshot_ocr_word_t));
-    out->n_words = n; /* each word's text from str_new(), its box in req->image's pixels */
-    return OSHOT_OK;
-}
-
-/* in init() */
-const oshot_ocr_provider_t engine = {
-    .struct_size = sizeof(oshot_ocr_provider_t),
-    .id          = "cloud",
-    .name        = "My cloud OCR",
-    .languages   = languages,
-    .n_languages = 2,
-    .flags       = 0,
-    .recognize   = my_recognize,
-    .user        = s,
-};
-host->register_ocr_provider(ctx, &engine, NULL);
-```
-
-- `recognize()` runs on a worker thread oshot starts for each scan, so it can take its time without freezing the
-  overlay. Only the host functions marked "any thread" work in it (see [Threads](#threads)).
-- `req->cancelled(req)` turns true when oshot stops waiting: the overlay closed, another scan started, the person
-  pressed Cancel, or the engine was unregistered. Check it often and return; what's returned then is dropped.
-- The words go in `out->words`, an array from `mem_alloc()`, with each text from `str_new()`; oshot frees them, also
-  after a failure. Leave `out->text` empty to let oshot join the words (spaces within a line, a line break between
-  lines, an empty line between blocks), and `out->confidence` at -1 for the mean of the words'. Words without text or
-  with a box that isn't a number are skipped, and logged.
-- On failure, return an error with a message in `*err` (from `str_new()`): the text tools show it in red. oshot
-  doesn't try Tesseract then.
-- `req->image` is the selection as `get_capture()` returns it. With `OSHOT_OCR_PREPARED` in `flags` it's the image
-  oshot prepares for its own Tesseract instead: grey with dark text on white, scaled to about 24 px glyphs, padded
-  and straightened. The boxes are in the pixels of whichever image the engine got, and oshot maps them back onto the
-  selection.
-- `languages` is what the Model combo lists for the engine. oshot passes the one picked in `req->language`: the
-  language of the Tesseract model in use if the engine has it, else its first one. NULL means no Model combo and an
-  empty `req->language`.
-- oshot copies the engine when it's registered. To change its languages or flags, `unregister_ocr_provider(ctx, id,
-  err)` and register it again.
-- If the chosen engine's plugin is disabled, uninstalled or doesn't register it, Tesseract reads the text, and the text
-  tools say so. The choice stays saved, so the engine is used again once it's back.
-- The result goes through the [text transformers](#text-transformers), `on_ocr_done()` and the text tools like
-  Tesseract's.
-
-[`examples/plugins/tesseract-cli`](../examples/plugins/tesseract-cli) runs the `tesseract` program with
-`run_process()`, with its languages as the models and a setting for the prepared image.
-
-### Drawing on the overlay
-
-`render_overlay(state, info)` runs every frame the overlay shows, after the annotations and under oshot's windows, to
-highlight words, show a translation over the text or preview what an action would do. It draws with:
-
-| Function | Draws |
-| -------- | ----- |
-| `draw_rect(ctx, x, y, w, h, rgba, thickness)` | A rectangle's outline, or a filled one with `thickness <= 0` |
-| `draw_line(ctx, x1, y1, x2, y2, rgba, thickness)` | A line |
-| `draw_text(ctx, x, y, text, rgba, size)` | Text from its top-left corner; `size` 0 is oshot's font size |
-
-- Positions are in the pixels of the whole screenshot, like the selection, and oshot converts them for the screen,
-  also on a scaled output (HiDPI, Retina). Colors are `0xRRGGBBAA`, thickness and size in screen pixels. What falls
-  outside the screenshot is cut off.
-- The drawing is never part of a saved, copied or scanned image, and isn't drawn for the frames oshot reads back.
-- The functions work only inside `render_overlay()`; anywhere else they do nothing and oshot logs it once.
-- `info` has the selection (`sel_w` and `sel_h` are 0 without one) and the screenshot's size. A plugin that draws with
-  cimgui instead uses `scale` and `offset_x/offset_y`: pixel `(x, y)` is at `(offset_x + x * scale, offset_y + y *
-  scale)` in ImGui's coordinates. Such a plugin sets `imgui_version`, as with any cimgui use.
-
-[`examples/plugins/word-boxes`](../examples/plugins/word-boxes) outlines each OCR word, colored by confidence, and
-fits the selection to the words with an action.
+  not on every frame of the drag; also after Ctrl+A. It's in the pixels of the whole screenshot.
 
 ### Host services
 
@@ -488,14 +385,11 @@ the same oshot version, so the plugin checks one of those: `OSHOT_OCR_HAS_WORDS(
 oshot passes in arrays (`oshot_ocr_word_t`, `oshot_barcode_t`) and `oshot_setting_t` never change.
 
 A plugin with a `transform_text` or actions checks `OSHOT_HOST_HAS(host, report_result)`: an older oshot never calls
-the transformer and has no actions. One with an OCR engine checks `OSHOT_HOST_HAS(host, unregister_ocr_provider)`,
-and one with `render_overlay` or the selection functions checks `OSHOT_HOST_HAS(host, draw_text)`.
+the transformer and has no actions.
 
 ### Threads
 
-All callbacks run on oshot's UI thread, except an OCR engine's `recognize()`, which runs on a worker thread oshot
-starts for each scan. A plugin may start its own threads (for network requests, say). From those, and from
-`recognize()`:
+All callbacks run on oshot's UI thread. A plugin may start its own threads (for network requests, say). From those:
 
 - `log`, `get_data_dir`, `str_new`/`str_free`, `run_on_ui_thread`, `mem_alloc`/`mem_free`, `capture_free`,
   `run_process`, `kill_process`, `report_progress` and `report_result` can be called;
