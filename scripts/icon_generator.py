@@ -165,7 +165,7 @@ def create_counter_bubble_pixels(circle_thickness=1.5):
 
     return pixels
 
-def create_icon_from_image(image_path, use_rgba=False, threshold=128):
+def create_icon_from_image(image_path, use_rgba=False, size=24, threshold=128):
     try:
         from PIL import Image
     except ImportError:
@@ -173,12 +173,42 @@ def create_icon_from_image(image_path, use_rgba=False, threshold=128):
         return None
 
     try:
-        img = Image.open(image_path).convert("RGBA")
-        img = img.resize((24, 24), Image.Resampling.LANCZOS)
+        if image_path.endswith(".svg"):
+            # Render SVGs with rsvg-convert. Small ones (pixel-grid icons like oshot-tray.svg) at the
+            # largest whole multiple of their size that fits, so their pixels stay sharp, bigger ones
+            # straight at the target size (sharper than downscaling a PNG)
+            import io
+            import subprocess
+            import xml.etree.ElementTree as ET
+
+            root = ET.parse(image_path).getroot()
+            svg_w = int(float(root.get("width", str(size))))
+            svg_h = int(float(root.get("height", str(size))))
+            scale = min(size // svg_w, size // svg_h)
+            if scale >= 1:
+                cmd = ["rsvg-convert", "-w", str(svg_w * scale), "-h", str(svg_h * scale), image_path]
+            else:
+                cmd = ["rsvg-convert", "-w", str(size), "-h", str(size), image_path]
+            img = Image.open(io.BytesIO(subprocess.run(cmd, check=True, capture_output=True).stdout))
+        else:
+            img = Image.open(image_path)
+        img = img.convert("RGBA")
+
+        if img.width <= size and img.height <= size:
+            # Center smaller images instead of scaling them up, so their pixels stay sharp
+            canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+            canvas.paste(img, ((size - img.width) // 2, (size - img.height) // 2))
+            img = canvas
+        else:
+            img = img.resize((size, size), Image.Resampling.LANCZOS)
+
+        # Decide per image, not per pixel, whether the shape is in the alpha channel,
+        # or the opaque pixels of a transparent icon would go through the brightness path
+        has_transparency = img.getchannel("A").getextrema()[0] < 255
 
         pixels = []
-        for y in range(24):
-            for x in range(24):
+        for y in range(size):
+            for x in range(size):
                 r, g, b, a = img.getpixel((x, y))
 
                 brightness = (r + g + b) // 3
@@ -188,9 +218,6 @@ def create_icon_from_image(image_path, use_rgba=False, threshold=128):
                 else:
                     # Use alpha as the shape mask (handles dark-on-transparent icons),
                     # fall back to brightness for fully opaque images (dark-on-white, etc.)
-                    max_channel = max(r, g, b)
-                    has_transparency = a < 255
-
                     if has_transparency:
                         # Shape is encoded in alpha, so snap opaque pixels to white
                         snapped_a = 255 if a >= threshold else 0
@@ -245,13 +272,16 @@ def main():
     #    ("ICON_PENCIL", "/tmp/image.png"),
     #    ("ICON_ARROW", "/tmp/image2.png"),
     #    ("ICON_TEXT", "/tmp/text.png")
-    #    ("OSHOT_LOGO", "./assets/oshot.png", True)
-         ("ICON_COPY", "/tmp/copy.png", False),
-         ("ICON_SAVE", "/tmp/save2.png", False),
+        ("ICON_TEXT_TOOLS", "./assets/oshot-tray-24.svg", False, 24),
+        ("OSHOT_LOGO", "./assets/oshot.svg", True, 32),
+    #     ("ICON_COPY", "/tmp/copy.png", False),
+    #     ("ICON_SAVE", "/tmp/save2.png", False),
     ]
     
-    for name, image_path, use_rgba in external_images:
-        pixels = create_icon_from_image(image_path, use_rgba)
+    # Entries are (name, path, use_rgba) or (name, path, use_rgba, size), size defaults to 24
+    for name, image_path, use_rgba, *size in external_images:
+        size = size[0] if size else 24
+        pixels = create_icon_from_image(image_path, use_rgba, size)
         if pixels:
             icons.append((name, pixels))
     
@@ -260,8 +290,9 @@ def main():
     for name, pixels in icons:
         icon_name = name[5:].lower()
         header += f"/* {icon_name} */\n"
-        header += f"inline constexpr int {name}_W = 24;\n"
-        header += f"inline constexpr int {name}_H = 24;\n"
+        size = int((len(pixels) // 4) ** 0.5)
+        header += f"inline constexpr int {name}_W = {size};\n"
+        header += f"inline constexpr int {name}_H = {size};\n"
         header += format_c_array(name, pixels) + "\n\n"
     
     with open("tool_icons.h", "w") as f:
