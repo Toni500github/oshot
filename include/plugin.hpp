@@ -76,13 +76,13 @@ struct plugin_action_t
     // The button's image, RGBA, icon_w * icon_h * 4 bytes; empty for none
     std::vector<uint8_t> icon;
 
-    std::string   label;
-    void          (*fn)(void* user, int32_t action) = nullptr;
-    void*         user                              = nullptr;
-    int32_t       id                                = 0;
-    int32_t       icon_w                            = 0;
-    int32_t       icon_h                            = 0;
-    oshot_place_t place                             = OSHOT_PLACE_TOOLBAR;
+    std::string label;
+    void (*fn)(void* user, int32_t action) = nullptr;
+    void*         user                     = nullptr;
+    int32_t       id                       = 0;
+    int32_t       icon_w                   = 0;
+    int32_t       icon_h                   = 0;
+    oshot_place_t place                    = OSHOT_PLACE_TOOLBAR;
 };
 
 // What report_progress() or report_result() last said about an action, shown in the overlay
@@ -104,7 +104,7 @@ struct plugin_report_t
 // A request_final_image() call waiting for the frame to be read back
 struct plugin_image_request_t
 {
-    void  (*on_ready)(void* user, oshot_capture_t image);
+    void (*on_ready)(void* user, oshot_capture_t image);
     void* user;
 };
 
@@ -276,7 +276,7 @@ struct text_transformer_t
 // One step of run_text_steps(): a transformer by its plugin's ID
 struct text_step_t
 {
-    std::string                                id;
+    std::string                                    id;
     std::function<bool(oshot_str_t, oshot_str_t*)> fn;
 };
 
@@ -355,11 +355,11 @@ void sort_text_transformers(const StateManager& state);
  * @param on_bad Called with a step that returned true without valid text, which is then skipped
  * @return The text after the last step
  **/
-std::string run_text_steps(std::string                                                          text,
-                           std::span<const text_step_t>                                         steps,
-                           std::chrono::milliseconds                                            slow,
+std::string run_text_steps(std::string                                                               text,
+                           std::span<const text_step_t>                                              steps,
+                           std::chrono::milliseconds                                                 slow,
                            const std::function<void(const text_step_t&, std::chrono::milliseconds)>& on_slow,
-                           const std::function<void(const text_step_t&)>&                       on_bad);
+                           const std::function<void(const text_step_t&)>&                            on_bad);
 
 /**
  * Run the enabled transformers of g_text_transformers over a scan's text, logging

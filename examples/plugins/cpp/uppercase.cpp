@@ -38,7 +38,10 @@ public:
     HostString(const HostString&)            = delete;
     HostString& operator=(const HostString&) = delete;
 
-    std::string_view view() const { return m_str.p ? std::string_view(m_str.p, m_str.len) : std::string_view(); }
+    [[nodiscard]] std::string_view view() const
+    {
+        return m_str.p ? std::string_view(m_str.p, m_str.len) : std::string_view();
+    }
 
 private:
     const oshot_host_t* m_host;
@@ -47,7 +50,7 @@ private:
 
 oshot_str_t borrow(std::string_view s)
 {
-    return { s.data(), s.size() };
+    return { .p = s.data(), .len = s.size() };
 }
 
 /* oshot draws these in Preferences > Plugins and saves them in config.toml */
@@ -63,7 +66,7 @@ constexpr std::array settings = {
         .key      = "prefix",
         .label    = "Prefix",
         .help     = "Put before the uppercased text",
-        .fallback = { .kind = OSHOT_VAL_STRING, .s = { "", 0 } },
+        .fallback = { .kind = OSHOT_VAL_STRING, .s = { .p = "", .len = 0 } },
     },
 };
 
@@ -135,9 +138,8 @@ private:
     {
         std::string out = m_prefix;
         out.reserve(out.size() + text.size());
-        std::transform(text.begin(), text.end(), std::back_inserter(out), [](unsigned char c) {
-            return static_cast<char>(std::toupper(c));
-        });
+        std::ranges::transform(
+            text, std::back_inserter(out), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
 
         m_host->set_text(m_ctx, OSHOT_TEXT_OCR, borrow(out));
     }

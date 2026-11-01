@@ -491,9 +491,9 @@ static bool ui_slider_float(oshot_ctx_t* ctx, oshot_str_t label, double* value, 
                to_string(label).c_str(), ImGuiDataType_Double, value, &min, &max, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 }
 
-static bool ui_color(oshot_ctx_t* ctx, oshot_str_t label, float rgba[4])
+static bool ui_color(oshot_ctx_t* ctx, oshot_str_t label, std::array<float, 4> rgba)
 {
-    return rgba && ui_check(ctx, "ui_color") && ImGui::ColorEdit4(to_string(label).c_str(), rgba);
+    return !rgba.empty() && ui_check(ctx, "ui_color") && ImGui::ColorEdit4(to_string(label).c_str(), rgba.data());
 }
 
 static void ui_progress(oshot_ctx_t* ctx, float fraction, oshot_str_t overlay)
@@ -617,8 +617,11 @@ static oshot_err_t copy_image(oshot_ctx_t* ctx, const oshot_capture_t* image, os
 
 // Sends a desktop notification for notify() and report_result(). The lock keeps
 // report_result()'s calls from plugin threads from overlapping
-static oshot_err_t send_notification(
-    oshot_ctx_t* ctx, const std::string& title, const std::string& body, oshot_str_t* err, const char* func)
+static oshot_err_t send_notification(oshot_ctx_t*       ctx,
+                                     const std::string& title,
+                                     const std::string& body,
+                                     oshot_str_t*       err,
+                                     const char*        func)
 {
     static std::mutex mutex;
     std::scoped_lock  lock(mutex);
@@ -700,9 +703,9 @@ static proc_string_t to_proc_string(const std::string& s)
 
 // Waits for the process, then queues its on_exit call for RunUiTasks().
 // Holds the registry, not the plugin, which may be unloaded meanwhile
-static void wait_for_process(std::shared_ptr<plugin_processes_t> procs,
-                             std::shared_ptr<plugin_process_t>   p,
-                             int64_t                             id,
+static void wait_for_process(const std::shared_ptr<plugin_processes_t>& procs,
+                             const std::shared_ptr<plugin_process_t>&   p,
+                             int64_t                                    id,
                              void (*on_exit)(void*, const oshot_process_result_t*),
                              void* user)
 {
@@ -915,13 +918,17 @@ static oshot_err_t report_progress(oshot_ctx_t* ctx, int32_t action, float fract
     return OSHOT_OK;
 }
 
-static oshot_err_t report_result(
-    oshot_ctx_t* ctx, int32_t action, bool ok, oshot_str_t message, oshot_str_t copyable, oshot_str_t* err)
+static oshot_err_t report_result(oshot_ctx_t* ctx,
+                                 int32_t      action,
+                                 bool         ok,
+                                 oshot_str_t  message,
+                                 oshot_str_t  copyable,
+                                 oshot_str_t* err)
 {
     if (!valid_action_id(ctx, action))
         return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "report_result", "no action has the ID {}", action);
 
-    plugin_runtime_t& rt = rt_of(ctx);
+    plugin_runtime_t& rt  = rt_of(ctx);
     std::string       msg = to_string(message), copy = to_string(copyable);
     if (!plugin_overlay_open())
     {
@@ -972,46 +979,46 @@ const oshot_host_t g_oshot_host = {
     .abi_version   = OSHOT_API_VERSION,
     .oshot_version = VERSION,
     .str_new       = [](const char* s, size_t n) { return str_new(s, n); },
-    .str_free         = str_free,
-    .value_array_free = value_array_free,
-    .log              = host_log,
-    .get_data_dir     = get_data_dir,
-    .run_on_ui_thread = run_on_ui_thread,
-    .get_string       = get_string,
-    .get_bool         = get_bool,
-    .get_int64        = get_int64,
-    .get_double       = get_double,
-    .get_array        = get_array,
-    .get_value        = get_value,
-    .set_string       = set_string,
-    .set_bool         = set_bool,
-    .set_int64        = set_int64,
-    .set_double       = set_double,
-    .set_value        = set_value,
-    .get_text         = get_text,
-    .set_text         = set_text,
-    .get_capture      = get_capture,
-    .capture_free     = capture_free,
-    .ui_text          = ui_text,
-    .ui_button        = ui_button,
-    .ui_checkbox      = ui_checkbox,
-    .ui_input_text    = ui_input_text,
-    .ui_combo         = ui_combo,
-    .ui_slider_int    = ui_slider_int,
-    .ui_slider_float  = ui_slider_float,
-    .ui_color         = ui_color,
-    .ui_progress      = ui_progress,
-    .ui_separator     = ui_separator,
-    .ui_same_line     = ui_same_line,
-    .ui_tooltip       = ui_tooltip,
-    .ui_begin_section = ui_begin_section,
-    .ui_end_section   = ui_end_section,
-    .mem_alloc        = mem_alloc,
-    .mem_free         = mem_free,
-    .copy_text        = copy_text,
-    .copy_image       = copy_image,
-    .notify           = notify,
-    .open_url         = open_url,
+    .str_free            = str_free,
+    .value_array_free    = value_array_free,
+    .log                 = host_log,
+    .get_data_dir        = get_data_dir,
+    .run_on_ui_thread    = run_on_ui_thread,
+    .get_string          = get_string,
+    .get_bool            = get_bool,
+    .get_int64           = get_int64,
+    .get_double          = get_double,
+    .get_array           = get_array,
+    .get_value           = get_value,
+    .set_string          = set_string,
+    .set_bool            = set_bool,
+    .set_int64           = set_int64,
+    .set_double          = set_double,
+    .set_value           = set_value,
+    .get_text            = get_text,
+    .set_text            = set_text,
+    .get_capture         = get_capture,
+    .capture_free        = capture_free,
+    .ui_text             = ui_text,
+    .ui_button           = ui_button,
+    .ui_checkbox         = ui_checkbox,
+    .ui_input_text       = ui_input_text,
+    .ui_combo            = ui_combo,
+    .ui_slider_int       = ui_slider_int,
+    .ui_slider_float     = ui_slider_float,
+    .ui_color            = ui_color,
+    .ui_progress         = ui_progress,
+    .ui_separator        = ui_separator,
+    .ui_same_line        = ui_same_line,
+    .ui_tooltip          = ui_tooltip,
+    .ui_begin_section    = ui_begin_section,
+    .ui_end_section      = ui_end_section,
+    .mem_alloc           = mem_alloc,
+    .mem_free            = mem_free,
+    .copy_text           = copy_text,
+    .copy_image          = copy_image,
+    .notify              = notify,
+    .open_url            = open_url,
     .run_process         = run_process,
     .kill_process        = kill_process,
     .request_final_image = request_final_image,

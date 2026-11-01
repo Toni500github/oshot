@@ -4166,7 +4166,7 @@ static void draw_text_transformers(std::vector<std::pair<std::string, bool>>& ch
     for (size_t i = 0; i < chain.size(); ++i)
     {
         auto& [id, enabled] = chain[i];
-        const auto it       = g_plugins.find(id);
+        const auto  it      = g_plugins.find(id);
         const char* name    = it != g_plugins.end() ? it->second.plugin->name : id.c_str();
 
         ImGui::PushID(id.c_str());
@@ -4252,7 +4252,7 @@ static void save_text_transformers(StateManager& state, const std::vector<std::p
     const text_transformers_t saved = state.GetTextTransformers();
 
     text_transformers_t t;
-    auto in_chain = [&](const std::string& id) {
+    auto                in_chain = [&](const std::string& id) {
         return std::ranges::find(chain, id, &std::pair<std::string, bool>::first) != chain.end();
     };
     for (const auto& [id, enabled] : chain)
@@ -5099,7 +5099,7 @@ void ScreenshotTool::FetchIndexAsync()
     });
 }
 
-void ScreenshotTool::StartPluginTask(std::string title, std::function<Result<>(PluginManager&)> task)
+void ScreenshotTool::StartPluginTask(const std::string& title, std::function<Result<>(PluginManager&)> task)
 {
     // The buttons that start a task are disabled while one runs, this is just a safety net
     if (m_install_state && m_install_state->running)
@@ -5413,7 +5413,7 @@ void ScreenshotTool::DrawPluginReports()
 
             if (!r.copyable.empty())
             {
-                const auto key       = std::make_pair(rt->id, r.action);
+                const auto key        = std::make_pair(rt->id, r.action);
                 bool       line_armed = armed && copied == key;
                 if (create_timed_button(_("Copy"), _("Copied!"), line_armed))
                 {

@@ -59,7 +59,6 @@
 #include "nvdialog/nvdialog_notification.h"
 #include "platform.hpp"
 #include "screen_capture.hpp"
-#include "screenshot_tool.hpp"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "tinyfiledialogs.h"
 
@@ -1122,6 +1121,7 @@ static std::vector<fs::path> font_search_dirs()
 #endif
 
     std::vector<fs::path> ret;
+    ret.reserve(dirs.size());
     for (const std::string_view dir : dirs)
         ret.emplace_back(expand_var(std::string(dir)));
     return ret;

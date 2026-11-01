@@ -339,7 +339,7 @@ static Result<> validate_settings(const oshot_plugin_t* plugin)
             case OSHOT_SETTING_FLOAT:  kind = OSHOT_VAL_DOUBLE; break;
             case OSHOT_SETTING_STRING:
             case OSHOT_SETTING_CHOICE: kind = OSHOT_VAL_STRING; break;
-            default:                   return Err("setting '{}' has an unknown kind {}", s.key, static_cast<int>(s.kind));
+            default: return Err("setting '{}' has an unknown kind {}", s.key, static_cast<int>(s.kind));
         }
         if (s.fallback.kind != kind)
             return Err("setting '{}' has a fallback of the wrong kind", s.key);
