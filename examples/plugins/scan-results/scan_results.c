@@ -143,7 +143,7 @@ static bool plugin_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state
     /* The host services came after the widgets: check the last one */
     if (!OSHOT_HOST_HAS(host, kill_process))
     {
-        host->log(ctx, OSHOT_LOG_ERROR, oshot_str_borrow("this oshot is too old for this plugin: update it"));
+        host->log(ctx, OSHOT_LOG_ERROR, oshot_str("this oshot is too old for this plugin: update it"));
         return false;
     }
 
@@ -282,7 +282,7 @@ static void plugin_render(void* state)
         draw_items(s, &s->words, false);
     host->ui_end_section(s->ctx);
 
-    if (host->ui_begin_section(s->ctx, oshot_str_borrow("Processes")))
+    if (host->ui_begin_section(s->ctx, oshot_str("Processes")))
     {
 #ifdef _WIN32
         static const char* const info[]     = { "cmd", "/c", "ver" };
@@ -291,15 +291,15 @@ static void plugin_render(void* state)
         static const char* const info[]     = { "uname", "-a" };
         static const char* const long_run[] = { "sleep", "600" };
 #endif
-        if (host->ui_button(s->ctx, oshot_str_borrow("Run uname")))
+        if (host->ui_button(s->ctx, oshot_str("Run uname")))
             start_process(s, info, sizeof(info) / sizeof(info[0]));
         host->ui_same_line(s->ctx);
-        if (host->ui_button(s->ctx, oshot_str_borrow("Sleep for 10 minutes")))
+        if (host->ui_button(s->ctx, oshot_str("Sleep for 10 minutes")))
             start_process(s, long_run, sizeof(long_run) / sizeof(long_run[0]));
         if (s->process)
         {
             host->ui_same_line(s->ctx);
-            if (host->ui_button(s->ctx, oshot_str_borrow("Kill")))
+            if (host->ui_button(s->ctx, oshot_str("Kill")))
             {
                 oshot_str_t err = { NULL, 0 };
                 report(s, host->kill_process(s->ctx, s->process, &err), &err, "Killing it");
@@ -393,10 +393,7 @@ static void plugin_on_barcodes_done(void* state, const oshot_barcode_t* codes, s
     {
         snprintf(line, sizeof(line), "%zu QR code%s or barcode%s found", n, n == 1 ? "" : "s", n == 1 ? "" : "s");
         oshot_str_t err = { NULL, 0 };
-        report(s,
-               s->host->notify(s->ctx, oshot_str_borrow("Scan results"), oshot_str_borrow(line), &err),
-               &err,
-               "Notified");
+        report(s, s->host->notify(s->ctx, oshot_str("Scan results"), oshot_str_borrow(line), &err), &err, "Notified");
     }
 }
 

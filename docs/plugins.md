@@ -90,7 +90,7 @@ static bool my_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state)
     /* keep host and ctx: every host call needs them */
     g_state = (state_t){ host, ctx };
     if (host->get_bool(ctx, OSHOT_STORE_CONFIG, "greet-on-start", true)) /* the setting below */
-        host->log(ctx, OSHOT_LOG_INFO, oshot_str_borrow("hello"));
+        host->log(ctx, OSHOT_LOG_INFO, oshot_str("hello"));
     *state = &g_state;
     return true;
 }
@@ -98,8 +98,8 @@ static bool my_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state)
 static void my_render(void* state)
 {
     state_t* s = state;
-    if (s->host->ui_button(s->ctx, oshot_str_borrow("Say hello")))
-        s->host->log(s->ctx, OSHOT_LOG_INFO, oshot_str_borrow("hello again"));
+    if (s->host->ui_button(s->ctx, oshot_str("Say hello")))
+        s->host->log(s->ctx, OSHOT_LOG_INFO, oshot_str("hello again"));
 }
 
 static const oshot_setting_t settings[] = {
@@ -212,7 +212,7 @@ static void on_click(void* user, int32_t action)
 }
 
 /* in init() */
-host->register_action(ctx, OSHOT_PLACE_TOOLBAR, oshot_str_borrow("Upload"), &icon, on_click, s, &s->action, NULL);
+host->register_action(ctx, OSHOT_PLACE_TOOLBAR, oshot_str("Upload"), &icon, on_click, s, &s->action, NULL);
 ```
 
 - `register_action(ctx, where, label, icon, fn, user, &id, err)` adds one, usually in `init()`, and
@@ -371,7 +371,7 @@ after the plugin API's first version with `OSHOT_HOST_HAS(host, field)` before c
 ```c
 if (!OSHOT_HOST_HAS(host, ui_end_section)) /* the widgets came after the first version */
 {
-    host->log(ctx, OSHOT_LOG_ERROR, oshot_str_borrow("this oshot is too old for this plugin"));
+    host->log(ctx, OSHOT_LOG_ERROR, oshot_str("this oshot is too old for this plugin"));
     return false;
 }
 ```

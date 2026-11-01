@@ -42,7 +42,7 @@ static const oshot_setting_t settings[] = {
 
 static void read_settings(state_t* s)
 {
-    oshot_str_t keep = s->host->get_string(s->ctx, OSHOT_STORE_CONFIG, "keep", oshot_str_borrow("links and emails"));
+    oshot_str_t keep = s->host->get_string(s->ctx, OSHOT_STORE_CONFIG, "keep", oshot_str("links and emails"));
     s->links         = keep.p && strcmp(keep.p, "emails") != 0;
     s->emails        = keep.p && strcmp(keep.p, "links") != 0;
     s->host->str_free(&keep);
@@ -182,7 +182,7 @@ static bool plugin_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state
 {
     if (!OSHOT_HOST_HAS(host, report_result))
     {
-        host->log(ctx, OSHOT_LOG_ERROR, oshot_str_borrow("needs an oshot with text transformers, update oshot"));
+        host->log(ctx, OSHOT_LOG_ERROR, oshot_str("needs an oshot with text transformers, update oshot"));
         return false;
     }
 

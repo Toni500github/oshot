@@ -91,15 +91,11 @@ static void run_export(state_t* s)
     s->host->capture_free(&s->image);
 
     if (ok)
-        s->host->report_result(s->ctx,
-                               s->action,
-                               true,
-                               oshot_str_borrow("Saved the annotated selection"),
-                               oshot_str_borrow(s->path),
-                               NULL);
+        s->host->report_result(
+            s->ctx, s->action, true, oshot_str("Saved the annotated selection"), oshot_str_borrow(s->path), NULL);
     else
         s->host->report_result(
-            s->ctx, s->action, false, oshot_str_borrow("Couldn't write the PNG"), oshot_str_borrow(s->path), NULL);
+            s->ctx, s->action, false, oshot_str("Couldn't write the PNG"), oshot_str_borrow(s->path), NULL);
     s->done = true;
 }
 
@@ -163,7 +159,7 @@ static void on_image_ready(void* user, oshot_capture_t image)
         s->host->report_result(s->ctx,
                                s->action,
                                false,
-                               oshot_str_borrow("The overlay closed before the image was ready"),
+                               oshot_str("The overlay closed before the image was ready"),
                                oshot_str_borrow(NULL),
                                NULL);
         return;
@@ -178,7 +174,7 @@ static void on_image_ready(void* user, oshot_capture_t image)
         return;
     }
 
-    s->host->report_progress(s->ctx, s->action, 0.0f, oshot_str_borrow("Starting..."), NULL);
+    s->host->report_progress(s->ctx, s->action, 0.0f, oshot_str("Starting..."), NULL);
 #ifdef _WIN32
     s->thread = CreateThread(NULL, 0, export_thread, s, 0, NULL);
     s->busy   = s->thread != NULL;
@@ -189,7 +185,7 @@ static void on_image_ready(void* user, oshot_capture_t image)
     {
         s->host->capture_free(&s->image);
         s->host->report_result(
-            s->ctx, s->action, false, oshot_str_borrow("Couldn't start a thread"), oshot_str_borrow(NULL), NULL);
+            s->ctx, s->action, false, oshot_str("Couldn't start a thread"), oshot_str_borrow(NULL), NULL);
     }
 }
 
@@ -199,7 +195,7 @@ static void on_export_clicked(void* user, int32_t action)
     if (s->busy && !s->done)
     {
         s->host->report_result(
-            s->ctx, action, false, oshot_str_borrow("Still saving the last one"), oshot_str_borrow(NULL), NULL);
+            s->ctx, action, false, oshot_str("Still saving the last one"), oshot_str_borrow(NULL), NULL);
         return;
     }
 
@@ -239,7 +235,7 @@ static bool plugin_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state
 {
     if (!OSHOT_HOST_HAS(host, report_result))
     {
-        host->log(ctx, OSHOT_LOG_ERROR, oshot_str_borrow("needs an oshot with plugin actions, update oshot"));
+        host->log(ctx, OSHOT_LOG_ERROR, oshot_str("needs an oshot with plugin actions, update oshot"));
         return false;
     }
 
@@ -257,7 +253,7 @@ static bool plugin_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state
     oshot_str_t err = { NULL, 0 };
     if (host->register_action(ctx,
                               OSHOT_PLACE_TOOLBAR,
-                              oshot_str_borrow("Export as PNG"),
+                              oshot_str("Export as PNG"),
                               &icon,
                               on_export_clicked,
                               s,
@@ -265,7 +261,7 @@ static bool plugin_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state
                               &err) != OSHOT_OK ||
         host->register_action(ctx,
                               OSHOT_PLACE_TEXT_TOOLS,
-                              oshot_str_borrow("Export as PNG"),
+                              oshot_str("Export as PNG"),
                               NULL,
                               on_export_clicked,
                               s,

@@ -33,7 +33,7 @@ static bool plugin_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state
 {
     if (!OSHOT_HOST_HAS(host, ui_end_section))
     {
-        host->log(ctx, OSHOT_LOG_ERROR, oshot_str_borrow("this oshot is too old for this plugin: update it"));
+        host->log(ctx, OSHOT_LOG_ERROR, oshot_str("this oshot is too old for this plugin: update it"));
         return false;
     }
 
@@ -81,7 +81,7 @@ static void plugin_render(void* state)
     if (s->n_lines == 0)
     {
         /* ui_* functions and cimgui mix freely */
-        s->host->ui_text(s->ctx, oshot_str_borrow("Extract some text to see its line lengths"), OSHOT_UI_DISABLED);
+        s->host->ui_text(s->ctx, oshot_str("Extract some text to see its line lengths"), OSHOT_UI_DISABLED);
         return;
     }
 

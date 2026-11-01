@@ -687,6 +687,12 @@ static inline oshot_str_t oshot_str_borrow(const char* s)
     return r;
 }
 
+/* Abbreviated oshot_str_borrow() for literal strings calls. */
+static inline oshot_str_t oshot_str(const char* s)
+{
+    return oshot_str_borrow(s);
+}
+
 /**
  * The one symbol a plugin exports. Must return a pointer to a static
  * descriptor, not one allocated per call. Define it with OSHOT_PLUGIN_EXPORT:

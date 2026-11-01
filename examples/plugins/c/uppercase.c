@@ -59,7 +59,7 @@ static void read_settings(state_t* s)
 {
     s->auto_uppercase = s->host->get_bool(s->ctx, OSHOT_STORE_CONFIG, "auto-uppercase", false);
     s->host->str_free(&s->prefix);
-    s->prefix = s->host->get_string(s->ctx, OSHOT_STORE_CONFIG, "prefix", oshot_str_borrow(""));
+    s->prefix = s->host->get_string(s->ctx, OSHOT_STORE_CONFIG, "prefix", oshot_str(""));
 }
 
 /* Replaces oshot's OCR output with prefix + UPPERCASE(text) */
@@ -86,7 +86,7 @@ static bool plugin_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state
     /* The ui_* functions came after the first plugin API: check the last one */
     if (!OSHOT_HOST_HAS(host, ui_end_section))
     {
-        host->log(ctx, OSHOT_LOG_ERROR, oshot_str_borrow("this oshot is too old for this plugin: update it"));
+        host->log(ctx, OSHOT_LOG_ERROR, oshot_str("this oshot is too old for this plugin: update it"));
         return false;
     }
 
@@ -114,7 +114,7 @@ static void plugin_render(void* state)
     state_t*            s    = state;
     const oshot_host_t* host = s->host;
 
-    if (host->ui_button(s->ctx, oshot_str_borrow("Uppercase the OCR output")))
+    if (host->ui_button(s->ctx, oshot_str("Uppercase the OCR output")))
     {
         oshot_str_t text;
         if (host->get_text(s->ctx, OSHOT_TEXT_OCR, &text))
