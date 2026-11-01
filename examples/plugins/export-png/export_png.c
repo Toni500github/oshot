@@ -33,7 +33,10 @@
 #  include <sys/stat.h>
 #endif
 
+#define STBI_WRITE_NO_STDIO
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "oshot/oshot_plugin.h"
+#include "stb_image_write.h"
 
 #define ICON_SIZE 24
 
@@ -49,127 +52,30 @@ typedef struct
     int32_t         action; /* the one that started it, for its reports */
     oshot_capture_t image;
     char            path[1024];
+    FILE*           f;
+    bool            write_failed;
+
 #ifdef _WIN32
     HANDLE thread;
 #else
     pthread_t thread;
 #endif
+
     atomic_bool done; /* set by the thread as it ends */
 } state_t;
 
-/* ------------------------------------------------------------------
- * PNG, with "stored" (uncompressed) deflate blocks
- * ---------------------------------------------------------------- */
-
-static uint32_t crc_table[256];
-
-static void crc_init(void)
+static void callback_stbi(void* context, void* data, int size)
 {
-    for (uint32_t n = 0; n < 256; ++n)
-    {
-        uint32_t c = n;
-        for (int k = 0; k < 8; ++k)
-            c = (c & 1) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
-        crc_table[n] = c;
-    }
+    state_t* s = (state_t*)context;
+    if (fwrite(data, 1, (size_t)size, s->f) != (size_t)size)
+        s->write_failed = true;
 }
 
-static uint32_t crc_update(uint32_t crc, const uint8_t* p, size_t n)
+static bool write_png(state_t* s)
 {
-    for (size_t i = 0; i < n; ++i)
-        crc = crc_table[(crc ^ p[i]) & 0xFF] ^ (crc >> 8);
-    return crc;
-}
-
-static void put_u32(uint8_t* p, uint32_t v)
-{
-    p[0] = (uint8_t)(v >> 24);
-    p[1] = (uint8_t)(v >> 16);
-    p[2] = (uint8_t)(v >> 8);
-    p[3] = (uint8_t)v;
-}
-
-static bool write_chunk(FILE* f, const char type[4], const uint8_t* data, size_t len)
-{
-    uint8_t head[8];
-    put_u32(head, (uint32_t)len);
-    memcpy(head + 4, type, 4);
-    uint8_t crc[4];
-    put_u32(crc, crc_update(crc_update(0xFFFFFFFFu, head + 4, 4), data, len) ^ 0xFFFFFFFFu);
-    return fwrite(head, 1, 8, f) == 8 && (len == 0 || fwrite(data, 1, len, f) == len) && fwrite(crc, 1, 4, f) == 4;
-}
-
-/* Writes the image, one IDAT chunk per row, and reports the progress every few rows */
-static bool write_png(state_t* s, FILE* f)
-{
-    const oshot_capture_t* img    = &s->image;
-    static const uint8_t   sig[8] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n' };
-    uint8_t                ihdr[13];
-    put_u32(ihdr, (uint32_t)img->w);
-    put_u32(ihdr + 4, (uint32_t)img->h);
-    ihdr[8]  = 8; /* bits per channel */
-    ihdr[9]  = 6; /* RGBA */
-    ihdr[10] = ihdr[11] = ihdr[12] = 0;
-    if (fwrite(sig, 1, 8, f) != 8 || !write_chunk(f, "IHDR", ihdr, sizeof(ihdr)))
-        return false;
-
-    /* A row is a filter byte (0, none) and the pixels, split into stored blocks of at most 65535 bytes */
-    const size_t row_len  = (size_t)img->w * 4 + 1;
-    const size_t n_blocks = (row_len + 65534) / 65535;
-    uint8_t*     chunk    = malloc(2 + row_len + n_blocks * 5 + 4);
-    uint8_t*     row      = malloc(row_len);
-    if (!chunk || !row)
-    {
-        free(chunk);
-        free(row);
-        return false;
-    }
-
-    uint32_t adler_a = 1, adler_b = 0;
-    bool     ok = true;
-    for (int32_t y = 0; ok && y < img->h; ++y)
-    {
-        row[0] = 0;
-        memcpy(row + 1, img->rgba + (size_t)y * img->w * 4, row_len - 1);
-        for (size_t i = 0; i < row_len; ++i)
-        {
-            adler_a = (adler_a + row[i]) % 65521;
-            adler_b = (adler_b + adler_a) % 65521;
-        }
-
-        size_t n = 0;
-        if (y == 0)
-        {
-            chunk[n++] = 0x78; /* zlib header: deflate, 32K window */
-            chunk[n++] = 0x01;
-        }
-        for (size_t off = 0; off < row_len; off += 65535)
-        {
-            const size_t   len  = row_len - off < 65535 ? row_len - off : 65535;
-            const bool     last = y == img->h - 1 && off + len == row_len;
-            const uint16_t l = (uint16_t)len, nl = (uint16_t)~l;
-            chunk[n++] = last ? 1 : 0;
-            chunk[n++] = (uint8_t)l;
-            chunk[n++] = (uint8_t)(l >> 8);
-            chunk[n++] = (uint8_t)nl;
-            chunk[n++] = (uint8_t)(nl >> 8);
-            memcpy(chunk + n, row + off, len);
-            n += len;
-        }
-        if (y == img->h - 1)
-        {
-            put_u32(chunk + n, (adler_b << 16) | adler_a);
-            n += 4;
-        }
-        ok = write_chunk(f, "IDAT", chunk, n);
-
-        if (y % 64 == 0)
-            s->host->report_progress(
-                s->ctx, s->action, (float)y / (float)img->h, oshot_str_borrow("Writing the PNG..."), NULL);
-    }
-    free(chunk);
-    free(row);
-    return ok && write_chunk(f, "IEND", NULL, 0);
+    const oshot_capture_t* img = &s->image;
+    stbi_write_png_to_func(callback_stbi, s, img->w, img->h, 4, img->rgba, img->w * 4);
+    return !s->write_failed;
 }
 
 /* ------------------------------------------------------------------
@@ -178,9 +84,9 @@ static bool write_png(state_t* s, FILE* f)
 
 static void run_export(state_t* s)
 {
-    FILE* f  = fopen(s->path, "wb");
-    bool  ok = f && write_png(s, f);
-    if (f && fclose(f) != 0)
+    s->f    = fopen(s->path, "wb");
+    bool ok = s->f && write_png(s);
+    if (s->f && fclose(s->f) != 0)
         ok = false;
     s->host->capture_free(&s->image);
 
@@ -342,7 +248,7 @@ static bool plugin_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state
         return false;
     s->host = host;
     s->ctx  = ctx;
-    crc_init();
+    s->f    = NULL;
 
     static uint8_t        icon_px[ICON_SIZE * ICON_SIZE * 4];
     const oshot_capture_t icon = { ICON_SIZE, ICON_SIZE, icon_px };

@@ -4,21 +4,40 @@
 cmake_minimum_required(VERSION 3.16)
 project(oshot_export_png C)
 
-set(OSHOT_SDK "$ENV{OSHOT_SDK}" CACHE PATH "oshot plugin SDK, the folder with include/oshot/oshot_plugin.h")
+set(OSHOT_SDK
+    "$ENV{OSHOT_SDK}"
+    CACHE PATH
+    "oshot plugin SDK, the folder with include/oshot/oshot_plugin.h"
+)
 if(NOT EXISTS "${OSHOT_SDK}/include/oshot/oshot_plugin.h")
-    message(FATAL_ERROR "oshot's plugin SDK wasn't found: pass -DOSHOT_SDK=<folder with include/oshot/oshot_plugin.h>")
+    message(
+        FATAL_ERROR
+        "oshot's plugin SDK wasn't found: pass -DOSHOT_SDK=<folder with include/oshot/oshot_plugin.h>"
+    )
 endif()
 
 find_package(Threads REQUIRED)
 
 add_library(export_png MODULE export_png.c)
-target_include_directories(export_png PRIVATE "${OSHOT_SDK}/include")
+target_include_directories(
+    export_png
+    PRIVATE "${OSHOT_SDK}/include" ../../../include/libs/
+)
 target_link_libraries(export_png PRIVATE Threads::Threads)
-set_target_properties(export_png PROPERTIES C_STANDARD 11 C_VISIBILITY_PRESET hidden)
+set_target_properties(
+    export_png
+    PROPERTIES C_STANDARD 11 C_VISIBILITY_PRESET hidden
+)
 
 # The library goes to build/out, for every generator and configuration
-set_target_properties(export_png PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/out")
+set_target_properties(
+    export_png
+    PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/out"
+)
 foreach(config ${CMAKE_CONFIGURATION_TYPES})
     string(TOUPPER "${config}" config)
-    set_target_properties(export_png PROPERTIES LIBRARY_OUTPUT_DIRECTORY_${config} "${CMAKE_BINARY_DIR}/out")
+    set_target_properties(
+        export_png
+        PROPERTIES LIBRARY_OUTPUT_DIRECTORY_${config} "${CMAKE_BINARY_DIR}/out"
+    )
 endforeach()

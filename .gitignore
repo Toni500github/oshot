@@ -10,6 +10,7 @@ AppDir
 *.AppImage.zsync
 *.tar.*
 *.mo
+build*/
 
 /debian/*
 !/debian/control

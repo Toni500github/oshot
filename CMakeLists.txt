@@ -76,7 +76,7 @@ endmacro()
 # -----------------------------
 add_option(DISABLE_PLUGINS "Disable plugins support" ON ON)
 add_option(MACOS_OPENGL "Draw the overlay with OpenGL instead of Metal on macOS, for VMs without Metal" OFF ON)
-add_option(BUILD_EXAMPLES "Build the example plugins in examples/plugins but Rust and Zig (needs plugins)" OFF OFF)
+add_option(BUILD_EXAMPLES "Build the example plugins in examples/plugins (needs to be built with plugins)" OFF OFF)
 add_option(BUILD_TESTS "Build the tests (tests/, run with ctest)" OFF OFF)
 
 # Arch-style default; Debian sets it empty, as the license goes into
@@ -248,12 +248,7 @@ endif()
 # Relative, so the install stays relocatable (zip, AppImage), and following
 # CMAKE_INSTALL_LIBDIR, which is lib64 on Fedora/openSUSE and
 # lib/<multiarch> on Debian
-file(
-    RELATIVE_PATH
-    _bin_to_lib
-    "${CMAKE_INSTALL_FULL_BINDIR}"
-    "${_full_libdir}"
-)
+file(RELATIVE_PATH _bin_to_lib "${CMAKE_INSTALL_FULL_BINDIR}" "${_full_libdir}")
 set(OSHOT_INSTALL_RPATH "${_rpath_origin}/${_bin_to_lib}")
 
 # With plugins, oshot_common is a shared library that the executables
@@ -866,8 +861,7 @@ if(NOT DISABLE_PLUGINS)
     endif()
 
     # The C, C++, cimgui, scan-results, text-transformers and export-png example plugins, with -DBUILD_EXAMPLES=ON; CI
-    # builds them so it checks they compile everywhere. Not installed. The
-    # Rust and Zig ones need their own toolchains.
+    # builds them so it checks they compile everywhere. Not installed.
     if(BUILD_EXAMPLES)
         add_library(
             oshot_example_uppercase
@@ -912,6 +906,10 @@ if(NOT DISABLE_PLUGINS)
             ${OSHOT_SDK_HEADERS}
         )
         target_link_libraries(oshot_example_export_png PRIVATE Threads::Threads)
+        target_include_directories(
+            oshot_example_export_png
+            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include/libs/
+        )
         set_target_properties(
             oshot_example_uppercase_cpp
             PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON
