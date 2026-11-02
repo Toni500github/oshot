@@ -320,7 +320,7 @@ int run_main_tool()
     GLFWmonitor*       monitor = get_monitor_at_cursor();
     const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
 
-    // Only log GLFW errors while creating the window: a failed first try isn't an
+    // Only log GLFW errors while creating the window. A failed first try isn't an
     // error yet, and a real failure gets one dialog below instead of one per try
     GLFWerrorfun error_callback = glfwSetErrorCallback(
         [](int i_error, const char* description) { spdlog::warn("GLFW Error {}: {}", i_error, description); });

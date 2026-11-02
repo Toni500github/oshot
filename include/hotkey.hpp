@@ -32,15 +32,7 @@
 #include <string_view>
 
 #include "imgui/imgui.h"
-#include "platform.hpp"
 #include "util.hpp"
-
-/**
- * System-wide shortcut that starts a capture from the tray instance.
- * Registration is only implemented on Windows and macOS: on Linux the
- * WM/DE owns global keybinds, so users bind `oshot --gui` there instead.
- **/
-#define OSHOT_HAS_GLOBAL_HOTKEY (OSHOT_WINDOWS || OSHOT_MACOS)
 
 namespace hotkey
 {

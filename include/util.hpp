@@ -62,16 +62,6 @@ namespace fs = std::filesystem;
 #endif
 
 /**
- * Whether captures run inline on the tray (main) thread instead of the capture worker thread.
- * AppKit only allows UI on the main thread.
- **/
-#if OSHOT_WINDOWS || OSHOT_MACOS
-#  define OSHOT_TOOL_ON_MAIN_THREAD true
-#else
-#  define OSHOT_TOOL_ON_MAIN_THREAD false
-#endif
-
-/**
  * What get_relative_path() and which() return when nothing is found.
  * Unlikely enough to never be a real path.
  **/

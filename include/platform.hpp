@@ -77,6 +77,27 @@
 #  define OSHOT_FREEDESKTOP 0
 #endif
 
+/**
+ * System-wide shortcut that starts a capture from the tray instance.
+ * Registration is only implemented on Windows and macOS, on Linux the
+ * WM/DE owns global keybinds, so users bind `oshot --gui` there instead.
+ **/
+#if (OSHOT_WINDOWS || OSHOT_MACOS)
+#  define OSHOT_HAS_GLOBAL_HOTKEY 1
+#else
+#  define OSHOT_HAS_GLOBAL_HOTKEY 0
+#endif
+
+/**
+ * Whether captures run inline on the tray (main) thread instead of the capture worker thread.
+ * AppKit only allows UI on the main thread.
+ **/
+#if (OSHOT_WINDOWS || OSHOT_MACOS)
+#  define OSHOT_TOOL_ON_MAIN_THREAD 1
+#else
+#  define OSHOT_TOOL_ON_MAIN_THREAD 0
+#endif
+
 #if !(OSHOT_FREEDESKTOP || OSHOT_WINDOWS || OSHOT_MACOS)
 #  warning \
       "Platform currently may not be supported, only Linux, the BSDs, Windows and MacOS. Please feel free to report any compilation errors"

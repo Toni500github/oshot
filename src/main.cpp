@@ -52,7 +52,7 @@
 #  include <unistd.h>
 #endif
 
-#if defined(__GLIBC__)
+#ifdef __GLIBC__
 #  include <malloc.h>
 #endif
 
@@ -73,6 +73,7 @@
 #include "fmt/base.h"
 #include "fmt/compile.h"
 #include "fmt/format.h"
+#include "fmt/ranges.h"
 #include "getopt_port.h"
 #include "i18n.hpp"
 #include "oshot_png.h"
@@ -122,11 +123,12 @@ static void version()
     fmt::print(FMT_COMPILE("{}"), version_infos);
     fmt::print("\n");
 #endif
+
     std::exit(EXIT_SUCCESS);
 }
 
 // Show the args help menu, then exit with code depending if it's from invalid or -h arg
-static void help(bool invalid_opt = false, std::string_view bad_opt = {})
+static void help(const bool invalid_opt = false, const std::string_view bad_opt = {})
 {
 #if OSHOT_WINDOWS
     if (invalid_opt)
@@ -134,9 +136,12 @@ static void help(bool invalid_opt = false, std::string_view bad_opt = {})
     else
         create_dialog("oshot help", NVD_DIALOG_SIMPLE, std::string(oshot_help));
 #else
+    if (invalid_opt)
+        fmt::print("Invalid option: {}\n\n", bad_opt);
     fmt::print(FMT_COMPILE("{}"), oshot_help);
     fmt::print("\n");
 #endif
+
     std::exit(invalid_opt);
 }
 
@@ -316,14 +321,12 @@ static void exit_handler_nc()
         return;
 
     request_quit();
+
     // Terminating GLFW under a running capture (e.g. die() from the worker
     // thread) would crash it instead of exiting
     if (!capture_active.load())
         extern_glfwTerminate();
     release_shared_default_logger();
-    // Use the non-throwing overload, since an exception here would terminate. On Windows
-    // the file can still be open (e.g. exit() from die() while main's logger is alive)
-    fs::remove(fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid()), ec);
 }
 
 int run_main_tool();
@@ -333,7 +336,7 @@ int run_main_tool();
 static void release_capture_memory()
 {
     g_ss_tool.EndCapture();
-#if defined(__GLIBC__)
+#ifdef __GLIBC__
     // glibc keeps freed memory for reuse, mostly in the capture_worker thread's
     // arena where the overlay allocated it, so hand the free pages in there back.
     // The arena's free top only shrinks with the fixed threshold set in oshot_main()
@@ -375,6 +378,7 @@ static int run_without_overlay()
             std::this_thread::sleep_for(std::chrono::milliseconds(g_config->File.delay));
         loaded = capture_full_screen(get_session_type());
     }
+
     if (!loaded.ok())
     {
         spdlog::error("Failed to get the image: {}", loaded.error_v());
@@ -460,13 +464,10 @@ static int run_without_overlay()
         return EXIT_FAILURE;
     }
 
-    std::string joined;
-    for (const std::string& out : outputs)
-        joined += out + '\n';
-
+    const std::string& joined = fmt::format("{}", fmt::join(outputs, "\n"));
     if (rt.instant_copy_save == SavingOp::Clipboard)
     {
-        joined.pop_back();
+        // joined.pop_back();
         const Result<>& res = g_clipboard.CopyText(joined);
         if (!res.ok())
         {
@@ -515,6 +516,7 @@ void capture_worker()
         g_config->Runtime.source_file = std::move(pending_source);
         pending_source.clear();
         const auto delay = std::exchange(pending_delay, {});
+
         // Set under the lock so capture_from_tray() can't queue another one in between
         capture_active.store(true);
         lk.unlock();
@@ -543,11 +545,10 @@ enum class TrayClick : std::uint8_t
 
 static void capture_from_tray(const std::string& source = {}, TrayClick click = TrayClick::None);
 
-#if OSHOT_TOOL_ON_MAIN_THREAD
 // (Re-)register the global hotkey from the config if it changed
 static void sync_hotkey()
 {
-#  if OSHOT_HAS_GLOBAL_HOTKEY
+#if OSHOT_HAS_GLOBAL_HOTKEY
     static std::optional<std::string> applied;
     if (applied == g_config->File.hotkey)
         return;
@@ -577,9 +578,8 @@ static void sync_hotkey()
         nvd_send_notification(notif);
         nvd_delete_notification(notif);
     }
-#  endif
-}
 #endif
+}
 
 // Open another overlay in a separate `oshot --gui` process, on top of the one
 // already showing. This process has a single overlay (one GLFW window, ImGui
@@ -589,7 +589,8 @@ static void spawn_gui_instance(const std::string& source)
 {
     // Holding or mashing the hotkey shouldn't fork-bomb overlays
     static std::chrono::steady_clock::time_point last_spawn;
-    const auto                                   now = std::chrono::steady_clock::now();
+
+    const auto now = std::chrono::steady_clock::now();
     if (now - last_spawn < 500ms)
         return;
     last_spawn = now;
@@ -645,16 +646,17 @@ static void spawn_gui_instance(const std::string& source)
 }
 
 // Start a capture from the tray (menu or global hotkey), either a fresh screenshot
-// or the `source` image when it's not empty. Always sets the source, otherwise an
-// image opened once would be reopened by every later capture.
+// or the `source` image. Always sets the source, otherwise an image opened once
+// would be reopened by every later capture.
 // With `click` set, we wait for the menu to go away first
-static void capture_from_tray(const std::string& source, TrayClick click)
+static void capture_from_tray(const std::string& source, const TrayClick click)
 {
     if (click == TrayClick::Icon)
     {
         // A double click shouldn't open a second overlay on top of the first
         static std::chrono::steady_clock::time_point last_click;
-        const auto                                   now = std::chrono::steady_clock::now();
+
+        const auto now = std::chrono::steady_clock::now();
         if (now - last_click < 500ms)
             return;
         last_click = now;
@@ -677,6 +679,7 @@ static void capture_from_tray(const std::string& source, TrayClick click)
         wait_fade = true;
     }
 #  endif
+
     if (wait_fade)
         std::this_thread::sleep_for(TRAY_MENU_FADE);
 
@@ -694,6 +697,7 @@ static void capture_from_tray(const std::string& source, TrayClick click)
 
     // The hotkey may have been changed from Preferences
     sync_hotkey();
+
 #  if OSHOT_MACOS
     // glfwInit() finishing the app launch replaces the reopen handler
     Tray::SetReopenCallback([] { capture_from_tray(); });
@@ -714,7 +718,6 @@ static void capture_from_tray(const std::string& source, TrayClick click)
             return;
         }
     }
-    // Same as on Windows/macOS: stack another overlay process on top
     spawn_gui_instance(source);
 #endif
 }
@@ -800,7 +803,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 }
 #else
 // Not caught on purpose: with the tray/worker threads still running there's nothing to unwind to
-int main(int argc, char* argv[])  // NOLINT(bugprone-exception-escape)
+int main(int argc, char* argv[])
 {
     return oshot_main(argc, argv);
 }
@@ -860,20 +863,20 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     std::vector<spdlog::sink_ptr> sinks = { console, imgui };
     if (file)
         sinks.push_back(file);
+
     auto logger = std::make_shared<spdlog::logger>("oshot_logger", sinks.begin(), sinks.end());
     // [2026-03-10 17:24:07.593] [DEBUG] <col>message</col>
     logger->set_pattern("[%Y-%m-%d %T.%e] [%l] %^%v%$");
     logger->flush_on(spdlog::level::trace);
     spdlog::set_default_logger(logger);
     set_shared_default_logger(logger);
+
     // Registered only now that spdlog's registries exist. Exit handlers run in reverse order, so they
     // still exist in exit_handler_nc(). Registered earlier, liboshot_common's own registry
     // (macOS Release builds have one, see set_shared_default_logger()) was already
     // destroyed there, and release_shared_default_logger() aborted on its mutex
     atexit(exit_handler_nc);
     g_imgui_log_sink = imgui;
-
-    g_clipboard.SetSession(get_session_type());
 
     const std::string& configDir      = get_config_dir().string();
     const std::string& cacheDir       = get_cache_dir().string();
@@ -882,6 +885,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
 
     g_cache  = std::make_unique<Cache>(cacheDir);
     g_config = std::make_unique<Config>(configFile, configDir);
+    g_clipboard.SetSession(get_session_type());
     if (!parseargs(argc, argv, configFile))
         return EXIT_FAILURE;
 
@@ -893,9 +897,9 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
         return EXIT_FAILURE;
     }
 
-    // stdout is for the extracted text, and the info logs would clutter a terminal or script
+    // stdout is for the extracted text, and the trace/debug logs would clutter a terminal or script
     if (no_overlay)
-        console->set_level(spdlog::level::warn);
+        console->set_level(spdlog::level::info);
 
     g_config->LoadConfigFile(configFile);
     {
@@ -922,7 +926,6 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     logger->info("=== oshot starting ===");
     if (file)
         logger->info("Log file path: {}", file->filename());
-    spdlog::flush_every(1s);
 
     if (no_overlay)
         return run_without_overlay();
@@ -950,7 +953,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
         return run_capture();
     }
 
-#if defined(__GLIBC__)
+#ifdef __GLIBC__
     // This process stays up as the tray. After a big block is freed (a screenshot,
     // the OCR model) glibc raises its thresholds to that size and then keeps up to
     // twice as much free memory around; a fixed threshold gives it back after each
@@ -970,16 +973,14 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
         capture_from_tray(g_config->Runtime.source_file);
 #endif
 
-    // Set up dialogs (GTK on Linux) here on the main thread, where the tray
-    // runs. The worker only reaches init_dialogs() once its overlay is on
+    // Set up dialogs here on the main thread, where the tray runs.
+    // The worker only reaches init_dialogs() once its overlay is on
     // screen, so this call gets there first and the worker's is a no-op.
     init_dialogs();
 
     // The white icon on a dark panel. Anywhere else, or when that can't be told,
     // the full-colour one, since it shows on any panel
 #if OSHOT_WINDOWS
-    // Absolute paths, since the working directory is System32 when started at sign-in.
-    // The full-colour icon is the one embedded in oshot.exe (see assets/windows/oshot.rc.in)
     const std::string white_icon = (get_exe_dir() / "oshot-tray.ico").string();
     const std::string color_icon = get_exe_path().string();
     TrayIcon          tray       = { "oshot.png", color_icon, "oshot", {} };
@@ -1059,16 +1060,16 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
             pick_tray_icon();
             trayMaker.Update();
         });
-#if OSHOT_TOOL_ON_MAIN_THREAD
+
         sync_hotkey();
-#endif
+
 #if OSHOT_MACOS
         Tray::SetReopenCallback([] { capture_from_tray(); });
         install_quit_handler(request_quit);
 #endif
+
         while (!app_quitting() && trayMaker.Loop(true))
-        {
-        }
+            ;
     }
     else if (g_config->Runtime.only_launch_tray)
     {
