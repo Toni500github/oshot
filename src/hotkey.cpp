@@ -264,7 +264,7 @@ Result<hotkey_t> parse(std::string_view str)
     Parser p(s);
     while (true)
     {
-        const std::string token(p.read_until<'+'>());
+        const std::string token(p.ReadUntil<'+'>());
         if (token.empty())
             return Err("Invalid hotkey '{}': empty key between '+'", str);
 
@@ -283,7 +283,7 @@ Result<hotkey_t> parse(std::string_view str)
         }
 
         // A '+' means another key follows, so "win+" fails as an empty key
-        if (!p.try_read('+'))
+        if (!p.TryRead('+'))
             break;
     }
 

@@ -221,14 +221,14 @@ int compare_versions(std::string_view a, std::string_view b)
         std::array<long, 3> nums{};
         for (long& n : nums)
         {
-            n = std::strtol(std::string(p.read_until<'.', '-'>()).c_str(), nullptr, 10);
-            if (!p.try_read('.'))
+            n = std::strtol(std::string(p.ReadUntil<'.', '-'>()).c_str(), nullptr, 10);
+            if (!p.TryRead('.'))
                 break;
         }
 
         // A fourth number and on are ignored. The pre-release is everything after the first '-'
-        p.read_until<'-'>();
-        const std::string_view pre = p.try_read('-') ? v.substr(p.pos) : std::string_view();
+        p.ReadUntil<'-'>();
+        const std::string_view pre = p.TryRead('-') ? v.substr(p.pos) : std::string_view();
         return std::make_pair(nums, pre);
     };
 
@@ -241,16 +241,16 @@ int compare_versions(std::string_view a, std::string_view b)
 
     // Pre-release identifiers: numbers compare as numbers and sort before words
     Parser ppa(pa), ppb(pb);
-    while (!ppa.is_eof() || !ppb.is_eof())
+    while (!ppa.IsEof() || !ppb.IsEof())
     {
-        if (ppa.is_eof())
+        if (ppa.IsEof())
             return -1;
-        if (ppb.is_eof())
+        if (ppb.IsEof())
             return 1;
-        const std::string_view xa = ppa.read_until<'.'>();
-        const std::string_view xb = ppb.read_until<'.'>();
-        ppa.try_read('.');
-        ppb.try_read('.');
+        const std::string_view xa = ppa.ReadUntil<'.'>();
+        const std::string_view xb = ppb.ReadUntil<'.'>();
+        ppa.TryRead('.');
+        ppb.TryRead('.');
         const bool             da = std::ranges::all_of(xa, ::isdigit);
         const bool             db = std::ranges::all_of(xb, ::isdigit);
         if (da && db && xa.size() != xb.size())

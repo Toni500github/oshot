@@ -279,14 +279,13 @@ private:
     E    m_err;
 };
 
-class Parser
+struct Parser
 {
-public:
     Parser(const std::string_view src) : src{ src } {}
 
-    bool try_read(const char c)
+    bool TryRead(const char c)
     {
-        if (is_eof())
+        if (IsEof())
             return false;
 
         if (src[pos] == c)
@@ -298,9 +297,9 @@ public:
         return false;
     }
 
-    char read_char()
+    char ReadChar()
     {
-        if (is_eof())
+        if (IsEof())
             return 0;
 
         ++pos;
@@ -308,12 +307,12 @@ public:
     }
 
     // The next char without consuming it, 0 at the end
-    [[nodiscard]] char peek() const { return is_eof() ? 0 : src[pos]; }
+    [[nodiscard]] char Peek() const { return IsEof() ? 0 : src[pos]; }
 
     // Read up to the next of the `Stops` chars (left unread) or the end.
     // A template so the comparisons inline, string_view::find_first_of() is slower on short strings
     template <char... Stops>
-    std::string_view read_until()
+    std::string_view ReadUntil()
     {
         const size_t start = pos;
         while (pos < src.size() && ((src[pos] != Stops) && ...))
@@ -321,9 +320,9 @@ public:
         return src.substr(start, pos - start);
     }
 
-    [[nodiscard]] bool is_eof() const { return pos >= src.length(); }
+    [[nodiscard]] bool IsEof() const { return pos >= src.length(); }
 
-    void rewind(const size_t count = 1) { pos -= std::min(pos, count); }
+    void Rewind(const size_t count = 1) { pos -= std::min(pos, count); }
 
     const std::string_view src;
     size_t                 pos = 0;

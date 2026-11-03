@@ -958,10 +958,10 @@ std::string expand_var(std::string ret)
     std::string out;
     out.reserve(ret.size());
     Parser p(ret);
-    while (!p.is_eof())
+    while (!p.IsEof())
     {
-        const char c = p.read_char();
-        if (c != '$' || p.is_eof())
+        const char c = p.ReadChar();
+        if (c != '$' || p.IsEof())
         {
             out += c;
             continue;
@@ -970,22 +970,22 @@ std::string expand_var(std::string ret)
         // ${NAME} or $NAME, where NAME doesn't start with a digit
         const size_t dollar = p.pos - 1;
         std::string  name;
-        if (p.try_read('{'))
+        if (p.TryRead('{'))
         {
-            while (!p.is_eof() && p.peek() != '}')
-                name += p.read_char();
-            if (!p.try_read('}'))
+            while (!p.IsEof() && p.Peek() != '}')
+                name += p.ReadChar();
+            if (!p.TryRead('}'))
             {
                 // No closing brace, so the '$' is literal and the rest is read again
                 out += c;
-                p.rewind(p.pos - dollar - 1);
+                p.Rewind(p.pos - dollar - 1);
                 continue;
             }
         }
         else
         {
-            while (is_name_char(p.peek()))
-                name += p.read_char();
+            while (is_name_char(p.Peek()))
+                name += p.ReadChar();
         }
 
         const char* value =

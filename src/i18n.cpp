@@ -116,20 +116,20 @@ std::optional<std::vector<std::string>> placeholders(std::string_view s)
     std::vector<std::string> braces, percents;
     bool                     auto_index = false, manual_index = false;
     Parser                   p(s);
-    while (!p.is_eof())
+    while (!p.IsEof())
     {
-        p.read_until<'{', '}', '%'>();
-        const char c = p.read_char();
+        p.ReadUntil<'{', '}', '%'>();
+        const char c = p.ReadChar();
         if (c == '{' || c == '}')
         {
             // "{{" and "}}" are literal braces
-            if (p.try_read(c))
+            if (p.TryRead(c))
                 continue;
             if (c == '}')
                 return std::nullopt;
 
-            const std::string_view token = p.read_until<'{', '}'>();
-            if (!p.try_read('}'))
+            const std::string_view token = p.ReadUntil<'{', '}'>();
+            if (!p.TryRead('}'))
                 return std::nullopt;
             if (token.empty() || token.front() == ':')
             {
@@ -144,17 +144,17 @@ std::optional<std::vector<std::string>> placeholders(std::string_view s)
         }
         else if (c == '%')
         {
-            if (p.try_read('%'))
+            if (p.TryRead('%'))
                 continue;
 
             // No ' ' flag here, or a literal "100% done" would look like "% d".
-            // peek() gives 0 at the end, which is in neither list
+            // Peek() gives 0 at the end, which is in neither list
             const std::size_t start = p.pos - 1;
-            while (std::string_view("-+#0123456789.*hlLqjzt").find(p.peek()) != std::string_view::npos)
-                p.read_char();
-            if (std::string_view("diouxXeEfFgGaAcsp").find(p.peek()) != std::string_view::npos)
+            while (std::string_view("-+#0123456789.*hlLqjzt").find(p.Peek()) != std::string_view::npos)
+                p.ReadChar();
+            if (std::string_view("diouxXeEfFgGaAcsp").find(p.Peek()) != std::string_view::npos)
             {
-                p.read_char();
+                p.ReadChar();
                 percents.emplace_back(s.substr(start, p.pos - start));
             }
         }
