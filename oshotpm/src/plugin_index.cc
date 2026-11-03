@@ -215,20 +215,20 @@ Result<std::string> sha256_file(const fs::path& path)
 // ----- versions -----
 int compare_versions(std::string_view a, std::string_view b)
 {
+    // "1.2.3-rc.1" -> {1, 2, 3} and "rc.1"
     const auto split = [](std::string_view v) {
-        const size_t           dash = v.find('-');
-        const std::string_view core = v.substr(0, dash);
-        const std::string_view pre  = dash == v.npos ? std::string_view() : v.substr(dash + 1);
-        std::array<long, 3>    nums{};
-        size_t                 i = 0, start = 0;
-        for (size_t pos = 0; pos <= core.size() && i < 3; ++pos)
+        Parser              p(v);
+        std::array<long, 3> nums{};
+        for (long& n : nums)
         {
-            if (pos == core.size() || core[pos] == '.')
-            {
-                nums[i++] = std::strtol(std::string(core.substr(start, pos - start)).c_str(), nullptr, 10);
-                start     = pos + 1;
-            }
+            n = std::strtol(std::string(p.read_until<'.', '-'>()).c_str(), nullptr, 10);
+            if (!p.try_read('.'))
+                break;
         }
+
+        // A fourth number and on are ignored. The pre-release is everything after the first '-'
+        p.read_until<'-'>();
+        const std::string_view pre = p.try_read('-') ? v.substr(p.pos) : std::string_view();
         return std::make_pair(nums, pre);
     };
 
@@ -240,17 +240,17 @@ int compare_versions(std::string_view a, std::string_view b)
         return pa.empty() == pb.empty() ? 0 : (pa.empty() ? 1 : -1);  // a release is newer than its pre-releases
 
     // Pre-release identifiers: numbers compare as numbers and sort before words
-    size_t ia = 0, ib = 0;
-    while (ia < pa.size() || ib < pb.size())
+    Parser ppa(pa), ppb(pb);
+    while (!ppa.is_eof() || !ppb.is_eof())
     {
-        if (ia >= pa.size())
+        if (ppa.is_eof())
             return -1;
-        if (ib >= pb.size())
+        if (ppb.is_eof())
             return 1;
-        const size_t           ea = std::min(pa.find('.', ia), pa.size());
-        const size_t           eb = std::min(pb.find('.', ib), pb.size());
-        const std::string_view xa = pa.substr(ia, ea - ia);
-        const std::string_view xb = pb.substr(ib, eb - ib);
+        const std::string_view xa = ppa.read_until<'.'>();
+        const std::string_view xb = ppb.read_until<'.'>();
+        ppa.try_read('.');
+        ppb.try_read('.');
         const bool             da = std::ranges::all_of(xa, ::isdigit);
         const bool             db = std::ranges::all_of(xb, ::isdigit);
         if (da && db && xa.size() != xb.size())
@@ -259,8 +259,6 @@ int compare_versions(std::string_view a, std::string_view b)
             return da ? -1 : 1;
         if (xa != xb)
             return xa < xb ? -1 : 1;
-        ia = ea + 1;
-        ib = eb + 1;
     }
     return 0;
 }

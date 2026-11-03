@@ -957,45 +957,45 @@ std::string expand_var(std::string ret)
 
     std::string out;
     out.reserve(ret.size());
-    for (size_t i = 0; i < ret.size(); ++i)
+    Parser p(ret);
+    while (!p.is_eof())
     {
-        if (ret[i] != '$' || i + 1 == ret.size())
+        const char c = p.read_char();
+        if (c != '$' || p.is_eof())
         {
-            out += ret[i];
+            out += c;
             continue;
         }
 
         // ${NAME} or $NAME, where NAME doesn't start with a digit
-        size_t name_start = i + 1, name_end = 0, next = 0;
-        if (ret[name_start] == '{')
+        const size_t dollar = p.pos - 1;
+        std::string  name;
+        if (p.try_read('{'))
         {
-            ++name_start;
-            name_end = ret.find('}', name_start);
-            if (name_end == ret.npos)
+            while (!p.is_eof() && p.peek() != '}')
+                name += p.read_char();
+            if (!p.try_read('}'))
             {
-                out += ret[i];
+                // No closing brace, so the '$' is literal and the rest is read again
+                out += c;
+                p.rewind(p.pos - dollar - 1);
                 continue;
             }
-            next = name_end + 1;
         }
         else
         {
-            name_end = name_start;
-            while (name_end < ret.size() && is_name_char(ret[name_end]))
-                ++name_end;
-            next = name_end;
+            while (is_name_char(p.peek()))
+                name += p.read_char();
         }
 
-        const std::string name = ret.substr(name_start, name_end - name_start);
-        const char*       value =
+        const char* value =
             (name.empty() || std::isdigit(static_cast<unsigned char>(name[0]))) ? nullptr : std::getenv(name.c_str());
 
         // Unset variables stay as they are, so a literal '$' survives
         if (value)
             out += value;
         else
-            out.append(ret, i, next - i);
-        i = next - 1;
+            out.append(ret, dollar, p.pos - dollar);
     }
 
     return out;

@@ -42,6 +42,7 @@
 #include "platform.hpp"
 #include "spdlog/spdlog.h"
 #include "tinygettext/dictionary.hpp"
+#include "util.hpp"
 #include "tinygettext/language.hpp"
 #include "tinygettext/log.hpp"
 #include "tinygettext/po_parser.hpp"
@@ -114,23 +115,22 @@ std::optional<std::vector<std::string>> placeholders(std::string_view s)
 {
     std::vector<std::string> braces, percents;
     bool                     auto_index = false, manual_index = false;
-    for (std::size_t i = 0; i < s.size(); ++i)
+    Parser                   p(s);
+    while (!p.is_eof())
     {
-        if (s[i] == '{' || s[i] == '}')
+        p.read_until<'{', '}', '%'>();
+        const char c = p.read_char();
+        if (c == '{' || c == '}')
         {
-            if (i + 1 < s.size() && s[i + 1] == s[i])
-            {
-                ++i;
+            // "{{" and "}}" are literal braces
+            if (p.try_read(c))
                 continue;
-            }
-            if (s[i] == '}')
+            if (c == '}')
                 return std::nullopt;
 
-            const std::size_t end = s.find_first_of("{}", i + 1);
-            if (end == s.npos || s[end] != '}')
+            const std::string_view token = p.read_until<'{', '}'>();
+            if (!p.try_read('}'))
                 return std::nullopt;
-
-            std::string_view token = s.substr(i + 1, end - i - 1);
             if (token.empty() || token.front() == ':')
             {
                 auto_index = true;
@@ -141,24 +141,21 @@ std::optional<std::vector<std::string>> placeholders(std::string_view s)
                 manual_index = true;
                 braces.push_back(fmt::format("{{{}}}", token));
             }
-            i = end;
         }
-        else if (s[i] == '%')
+        else if (c == '%')
         {
-            if (i + 1 < s.size() && s[i + 1] == '%')
-            {
-                ++i;
+            if (p.try_read('%'))
                 continue;
-            }
 
-            // No ' ' flag here, or a literal "100% done" would look like "% d"
-            std::size_t j = i + 1;
-            while (j < s.size() && std::string_view("-+#0123456789.*hlLqjzt").find(s[j]) != std::string_view::npos)
-                ++j;
-            if (j < s.size() && std::string_view("diouxXeEfFgGaAcsp").find(s[j]) != std::string_view::npos)
+            // No ' ' flag here, or a literal "100% done" would look like "% d".
+            // peek() gives 0 at the end, which is in neither list
+            const std::size_t start = p.pos - 1;
+            while (std::string_view("-+#0123456789.*hlLqjzt").find(p.peek()) != std::string_view::npos)
+                p.read_char();
+            if (std::string_view("diouxXeEfFgGaAcsp").find(p.peek()) != std::string_view::npos)
             {
-                percents.emplace_back(s.substr(i, j - i + 1));
-                i = j;
+                p.read_char();
+                percents.emplace_back(s.substr(start, p.pos - start));
             }
         }
     }

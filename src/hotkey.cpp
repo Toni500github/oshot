@@ -261,11 +261,10 @@ Result<hotkey_t> parse(std::string_view str)
     if (s.empty() || s == "none")
         return Ok(hk);
 
-    size_t start = 0;
+    Parser p(s);
     while (true)
     {
-        const size_t      plus  = s.find('+', start);
-        const std::string token = s.substr(start, plus == std::string::npos ? std::string::npos : plus - start);
+        const std::string token(p.read_until<'+'>());
         if (token.empty())
             return Err("Invalid hotkey '{}': empty key between '+'", str);
 
@@ -283,9 +282,9 @@ Result<hotkey_t> parse(std::string_view str)
                 return Err("Invalid hotkey '{}': unknown key '{}'", str, token);
         }
 
-        if (plus == std::string::npos)
+        // A '+' means another key follows, so "win+" fails as an empty key
+        if (!p.try_read('+'))
             break;
-        start = plus + 1;
     }
 
     if (hk.empty())
