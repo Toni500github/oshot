@@ -36,6 +36,7 @@ static void check_same(const Config::config_file_t& got, const Config::config_fi
     CHECK(got.pref_conf_to_env == want.pref_conf_to_env);
     CHECK(got.render_anns == want.render_anns);
     CHECK(got.old_toolbar_pos == want.old_toolbar_pos);
+    CHECK(got.aa_icons == want.aa_icons);
     CHECK(got.ctrl_c_copy_img == want.ctrl_c_copy_img);
     CHECK(got.hotkey == want.hotkey);
     CHECK(got.language == want.language);
@@ -90,6 +91,7 @@ TEST_CASE("Config: the generated config loads back the same", "[config]")
         f.pref_conf_to_env   = true;  // else TESSDATA_PREFIX would replace ocr_path
         f.render_anns        = !f.render_anns;
         f.old_toolbar_pos    = !f.old_toolbar_pos;
+        f.aa_icons           = !f.aa_icons;
         f.ctrl_c_copy_img    = !f.ctrl_c_copy_img;
         f.hotkey             = "Ctrl+Alt+P";
         f.language           = "pt_BR";

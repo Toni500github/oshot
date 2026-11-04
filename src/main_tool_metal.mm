@@ -284,28 +284,24 @@ int run_main_tool()
     // Pass to ImGui
     g_ss_tool.SetBackendTexture((__bridge void*)metalTexture);
 
-    g_ss_tool.SetToolTexture(
-        ToolType::Rectangle,
-        (__bridge void*)create_metal_texture(device, ICON_SQUARE_RGBA, ICON_SQUARE_W, ICON_SQUARE_H));
-    g_ss_tool.SetToolTexture(
-        ToolType::RectangleFilled,
-        (__bridge void*)create_metal_texture(device, ICON_RECT_FILLED_RGBA, ICON_RECT_FILLED_W, ICON_RECT_FILLED_H));
+    const bool aa = g_config->File.aa_icons;
+
+    g_ss_tool.SetToolTexture(ToolType::Rectangle,
+                             (__bridge void*)create_metal_texture(device, TOOL_ICON(aa, ICON_SQUARE)));
+    g_ss_tool.SetToolTexture(ToolType::RectangleFilled,
+                             (__bridge void*)create_metal_texture(device, TOOL_ICON(aa, ICON_RECT_FILLED)));
     g_ss_tool.SetToolTexture(ToolType::CircleFilled,
-                             (__bridge void*)create_metal_texture(
-                                 device, ICON_CIRCLE_FILLED_RGBA, ICON_CIRCLE_FILLED_W, ICON_CIRCLE_FILLED_H));
+                             (__bridge void*)create_metal_texture(device, TOOL_ICON(aa, ICON_CIRCLE_FILLED)));
     g_ss_tool.SetToolTexture(
         ToolType::ToggleTextTools,
         (__bridge void*)create_metal_texture(device, ICON_TEXT_TOOLS_RGBA, ICON_TEXT_TOOLS_W, ICON_TEXT_TOOLS_H));
-    g_ss_tool.SetToolTexture(ToolType::Line,
-                             (__bridge void*)create_metal_texture(device, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H));
-    g_ss_tool.SetToolTexture(
-        ToolType::Circle, (__bridge void*)create_metal_texture(device, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H));
-    g_ss_tool.SetToolTexture(ToolType::Arrow,
-                             (__bridge void*)create_metal_texture(device, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H));
-    g_ss_tool.SetToolTexture(
-        ToolType::Pencil, (__bridge void*)create_metal_texture(device, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H));
-    g_ss_tool.SetToolTexture(ToolType::Text,
-                             (__bridge void*)create_metal_texture(device, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H));
+    g_ss_tool.SetToolTexture(ToolType::Line, (__bridge void*)create_metal_texture(device, TOOL_ICON(aa, ICON_LINE)));
+    g_ss_tool.SetToolTexture(ToolType::Circle,
+                             (__bridge void*)create_metal_texture(device, TOOL_ICON(aa, ICON_CIRCLE)));
+    g_ss_tool.SetToolTexture(ToolType::Arrow, (__bridge void*)create_metal_texture(device, TOOL_ICON(aa, ICON_ARROW)));
+    g_ss_tool.SetToolTexture(ToolType::Pencil,
+                             (__bridge void*)create_metal_texture(device, TOOL_ICON(aa, ICON_PENCIL)));
+    g_ss_tool.SetToolTexture(ToolType::Text, (__bridge void*)create_metal_texture(device, TOOL_ICON(aa, ICON_TEXT)));
 
     // Render loop
     MTLRenderPassDescriptor* rpd         = [MTLRenderPassDescriptor new];

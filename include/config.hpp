@@ -106,6 +106,7 @@ public:
         std::string              image_out_fmt   = "oshot_{:%F_%H-%M}";
         int                      delay           = 0;
         bool                     show_text_tools = true;
+        bool                     aa_icons        = true;  // antialiased-icons, else the pixel-perfect ones
         bool                     enable_vsync    = true;
         bool                     ctrl_c_copy_img = true;
         std::vector<std::string> fonts;

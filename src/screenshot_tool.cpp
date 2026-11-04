@@ -427,23 +427,22 @@ Result<> ScreenshotTool::StartWindow()
     m_texture_id = res.get();
 
     // The screenshot texture worked, so assume these do too
-    m_tool_textures[idx(ToolType::Rectangle)] = CreateTexture(0, ICON_SQUARE_RGBA, ICON_SQUARE_W, ICON_SQUARE_H).get();
-    m_tool_textures[idx(ToolType::RectangleFilled)] =
-        CreateTexture(0, ICON_RECT_FILLED_RGBA, ICON_RECT_FILLED_W, ICON_RECT_FILLED_H).get();
-    m_tool_textures[idx(ToolType::CircleFilled)] =
-        CreateTexture(0, ICON_CIRCLE_FILLED_RGBA, ICON_CIRCLE_FILLED_W, ICON_CIRCLE_FILLED_H).get();
+    const bool aa = g_config->File.aa_icons;
+
+    m_tool_textures[idx(ToolType::Rectangle)]       = CreateTexture(0, TOOL_ICON(aa, ICON_SQUARE)).get();
+    m_tool_textures[idx(ToolType::RectangleFilled)] = CreateTexture(0, TOOL_ICON(aa, ICON_RECT_FILLED)).get();
+    m_tool_textures[idx(ToolType::CircleFilled)]    = CreateTexture(0, TOOL_ICON(aa, ICON_CIRCLE_FILLED)).get();
     m_tool_textures[idx(ToolType::ToggleTextTools)] =
         CreateTexture(0, ICON_TEXT_TOOLS_RGBA, ICON_TEXT_TOOLS_W, ICON_TEXT_TOOLS_H).get();
-    m_tool_textures[idx(ToolType::Circle)] = CreateTexture(0, ICON_CIRCLE_RGBA, ICON_CIRCLE_W, ICON_CIRCLE_H).get();
-    m_tool_textures[idx(ToolType::CounterBubble)] =
-        CreateTexture(0, ICON_COUNTER_BUBBLE_RGBA, ICON_COUNTER_BUBBLE_W, ICON_COUNTER_BUBBLE_H).get();
-    m_tool_textures[idx(ToolType::Pencil)] = CreateTexture(0, ICON_PENCIL_RGBA, ICON_PENCIL_W, ICON_PENCIL_H).get();
+    m_tool_textures[idx(ToolType::Circle)]        = CreateTexture(0, TOOL_ICON(aa, ICON_CIRCLE)).get();
+    m_tool_textures[idx(ToolType::CounterBubble)] = CreateTexture(0, TOOL_ICON(aa, ICON_COUNTER_BUBBLE)).get();
+    m_tool_textures[idx(ToolType::Pencil)]        = CreateTexture(0, TOOL_ICON(aa, ICON_PENCIL)).get();
 
-    m_tool_textures[idx(ToolType::Arrow)]     = CreateTexture(0, ICON_ARROW_RGBA, ICON_ARROW_W, ICON_ARROW_H).get();
-    m_tool_textures[idx(ToolType::Text)]      = CreateTexture(0, ICON_TEXT_RGBA, ICON_TEXT_W, ICON_TEXT_H).get();
-    m_tool_textures[idx(ToolType::CopyImage)] = CreateTexture(0, ICON_COPY_RGBA, ICON_COPY_W, ICON_COPY_H).get();
-    m_tool_textures[idx(ToolType::SaveImage)] = CreateTexture(0, ICON_SAVE_RGBA, ICON_SAVE_W, ICON_SAVE_H).get();
-    m_tool_textures[idx(ToolType::Line)]      = CreateTexture(0, ICON_LINE_RGBA, ICON_LINE_W, ICON_LINE_H).get();
+    m_tool_textures[idx(ToolType::Arrow)]     = CreateTexture(0, TOOL_ICON(aa, ICON_ARROW)).get();
+    m_tool_textures[idx(ToolType::Text)]      = CreateTexture(0, TOOL_ICON(aa, ICON_TEXT)).get();
+    m_tool_textures[idx(ToolType::CopyImage)] = CreateTexture(0, TOOL_ICON(aa, ICON_COPY)).get();
+    m_tool_textures[idx(ToolType::SaveImage)] = CreateTexture(0, TOOL_ICON(aa, ICON_SAVE)).get();
+    m_tool_textures[idx(ToolType::Line)]      = CreateTexture(0, TOOL_ICON(aa, ICON_LINE)).get();
     m_tool_textures[idx(ToolType::Logo)]      = CreateTexture(0, OSHOT_LOGO_RGBA, OSHOT_LOGO_W, OSHOT_LOGO_H).get();
 #endif
 
@@ -3884,6 +3883,12 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     ImGui::Checkbox(_("Legacy toolbar placement##config_old_toolbar_pos"), &g_config->File.old_toolbar_pos);
     ImGui::SameLine();
     HelpMarker(_("Put all tools buttons at the bottom of the main selection border in the same line"));
+
+    ImGui::Checkbox(_("Anti-aliased toolbar icons##config_aa_icons"), &g_config->File.aa_icons);
+    ImGui::SameLine();
+    HelpMarker(
+        _("Draw the toolbar icons with smooth edges. Disable it for pixel-perfect icons.\n"
+          "Applies from the next capture."));
 
     ImGui::Checkbox(_("Use CTRL+C to copy image##config_ctrl_c_copy_img"), &g_config->File.ctrl_c_copy_img);
     ImGui::SameLine();

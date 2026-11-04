@@ -228,6 +228,10 @@ annotations-in-text-tools = {}
 # Disable dynamic tools position for legacy placement (same line)
 legacy-toolbar-pos = {}
 
+# Draw the toolbar icons with smooth (anti-aliased) edges.
+# false uses the pixel-perfect ones instead. Changes apply from the next capture.
+antialiased-icons = {}
+
 # Copy image shortcut to use.
 # true: CTRL+C
 # false: CTRL+SHIFT+C

@@ -103,6 +103,7 @@ void Config::LoadConfigFile(const std::string& filename)
     File.color_picker     = GetValue<int>("default.color-picker", 0);
     File.cpa_mode         = GetValue<int>("default.color-picker-alpha-mode", 2);
     File.show_text_tools  = GetValue<bool>("default.show-text-tools", true);
+    File.aa_icons         = GetValue<bool>("default.antialiased-icons", true);
     File.enable_vsync     = GetValue<bool>("default.vsync", true);
     File.glx_vendor       = GetValue<std::string>("default.glx-vendor", "");
     File.real_full_screen = GetValue<bool>("default.real-full-screen", false);
@@ -210,6 +211,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.pref_conf_to_env,
             File.render_anns,
             File.old_toolbar_pos,
+            File.aa_icons,
             File.ctrl_c_copy_img,
             EscapeString(File.hotkey),
             EscapeString(File.language),
