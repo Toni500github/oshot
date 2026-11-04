@@ -27,14 +27,24 @@
 #define _TOML_API_HPP_
 
 #include <algorithm>
+#include <cctype>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
 #include <fstream>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "util.hpp"
 
 #define TOML_HEADER_ONLY 0
+#include "fmt/format.h"
 #include "toml++.hpp"
 
 enum class ValueType : std::uint8_t

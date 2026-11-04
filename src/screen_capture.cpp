@@ -27,16 +27,19 @@
 
 #include <algorithm>
 #include <climits>
-#include <cstddef>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "fmt/format.h"
+#include "spdlog/spdlog.h"
 #include "tiny-process-library/process.hpp"
 #include "util.hpp"
 

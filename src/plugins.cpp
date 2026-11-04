@@ -26,17 +26,39 @@
 #ifndef DISABLE_PLUGINS
 
 #  include <algorithm>
-#  include <cstddef>
+#  include <array>
+#  include <atomic>
+#  include <chrono>
+#  include <cstdint>
+#  include <cstdlib>
 #  include <cstring>
+#  include <filesystem>
+#  include <functional>
 #  include <iterator>
+#  include <map>
+#  include <memory>
+#  include <mutex>
+#  include <optional>
 #  include <set>
+#  include <span>
+#  include <string>
+#  include <string_view>
+#  include <system_error>
+#  include <thread>
+#  include <utility>
+#  include <variant>
+#  include <vector>
 
+#  include "dylib.hpp"
+#  include "fmt/format.h"
 #  include "imgui.h"
 #  include "imgui_internal.h"
 #  include "manifest.hh"
 #  include "plugin.hpp"
 #  include "screen_capture.hpp"
+#  include "spdlog/spdlog.h"
 #  include "state_manager.hh"
+#  include "toml_api.hpp"
 #  include "util.hpp"
 
 static_assert(OSHOT_IMGUI_VERSION == IMGUI_VERSION_NUM,

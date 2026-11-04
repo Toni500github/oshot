@@ -26,16 +26,15 @@
 #ifndef _TEXT_EXTRACTION_HPP_
 #define _TEXT_EXTRACTION_HPP_
 
-#include <leptonica/allheaders.h>
-#include <tesseract/baseapi.h>
+#include <tesseract/publictypes.h>
 #include <zbar.h>
 
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "screen_capture.hpp"
 #include "util.hpp"
 
 // ------------------------------
@@ -67,6 +66,11 @@ struct ocr_result_t
     std::vector<ocr_word_t> words;
 };
 
+namespace tesseract
+{
+class TessBaseAPI;
+}
+struct capture_result_t;
 class OcrEnginePool;
 
 class OcrAPI

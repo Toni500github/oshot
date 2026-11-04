@@ -1,12 +1,19 @@
 #include "manifest.hh"
 
+#include <algorithm>
+#include <filesystem>
+#include <map>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "catch2/catch_amalgamated.hpp"
 #include "common.hpp"
+#include "fmt/format.h"
 #include "plugin_index.hh"
 #include "state_manager.hh"
+#include "util.hpp"
 
 using Catch::Matchers::ContainsSubstring;
 using strings      = std::vector<std::string>;

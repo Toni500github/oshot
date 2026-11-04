@@ -26,6 +26,7 @@
 #ifndef _I18N_HPP_
 #define _I18N_HPP_
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>

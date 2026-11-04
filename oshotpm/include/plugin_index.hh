@@ -31,9 +31,11 @@
 // source and prebuilt files per target with their SHA-256.
 
 #include <cstdint>
+#include <filesystem>
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "util.hpp"

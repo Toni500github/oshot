@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <utility>
 
 #include "fmt/format.h"

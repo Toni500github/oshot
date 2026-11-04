@@ -1,8 +1,12 @@
 #include "hotkey.hpp"
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "catch2/catch_amalgamated.hpp"
+#include "imgui/imgui.h"
+#include "util.hpp"
 
 using namespace hotkey;
 

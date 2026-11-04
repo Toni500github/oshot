@@ -26,9 +26,13 @@
 #ifndef _CLIPBOARD_HPP_
 #define _CLIPBOARD_HPP_
 
+#include <cstdint>
 #include <string>
 
-#include "screen_capture.hpp"
+#include "util.hpp"
+
+enum class SessionType : std::uint8_t;
+struct capture_result_t;
 
 // The system clipboard. On X11 and Wayland it goes through xclip/wl-copy,
 // which keep serving the copied data after oshot exits; elsewhere through the clip library

@@ -32,16 +32,19 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <mutex>
 #include <optional>
 #include <sstream>
+#include <system_error>
 #include <unordered_map>
 
 #include "platform.hpp"
 #include "spdlog/spdlog.h"
 #include "tinygettext/dictionary.hpp"
+#include "tinygettext/plural_forms.hpp"
 #include "util.hpp"
 #include "tinygettext/language.hpp"
 #include "tinygettext/log.hpp"

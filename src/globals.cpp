@@ -23,14 +23,24 @@
  *
  */
 
+#include <deque>
+#include <filesystem>
+#include <map>
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "cache.hpp"
 #include "clipboard.hpp"
 #include "config.hpp"
+#include "fmt/format.h"
 #ifndef DISABLE_PLUGINS
 #  include "plugin.hpp"
 #  include "state_manager.hh"
 #endif
+#include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
+#include "spdlog/sinks/ringbuffer_sink.h"
 #include "util.hpp"
 #include "version.h"
 

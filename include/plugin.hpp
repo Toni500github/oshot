@@ -30,13 +30,15 @@
 #  include <chrono>
 #  include <condition_variable>
 #  include <cstddef>
+#  include <cstdint>
+#  include <filesystem>
 #  include <functional>
 #  include <map>
 #  include <memory>
 #  include <mutex>
 #  include <span>
 #  include <string>
-#  include <thread>
+#  include <string_view>
 #  include <utility>
 #  include <variant>
 #  include <vector>
@@ -47,8 +49,10 @@
 #  include "../src/plugins/oshot_plugin.h"
 #  include "dylib.hpp"
 #  include "toml_api.hpp"
+#  include "util.hpp"
 
 class StateManager;
+struct capture_result_t;
 
 // Whether a plugin's descriptor has `field`: one built with an older
 // oshot_plugin.h is shorter and ends before the fields added since

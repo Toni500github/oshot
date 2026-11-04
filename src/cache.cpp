@@ -26,8 +26,10 @@
 #include "cache.hpp"
 
 #include <filesystem>
+#include <sstream>
 #include <string>
 
+#include "spdlog/spdlog.h"
 #include "util.hpp"
 
 Cache::Cache(const std::string& cache_dir) : m_cache_dir_path(cache_dir)

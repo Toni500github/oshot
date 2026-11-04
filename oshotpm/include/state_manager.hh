@@ -26,9 +26,11 @@
 #ifndef _STATE_MANAGER_HH_
 #define _STATE_MANAGER_HH_
 
+#include <filesystem>
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 

@@ -26,14 +26,16 @@
 #include "util.hpp"
 
 #include <fcntl.h>
+#include <sys/stat.h>
 
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <cctype>
+#include <cerrno>
 #include <chrono>
 #include <climits>
-#include <cstddef>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -42,7 +44,10 @@
 #include <filesystem>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <string_view>
+#include <system_error>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -54,12 +59,12 @@
 #include "fmt/chrono.h"
 #include "fmt/format.h"
 #include "i18n.hpp"
+#include "imgui/imgui.h"
 #include "nvdialog/nvdialog_core.h"
 #include "nvdialog/nvdialog_error.h"
 #include "nvdialog/nvdialog_notification.h"
 #include "platform.hpp"
 #include "screen_capture.hpp"
-#include "screenshot_tool.hpp"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "tinyfiledialogs.h"
 
@@ -99,9 +104,7 @@
 #    include <sys/sysctl.h>
 #  endif
 #  include <pwd.h>
-#  include <sys/file.h>
 #  include <unistd.h>
-#  include <X11/Xlib.h>
 #endif
 #if OSHOT_FREEDESKTOP
 #  include <fontconfig/fontconfig.h>

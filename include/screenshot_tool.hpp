@@ -27,6 +27,7 @@
 #define _SCREENSHOT_TOOL_HPP_
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <bitset>
 #include <condition_variable>
@@ -37,11 +38,15 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <span>
+#include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
-#include "config.hpp"
+#include "i18n.hpp"
 #include "imgui/imgui.h"
 #include "imgui/imgui_internal.h"
 #include "screen_capture.hpp"
@@ -49,8 +54,10 @@
 #include "util.hpp"
 
 #ifndef DISABLE_PLUGINS
+#  include "plugin_index.hh"
 #  include "plugin_manager.hh"
 
+class StateManager;
 struct plugin_runtime_t;
 #endif
 
@@ -887,9 +894,6 @@ private:
 
     // Draws the "Original" toggle above an output whose text the transformers changed
     void DrawOriginalToggle(const std::string& original, bool& show);
-
-    // How many OSHOT_PLACE_TOOLBAR actions the plugins have
-    [[nodiscard]] size_t CountPluginToolbarButtons() const;
 
     // Calls on_selection_changed() once the selection is done changing and differs
     // from what the plugins were last told

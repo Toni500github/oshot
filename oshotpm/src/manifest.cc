@@ -27,9 +27,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <filesystem>
+#include <system_error>
+#include <utility>
 #include <vector>
 
+#include "fmt/format.h"
 #include "fmt/ranges.h"
 #include "util.hpp"
 

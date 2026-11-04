@@ -29,8 +29,12 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
+#include "platform.hpp"
 #include "screen_capture.hpp"
 #include "toml_api.hpp"
 #include "util.hpp"

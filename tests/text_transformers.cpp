@@ -1,6 +1,9 @@
 #include <chrono>
+#include <functional>
+#include <span>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "catch2/catch_amalgamated.hpp"

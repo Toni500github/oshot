@@ -26,6 +26,7 @@
 #ifndef _MANIFEST_HH_
 #define _MANIFEST_HH_
 
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <string>
@@ -34,6 +35,7 @@
 
 #include "platform.hpp"
 #include "toml_api.hpp"
+#include "util.hpp"
 
 // Platform name in manifests: build-steps-<platform>, dependencies.<platform>, platforms
 #if OSHOT_LINUX

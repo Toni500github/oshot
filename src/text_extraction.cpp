@@ -25,8 +25,11 @@
 
 #include "text_extraction.hpp"
 
+#include <leptonica/allheaders.h>
+#include <tesseract/baseapi.h>
 #include <tesseract/ocrclass.h>
 #include <tesseract/publictypes.h>
+#include <tesseract/resultiterator.h>
 #include <zbar.h>
 
 #include <algorithm>
@@ -35,22 +38,27 @@
 #include <cctype>
 #include <cmath>
 #include <condition_variable>
-#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
-#include <cstring>
 #include <deque>
+#include <functional>
 #include <future>
 #include <limits>
 #include <mutex>
 #include <numbers>
 #include <numeric>
 #include <ranges>
+#include <span>
+#include <string_view>
 #include <thread>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "config.hpp"
+#include "fmt/format.h"
 #include "screen_capture.hpp"
+#include "spdlog/spdlog.h"
 #include "util.hpp"
 
 #if defined(__GLIBC__)

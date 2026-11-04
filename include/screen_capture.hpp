@@ -26,12 +26,14 @@
 #ifndef _SCREEN_CAPTURE_HPP_
 #define _SCREEN_CAPTURE_HPP_
 
+#include <array>
 #include <cstdint>
 #include <deque>
 #include <span>
 #include <string_view>
 #include <vector>
 
+#include "platform.hpp"
 #include "util.hpp"
 
 struct region_t

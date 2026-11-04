@@ -32,6 +32,7 @@
 #  include "imgui/imgui_impl_opengl3.h"
 #  include "screen_capture.hpp"
 #  include "screenshot_tool.hpp"
+#  include "spdlog/spdlog.h"
 #  include "util.hpp"
 #  if defined(IMGUI_IMPL_OPENGL_ES2)
 #    include <GLES2/gl2.h>
@@ -58,7 +59,14 @@
 #  endif
 
 #  include <algorithm>
+#  include <chrono>
+#  include <cmath>
+#  include <cstdlib>
+#  include <memory>
+#  include <string>
 #  include <thread>
+#  include <utility>
+#  include <vector>
 
 using namespace std::chrono_literals;
 

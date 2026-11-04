@@ -3,6 +3,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <string>
+#include <system_error>
 
 #include "catch2/catch_amalgamated.hpp"
 #include "common.hpp"
@@ -10,6 +12,7 @@
 #include "fmt/format.h"
 #include "platform.hpp"
 #include "spdlog/spdlog.h"
+#include "text_extraction.hpp"
 
 namespace fs = std::filesystem;
 

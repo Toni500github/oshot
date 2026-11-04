@@ -3,12 +3,14 @@
 
 #include <fcntl.h>
 
+#include <cstddef>
 #include <filesystem>
 #include <string>
 #include <string_view>
 
 #include "fmt/os.h"
-#include "text_extraction.hpp"
+
+class OcrAPI;
 
 // The OCR engine every test shares, so a model loads once; main() ends it before exiting
 OcrAPI& test_ocr();

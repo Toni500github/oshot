@@ -28,18 +28,25 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <concepts>
+#include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
 
-#include "fmt/base.h"
 #include "fmt/color.h"
+#include "fmt/format.h"
 #include "i18n.hpp"
 #include "nvdialog/nvdialog_dialog.h"
+#include "nvdialog/nvdialog_types.h"
 #include "platform.hpp"
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "spdlog/spdlog.h"
@@ -124,8 +131,6 @@ struct ImGuiIO;
 struct ImFont;
 struct ImFontAtlas;
 struct ImFontConfig;
-enum class ImageExt;
-enum class SavingOp;
 
 // Used by the templates and structs below, documented further down
 bool  init_dialogs() noexcept;

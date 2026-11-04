@@ -1,6 +1,7 @@
 #include "config.hpp"
 
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 
 #include "catch2/catch_amalgamated.hpp"

@@ -25,10 +25,15 @@
 
 #include "screenshot_tool.hpp"
 
+#include <tesseract/publictypes.h>
+
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <cfloat>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -42,9 +47,11 @@
 #include <optional>
 #include <span>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "cache.hpp"
@@ -59,13 +66,19 @@
 #include "imgui/imgui_impl_opengl3_loader.h"
 #include "imgui/imgui_internal.h"
 #include "imgui/imgui_stdlib.h"
+#include "platform.hpp"
 #ifndef DISABLE_PLUGINS
+#  include "manifest.hh"
 #  include "plugin.hpp"
+#  include "state_manager.hh"
 #else
 #  define OSHOT_TEXT_OCR     "ocr_output"
 #  define OSHOT_TEXT_BARCODE "barcode_output"
 #endif
 #include "screen_capture.hpp"
+#include "spdlog/sinks/ringbuffer_sink.h"
+#include "spdlog/spdlog.h"
+#include "text_extraction.hpp"
 #include "tiny-process-library/process.hpp"
 #include "tinyfiledialogs.h"
 #include "tool_icons.h"
@@ -2739,7 +2752,8 @@ void ScreenshotTool::DrawAnnotationToolbar()
         for (size_t i = 1; i < idx(ToolType::COUNT); ++i)
             n_buttons += has_toolbar_button(toe<ToolType>(i)) ? 1 : 0;
 #ifndef DISABLE_PLUGINS
-        n_buttons += CountPluginToolbarButtons();
+        for (const auto& [id, rt] : g_plugins)
+            n_buttons += std::ranges::count(rt.actions, OSHOT_PLACE_TOOLBAR, &plugin_action_t::place);
 #endif
         const float toolbar_w =
             (float(n_buttons) * (btn.x + style.ItemSpacing.x)) - style.ItemSpacing.x + (style.WindowPadding.x * 2.0f);
@@ -5260,14 +5274,6 @@ void ScreenshotTool::RunPluginAction(plugin_runtime_t& rt, int32_t action)
         void*      user = a->user;
         fn(user, action);
     });
-}
-
-size_t ScreenshotTool::CountPluginToolbarButtons() const
-{
-    size_t n = 0;
-    for (const auto& [id, rt] : g_plugins)
-        n += std::ranges::count(rt.actions, OSHOT_PLACE_TOOLBAR, &plugin_action_t::place);
-    return n;
 }
 
 // The label's first character, upper-cased if it's ASCII, for a button without an icon

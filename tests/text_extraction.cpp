@@ -7,11 +7,14 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "catch2/catch_amalgamated.hpp"
 #include "common.hpp"
 #include "config.hpp"
+#include "fmt/format.h"
+#include "screen_capture.hpp"
 #include "utf8.h"
 #include "util.hpp"
 

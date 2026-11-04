@@ -1,12 +1,18 @@
 #include "plugin_index.hh"
 
+#include <cstddef>
+#include <filesystem>
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "catch2/catch_amalgamated.hpp"
 #include "common.hpp"
+#include "fmt/format.h"
 #include "manifest.hh"
 #include "plugin.hpp"
+#include "util.hpp"
 
 using Catch::Matchers::ContainsSubstring;
 

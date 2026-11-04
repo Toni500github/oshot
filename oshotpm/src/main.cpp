@@ -25,10 +25,20 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <functional>
+#include <map>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <utility>
+#include <vector>
 
 #if OSHOT_WINDOWS
 #  include <io.h>
@@ -37,9 +47,12 @@
 #  include <unistd.h>
 #endif
 
+#include "fmt/format.h"
 #include "fmt/os.h"
 #include "fmt/ranges.h"
 #include "manifest.hh"
+#include "platform.hpp"
+#include "plugin_index.hh"
 #include "plugin_manager.hh"
 #include "state_manager.hh"
 #include "texts.hpp"

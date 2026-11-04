@@ -26,12 +26,15 @@
 #include "config.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <string_view>
+#include <system_error>
 
-#include "fmt/base.h"
 #include "fmt/os.h"
+#include "spdlog/spdlog.h"
 #include "texts.hpp"
 #include "util.hpp"
 

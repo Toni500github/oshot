@@ -30,14 +30,22 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+#include <span>
+#include <utility>
+#include <vector>
 
 #include "clip/clip.h"
 #include "config.hpp"
+#include "platform.hpp"
 #include "screen_capture.hpp"
 
+#if !OSHOT_WINDOWS
+#  include <unistd.h>  // write() and close(), compiled in on every platform
+#endif
 #if OSHOT_FREEDESKTOP
+#  include <sys/types.h>
 #  include <sys/wait.h>
-#  include <unistd.h>
 
 #  include <csignal>
 #  include <thread>

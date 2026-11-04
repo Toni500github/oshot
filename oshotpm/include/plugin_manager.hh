@@ -26,16 +26,20 @@
 #ifndef _PLUGIN_MANAGER_HH_
 #define _PLUGIN_MANAGER_HH_
 
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
-#include "manifest.hh"
 #include "plugin_index.hh"
 #include "state_manager.hh"
 #include "util.hpp"
+
+struct manifest_t;
+struct plugin_t;
 
 // oshotpm's command line options
 struct operations_t

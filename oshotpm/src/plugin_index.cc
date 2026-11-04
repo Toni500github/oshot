@@ -27,10 +27,15 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <cstddef>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <mutex>
 #include <sstream>
+#include <system_error>
+#include <utility>
 
 #include "fmt/format.h"
 #include "manifest.hh"

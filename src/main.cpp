@@ -23,30 +23,39 @@
  *
  */
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <exception>
 #include <filesystem>
 #include <fstream>
-#include <ios>
+#include <functional>
+#include <iterator>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <system_error>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "cache.hpp"
 #include "platform.hpp"
 
 #if OSHOT_WINDOWS
+#  include <process.h>
+
 #  include "dylib.hpp"
 #else
 #  include <unistd.h>
@@ -57,8 +66,6 @@
 #endif
 
 #if OSHOT_TOOL_ON_MAIN_THREAD
-#  include <algorithm>
-#  include <optional>
 #  include <ranges>
 
 #  include "hotkey.hpp"
@@ -70,7 +77,6 @@
 #ifndef DISABLE_PLUGINS
 #  include "plugin.hpp"
 #endif
-#include "fmt/base.h"
 #include "fmt/compile.h"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
@@ -82,6 +88,7 @@
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
+#include "spdlog/spdlog.h"
 #include "switch_fnv1a.hpp"
 #include "text_extraction.hpp"
 #include "texts.hpp"

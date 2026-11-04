@@ -27,8 +27,12 @@
 #define _CACHE_HPP_
 
 #include <array>
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <string_view>
 
+#include "fmt/format.h"
 #include "toml_api.hpp"
 #include "util.hpp"
 

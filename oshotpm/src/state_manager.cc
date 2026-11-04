@@ -27,10 +27,13 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <map>
 #include <sstream>
 #include <string_view>
+#include <system_error>
 
 #include "manifest.hh"
+#include "spdlog/spdlog.h"
 
 static constexpr std::string_view STATE_HEADER =
     "# Installed oshot plugins, written by oshot and oshotpm.\n"

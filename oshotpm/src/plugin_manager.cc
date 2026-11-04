@@ -26,15 +26,22 @@
 #include "plugin_manager.hh"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
+#include <map>
 #include <mutex>
+#include <optional>
 #include <random>
+#include <system_error>
 
 #include "dylib.hpp"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
+#include "manifest.hh"
+#include "platform.hpp"
 #include "plugin.hpp"
+#include "spdlog/spdlog.h"
 #include "tiny-process-library/process.hpp"
 
 namespace

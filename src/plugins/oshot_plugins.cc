@@ -28,15 +28,28 @@
 // is calling; nothing here is exported for them to link against.
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <cfloat>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <csignal>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <functional>
+#include <map>
+#include <memory>
 #include <mutex>
+#include <string>
+#include <string_view>
+#include <system_error>
 #include <thread>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "cache.hpp"
 #include "clipboard.hpp"
@@ -48,8 +61,11 @@
 #include "nvdialog/nvdialog_notification.h"
 #include "platform.hpp"
 #include "plugin.hpp"
+#include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
+#include "spdlog/spdlog.h"
 #include "tiny-process-library/process.hpp"
+#include "toml_api.hpp"
 #include "util.hpp"
 
 #if !OSHOT_WINDOWS
