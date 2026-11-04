@@ -39,7 +39,7 @@ function(enable_lto target)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         target_compile_options(
             ${target}
-            PRIVATE $<$<CONFIG:Release>:-flto=auto;-ffat-lto-objects>
+            PRIVATE $<$<CONFIG:Release>:-flto=auto>
         )
         target_link_options(${target} PRIVATE $<$<CONFIG:Release>:-flto=auto>)
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
@@ -53,6 +53,15 @@ function(enable_lto target)
         target_link_options(${target} PRIVATE $<$<CONFIG:Release>:-flto=thin>)
     endif()
 endfunction()
+
+# The static libraries hold only GCC's LTO bytecode, which plain ar can't index
+# unless binutils finds the LTO plugin by itself, so archive with gcc-ar
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND NOT WIN32)
+    if(CMAKE_CXX_COMPILER_AR AND CMAKE_CXX_COMPILER_RANLIB)
+        set(CMAKE_AR "${CMAKE_CXX_COMPILER_AR}")
+        set(CMAKE_RANLIB "${CMAKE_CXX_COMPILER_RANLIB}")
+    endif()
+endif()
 
 # option() that an environment variable of the same name can override.
 # With DEFINE_OPTION, an enabled option adds OPTION_NAME=1 to
@@ -302,6 +311,23 @@ if(NOT DISABLE_PLUGINS)
     )
 endif()
 
+# spdlog's implementation is compiled once, here, instead of in every file
+# that includes it (header-only, it cost each of them ~6 s at -O3). Being in
+# oshot_common also gives oshot, oshotpm and liboshot_common one registry
+set(SPDLOG_SOURCES
+    src/libs/spdlog/async.cpp
+    src/libs/spdlog/color_sinks.cpp
+    src/libs/spdlog/file_sinks.cpp
+    src/libs/spdlog/spdlog.cpp
+)
+list(APPEND OSHOT_COMMON_SOURCES ${SPDLOG_SOURCES})
+
+# AppleClang's LTO hides explicit template instantiations like
+# base_sink<std::mutex> from liboshot_common's exports, so oshot can't link
+if(APPLE)
+    set_source_files_properties(${SPDLOG_SOURCES} PROPERTIES COMPILE_OPTIONS -fno-lto)
+endif()
+
 if(UNIX AND NOT APPLE)
     list(APPEND OSHOT_COMMON_SOURCES src/wl_get_monitors.cpp ${PROTOCOL_SOURCE})
     set_source_files_properties(
@@ -313,6 +339,8 @@ endif()
 
 add_library(oshot_common ${OSHOT_COMMON_LIB_TYPE} ${OSHOT_COMMON_SOURCES})
 enable_lto(oshot_common)
+
+target_compile_definitions(oshot_common PUBLIC SPDLOG_COMPILED_LIB)
 
 # util.hpp includes version.h
 add_dependencies(oshot_common generate_version)
