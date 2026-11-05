@@ -16,13 +16,13 @@ add_executable(
 )
 # oshotpm's code is only in plugin builds
 if(NOT DISABLE_PLUGINS)
-    target_sources(oshot_tests PRIVATE manifest.cpp plugin_index.cpp text_transformers.cpp)
+    target_sources(
+        oshot_tests
+        PRIVATE manifest.cpp plugin_index.cpp text_transformers.cpp
+    )
 endif()
 add_dependencies(oshot_tests generate_version)
-target_compile_options(
-    oshot_tests
-    PRIVATE -Wall -Wextra -Wpedantic -Wno-unused-parameter
-)
+target_compile_options(oshot_tests PRIVATE ${OSHOT_WARNING_FLAGS})
 target_compile_definitions(
     oshot_tests
     PRIVATE OSHOT_TESTS_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
@@ -44,5 +44,6 @@ if(WIN32)
     target_sources(oshot_tests PRIVATE ${CMAKE_BINARY_DIR}/manifest.rc)
 endif()
 
-# In the order they are written, which keeps the log readable (Catch2 shuffles by default)
+# In the order they're written, which keeps the log readable (Catch2 shuffles
+# by default)
 add_test(NAME oshot_tests COMMAND oshot_tests --order decl)
