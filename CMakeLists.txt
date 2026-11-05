@@ -1,5 +1,17 @@
 cmake_minimum_required(VERSION 3.15)
 
+# Release builds default to -O2 rather than CMake's -O3. OCR time goes to
+# Tesseract, so -O3 read the test set no faster and only made the binaries 9%
+# bigger. Cached before project(), so a CMAKE_<LANG>_FLAGS_RELEASE given on the
+# command line still wins
+foreach(_lang C CXX OBJC OBJCXX)
+    set(CMAKE_${_lang}_FLAGS_RELEASE
+        "-O2 -DNDEBUG"
+        CACHE STRING
+        "Flags used by the ${_lang} compiler during Release builds"
+    )
+endforeach()
+
 project(oshot VERSION 0.5.0 LANGUAGES C CXX)
 set(PROJECT_VERSION_SUFFIX "-rc2")
 set(PROJECT_FULL_VERSION "${PROJECT_VERSION}${PROJECT_VERSION_SUFFIX}")
@@ -18,10 +30,6 @@ include(GNUInstallDirs)
 #add_compile_options($<$<CONFIG:Debug>:-fsanitize=address>)
 #add_compile_options($<$<CONFIG:Debug>:-fno-omit-frame-pointer>)
 #add_link_options($<$<CONFIG:Debug>:-fsanitize=address>)
-
-if(NOT MSVC AND NOT CMAKE_CXX_FLAGS_RELEASE MATCHES "-O")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
-endif()
 
 # -----------------------------
 # Helpers
@@ -61,6 +69,13 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND NOT WIN32)
         set(CMAKE_AR "${CMAKE_CXX_COMPILER_AR}")
         set(CMAKE_RANLIB "${CMAKE_CXX_COMPILER_RANLIB}")
     endif()
+endif()
+
+# pkg-config hands over every library behind GTK, Tesseract (libcurl,
+# libarchive) and the Wayland modules, so link only the ones a binary calls,
+# as Ubuntu's GCC and the distros' packaging flags already do
+if(UNIX AND NOT APPLE)
+    add_link_options(LINKER:--as-needed)
 endif()
 
 # option() that an environment variable of the same name can override.
@@ -668,6 +683,7 @@ elseif(UNIX)
 endif()
 
 add_library(tray STATIC ${TRAY_SOURCES})
+enable_lto(tray)
 
 if(WIN32)
     target_compile_definitions(
@@ -688,6 +704,7 @@ target_include_directories(tray PUBLIC include/libs)
 # clip library (integrated from its own CMakeLists.txt)
 # -----------------------------
 add_library(clip STATIC src/libs/clip/clip.cpp src/libs/clip/image.cpp)
+enable_lto(clip)
 
 if(WIN32)
     target_sources(
@@ -720,6 +737,7 @@ target_compile_definitions(clip PUBLIC CLIP_ENABLE_IMAGE=1)
 # -----------------------------
 file(GLOB TINYGETTEXT_SOURCES src/libs/tinygettext/*.cpp)
 add_library(tinygettext STATIC ${TINYGETTEXT_SOURCES})
+enable_lto(tinygettext)
 
 set_target_properties(
     tinygettext
@@ -741,6 +759,7 @@ endif()
 if(WIN32 OR NOT DISABLE_PLUGINS)
     file(GLOB DYLIB_SOURCES src/libs/dylib/*.cpp)
     add_library(dylib STATIC ${DYLIB_SOURCES})
+    enable_lto(dylib)
 
     if(UNIX)
         target_link_libraries(dylib PRIVATE ${CMAKE_DL_LIBS})
