@@ -210,9 +210,9 @@ endif()
 # Generated sources
 # =============================================================================
 
-# include/version.h, with the git commit, branch and tag
 set(VERSION_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/version.h)
 set(VERSION_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generateVersion.sh)
+
 # It runs on every build, so a new commit or tag is picked up. The script only
 # rewrites the file when it has changed, and only src/globals.cpp includes it
 add_custom_target(

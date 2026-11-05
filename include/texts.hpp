@@ -202,6 +202,16 @@ real-full-screen = {}
 # Disable if the overlay feels sluggish or unresponsive.
 vsync = {}
 
+# Let 'oshot --tray' start another tray icon when one is already running.
+# When disabled, it exits instead. Plain 'oshot' always just captures then.
+# Takes effect on the next launch.
+allow-multiple-trays = {}
+
+# Let a capture open its overlay while another one is already open, e.g. to
+# screenshot oshot's own overlay. When disabled, the new capture is ignored, so
+# holding or mashing the key bound to 'oshot --gui' opens just one overlay.
+allow-multiple-overlays = {}
+
 # Linux (X11) only. GLX vendor library used to create the overlay's OpenGL window.
 # On laptops with a hybrid NVIDIA GPU, the NVIDIA library wakes up the sleeping
 # discrete GPU on every launch, delaying the overlay by 1-2 seconds.

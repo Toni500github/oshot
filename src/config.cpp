@@ -97,29 +97,31 @@ void Config::LoadConfigFile(const std::string& filename)
     // older versions wrote the misspelled "ocr-repo-downlaod" key
     const auto legacy_ocr_repo = GetValue<std::string>("default.ocr-repo-downlaod", "tesseract-ocr/tessdata");
 
-    File.ocr_path         = GetValue<std::string>("default.ocr-path", File.ocr_path);
-    File.ocr_get_repo     = GetValue<std::string>("default.ocr-repo-download", legacy_ocr_repo);
-    File.ocr_model        = GetValue<std::string>("default.ocr-model", "eng");
-    File.theme_file_path  = GetValue<std::string>("default.theme-file", "theme.toml");
-    File.image_out_fmt    = GetValue<std::string>("default.image-out-fmt", "oshot_{:%F_%H-%M}");
-    File.delay            = GetValue<int>("default.delay", -1);
-    File.color_picker     = GetValue<int>("default.color-picker", 0);
-    File.cpa_mode         = GetValue<int>("default.color-picker-alpha-mode", 2);
-    File.show_text_tools  = GetValue<bool>("default.show-text-tools", true);
-    File.aa_icons         = GetValue<bool>("default.antialiased-icons", true);
-    File.enable_vsync     = GetValue<bool>("default.vsync", true);
-    File.glx_vendor       = GetValue<std::string>("default.glx-vendor", "");
-    File.real_full_screen = GetValue<bool>("default.real-full-screen", false);
-    File.old_toolbar_pos  = GetValue<bool>("default.legacy-toolbar-pos", false);
-    File.pref_conf_to_env = GetValue<bool>("default.config-over-env", false);
-    File.render_anns      = GetValue<bool>("default.annotations-in-text-tools", true);
-    File.ctrl_c_copy_img  = GetValue<bool>("default.ctrl-c-copy-img", true);
-    File.allow_out_edit   = GetValue<bool>("default.allow-text-edit", false);
-    File.hotkey           = GetValue<std::string>("default.hotkey", File.hotkey);
-    File.language         = GetValue<std::string>("default.language", "auto");
-    File.fonts            = GetValueArrayStr("default.fonts", {});
-    File.builtin_font     = GetValue<bool>("default.builtin-font", false);
-    File.font_size        = GetValue<int>("default.font-size", 0);
+    File.ocr_path             = GetValue<std::string>("default.ocr-path", File.ocr_path);
+    File.ocr_get_repo         = GetValue<std::string>("default.ocr-repo-download", legacy_ocr_repo);
+    File.ocr_model            = GetValue<std::string>("default.ocr-model", "eng");
+    File.theme_file_path      = GetValue<std::string>("default.theme-file", "theme.toml");
+    File.image_out_fmt        = GetValue<std::string>("default.image-out-fmt", "oshot_{:%F_%H-%M}");
+    File.delay                = GetValue<int>("default.delay", -1);
+    File.color_picker         = GetValue<int>("default.color-picker", 0);
+    File.cpa_mode             = GetValue<int>("default.color-picker-alpha-mode", 2);
+    File.show_text_tools      = GetValue<bool>("default.show-text-tools", true);
+    File.aa_icons             = GetValue<bool>("default.antialiased-icons", true);
+    File.enable_vsync         = GetValue<bool>("default.vsync", true);
+    File.allow_multi_tray     = GetValue<bool>("default.allow-multiple-trays", false);
+    File.allow_multi_overlay  = GetValue<bool>("default.allow-multiple-overlays", false);
+    File.glx_vendor           = GetValue<std::string>("default.glx-vendor", "");
+    File.real_full_screen     = GetValue<bool>("default.real-full-screen", false);
+    File.old_toolbar_pos      = GetValue<bool>("default.legacy-toolbar-pos", false);
+    File.pref_conf_to_env     = GetValue<bool>("default.config-over-env", false);
+    File.render_anns          = GetValue<bool>("default.annotations-in-text-tools", true);
+    File.ctrl_c_copy_img      = GetValue<bool>("default.ctrl-c-copy-img", true);
+    File.allow_out_edit       = GetValue<bool>("default.allow-text-edit", false);
+    File.hotkey               = GetValue<std::string>("default.hotkey", File.hotkey);
+    File.language             = GetValue<std::string>("default.language", "auto");
+    File.fonts                = GetValueArrayStr("default.fonts", {});
+    File.builtin_font         = GetValue<bool>("default.builtin-font", false);
+    File.font_size            = GetValue<int>("default.font-size", 0);
 
     const char* t = getenv("TESSDATA_PREFIX");
     if (!File.pref_conf_to_env && t)
@@ -208,6 +210,8 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.cpa_mode,
             File.real_full_screen,
             File.enable_vsync,
+            File.allow_multi_tray,
+            File.allow_multi_overlay,
             EscapeString(File.glx_vendor),
             File.allow_out_edit,
             File.show_text_tools,

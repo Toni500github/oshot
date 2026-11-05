@@ -288,6 +288,7 @@ static std::chrono::milliseconds pending_delay{};  // wait this long before capt
 static capture_result_t          pending_image;
 static bool                      do_copy_image = false;
 static std::atomic<bool>         capture_active{ false };  // a run_main_tool() is in progress, on any thread
+static bool                      owns_tray_lock = false;   // false in the extra trays allow-multiple-trays lets start
 
 bool app_quitting()
 {
@@ -338,6 +339,23 @@ static void exit_handler_nc()
 
 int run_main_tool();
 
+static int run_overlay()
+{
+    std::optional<ProcessLock> lock;
+    if (!g_config->File.allow_multi_overlay)
+    {
+        // If the lock can't be created, an unguarded overlay beats none at all
+        lock.emplace("oshot-overlay");
+        if (lock->busy())
+        {
+            spdlog::info("Another overlay is already open, ignoring this capture");
+            return EXIT_SUCCESS;
+        }
+    }
+
+    return run_main_tool();
+}
+
 // Called after every capture. The tray process sits waiting for the next one and would
 // otherwise keep the last screenshot and the OCR model until then
 static void release_capture_memory()
@@ -354,7 +372,7 @@ static void release_capture_memory()
 static int run_capture()
 {
     capture_active.store(true);
-    const int ret = run_main_tool();
+    const int ret = run_overlay();
     release_capture_memory();
     capture_active.store(false);
     return ret;
@@ -528,7 +546,7 @@ void capture_worker()
         capture_active.store(true);
         lk.unlock();
         std::this_thread::sleep_for(delay);
-        run_main_tool();
+        run_overlay();
         release_capture_memory();
 
         lk.lock();
@@ -556,6 +574,10 @@ static void capture_from_tray(const std::string& source = {}, TrayClick click = 
 static void sync_hotkey()
 {
 #if OSHOT_HAS_GLOBAL_HOTKEY
+    // The first tray has it registered already, so another tray would only get an error
+    if (!owns_tray_lock)
+        return;
+
     static std::optional<std::string> applied;
     if (applied == g_config->File.hotkey)
         return;
@@ -594,6 +616,13 @@ static void sync_hotkey()
 // the current overlay in it, e.g. to report a visual bug in oshot itself.
 static void spawn_gui_instance(const std::string& source)
 {
+    // It would only find the overlay lock taken and exit
+    if (!g_config->File.allow_multi_overlay)
+    {
+        spdlog::debug("A capture is already open, and allow-multiple-overlays is off");
+        return;
+    }
+
     // Holding or mashing the hotkey shouldn't fork-bomb overlays
     static std::chrono::steady_clock::time_point last_spawn;
 
@@ -942,11 +971,12 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     if (g_config->Runtime.only_launch_gui)
         return run_capture();
 
-    const bool tray_lock_acquired = acquire_tray_lock();
+    const ProcessLock tray_lock("oshot_tray");
+    owns_tray_lock = tray_lock.held();
 
     if (g_config->Runtime.only_launch_tray)
     {
-        if (!tray_lock_acquired)
+        if (!owns_tray_lock && !g_config->File.allow_multi_tray)
         {
             logger->info("oshot is already running in the system tray");
             return EXIT_SUCCESS;
@@ -954,7 +984,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
 
         g_is_systray = true;
     }
-    else if (!tray_lock_acquired)
+    else if (!owns_tray_lock)
     {
         // Another instance owns the tray, just capture
         return run_capture();

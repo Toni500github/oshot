@@ -435,6 +435,47 @@ struct CdGuard
     ~CdGuard() { fs::current_path(saved); }
 };
 
+/**
+ * A named lock shared by this user's oshot processes, taken without waiting and
+ * held until it's destroyed or the process exits. A second ProcessLock with the
+ * same name in this process is Busy too, just like one in another process.
+ **/
+class ProcessLock
+{
+public:
+    enum class State : std::uint8_t
+    {
+        Held,    // we hold it
+        Busy,    // another process or ProcessLock holds it
+        Failed,  // it couldn't be created (a warning was logged), so nobody can tell
+    };
+
+    /**
+     * Try to take the lock
+     * @param name ASCII name of the lock. It's <runtime dir>/<name>.lock on unix, and the Local\<name> mutex on Windows
+     **/
+    explicit ProcessLock(std::string_view name);
+
+    ~ProcessLock();
+
+    [[nodiscard]] State state() const { return m_state; }
+    [[nodiscard]] bool  held() const { return m_state == State::Held; }
+    [[nodiscard]] bool  busy() const { return m_state == State::Busy; }
+
+    ProcessLock(const ProcessLock&)            = delete;
+    ProcessLock& operator=(const ProcessLock&) = delete;
+
+private:
+    std::string m_name;
+    State       m_state = State::Failed;
+
+#if OSHOT_WINDOWS
+    void* m_handle = nullptr;
+#else
+    int m_fd = -1;
+#endif
+};
+
 // ------------------------------
 // Globals and constants
 // ------------------------------
@@ -862,7 +903,7 @@ fs::path get_cache_dir();
 
 #if !OSHOT_WINDOWS
 /**
- * Get the directory for runtime files, like the tray lock
+ * Get the directory for runtime files, like the ProcessLock files
  * @return $XDG_RUNTIME_DIR, else the temp directory
  **/
 fs::path get_runtime_dir();
@@ -1058,16 +1099,5 @@ void build_font_atlas(ImGuiIO& io);
  * @return The font, or nullptr
  **/
 ImFont* add_font_file(ImFontAtlas* atlas, const fs::path& path, float size, const ImFontConfig* cfg = nullptr);
-
-// ------------------------------
-// Misc
-// ------------------------------
-
-/**
- * Try to become the single instance that owns the systray.
- * The lock is held until the process exits
- * @return false if another instance already owns it
- **/
-bool acquire_tray_lock();
 
 #endif  // !_UTIL_HPP_

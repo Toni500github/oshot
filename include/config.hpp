@@ -100,6 +100,12 @@ public:
         // font-size: the interface font's size in pixels, 0 for the main font's own size (see interface_font_size())
         int font_size = 0;
 
+        // allow-multiple-trays: let `oshot --tray` start even when another tray is running
+        bool allow_multi_tray = false;
+
+        // allow-multiple-overlays: let a capture open while another oshot overlay is open
+        bool allow_multi_overlay = false;
+
         // image-out-ext as written in the config, and parsed
         std::pair<std::string, ImageExt> image_out_type = { "png", ImageExt::PNG };
 

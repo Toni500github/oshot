@@ -34,6 +34,8 @@ static void check_same(const Config::config_file_t& got, const Config::config_fi
     CHECK(got.glx_vendor == want.glx_vendor);
     CHECK(got.allow_out_edit == want.allow_out_edit);
     CHECK(got.show_text_tools == want.show_text_tools);
+    CHECK(got.allow_multi_tray == want.allow_multi_tray);
+    CHECK(got.allow_multi_overlay == want.allow_multi_overlay);
     CHECK(got.pref_conf_to_env == want.pref_conf_to_env);
     CHECK(got.render_anns == want.render_anns);
     CHECK(got.old_toolbar_pos == want.old_toolbar_pos);
@@ -78,31 +80,33 @@ TEST_CASE("Config: the generated config loads back the same", "[config]")
 
         Config::config_file_t& f = written.File;
         // Backslashes, quotes and non-ASCII, which EscapeString() has to escape
-        f.ocr_path           = R"(C:\Users\Тест\"oshot"\models)";
-        f.ocr_model          = "ita+eng";
-        f.ocr_get_repo       = "tesseract-ocr/tessdata_best\twith\ncontrol\x01chars";
-        f.delay              = 250;
-        f.color_picker       = 1;
-        f.cpa_mode           = 0;
-        f.real_full_screen   = !f.real_full_screen;
-        f.enable_vsync       = !f.enable_vsync;
-        f.glx_vendor         = "mesa";
-        f.allow_out_edit     = !f.allow_out_edit;
-        f.show_text_tools    = !f.show_text_tools;
-        f.pref_conf_to_env   = true;  // else TESSDATA_PREFIX would replace ocr_path
-        f.render_anns        = !f.render_anns;
-        f.old_toolbar_pos    = !f.old_toolbar_pos;
-        f.aa_icons           = !f.aa_icons;
-        f.ctrl_c_copy_img    = !f.ctrl_c_copy_img;
-        f.hotkey             = "Ctrl+Alt+P";
-        f.language           = "pt_BR";
-        f.fonts              = { "Noto Sans", R"(A "quoted" \ font)" };
-        f.builtin_font       = !f.builtin_font;
-        f.font_size          = 20;
-        f.image_out_type     = { "jpeg", ImageExt::JPEG };
-        f.image_out_fmt      = "shot_{:%F}";
-        f.image_out_size_fmt = "MiB";
-        f.theme_file_path    = "mytheme.toml";
+        f.ocr_path             = R"(C:\Users\Тест\"oshot"\models)";
+        f.ocr_model            = "ita+eng";
+        f.ocr_get_repo         = "tesseract-ocr/tessdata_best\twith\ncontrol\x01chars";
+        f.delay                = 250;
+        f.color_picker         = 1;
+        f.cpa_mode             = 0;
+        f.real_full_screen     = !f.real_full_screen;
+        f.enable_vsync         = !f.enable_vsync;
+        f.glx_vendor           = "mesa";
+        f.allow_out_edit       = !f.allow_out_edit;
+        f.allow_multi_tray     = !f.allow_multi_tray;
+        f.allow_multi_overlay  = !f.allow_multi_overlay;
+        f.show_text_tools      = !f.show_text_tools;
+        f.pref_conf_to_env     = true;  // else TESSDATA_PREFIX would replace ocr_path
+        f.render_anns          = !f.render_anns;
+        f.old_toolbar_pos      = !f.old_toolbar_pos;
+        f.aa_icons             = !f.aa_icons;
+        f.ctrl_c_copy_img      = !f.ctrl_c_copy_img;
+        f.hotkey               = "Ctrl+Alt+P";
+        f.language             = "pt_BR";
+        f.fonts                = { "Noto Sans", R"(A "quoted" \ font)" };
+        f.builtin_font         = !f.builtin_font;
+        f.font_size            = 20;
+        f.image_out_type       = { "jpeg", ImageExt::JPEG };
+        f.image_out_fmt        = "shot_{:%F}";
+        f.image_out_size_fmt   = "MiB";
+        f.theme_file_path      = "mytheme.toml";
         written.GenerateConfig(file.string(), true);
 
         Config loaded(file, dir);

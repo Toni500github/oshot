@@ -1,9 +1,11 @@
 #include "util.hpp"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "catch2/catch_amalgamated.hpp"
+#include "common.hpp"
 
 using strings = std::vector<std::string>;
 
@@ -75,4 +77,27 @@ TEST_CASE("parse_hex_rgba()", "[util][color]")
             CHECK(col_to_hexstr(c) == hex);
         }
     }
+}
+
+TEST_CASE("ProcessLock", "[util][lock]")
+{
+    // Names of their own, so a running oshot's locks aren't touched
+    constexpr std::string_view name = "oshot-tests-lock";
+    {
+        const ProcessLock first(name);
+        REQUIRE(first.held());
+#if !OSHOT_WINDOWS
+        CHECK(fs::exists(test_temp_dir() / "xdg-runtime" / "oshot-tests-lock.lock"));
+#endif
+
+        // Taken, here just like from another process
+        const ProcessLock second(name);
+        CHECK(second.state() == ProcessLock::State::Busy);
+        CHECK_FALSE(second.held());
+
+        CHECK(ProcessLock("oshot-tests-other").held());
+    }
+
+    // Destroying the holder released it
+    CHECK(ProcessLock(name).held());
 }

@@ -80,6 +80,11 @@ int main(int argc, char* argv[])
     // StateManager's state.toml lands in the throwaway folder too
     set_env("XDG_CONFIG_HOME", (s_temp_dir / "xdg-config").string());
     set_env("XDG_CACHE_HOME", (s_temp_dir / "xdg-cache").string());
+#if !OSHOT_WINDOWS
+    // ProcessLock's files
+    fs::create_directories(s_temp_dir / "xdg-runtime");
+    set_env("XDG_RUNTIME_DIR", (s_temp_dir / "xdg-runtime").string());
+#endif
 
     // text_extraction.cpp reads g_config->Runtime. A config in the throwaway
     // folder leaves the user's own untouched

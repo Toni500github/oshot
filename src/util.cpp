@@ -162,47 +162,59 @@ constexpr ImVec4 rgba_t::to_imvec4() const
     return { float(r) / 255.0f, float(g) / 255.0f, float(b) / 255.0f, float(a) / 255.0f };
 }
 
-#if OSHOT_WINDOWS
-static HANDLE g_tray_mutex = nullptr;
-
-bool acquire_tray_lock()
-{
-    // "Local\\" is per-user session; "Global\\" is system-wide and needs privileges sometimes.
-    g_tray_mutex = CreateMutexW(nullptr, TRUE, L"Local\\oshot_tray_daemon");
-    if (!g_tray_mutex)
-        return false;
-
-    if (GetLastError() == ERROR_ALREADY_EXISTS)
-    {
-        CloseHandle(g_tray_mutex);
-        g_tray_mutex = nullptr;
-        return false;  // already running
-    }
-
-    return true;  // we own it
-}
-
-#else
+#if !OSHOT_WINDOWS
 fs::path get_runtime_dir()
 {
     const char* xdg = ::getenv("XDG_RUNTIME_DIR");
     return xdg ? fs::path(xdg) : fs::temp_directory_path();
 }
+#endif
 
-bool acquire_tray_lock()
+// Names of the ProcessLocks this process holds. fcntl() locks never conflict within a
+// process, and closing any fd of the file would drop ours, so a second one has to be refused here
+static std::mutex               g_held_locks_mtx;
+static std::vector<std::string> g_held_locks;
+
+ProcessLock::ProcessLock(const std::string_view name) : m_name(name)
 {
+    std::scoped_lock lk(g_held_locks_mtx);
+    if (std::ranges::find(g_held_locks, m_name) != g_held_locks.end())
+    {
+        m_state = State::Busy;
+        return;
+    }
+
+#if OSHOT_WINDOWS
+    // "Local\\" is per-user session; "Global\\" is system-wide and needs privileges sometimes.
+    const std::wstring wide  = L"Local\\" + std::wstring(m_name.begin(), m_name.end());
+    HANDLE             mutex = CreateMutexW(nullptr, FALSE, wide.c_str());
+    if (!mutex)
+    {
+        spdlog::warn("Failed to create the {} lock: error {}", m_name, GetLastError());
+        return;
+    }
+
+    if (GetLastError() == ERROR_ALREADY_EXISTS)
+    {
+        CloseHandle(mutex);
+        m_state = State::Busy;
+        return;
+    }
+
+    m_handle = mutex;
+#else
     // Without XDG_RUNTIME_DIR this is the shared /tmp, where another user's
     // 0600 lock file would make open() fail and look like "already running"
     const char*       xdg       = ::getenv("XDG_RUNTIME_DIR");
-    const std::string lock_name = xdg ? "oshot.lock" : fmt::format("oshot-{}.lock", getuid());
+    const std::string lock_name = xdg ? fmt::format("{}.lock", m_name) : fmt::format("{}-{}.lock", m_name, getuid());
     const std::string lock_path = (get_runtime_dir() / lock_name).string();
 
     // O_CLOEXEC: don't leak the fd into grim/wl-copy/zenity children
-    int fd = open(lock_path.c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+    const int fd = open(lock_path.c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0600);
     if (fd < 0)
     {
-        spdlog::warn("Failed to open tray lock {}: {}", lock_path, strerror(errno));
-        return false;
+        spdlog::warn("Failed to open the lock file {}: {}", lock_path, strerror(errno));
+        return;
     }
 
     struct flock fl{};
@@ -211,15 +223,32 @@ bool acquire_tray_lock()
 
     if (fcntl(fd, F_SETLK, &fl) == -1)
     {
-        // Another instance holds the lock
         close(fd);
-        return false;
+        m_state = State::Busy;
+        return;
     }
 
-    // We hold the lock. it's released automatically when the process exits
-    return true;
-}
+    m_fd = fd;
 #endif
+
+    m_state = State::Held;
+    g_held_locks.push_back(m_name);
+}
+
+ProcessLock::~ProcessLock()
+{
+    if (m_state != State::Held)
+        return;
+
+#if OSHOT_WINDOWS
+    CloseHandle(m_handle);
+#else
+    close(m_fd);
+#endif
+
+    std::scoped_lock lk(g_held_locks_mtx);
+    std::erase(g_held_locks, m_name);
+}
 
 std::vector<std::string> split(const std::string_view text, const char delim)
 {

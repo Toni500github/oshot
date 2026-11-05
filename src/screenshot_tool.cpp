@@ -409,24 +409,22 @@ Result<> ScreenshotTool::StartWindow()
     std::call_once(plugins_loaded, [&] { load_plugins(m_plugin_manager.GetStateManager()); });
 #endif
 
-    m_inputs        = { .ocr_path                  = g_config->File.ocr_path,
-                        .ocr_model                 = g_config->File.ocr_model,
-                        .ocr_download_repo         = g_config->File.ocr_get_repo,
-                        .ocr_model_downloaded_path = g_config->GetConfigDirPath() + DIR_SEP_STR "models",
-                        .ocr_results               = {},
-                        .barcode_text              = "",
-                        .zbar_scan_result          = {},
-                        .ann_font                  = "",
-                        .resolved_ann_font_path    = "",
-                        .ocr_original              = "",
-                        .barcode_original          = "" };
-    m_current_color = (rgba_t(g_cache->GetValue(CacheEntry::AnnColor, Colors::RED.to_rgba())));
+    m_inputs = { .ocr_path                  = g_config->File.ocr_path,
+                 .ocr_model                 = g_config->File.ocr_model,
+                 .ocr_download_repo         = g_config->File.ocr_get_repo,
+                 .ocr_model_downloaded_path = g_config->GetConfigDirPath() + DIR_SEP_STR "models",
+                 .ocr_results               = {},
+                 .barcode_text              = "",
+                 .zbar_scan_result          = {},
+                 .ann_font                  = "",
+                 .resolved_ann_font_path    = "",
+                 .ocr_original              = "",
+                 .barcode_original          = "" };
 
+    m_current_color = (rgba_t(g_cache->GetValue(CacheEntry::AnnColor, Colors::RED.to_rgba())));
+    m_state         = ToolState::Selecting;
     m_imgui_id_texts.insert_or_assign(OSHOT_TEXT_OCR, &m_inputs.ocr_results.data);
     m_imgui_id_texts.insert_or_assign(OSHOT_TEXT_BARCODE, &m_inputs.barcode_text);
-
-    m_state = ToolState::Selecting;
-
     m_show_window.Set(SubWindow::MainTextTools, g_config->File.show_text_tools);
 
     SyncRuntimeFromConfig();
@@ -3879,6 +3877,20 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
           "Disable if the overlay feels sluggish."));
 
     ImGui::Checkbox(_("Allow output edits##config_allow_out_edit"), &g_config->File.allow_out_edit);
+
+    ImGui::Checkbox(_("Allow more than one tray##config_allow_multi_tray"), &g_config->File.allow_multi_tray);
+    ImGui::SameLine();
+    HelpMarker(
+        _("Lets 'oshot --tray' start another tray icon when one is already running, instead of exiting. "
+          "Only the first tray registers the global hotkey.\n"
+          "Takes effect on the next launch."));
+
+    ImGui::Checkbox(_("Allow more than one overlay##config_allow_multi_overlay"),
+                    &g_config->File.allow_multi_overlay);
+    ImGui::SameLine();
+    HelpMarker(
+        _("Lets a capture open while another overlay is already open, e.g. to take a screenshot of oshot itself. "
+          "When disabled, the new capture is ignored, so holding or mashing the capture key opens just one overlay."));
 
     ImGui::Checkbox(_("Show text tools at startup##config_show_text_tools"), &g_config->File.show_text_tools);
 
