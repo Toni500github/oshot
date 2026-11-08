@@ -44,5 +44,5 @@ Suggests:
 Description: Fast and lightweight screenshot tool for extracting text on the fly
  oshot is a cross-platform screenshot and annotation tool with built-in OCR
  (via tesseract), barcode/QR scanning (via ZBar), and clipboard integration.
- Supports X11, Wayland (via the screenshot portal, Spectacle or grim), and
+ Supports X11, Wayland (via KWin, the screenshot portal or grim), and
  multi-monitor setups.

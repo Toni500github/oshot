@@ -83,7 +83,7 @@ enum class SessionType : std::uint8_t
     X11,
     Windows,
     MacOS,
-    KDE,  // Wayland or X11 under KDE Plasma, captured with spectacle
+    KDE,  // Wayland or X11 under KDE Plasma, see capture_full_screen_kde()
     Unknown
 };
 
@@ -108,6 +108,21 @@ Result<capture_result_t> capture_full_screen_x11();
  * falling back to `grim` (wlroots compositors)
  **/
 Result<capture_result_t> capture_full_screen_wayland();
+
+/**
+ * Capture under KDE Plasma. An X11 session goes through capture_full_screen_x11(),
+ * Wayland tries capture_full_screen_kwin(), then `spectacle` if it's installed,
+ * then capture_full_screen_wayland()
+ **/
+Result<capture_result_t> capture_full_screen_kde();
+
+/**
+ * Capture the monitor KWin considers active (by default the one under the cursor)
+ * through KWin's org.kde.KWin.ScreenShot2 D-Bus interface, the call `spectacle -m` makes.
+ * Before Plasma 6.8 KWin only answers executables whose installed desktop file lists
+ * X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2 with an absolute Exec path
+ **/
+Result<capture_result_t> capture_full_screen_kwin();
 
 /**
  * Capture the monitor under the cursor with KDE's `spectacle`.

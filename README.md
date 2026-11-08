@@ -70,7 +70,7 @@ https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 
 **Capture**
 - Region selection with resize handles, full-screen select (`Ctrl+A`) and capture delay
-- Multi-monitor support on X11, Wayland (screenshot portal, Spectacle or grim), Windows and macOS
+- Multi-monitor support on X11, Wayland (KWin, screenshot portal or grim), Windows and macOS
 - Tray mode with a global hotkey on Windows and macOS (on Linux, bind `oshot --gui` in your desktop settings)
 - Open existing images with `oshot -f <image>`
 - Borderless overlay window, always on top
@@ -248,7 +248,7 @@ text or image after oshot closes. Install the one for your session; the `.deb` r
 
 #### Wayland
 
-On GNOME and most other desktops, screenshots go through the desktop's screenshot portal (the first capture may ask for permission). KDE uses Spectacle. Where no screenshot portal is available (e.g. some Sway/Hyprland setups), install `grim`.
+On GNOME and most other desktops, screenshots go through the desktop's screenshot portal (the first capture may ask for permission). On KDE Plasma, oshot asks KWin for the screenshot directly. Plasma 6.7 and older only allow that for an oshot installed with its desktop file (distribution packages, the .deb, `make install`), so other builds use Spectacle there, if it's installed, and else the portal. Where no screenshot portal is available (e.g. some Sway/Hyprland setups), install `grim`.
 
 oshot doesn't need XWayland. Capturing, picking a monitor, copying and dialogs all talk to Wayland directly, and the
 release packages (AppImage, `.deb` and zip) include GLFW 3.5 built for both X11 and Wayland, so the overlay is a native

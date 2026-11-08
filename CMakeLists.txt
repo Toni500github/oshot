@@ -183,7 +183,7 @@ if(UNIX AND NOT APPLE)
             appindicator3-0.1
         )
     endif()
-    pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0)
+    pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0)
     pkg_check_modules(XRANDR REQUIRED IMPORTED_TARGET xrandr)
     pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
     pkg_check_modules(DBUS REQUIRED IMPORTED_TARGET dbus-1)
@@ -939,9 +939,29 @@ endif()
 
 # Desktop integration for Linux and the BSDs (freedesktop.org)
 if(UNIX AND NOT APPLE)
+    # KWin before Plasma 6.8 matches X-KDE-DBUS-Restricted-Interfaces against the caller's real
+    # executable, so the installed desktop file needs oshot's absolute path. It's written at
+    # install time, since `cmake --install --prefix` (make install) can change the prefix.
     install(
-        FILES assets/linux/oshot.desktop
-        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
+        CODE
+            "set(OSHOT_DESKTOP_SRC \"${CMAKE_CURRENT_SOURCE_DIR}/assets/linux/oshot.desktop\")
+             set(OSHOT_DESKTOP_TMP \"${CMAKE_CURRENT_BINARY_DIR}/oshot.desktop\")
+             set(OSHOT_BINDIR \"${CMAKE_INSTALL_BINDIR}\")
+             set(OSHOT_APPSDIR \"${CMAKE_INSTALL_DATAROOTDIR}/applications\")"
+    )
+    install(
+        CODE
+            [[
+            foreach(dir OSHOT_BINDIR OSHOT_APPSDIR)
+                if(NOT IS_ABSOLUTE "${${dir}}")
+                    set(${dir} "${CMAKE_INSTALL_PREFIX}/${${dir}}")
+                endif()
+            endforeach()
+            file(READ "${OSHOT_DESKTOP_SRC}" entry)
+            string(REPLACE "\nExec=oshot" "\nExec=${OSHOT_BINDIR}/oshot" entry "${entry}")
+            file(WRITE "${OSHOT_DESKTOP_TMP}" "${entry}")
+            file(INSTALL DESTINATION "${OSHOT_APPSDIR}" TYPE FILE FILES "${OSHOT_DESKTOP_TMP}")
+            ]]
     )
     install(
         FILES assets/linux/io.github.toni500github.oshot.metainfo.xml

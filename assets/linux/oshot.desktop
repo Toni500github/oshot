@@ -10,6 +10,7 @@ StartupNotify=false
 Categories=Utility;
 Keywords=screenshot;screen;capture;ocr;text;qr;barcode;annotate;
 Actions=Tray;
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
 
 [Desktop Action Tray]
 Name=Start in the System Tray

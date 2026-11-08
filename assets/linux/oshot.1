@@ -91,8 +91,8 @@ when set.
 .I ~/.config/oshot/theme.toml
 The theme file.
 .SH NOTES
-On Wayland the screen is captured through the desktop's screenshot portal,
-Spectacle on KDE, or
+On Wayland the screen is captured through KWin on KDE Plasma
+(falling back to Spectacle), the desktop's screenshot portal, or
 .BR grim (1)
 where no portal is available. Copying to the clipboard needs
 .BR wl\-copy (1)
