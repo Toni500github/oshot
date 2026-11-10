@@ -147,6 +147,32 @@ static bool on_wayland()
 #  endif
 }
 
+// GLFW 3.4 doesn't stop its Wayland key repeat timer when the window that has the keyboard is
+// destroyed. Closing the overlay with a key still down (Escape, every time) leaves the timer
+// running, and in the tray the next overlay's first glfwPollEvents() delivers the repeat to a
+// NULL window and crashes. The timer is only stopped by a key release or a keyboard leave that
+// arrives while the window exists, so unmap the window and wait for the leave.
+static void stop_wayland_key_repeat()
+{
+    int major = 0, minor = 0;
+    glfwGetVersion(&major, &minor, nullptr);
+    if (!on_wayland() || major != 3 || minor >= 5)
+        return;
+
+    // glfwHideWindow() ignores fullscreen windows
+    if (glfwGetWindowMonitor(window))
+        glfwSetWindowMonitor(window, nullptr, 0, 0, g_scr_w, g_scr_h, GLFW_DONT_CARE);
+    glfwHideWindow(window);
+
+    // The leave comes with the compositor's next reply, well under a millisecond normally
+    const auto deadline = std::chrono::steady_clock::now() + 500ms;
+    while (glfwGetWindowAttrib(window, GLFW_FOCUSED) && std::chrono::steady_clock::now() < deadline)
+        glfwWaitEventsTimeout(0.01);
+
+    if (glfwGetWindowAttrib(window, GLFW_FOCUSED))
+        spdlog::warn("The compositor didn't take the keyboard from the closed overlay, key repeat may still be on");
+}
+
 // The monitor the overlay was fullscreen on before hide_window_() unmapped it
 static GLFWmonitor* hidden_monitor = nullptr;
 
@@ -457,6 +483,8 @@ int run_main_tool()
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
+    if (g_is_systray)
+        stop_wayland_key_repeat();
     glfwDestroyWindow(window);
     window = nullptr;
 
