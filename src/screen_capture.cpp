@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <climits>
 #include <cmath>
 #include <cstdint>
@@ -413,6 +414,35 @@ Result<capture_result_t> capture_full_screen_x11()
     return Ok(std::move(result));
 }
 
+// Says how to get KWin's permission, once per process (the tray would repeat it on every capture)
+static void warn_kwin_not_authorized()
+{
+    static std::atomic_flag warned = ATOMIC_FLAG_INIT;
+    if (warned.test_and_set())
+        return;
+
+    // The AppImage's executable is in a mount point that changes on every start, so no desktop
+    // file can name it
+    if (std::getenv("APPIMAGE"))
+    {
+        spdlog::warn("Before Plasma 6.8 KWin only gives screenshots to installed programs, so the AppImage uses "
+                     "a slower capture (Spectacle or the portal)");
+        return;
+    }
+
+    // nixpkgs' KWin maps a wrapped program (bin/.oshot-wrapped) back to its wrapper
+    fs::path          exe  = get_exe_path();
+    const std::string name = exe.filename().string();
+    if (name.size() > 9 && name.front() == '.' && name.ends_with("-wrapped"))
+        exe.replace_filename(name.substr(1, name.size() - 9));
+
+    spdlog::warn("Before Plasma 6.8 KWin only gives screenshots to programs with a desktop file, so oshot uses a "
+                 "slower capture (Spectacle or the portal). To fix it, install oshot (make install, a package), "
+                 "or save oshot.desktop from the source's assets/linux folder as "
+                 "~/.local/share/applications/oshot.desktop with its first Exec line changed to \"Exec={}\"",
+                 exe.string());
+}
+
 Result<capture_result_t> capture_full_screen_kde()
 {
     // XGetImage needs neither KWin's permission nor spectacle
@@ -425,6 +455,8 @@ Result<capture_result_t> capture_full_screen_kde()
     if (res.ok())
         return res;
     spdlog::warn("{}", res.error_v());
+    if (res.error_v().find("NoAuthorized") != std::string::npos)
+        warn_kwin_not_authorized();
 
     // KWin before Plasma 6.8 refuses executables without a matching desktop file (AppImage, zip,
     // build folder), but trusts spectacle's

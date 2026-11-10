@@ -248,7 +248,7 @@ text or image after oshot closes. Install the one for your session; the `.deb` r
 
 #### Wayland
 
-On GNOME and most other desktops, screenshots go through the desktop's screenshot portal (the first capture may ask for permission). On KDE Plasma, oshot asks KWin for the screenshot directly. Plasma 6.7 and older only allow that for an oshot installed with its desktop file (distribution packages, the .deb, `make install`), so other builds use Spectacle there, if it's installed, and else the portal. Where no screenshot portal is available (e.g. some Sway/Hyprland setups), install `grim`.
+On GNOME and most other desktops, screenshots go through the desktop's screenshot portal (the first capture may ask for permission). On KDE Plasma, oshot asks KWin for the screenshot directly. Plasma 6.7 and older only allow that for an oshot installed with its desktop file (distribution packages, the .deb, `make install`), so other builds use Spectacle there, if it's installed, and else the portal, which takes longer (see [KDE Plasma: the overlay is slow to appear](#kde-plasma-the-overlay-is-slow-to-appear)). Where no screenshot portal is available (e.g. some Sway/Hyprland setups), install `grim`.
 
 oshot doesn't need XWayland. Capturing, picking a monitor, copying and dialogs all talk to Wayland directly, and the
 release packages (AppImage, `.deb` and zip) include GLFW 3.5 built for both X11 and Wayland, so the overlay is a native
@@ -398,6 +398,25 @@ Use the AppImage build.
 ### Linux: copying does nothing
 
 Install `xclip` (X11) or `wl-clipboard` (Wayland), see [Clipboard](#clipboard).
+
+### KDE Plasma: the overlay is slow to appear
+
+On Wayland with Plasma 6.7 or older, KWin only gives screenshots to programs it finds a desktop file for. Without
+one, the log has `The process is not authorized to take a screenshot` and oshot captures through Spectacle or the
+portal instead, which took 645 ms instead of 364 ms in a test VM. This happens when oshot runs from a build folder,
+the zip, or a Nix `result` (`nix build`, `nix run`), which install no desktop file. The AppImage always captures
+this way, because its executable's path changes on every start.
+
+Install oshot (`make install`, a package, or on NixOS `nix profile install` or `environment.systemPackages`), or
+add the desktop file by hand, with oshot's full path in `Exec`:
+
+```bash
+mkdir -p ~/.local/share/applications
+sed "0,/^Exec=oshot/s||Exec=$(realpath build/release/oshot)|" assets/linux/oshot.desktop \
+    > ~/.local/share/applications/oshot.desktop
+```
+
+For a Nix `result`, use `$(realpath result)/bin/oshot` as the path. Plasma picks the file up after a few seconds.
 
 ### NixOS: Tesseract can't find language data
 
