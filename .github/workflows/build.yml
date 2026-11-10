@@ -268,6 +268,7 @@ jobs:
             libtesseract-dev \
             libcurl4-openssl-dev \
             libpng-dev \
+            zlib1g-dev \
             libjpeg-dev \
             libgif-dev \
             libtiff-dev \
@@ -297,6 +298,7 @@ jobs:
             libxkbcommon-dev \
             libtesseract-dev \
             libpng-dev \
+            zlib1g-dev \
             libzbar-dev \
             libayatana-appindicator3-dev \
             libwayland-dev \
@@ -336,6 +338,7 @@ jobs:
             tesseract-ocr:p
             glfw:p
             libpng:p
+            zlib:p
             libjpeg-turbo:p
             openjpeg2:p
             libwebp:p

@@ -132,6 +132,7 @@ find_package(PkgConfig REQUIRED)
 find_package(Threads REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(OpenGL REQUIRED)
+find_package(ZLIB REQUIRED)
 
 if(TARGET glfw::glfw)
     set(GLFW_TARGET glfw::glfw)
@@ -703,7 +704,7 @@ target_link_libraries(
         PkgConfig::ZBAR
         OpenGL::GL
         ${GLFW_TARGET}
-    PRIVATE tinygettext Threads::Threads
+    PRIVATE tinygettext Threads::Threads ZLIB::ZLIB
 )
 if(OpenMP_CXX_FOUND)
     target_link_libraries(oshot_common PRIVATE OpenMP::OpenMP_CXX)

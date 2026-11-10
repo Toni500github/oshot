@@ -1,11 +1,14 @@
 #include "util.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "catch2/catch_amalgamated.hpp"
 #include "common.hpp"
+#include "screen_capture.hpp"
 
 using strings = std::vector<std::string>;
 
@@ -100,4 +103,39 @@ TEST_CASE("ProcessLock", "[util][lock]")
 
     // Destroying the holder released it
     CHECK(ProcessLock(name).held());
+}
+
+TEST_CASE("encode_to_image() PNG round trip", "[util][png]")
+{
+    // Gradients, hard edges, noise and partial alpha, so every row filter and the
+    // compressor see something to work with
+    capture_result_t img;
+    img.w = 301;
+    img.h = 157;
+    img.data.resize(size_t(img.w) * img.h * 4);
+    uint32_t noise = 12345;
+    for (int y = 0; y < img.h; ++y)
+        for (int x = 0; x < img.w; ++x)
+        {
+            noise          = noise * 1664525 + 1013904223;
+            uint8_t*   px  = &img.data[(size_t(y) * img.w + x) * 4];
+            const bool box = x > 100 && x < 200 && y > 40 && y < 120;
+            px[0]          = uint8_t(x);
+            px[1]          = box ? 0 : uint8_t(y * 3);
+            px[2]          = uint8_t(noise >> 24);
+            px[3]          = y < 20 ? uint8_t(x) : 255;
+        }
+
+    const std::vector<uint8_t> png = encode_to_image(img, ImageExt::PNG);
+    REQUIRE(png.size() > 8);
+    CHECK(std::string_view(reinterpret_cast<const char*>(png.data()), 8) == "\x89PNG\r\n\x1a\n");
+
+    const auto path = test_temp_dir() / "roundtrip.png";
+    write_file(path, std::string_view(reinterpret_cast<const char*>(png.data()), png.size()));
+    const Result<capture_result_t> res = load_image_rgba(path.string());
+    REQUIRE(res.ok());
+    const capture_result_t& back = res.get();
+    CHECK(back.w == img.w);
+    CHECK(back.h == img.h);
+    CHECK(back.data == img.data);
 }

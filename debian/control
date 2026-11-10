@@ -17,6 +17,7 @@ Build-Depends:
  libtesseract-dev,
  libleptonica-dev,
  libzbar-dev,
+ zlib1g-dev,
  libayatana-appindicator3-dev,
  libwayland-dev,
  libwayland-bin,

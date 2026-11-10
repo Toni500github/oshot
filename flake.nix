@@ -31,6 +31,7 @@
             tesseract
             leptonica
             zbar
+            zlib
             libGL
             libpng
 
