@@ -11,6 +11,24 @@
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
       version = "0.5.0-rc2";
 
+      # A left click on the tray icon needs the "activate" signal of Ayatana AppIndicator 0.6+.
+      # Until nixpkgs has it, 0.6.1 is built from upstream's source
+      ayatanaAppindicator = pkgs:
+        if pkgs.lib.versionAtLeast pkgs.libayatana-appindicator.version "0.6" then
+          pkgs.libayatana-appindicator
+        else
+          pkgs.libayatana-appindicator.overrideAttrs (old: {
+            version = "0.6.1";
+            src = pkgs.fetchFromGitHub {
+              owner = "AyatanaIndicators";
+              repo = "libayatana-appindicator";
+              rev = "0.6.1";
+              hash = "sha256-JMrOngNvNoeIoIznusvt56Cd2eI7o0r2CdT5Q8A7Pfc=";
+            };
+            # The gtk-doc scanner fails to link, and nothing needs the docs
+            cmakeFlags = (old.cmakeFlags or [ ]) ++ [ "-DENABLE_GTKDOC=OFF" ];
+          });
+
       mkOshot = pkgs: { disablePlugins ? false }:
         pkgs.stdenv.mkDerivation {
           pname = if disablePlugins then "oshot" else "oshot-plugins";
@@ -41,7 +59,7 @@
             glib
             gtk3
             fontconfig
-            libappindicator-gtk3
+            (ayatanaAppindicator pkgs)
             dbus
             wayland
             wayland-protocols
