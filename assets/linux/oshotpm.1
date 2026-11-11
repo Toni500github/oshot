@@ -1,4 +1,4 @@
-.TH OSHOTPM 1 "2026-10-17" "oshot" "User Commands"
+.TH OSHOTPM 1 "2026-11-11" "oshot" "User Commands"
 .SH NAME
 oshotpm \- plugin manager for oshot
 .SH SYNOPSIS
@@ -32,7 +32,8 @@ build steps), a local folder with a manifest (built in place), or a prebuilt arc
 .BR update " [\fB\-y\fR]"
 Install newer versions of the plugins from the plugin index, warning about withdrawn
 ones, and fetch every repository installed from a git URL and rebuild the ones that
-changed.
+changed. Plugins installed from a folder or an archive are updated by installing
+them again with \fB\-f\fR.
 .TP
 .BI uninstall " NAME" ...
 Uninstall the plugin with the ID \fINAME\fR, or the repository named \fINAME\fR with
@@ -71,6 +72,13 @@ https://toni500github.github.io/oshot\-plugin\-index/index.toml.
 .TP
 .B NO_COLOR
 Don't color the output.
+.TP
+.BR XDG_CONFIG_HOME ", " XDG_CACHE_HOME
+Used instead of \fI~/.config\fR and \fI~/.cache\fR when set.
+.PP
+Each build step runs with \fBsh \-c\fR in the repository's root and gets
+\fB\%OSHOT_SDK\fR, \fB\%OSHOT_PLATFORM\fR, \fB\%OSHOT_ARCH\fR, \fB\%OSHOT_TARGET\fR
+(e.g. \fBlinux\-x86_64\fR) and \fB\%OSHOT_VERSION\fR in its environment.
 .SH FILES
 .TP
 .I ~/.config/oshot/plugins/

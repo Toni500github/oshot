@@ -1,4 +1,4 @@
-.TH OSHOT 1 "2026-10-14" "oshot" "User Commands"
+.TH OSHOT 1 "2026-11-11" "oshot" "User Commands"
 .SH NAME
 oshot \- screenshot overlay that extracts text and scans QR codes and barcodes
 .SH SYNOPSIS
@@ -11,7 +11,12 @@ The selection can be read with Tesseract OCR, scanned for QR codes and
 barcodes with ZBar, annotated, and copied to the clipboard or saved.
 .PP
 Without options, oshot captures the screen, opens the overlay and then
-stays in the system tray.
+stays in the system tray. If another oshot is already in the tray, it only
+captures.
+.PP
+Builds with plugin support also load plugins, which are managed in the text
+tools window or with
+.BR oshotpm (1).
 .SH OPTIONS
 .TP
 .BR \-h ", " \-\-help
@@ -75,31 +80,62 @@ Bind this to a key in the desktop or window manager settings to get a
 capture shortcut.
 .TP
 .BR \-t ", " \-\-tray
-Only start in the system tray, without capturing.
+Only start in the system tray, without capturing. Exits if another oshot is
+already in the tray, unless the \fBallow\-multiple\-trays\fR option is on.
 .SH ENVIRONMENT
 .TP
 .B TESSDATA_PREFIX
 Directory with the Tesseract \fI.traineddata\fR models.
 Takes precedence over the \fBocr\-path\fR config option, unless
 \fBconfig\-over\-env\fR is enabled.
+.TP
+.B __GLX_VENDOR_LIBRARY_NAME
+The GLX vendor library for the overlay's OpenGL window on X11.
+Takes precedence over the \fBglx\-vendor\fR config option, unless
+\fBconfig\-over\-env\fR is enabled.
+.TP
+.BR LANGUAGE ", " LC_ALL ", " LC_MESSAGES ", " LANG
+The interface language, read in this order when the \fBlanguage\fR config
+option is \fB"auto"\fR.
+.TP
+.BR XDG_CONFIG_HOME ", " XDG_CACHE_HOME
+Used instead of \fI~/.config\fR and \fI~/.cache\fR when set.
+.TP
+.B OSHOT_PLUGIN_INDEX
+URL of the plugin index the Browse Plugins window downloads, as for
+.BR oshotpm (1).
 .SH FILES
 .TP
 .I ~/.config/oshot/config.toml
-The config file. \fB$XDG_CONFIG_HOME\fR is used instead of \fI~/.config\fR
-when set.
+The config file.
 .TP
 .I ~/.config/oshot/theme.toml
-The theme file.
+The theme file, or the one the \fBtheme\-file\fR option names.
+.TP
+.I ~/.config/oshot/locale/
+Translations (\fIcode\fB.po\fR files) that replace or add to the built-in ones.
+.TP
+.I ~/.config/oshot/plugins/
+Installed plugins, in builds with plugin support.
+.TP
+.I ~/.cache/oshot/cache.toml
+Values remembered between runs, such as the folder an image was last saved to.
+.TP
+.I $TMPDIR/oshot_<pid>.log
+The log of each run (\fI/tmp\fR when \fBTMPDIR\fR isn't set).
 .SH NOTES
 On Wayland the screen is captured through KWin on KDE Plasma
-(falling back to Spectacle), the desktop's screenshot portal, or
+(then Spectacle, then the portal), the desktop's screenshot portal
+elsewhere, or
 .BR grim (1)
-where no portal is available. Copying to the clipboard needs
+where no portal is available. Before Plasma 6.8, KWin only answers an oshot
+installed with its desktop file. Copying to the clipboard needs
 .BR wl\-copy (1)
 on Wayland and
 .BR xclip (1)
 on X11.
 .SH SEE ALSO
+.BR oshotpm (1),
 .BR tesseract (1),
 .BR zbarimg (1)
 .PP
