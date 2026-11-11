@@ -1,43 +1,21 @@
-# Builds the example plugin against the SDK of an oshot "-plugins" build:
+# Builds the example plugin against oshot's plugin SDK:
 #   cmake -S . -B build -DOSHOT_SDK=<sdk dir> && cmake --build build
-# oshotpm sets the OSHOT_SDK environment variable when it builds plugins.
 cmake_minimum_required(VERSION 3.16)
 project(oshot_export_png C)
 
+# oshotpm passes the SDK's folder in OSHOT_SDK. Without it, find_package()
+# looks in the usual places, such as the prefix oshot was installed to.
 set(OSHOT_SDK
     "$ENV{OSHOT_SDK}"
     CACHE PATH
     "oshot plugin SDK, the folder with include/oshot/oshot_plugin.h"
 )
-if(NOT EXISTS "${OSHOT_SDK}/include/oshot/oshot_plugin.h")
-    message(
-        FATAL_ERROR
-        "oshot's plugin SDK wasn't found: pass -DOSHOT_SDK=<folder with include/oshot/oshot_plugin.h>"
-    )
-endif()
-
+find_package(oshot REQUIRED CONFIG HINTS "${OSHOT_SDK}")
 find_package(Threads REQUIRED)
 
-add_library(export_png MODULE export_png.c)
-target_include_directories(
-    export_png
-    PRIVATE "${OSHOT_SDK}/include" ../../../include/libs/
-)
+# The library goes to build/out, the manifest's output-dir
+oshot_add_plugin(export_png export_png.c OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/out")
+# stb_image_write.h comes from oshot's vendored libraries
+target_include_directories(export_png PRIVATE ../../../include/libs/)
 target_link_libraries(export_png PRIVATE Threads::Threads)
-set_target_properties(
-    export_png
-    PROPERTIES C_STANDARD 11 C_VISIBILITY_PRESET hidden
-)
-
-# The library goes to build/out, for every generator and configuration
-set_target_properties(
-    export_png
-    PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/out"
-)
-foreach(config ${CMAKE_CONFIGURATION_TYPES})
-    string(TOUPPER "${config}" config)
-    set_target_properties(
-        export_png
-        PROPERTIES LIBRARY_OUTPUT_DIRECTORY_${config} "${CMAKE_BINARY_DIR}/out"
-    )
-endforeach()
+set_target_properties(export_png PROPERTIES C_STANDARD 11)

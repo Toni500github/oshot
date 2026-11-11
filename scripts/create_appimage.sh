@@ -77,10 +77,13 @@ main() {
         check_file "$BUILD_DIR/libcimgui.so.1"
         cp -f "$BUILD_DIR/oshotpm" AppDir/usr/bin/
         DEPLOY_ARGS+=(--executable AppDir/usr/bin/oshotpm --library "$BUILD_DIR/libcimgui.so.1")
-        # The plugin SDK headers: oshotpm passes usr/ as OSHOT_SDK to plugin builds
+        # The plugin SDK (headers, find_package(oshot), pkg-config files): oshotpm
+        # passes usr/ as OSHOT_SDK to plugin builds
         check_file "$BUILD_DIR/sdk/include/oshot/oshot_plugin.h"
-        mkdir -p AppDir/usr/include
+        check_file "$BUILD_DIR/sdk/lib/cmake/oshot/oshotConfig.cmake"
+        mkdir -p AppDir/usr/include AppDir/usr/lib
         cp -rf "$BUILD_DIR/sdk/include/oshot" AppDir/usr/include/
+        cp -rf "$BUILD_DIR/sdk/lib/cmake" "$BUILD_DIR/sdk/lib/pkgconfig" AppDir/usr/lib/
     fi
 
     # "<AppImage> oshotpm ..." or a symlink named oshotpm runs the plugin manager.

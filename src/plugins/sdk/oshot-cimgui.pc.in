@@ -1,0 +1,12 @@
+# What an oshot plugin that calls cimgui (oshot/cimgui.h) links on each system
+# (nothing on Linux and the BSDs, -undefined dynamic_lookup on macOS, the
+# libcimgui import library from the SDK on Windows).
+prefix=${pcfiledir}/@OSHOT_PC_PREFIX@
+libdir=${prefix}/lib
+
+Name: oshot-cimgui
+Description: cimgui for oshot plugins, from oshot itself
+URL: https://github.com/Toni500github/oshot
+Version: @PROJECT_VERSION@
+Requires: oshot-plugin
+Libs: @OSHOT_PC_CIMGUI_LIBS@

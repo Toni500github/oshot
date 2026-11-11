@@ -1,6 +1,6 @@
 # Example plugins
 
-The same plugin in four languages: it adds an "Uppercase the OCR output" button to the text tools window, can
+The same plugin in C and C++: it adds an "Uppercase the OCR output" button to the text tools window, can
 uppercase new text as soon as it's extracted, and declares a setting for that plus a prefix, which oshot shows in
 Preferences > Plugins and saves for it. It draws only with oshot's widgets (`imgui_version = OSHOT_NO_IMGUI`), so it keeps working
 when oshot updates Dear ImGui. See [docs/plugins.md](../../docs/plugins.md) for the API.
@@ -9,8 +9,6 @@ when oshot updates Dear ImGui. See [docs/plugins.md](../../docs/plugins.md) for 
 | ------ | -------- | ----- | -- |
 | [`c`](c) | C11 | CMake | `io.github.toni500github.uppercase` |
 | [`cpp`](cpp) | C++20 | CMake | `io.github.toni500github.uppercase-cpp` |
-| [`rust`](rust) | Rust 2024 (1.85+) | Cargo | `io.github.toni500github.uppercase-rust` |
-| [`zig`](zig) | Zig 0.17 | `zig build` | `io.github.toni500github.uppercase-zig` |
 | [`cimgui`](cimgui) | C11 | CMake | `io.github.toni500github.line-lengths` |
 | [`scan-results`](scan-results) | C11 | CMake | `io.github.toni500github.scan-results` |
 | [`text-transformers`](text-transformers) | C11 | CMake | `io.github.toni500github.join-lines`, `io.github.toni500github.extract-links` |
@@ -43,24 +41,19 @@ capability.
 Each folder is a repository of its own with an `oshot-plugin.toml`, so they can be installed side by side:
 
 ```sh
-oshotpm install examples/plugins/rust
+oshotpm install examples/plugins/c
 ```
 
 To build one by hand, point it at the SDK of an oshot `-plugins` build (`build/<type>/sdk` in the build tree) with
-the `OSHOT_SDK` environment variable, which oshotpm sets on its own. The Rust one doesn't need it.
+the `OSHOT_SDK` environment variable, which oshotpm sets on its own. Their `CMakeLists.txt` find it with
+`find_package(oshot)` and build the library with `oshot_add_plugin()`; the cimgui one passes `CIMGUI`, which links
+what calling cimgui needs on each system (see [docs/plugins.md](../../docs/plugins.md#building)).
 
-How they get to the C API:
+oshot's tests (`make BUILD_TESTS=1 test`) run the uppercase, text transformer and export examples on the SDK's mock
+host, `oshot/oshot_mock_host.h`, in [`tests/plugin_mock.cpp`](../../tests/plugin_mock.cpp).
 
-- **C** and **C++** include `oshot/oshot_plugin.h` from the SDK; the cimgui example also includes `oshot/cimgui.h`
-  and links cimgui as [docs/plugins.md](../../docs/plugins.md#building) describes.
-- **Rust**: [`src/ffi.rs`](rust/src/ffi.rs) has hand-written bindings to `oshot_plugin.h`, so the build needs neither
-  bindgen nor the SDK. oshot only appends to its structs, so they keep working with newer versions of oshot; copy the
-  fields a newer header adds to use them. `oshot_err_t` is an integer type with constants there, not a Rust enum,
-  because oshot may return codes added later. A Rust plugin that also uses cimgui should generate its bindings with
-  bindgen from the SDK's headers, and use `oshot/cimgui.h`, not `imgui-rs`/`imgui-sys`: those compile their own copy
-  of Dear ImGui, which has no context inside oshot.
-- **Zig** translates `oshot_plugin.h` in [`build.zig`](zig/build.zig) and imports it as the `c` module. translate-c
-  can't translate the `OSHOT_HOST_HAS` and `OSHOT_OCR_HAS_WORDS` macros: the example has its own `hostHas()`.
+To start a plugin of your own, use the [template](https://github.com/Toni500github/oshot-plugin-test) rather than
+copying one of these: it has unit tests and a release workflow for every target.
 
 Languages that bring a runtime of their own, like Go, are a poor fit: a Go library can't be unloaded, and there can
 be only one Go runtime per process, so two Go plugins can't be loaded together.

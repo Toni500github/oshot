@@ -822,10 +822,12 @@ if(NOT DISABLE_PLUGINS)
     set(OSHOT_SDK_DIR "${CMAKE_BINARY_DIR}/sdk")
     set(OSHOT_SDK_HEADERS_SRC
         "${CMAKE_SOURCE_DIR}/src/plugins/oshot_plugin.h"
+        "${CMAKE_SOURCE_DIR}/src/plugins/oshot_mock_host.h"
         "${CMAKE_SOURCE_DIR}/include/libs/cimgui.h"
     )
     set(OSHOT_SDK_HEADERS
         "${OSHOT_SDK_DIR}/include/oshot/oshot_plugin.h"
+        "${OSHOT_SDK_DIR}/include/oshot/oshot_mock_host.h"
         "${OSHOT_SDK_DIR}/include/oshot/cimgui.h"
     )
     # A custom command with outputs, not a POST_BUILD step on cimgui. Ninja
@@ -842,6 +844,58 @@ if(NOT DISABLE_PLUGINS)
         COMMENT "Copying the plugin SDK headers to ${OSHOT_SDK_DIR}"
     )
     add_custom_target(oshot_sdk_headers ALL DEPENDS ${OSHOT_SDK_HEADERS})
+
+    # find_package(oshot) and pkg-config files (oshot-plugin, oshot-cimgui),
+    # in the SDK and installed. They find the headers relative to themselves,
+    # so the SDK can be copied anywhere (packages, AppImage).
+    include(CMakePackageConfigHelpers)
+    set(OSHOT_SDK_FILES "${CMAKE_SOURCE_DIR}/src/plugins/sdk")
+    configure_file(
+        "${OSHOT_SDK_FILES}/oshotConfig.cmake"
+        "${OSHOT_SDK_DIR}/lib/cmake/oshot/oshotConfig.cmake"
+        COPYONLY
+    )
+    write_basic_package_version_file(
+        "${OSHOT_SDK_DIR}/lib/cmake/oshot/oshotConfigVersion.cmake"
+        COMPATIBILITY AnyNewerVersion
+        ARCH_INDEPENDENT
+    )
+    if(WIN32)
+        set(OSHOT_PC_CIMGUI_LIBS "-L\${libdir} -lcimgui")
+    elseif(APPLE)
+        set(OSHOT_PC_CIMGUI_LIBS "-Wl,-undefined,dynamic_lookup")
+    else()
+        set(OSHOT_PC_CIMGUI_LIBS "")
+    endif()
+    # ${pcfiledir} is <prefix>/<libdir>/pkgconfig
+    if(IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
+        file(
+            RELATIVE_PATH OSHOT_PC_INSTALL_PREFIX
+            "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
+            "${CMAKE_INSTALL_PREFIX}"
+        )
+    else()
+        file(
+            RELATIVE_PATH OSHOT_PC_INSTALL_PREFIX
+            "/prefix/${CMAKE_INSTALL_LIBDIR}/pkgconfig"
+            "/prefix"
+        )
+    endif()
+    string(REGEX REPLACE "/$" "" OSHOT_PC_INSTALL_PREFIX "${OSHOT_PC_INSTALL_PREFIX}")
+    foreach(_pc oshot-plugin oshot-cimgui)
+        set(OSHOT_PC_PREFIX "../..")
+        configure_file(
+            "${OSHOT_SDK_FILES}/${_pc}.pc.in"
+            "${OSHOT_SDK_DIR}/lib/pkgconfig/${_pc}.pc"
+            @ONLY
+        )
+        set(OSHOT_PC_PREFIX "${OSHOT_PC_INSTALL_PREFIX}")
+        configure_file(
+            "${OSHOT_SDK_FILES}/${_pc}.pc.in"
+            "${CMAKE_BINARY_DIR}/pkgconfig-install/${_pc}.pc"
+            @ONLY
+        )
+    endforeach()
     if(WIN32)
         add_custom_command(
             TARGET cimgui
@@ -931,6 +985,18 @@ else()
     install(
         FILES ${OSHOT_SDK_HEADERS_SRC}
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+    )
+    install(
+        FILES
+            "${OSHOT_SDK_DIR}/lib/cmake/oshot/oshotConfig.cmake"
+            "${OSHOT_SDK_DIR}/lib/cmake/oshot/oshotConfigVersion.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/oshot
+    )
+    install(
+        FILES
+            "${CMAKE_BINARY_DIR}/pkgconfig-install/oshot-plugin.pc"
+            "${CMAKE_BINARY_DIR}/pkgconfig-install/oshot-cimgui.pc"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
     )
 endif()
 

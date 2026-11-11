@@ -5,8 +5,9 @@
 
 Plugins only work in the `-plugins` builds of oshot. A plugin is a shared library (`.so`, `.dll`, or `.dylib` or `.so` on macOS) with a plain
 C interface, so it can be written in any language that can export a C function: C, C++, Rust, Zig, and so on.
-[`examples/plugins`](../examples/plugins) has the same complete plugin in each of those four languages, one that
-uses cimgui, one that uses the scan results and host services, two text transformers and an export action.
+[`examples/plugins`](../examples/plugins) has the same complete plugin in C and C++, one that uses cimgui, one that
+uses the scan results and host services, two text transformers and an export action. To start a plugin of your own,
+use the [template](#starting-from-the-template).
 
 What a plugin can do:
 
@@ -34,31 +35,61 @@ in the manifest's [`capabilities`](#the-manifest), so people see it before insta
 | **ID** | Reverse-domain name like `io.github.user.translate`: lowercase letters, digits, `-`, `_`, at least one `.`, up to 64 characters. The same ID is compiled into the library and written in the manifest. |
 | **repository** | Everything one `oshot-plugin.toml` describes: one or more plugins, from a git repository, a folder or an archive. |
 | **manifest** | The `oshot-plugin.toml` file at the root of a repository. |
-| **SDK** | The headers (`oshot/oshot_plugin.h`, and `oshot/cimgui.h` for plugins that use cimgui), plus on Windows the cimgui import library, that come with oshot. |
+| **SDK** | What oshot comes with for building plugins: the headers (`oshot/oshot_plugin.h`, `oshot/oshot_mock_host.h` for unit tests, `oshot/cimgui.h` for plugins that use cimgui), a CMake package and pkg-config files, plus on Windows the cimgui import library. |
 | **host** | oshot, as seen from a plugin. |
 
 ## The SDK
 
 oshot ships the SDK next to itself, and `oshotpm` passes its location to plugin builds as the `OSHOT_SDK` environment
-variable (a folder with `include/oshot/` and, on Windows, `lib/`):
+variable. It's laid out like an install prefix:
+
+```
+include/oshot/oshot_plugin.h      the API
+include/oshot/oshot_mock_host.h   a fake oshot for unit tests
+include/oshot/cimgui.h            Dear ImGui through cimgui
+lib/cmake/oshot/                  find_package(oshot)
+lib/pkgconfig/                    oshot-plugin.pc, oshot-cimgui.pc
+lib/libcimgui.dll.a               Windows only
+```
 
 | Package | SDK |
 | ------- | --- |
-| Linux zip, `.deb`, `make install` | `<prefix>/include/oshot` (e.g. `/usr/local/include/oshot`) |
+| Linux zip, `.deb`, `make install` | `<prefix>` (e.g. `/usr/local`, with the headers in `/usr/local/include/oshot`) |
 | AppImage | inside the AppImage, found by `oshotpm` |
 | Windows zip / installer | `sdk\` next to `oshot.exe` |
 | macOS `.app` | `oshot.app/Contents/Resources/sdk` |
 | Build tree | `build/<type>/sdk` |
 
-Set `OSHOT_SDK` yourself to use another one.
+Set `OSHOT_SDK` yourself to use another one. The [template](#starting-from-the-template) downloads the SDK of a given
+oshot commit with its `scripts/fetch_sdk.sh`.
 
 ## Building
 
-A plugin only needs `oshot/oshot_plugin.h`: compile it as a shared library (`-shared -fPIC`) and link nothing from
-oshot. Build it with hidden symbols (`-fvisibility=hidden`) and export only the entry point, with
-`OSHOT_PLUGIN_EXPORT`. The C example's [`CMakeLists.txt`](../examples/plugins/c/CMakeLists.txt) and the Zig
-example's [`build.zig`](../examples/plugins/zig/build.zig) do this; the Rust example has its own bindings and doesn't
-need the SDK at all.
+A plugin only needs `oshot/oshot_plugin.h`: compile it as a shared library and link nothing from oshot. Build it with
+hidden symbols (`-fvisibility=hidden`) and export only the entry point, with `OSHOT_PLUGIN_EXPORT`.
+
+With CMake, the SDK's package does both:
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(my_plugin C)
+
+set(OSHOT_SDK "$ENV{OSHOT_SDK}" CACHE PATH "oshot's plugin SDK")
+find_package(oshot REQUIRED CONFIG HINTS "${OSHOT_SDK}")
+
+# A MODULE library with hidden symbols, written to build/out for the manifest's output-dir
+oshot_add_plugin(my_plugin src/plugin.c OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/out")
+```
+
+It also defines the `oshot::plugin` target (the headers) and the `OSHOT_API_VERSION` and `OSHOT_IMGUI_VERSION`
+variables. Without `OSHOT_SDK` set, `find_package` looks in the usual prefixes, so an installed oshot is found too.
+
+With Make, Meson or anything else, `pkg-config oshot-plugin` gives the include flags:
+
+```sh
+export PKG_CONFIG_PATH="$OSHOT_SDK/lib/pkgconfig"
+cc -shared -fPIC -fvisibility=hidden $(pkg-config --cflags oshot-plugin) plugin.c -o libmy_plugin.so
+```
 
 A plugin that also uses cimgui (see [Dear ImGui through cimgui](#dear-imgui-through-cimgui)) gets it from oshot,
 without bundling Dear ImGui:
@@ -66,9 +97,45 @@ without bundling Dear ImGui:
 - **Linux and the BSDs**: nothing more to link.
 - **macOS**: link with `-undefined dynamic_lookup`.
 - **Windows**: link `sdk/lib/libcimgui.dll.a`. It's a MinGW import library: build with MinGW-w64 (MSYS2's UCRT64 or
-  CLANGARM64 environments, the ones oshot is built with).
+  CLANGARM64 environments, the ones oshot is built with, or llvm-mingw).
 
-The cimgui example's [`CMakeLists.txt`](../examples/plugins/cimgui/CMakeLists.txt) does this.
+`oshot_add_plugin(<target> CIMGUI ...)` (or linking `oshot::cimgui`) and `pkg-config --libs oshot-cimgui` do this for
+each system. The cimgui example's [`CMakeLists.txt`](../examples/plugins/cimgui/CMakeLists.txt) uses it.
+
+## Testing
+
+`oshot/oshot_mock_host.h` is a fake oshot for unit tests: a header-only C11 (or C++) implementation of every host
+function, kept in memory. A test compiles the plugin's sources into a program, passes its descriptor to the mock, sends
+the events oshot would send and reads back what the plugin did:
+
+```c
+#include "oshot/oshot_mock_host.h"
+
+oshot_mock_t* m = oshot_mock_new();
+oshot_mock_set_bool(m, OSHOT_STORE_CONFIG, "auto-uppercase", true);  // config.toml, as saved in Preferences
+oshot_mock_load(m, oshot_plugin_entry());                             // checks the descriptor, calls init()
+oshot_mock_capture_start(m);
+oshot_mock_ocr(m, "hello", NULL, 0);          // transform_text(), then on_ocr_done()
+assert(strcmp(oshot_mock_text(m, OSHOT_TEXT_OCR), "HELLO") == 0);
+
+oshot_mock_render(m);                         // one frame of render()
+assert(oshot_mock_drew(m, "button Uppercase the OCR output"));
+oshot_mock_click(m, "Uppercase the OCR output");  // pressed in the next frame
+oshot_mock_render(m);
+oshot_mock_free(m);
+assert(oshot_mock_live_allocations() == 0);   // every host string was freed
+```
+
+The capture image, the OCR and barcode text, config and cache values and `run_process()` results are set by the test;
+the clipboard, notifications, opened URLs, started commands, actions and reports are read back. Widgets draw nothing:
+the mock records each frame's labels and text, and presses buttons, toggles checkboxes or types into fields by label.
+`run_on_ui_thread()` tasks, process exits and final images arrive with the next `oshot_mock_render()` (or
+`oshot_mock_run_ui_tasks()`), as they do with the next frame in oshot. The thread that creates the mock is the UI
+thread: UI-thread-only functions called from another one fail as they would in oshot. The mock prints the plugin's
+warnings and errors, and the mistakes it notices (a widget outside `render()`, a section left open, a label used twice,
+a click on nothing), so a test can check `oshot_mock_log_count(m, OSHOT_LOG_WARN) == 0`.
+`oshot_mock_set_host_size()` pretends to be an older oshot, to test `OSHOT_HOST_HAS` checks. The header documents
+each function.
 
 ## The API
 
@@ -451,8 +518,14 @@ platform after checking its checksum and the library's ID, ABI and ImGui version
 there's no prebuilt file. `oshotpm update` and the browser offer newer versions and warn about withdrawn ones.
 
 To list a plugin, open a pull request there with a `plugins/<ID>.toml`: its README explains the format and what's
-checked. Its `[capabilities]` are the same as the manifest's, and are what oshot shows for index plugins. The [test plugin](https://github.com/Toni500github/oshot-plugin-test) is a complete example, with a release
-workflow that builds every target.
+checked. Its `[capabilities]` are the same as the manifest's, and are what oshot shows for index plugins.
+
+### Starting from the template
+
+The [test plugin](https://github.com/Toni500github/oshot-plugin-test) is a GitHub template repository: a complete C
+plugin with unit tests on the mock host and a workflow that builds every target oshot ships for (Linux, Windows and
+macOS, x86_64 and aarch64), runs the tests, and for a `v*` tag publishes a release with the libraries and the plugin's
+`plugins/<ID>.toml` for the index, checksums included. Its README lists what to change in a new plugin.
 
 ### Other ways
 
