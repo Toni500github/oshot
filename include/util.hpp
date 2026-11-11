@@ -151,7 +151,7 @@ gboolean gtk_main_iteration();
 // Types
 // ------------------------------
 
-// shotout to the better c++ server for these helper structs
+// shoutout to the Better C++ server for these helper structs
 
 /* The value of a successful Result */
 template <typename T>
@@ -702,23 +702,6 @@ void disable_dialogs() noexcept;
  **/
 void create_dialog(const char* title, const NvdDialogType type, const std::string& str) noexcept;
 
-/**
- * Make `logger` spdlog's default logger in liboshot_common too.
- * spdlog is header-only, and on Windows an executable and a DLL each get their
- * own copy of its registry, so the executable has to set it on both sides.
- * So do oshot and liboshot_common in macOS Release builds, where LTO makes the
- * executable's copy local instead of sharing the library's.
- * @param logger The executable's default logger
- **/
-void set_shared_default_logger(std::shared_ptr<spdlog::logger> logger);
-
-/**
- * Undo set_shared_default_logger(), at exit before the log file is deleted:
- * the DLL's registry outlives the executable's and would keep the file open,
- * which Windows can't delete.
- **/
-void release_shared_default_logger();
-
 // ------------------------------
 // Strings
 // ------------------------------
@@ -770,7 +753,7 @@ std::string expand_var(std::string ret);
 std::string get_relative_path(const std::string_view relative_path, const char* env, const long long mode);
 
 /**
- * Simulate the behaviour of the command `which`
+ * Find a command in PATH, like `which`
  * @param command The command to look up in $PATH
  * @return The full path of the executable, else UNKNOWN
  **/

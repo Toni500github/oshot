@@ -458,7 +458,7 @@ Result<> ScreenshotTool::StartWindow()
 #endif
 
 #ifndef DISABLE_PLUGINS
-    // No-ops for PluginManager calls made before any StartPluginTask() because an empty std::function throws
+    // No-ops for PluginManager calls before the first StartPluginTask(), since an empty std::function throws
     PluginCallbacks cb;
     cb.on_status  = [](const std::string_view) {};
     cb.on_success = [](const std::string_view) {};
@@ -1486,8 +1486,7 @@ void ScreenshotTool::HandleAnnotationInput()
             {
                 if (!m_current_annotation.text.empty())
                 {
-                    // Shift start to where the text actually appears visually,
-                    // accounting for the FramePadding we pushed above
+                    // Move start to where the text is drawn, past the FramePadding pushed above
                     const ImVec2& fp = ImGui::GetStyle().FramePadding;
                     m_current_annotation.start.x += fp.x;
                     m_current_annotation.start.y += fp.y;
@@ -1598,8 +1597,8 @@ void ScreenshotTool::HandleColorPickerInput()
     float         win_x   = mouse_pos.x + k_offset;
     float         win_y   = mouse_pos.y + k_offset;
 
-    // For the horizontal flip we know the exact width; for vertical, use loupe
-    // height + a comfortable margin since AlwaysAutoResize determines final height.
+    // The width is known for the horizontal flip. AlwaysAutoResize sets the height,
+    // so the vertical flip uses the loupe's height plus a margin
     constexpr float k_approx_info_h = 50.0f;  // swatch row + spacing
     if (win_x + k_win_size > display.x)
         win_x = mouse_pos.x - k_offset - k_win_size;
@@ -1651,7 +1650,7 @@ void ScreenshotTool::HandleColorPickerInput()
         // Crosshair
         const ImVec2    ctr = ImVec2(loupe_origin.x + k_loupe_px * 0.5f, loupe_origin.y + k_loupe_px * 0.5f);
         constexpr float arm = 10.0f;
-        constexpr float gap = 3.0f;  // gap around the centre dot
+        constexpr float gap = 3.0f;  // gap around the center dot
 
         // Shadow lines for contrast on any background
         dl->AddLine(ImVec2(ctr.x - arm, ctr.y), ImVec2(ctr.x - gap, ctr.y), shadow_color, 1.5f);
@@ -1663,7 +1662,7 @@ void ScreenshotTool::HandleColorPickerInput()
         dl->AddLine(ImVec2(ctr.x + gap, ctr.y), ImVec2(ctr.x + arm, ctr.y), white_lines_color, 1.0f);
         dl->AddLine(ImVec2(ctr.x, ctr.y - arm), ImVec2(ctr.x, ctr.y - gap), white_lines_color, 1.0f);
         dl->AddLine(ImVec2(ctr.x, ctr.y + gap), ImVec2(ctr.x, ctr.y + arm), white_lines_color, 1.0f);
-        // Centre dot, filled with the hovered colour so it's always visible
+        // Center dot, filled with the hovered color so it's always visible
         dl->AddCircleFilled(ctr, gap - 0.5f, c.to_abgr());
         dl->AddCircle(ctr, gap - 0.5f, (0xffffffC8_rgba).to_abgr(), 12, 1.0f);
 
@@ -1698,7 +1697,7 @@ void ScreenshotTool::HandleColorPickerInput()
     ImGui::PopStyleVar();
     ImGui::PopStyleVar();
 
-    // Keeps a precise reference point visible even outside the loupe region.
+    // A precise mark under the cursor, which stays visible outside the loupe
     {
         ImDrawList* fg = ImGui::GetForegroundDrawList();
         fg->AddCircle(mouse_pos, 5.0f, shadow_color, 12, 2.0f);
@@ -2940,7 +2939,7 @@ void ScreenshotTool::DrawOcrTools()
     pop_error_label(invalid_path, _("Invalid!"));
     pop_error_label(need_to_scan, _("Need to scan new directory"));
     ImGui::SameLine();
-    HelpMarker(_("Full path to the OCR models (.traineddata). Supports drag-and-drop"));
+    HelpMarker(_("Full path to the OCR models (.traineddata). Supports drag-and-drop."));
 
     if (invalid_path)
     {
@@ -2977,7 +2976,7 @@ void ScreenshotTool::DrawOcrTools()
 
         const bool combo_open = ImGui::BeginCombo(_("Model"), ocr_model.c_str(), ImGuiComboFlags_HeightLarge);
 
-        // Don't infect the whole list of red
+        // Don't color the whole list red
         if (invalid_model)
             ImGui::PopStyleColor();
 
@@ -3829,7 +3828,7 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     ImGui::TextUnformatted(_("Default Theme file path"));
     ImGui::SameLine();
     HelpMarker(
-        _("Full path to the theme file (aka. theme.toml), or relative to the config directory. Supports "
+        _("Full path to the theme file (theme.toml by default), or relative to the config directory. Supports "
           "drag-and-drop."));
     draw_input_text_file(
         "",
@@ -3872,9 +3871,9 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     ImGui::Checkbox(_("Vertical sync (VSync)##config_vsync"), &g_config->File.enable_vsync);
     ImGui::SameLine();
     HelpMarker(
-        _("Renders in sync with your monitor's refresh rate for a smoother overlay, "
-          "at the cost of slightly more CPU/GPU usage.\n"
-          "Disable if the overlay feels sluggish."));
+        _("Draws in step with your monitor's refresh rate, which looks smoother and draws no more "
+          "frames than the monitor shows.\n"
+          "Disable it if the overlay feels sluggish."));
 
     ImGui::Checkbox(_("Allow output edits##config_allow_out_edit"), &g_config->File.allow_out_edit);
 
@@ -3898,9 +3897,9 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
                     &g_config->File.pref_conf_to_env);
     ImGui::SameLine();
     HelpMarker(
-        _("In some OSes such as NixOS, in order to get the OCR models installed through the package manager, we need "
-          "to rely on environment variables such as $TESSDATA_PREFIX. "
-          "Enabling this option overrides those environment variables with the paths set in the config file."));
+        _("Some systems, such as NixOS, point oshot to the OCR models from the package manager with environment "
+          "variables like $TESSDATA_PREFIX. "
+          "Enabling this makes the paths in the config file win over those variables."));
 
     ImGui::Checkbox(_("Consider annotations when scanning##config_render_anns"), &g_config->File.render_anns);
     ImGui::SameLine();
@@ -3908,7 +3907,7 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
 
     ImGui::Checkbox(_("Legacy toolbar placement##config_old_toolbar_pos"), &g_config->File.old_toolbar_pos);
     ImGui::SameLine();
-    HelpMarker(_("Put all tools buttons at the bottom of the main selection border in the same line"));
+    HelpMarker(_("Put all the toolbar buttons on one line under the selection"));
 
     ImGui::Checkbox(_("Anti-aliased toolbar icons##config_aa_icons"), &g_config->File.aa_icons);
     ImGui::SameLine();
@@ -4337,8 +4336,7 @@ static void draw_theme_editor()
     ImGui::TextDisabled("%s", _("Click a swatch to edit. Changes apply on Save."));
     ImGui::Spacing();
 
-    // We only show the most-used slots to keep the list manageable.
-    // Full list is still editable via the config file directly.
+    // Only the most used colors, so the list stays short. The theme file can set the others
     static constexpr auto important = std::to_array({
         "Text",          "TextDisabled",  "WindowBg",       "ChildBg",       "PopupBg",       "Border",
         "PlotHistogram", "FrameBg",       "FrameBgHovered", "FrameBgActive", "TitleBg",       "TitleBgActive",
@@ -4795,7 +4793,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
                 const float pct = m_ocr_download->progress.load();
                 if (pct < 0.f)
                 {
-                    // Size unknown yet, so let's show a marquee-style bar
+                    // Size unknown yet, so show a marquee bar
                     const float t = std::fmod(static_cast<float>(ImGui::GetTime()) * 0.8f, 1.0f);
                     ImGui::ProgressBar(-1.f * t, ImVec2(-1.f, 0.f), _("Downloading..."));
                 }
@@ -5141,8 +5139,8 @@ void ScreenshotTool::StartPluginTask(const std::string& title, std::function<Res
 
     auto state = std::make_shared<plugin_install_state_t>();
 
-    // Every on_* callback just appends to the shared queue. Nothing here
-    // touches ImGui, so it's safe to invoke from the worker thread.
+    // The callbacks only append to the shared queue and never touch ImGui,
+    // so the worker thread can call them
     auto push = [state](plugin_install_event_t::Kind kind) {
         return [state, kind](const std::string_view msg) {
             std::scoped_lock lock(state->events_mutex);
@@ -6074,10 +6072,8 @@ void ScreenshotTool::DrawPluginInstallStatus()
     }
     ImGui::End();  // even when Begin() returns false: collapsed or clipped
 
-    // Don't let the person close the window out from under a running
-    // install. The worker thread would keep pushing events into a queue
-    // nothing is draining, and a pending confirm would hang forever with no
-    // popup left to answer it from.
+    // Keep the window open while an install runs. Nothing would drain the worker's
+    // events, and a pending confirm would wait forever with no popup to answer it
     if (!open && m_install_state->running)
         open = true;
 

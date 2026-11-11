@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oshot 0.5.0-rc2\n"
 "Report-Msgid-Bugs-To: https://github.com/Toni500github/oshot/issues\n"
-"POT-Creation-Date: 2026-10-30 19:22+0100\n"
+"POT-Creation-Date: 2026-11-11 23:27+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,1418 +18,1442 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#: include/screenshot_tool.hpp:833
+#: include/screenshot_tool.hpp:835
 msgid "Copy Text"
 msgstr ""
 
-#: include/util.hpp:489
+#: include/util.hpp:576
 msgid "oshot Fatal Error"
 msgstr ""
 
-#: include/util.hpp:505
+#: include/util.hpp:592
 msgid "oshot Error"
 msgstr ""
 
-#: include/util.hpp:520
+#: include/util.hpp:607
 msgid "oshot Warning"
 msgstr ""
 
-#: include/util.hpp:535
+#: include/util.hpp:622
 msgid "oshot Info"
 msgstr ""
 
-#: include/util.hpp:556 include/util.hpp:587
+#: include/util.hpp:643 include/util.hpp:674
 msgid "Confirmation"
 msgstr ""
 
-#: src/hotkey.cpp:335 src/hotkey.cpp:388 src/screenshot_tool.cpp:3840
-#: src/screenshot_tool.cpp:5561
+#: src/hotkey.cpp:336 src/hotkey.cpp:389 src/screenshot_tool.cpp:3854
+#: src/screenshot_tool.cpp:5585
 msgid "Disabled"
 msgstr ""
 
-#: src/hotkey.cpp:342
+#: src/hotkey.cpp:343
 msgid "Not registered: the tray isn't running"
 msgstr ""
 
-#: src/hotkey.cpp:365
+#: src/hotkey.cpp:366
 #, c++-format
 msgid "{} is already used by Windows or another app"
 msgstr ""
 
-#: src/hotkey.cpp:366 src/hotkey.cpp:423
+#: src/hotkey.cpp:367 src/hotkey.cpp:424
 #, c++-format
 msgid "Failed to register {} (error {})"
 msgstr ""
 
-#: src/hotkey.cpp:370 src/hotkey.cpp:427
+#: src/hotkey.cpp:371 src/hotkey.cpp:428
 #, c++-format
 msgid "Active: {}"
 msgstr ""
 
-#: src/hotkey.cpp:395
+#: src/hotkey.cpp:396
 #, c++-format
 msgid "{} isn't available on Mac keyboards"
 msgstr ""
 
-#: src/hotkey.cpp:422
+#: src/hotkey.cpp:423
 #, c++-format
 msgid "{} is already used by macOS or another app"
 msgstr ""
 
-#: src/main.cpp:570
+#: src/main.cpp:600
 #, c++-format
 msgid ""
 "{}\n"
 "Pick another shortcut in Preferences, or set 'hotkey' in the config."
 msgstr ""
 
-#: src/main.cpp:573
+#: src/main.cpp:603
 msgid "oshot: hotkey not set"
 msgstr ""
 
-#: src/main.cpp:1010
+#: src/main.cpp:1048
 msgid "Capture"
 msgstr ""
 
-#: src/main.cpp:1017 src/main.cpp:1028 src/screenshot_tool.cpp:2791
+#: src/main.cpp:1055 src/main.cpp:1066 src/screenshot_tool.cpp:2805
 msgid "Open Image"
 msgstr ""
 
-#: src/main.cpp:1032 src/screenshot_tool.cpp:2795 src/util.cpp:565
+#: src/main.cpp:1070 src/screenshot_tool.cpp:2809 src/util.cpp:624
 msgid "Images"
 msgstr ""
 
-#: src/main.cpp:1044 src/screenshot_tool.cpp:2816
+#: src/main.cpp:1082 src/screenshot_tool.cpp:2830
 msgid "Quit"
 msgstr ""
 
-#: src/screenshot_tool.cpp:191
+#: src/screenshot_tool.cpp:204
 msgid "Open folder"
 msgstr ""
 
-#: src/screenshot_tool.cpp:193
+#: src/screenshot_tool.cpp:206
 msgid "Open file"
 msgstr ""
 
-#: src/screenshot_tool.cpp:464 src/screenshot_tool.cpp:4640
+#: src/screenshot_tool.cpp:473 src/screenshot_tool.cpp:4673
 msgid "No such directory or path"
 msgstr ""
 
-#: src/screenshot_tool.cpp:466 src/screenshot_tool.cpp:4642
+#: src/screenshot_tool.cpp:475 src/screenshot_tool.cpp:4675
 msgid "Not a directory"
 msgstr ""
 
-#: src/screenshot_tool.cpp:535
+#: src/screenshot_tool.cpp:544
 msgid "Select an area"
 msgstr ""
 
-#: src/screenshot_tool.cpp:536
+#: src/screenshot_tool.cpp:545
 msgid "Press Save/Copy for the full screenshot"
 msgstr ""
 
-#: src/screenshot_tool.cpp:537
+#: src/screenshot_tool.cpp:546
 msgid "CTRL+A for whole image selection"
 msgstr ""
 
-#: src/screenshot_tool.cpp:598
+#: src/screenshot_tool.cpp:607
 msgid "Text tools"
 msgstr ""
 
-#: src/screenshot_tool.cpp:1492
+#: src/screenshot_tool.cpp:1500
 msgid "Enter: Place | ESC: Cancel"
 msgstr ""
 
-#: src/screenshot_tool.cpp:1611
+#: src/screenshot_tool.cpp:1619
 msgid "Outside of the image"
 msgstr ""
 
-#: src/screenshot_tool.cpp:1874
+#: src/screenshot_tool.cpp:1882
 msgid "Doesn't exist or is empty"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2353 src/screenshot_tool.cpp:5413 src/util.cpp:538
+#: src/screenshot_tool.cpp:2361 src/screenshot_tool.cpp:5437 src/util.cpp:597
 msgid "Copied!"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2371
+#: src/screenshot_tool.cpp:2379
 #, c-format
 msgid "Failed to copy text: %s"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2617
+#: src/screenshot_tool.cpp:2625
 msgid "Annotation Settings"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2625
+#: src/screenshot_tool.cpp:2633
 msgid "Font Size"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2628
+#: src/screenshot_tool.cpp:2636
 msgid "Font name/path"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2638
+#: src/screenshot_tool.cpp:2646
 msgid "Thickness"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2641
+#: src/screenshot_tool.cpp:2649
 msgid "Pick color"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2647
+#: src/screenshot_tool.cpp:2655
 msgid "Click anywhere on the image to pick a color"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2650
+#: src/screenshot_tool.cpp:2658
 msgid "Color"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2784
+#: src/screenshot_tool.cpp:2798
 msgid "File"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2786
+#: src/screenshot_tool.cpp:2800
 msgid "Open Image..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:2808
+#: src/screenshot_tool.cpp:2822
 msgid "Save Image"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2811
+#: src/screenshot_tool.cpp:2825
 msgid "Copy Image"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2822
+#: src/screenshot_tool.cpp:2836
 msgid "Edit"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2824
+#: src/screenshot_tool.cpp:2838
 msgid "Optimize OCR for..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:2826
+#: src/screenshot_tool.cpp:2840
 msgid "Automatic"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2828
+#: src/screenshot_tool.cpp:2842
 msgid "Single Word"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2829
+#: src/screenshot_tool.cpp:2843
 msgid "Single Line"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2830
+#: src/screenshot_tool.cpp:2844
 msgid "Paragraph"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2831
+#: src/screenshot_tool.cpp:2845
 msgid "Automatic (Layout)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2836
+#: src/screenshot_tool.cpp:2850
 msgid "View Handles"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2837
+#: src/screenshot_tool.cpp:2851
 msgid "Anns. in image scans"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2838
+#: src/screenshot_tool.cpp:2852
 msgid "Enable vsync"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2840
+#: src/screenshot_tool.cpp:2854
 msgid "Allow text edit"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2844
+#: src/screenshot_tool.cpp:2858
 msgid "Preferences..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:2850
+#: src/screenshot_tool.cpp:2864
 msgid "Tools"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2852
+#: src/screenshot_tool.cpp:2866
 msgid "Download OCR model"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2857
+#: src/screenshot_tool.cpp:2871
 msgid "Browse Plugins..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:2859
+#: src/screenshot_tool.cpp:2873
 msgid "Manage Plugins"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2861
+#: src/screenshot_tool.cpp:2875
 msgid "Install Plugins..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:2866
+#: src/screenshot_tool.cpp:2880
 msgid "View Logs"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2875
+#: src/screenshot_tool.cpp:2889
 msgid "Help"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2877 src/screenshot_tool.cpp:3122
+#: src/screenshot_tool.cpp:2891 src/screenshot_tool.cpp:3136
 msgid "About"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2918
+#: src/screenshot_tool.cpp:2932
 msgid "Path"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2919
+#: src/screenshot_tool.cpp:2933
 msgid "Scan"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2924 src/screenshot_tool.cpp:2999
+#: src/screenshot_tool.cpp:2938 src/screenshot_tool.cpp:3013
 msgid "Invalid!"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2925
+#: src/screenshot_tool.cpp:2939
 msgid "Need to scan new directory"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2927
-msgid "Full path to the OCR models (.traineddata). Supports drag-and-drop"
+#: src/screenshot_tool.cpp:2941 src/screenshot_tool.cpp:3808
+msgid "Full path to the OCR models (.traineddata). Supports drag-and-drop."
 msgstr ""
 
-#: src/screenshot_tool.cpp:2932
+#: src/screenshot_tool.cpp:2946
 msgid "Suggestions:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2940
+#: src/screenshot_tool.cpp:2954
 msgid "Run the following command in your terminal, then update the OCR path in the Preferences window:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2942
+#: src/screenshot_tool.cpp:2956
 msgid "Copy command"
 msgstr ""
 
-#: src/screenshot_tool.cpp:2950
+#: src/screenshot_tool.cpp:2964
 msgid "Install one of the tesseract language packages (e.g. tesseract-data-eng on Arch, tesseract-ocr-eng on Debian/Ubuntu, tesseract-langpack-eng on Fedora)."
 msgstr ""
 
-#: src/screenshot_tool.cpp:2953
+#: src/screenshot_tool.cpp:2967
 msgid "Download a tesseract language model via 'Tools -> Download OCR Model'."
 msgstr ""
 
-#: src/screenshot_tool.cpp:2962 src/screenshot_tool.cpp:4625
+#: src/screenshot_tool.cpp:2976 src/screenshot_tool.cpp:4658
 msgid "Model"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3006 src/screenshot_tool.cpp:3071
+#: src/screenshot_tool.cpp:3020 src/screenshot_tool.cpp:3085
 msgid "Extract Text"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3015
+#: src/screenshot_tool.cpp:3029
 #, c-format
 msgid "Failed to initialize OCR: %s"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3020
+#: src/screenshot_tool.cpp:3034
 msgid "If results seem off, try Edit > Optimize OCR for..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:3023 src/screenshot_tool.cpp:3079
+#: src/screenshot_tool.cpp:3037 src/screenshot_tool.cpp:3093
 msgid "Details"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3025
+#: src/screenshot_tool.cpp:3039
 msgid "Confidence:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3069
+#: src/screenshot_tool.cpp:3083
 msgid "QR/Bar Decode"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3077
+#: src/screenshot_tool.cpp:3091
 #, c-format
 msgid "Failed to decode: %s"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3081
+#: src/screenshot_tool.cpp:3095
 msgid "Detected barcodes:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3141
+#: src/screenshot_tool.cpp:3155
 msgid "Screenshot tool for extracting text on the fly"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3146
+#: src/screenshot_tool.cpp:3160
 msgid "!!! NO PLUGINS SUPPORT !!!"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3152
+#: src/screenshot_tool.cpp:3166
 msgid "More Details:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3165
+#: src/screenshot_tool.cpp:3179
 #, c++-format
 msgid "Version: v{}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3166
+#: src/screenshot_tool.cpp:3180
 #, c++-format
 msgid "Created by: {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3170
+#: src/screenshot_tool.cpp:3184
 msgid "Support the project at "
 msgstr ""
 
-#: src/screenshot_tool.cpp:3175 src/screenshot_tool.cpp:5425
+#: src/screenshot_tool.cpp:3189 src/screenshot_tool.cpp:5449
 msgid "Close"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3192
+#: src/screenshot_tool.cpp:3206
 msgid "Global capture hotkey"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3195
+#: src/screenshot_tool.cpp:3209
 msgid ""
 "System-wide shortcut that starts a capture while oshot is running in the tray.\n"
 "Click the button, then press the key combination. Click it again to cancel."
 msgstr ""
 
-#: src/screenshot_tool.cpp:3198
+#: src/screenshot_tool.cpp:3212
 msgid "Press keys..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:3198
+#: src/screenshot_tool.cpp:3212
 msgid "Not set"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3204 src/screenshot_tool.cpp:4860
+#: src/screenshot_tool.cpp:3218 src/screenshot_tool.cpp:4892
 msgid "Clear"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3248
+#: src/screenshot_tool.cpp:3262
 #, c-format
 msgid "Hold Ctrl, Shift, Alt or %s too"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3252
+#: src/screenshot_tool.cpp:3266
 msgid "Applied by the tray instance (oshot --tray, or started at sign-in)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3304
+#: src/screenshot_tool.cpp:3318
 msgid "Latin"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3305
+#: src/screenshot_tool.cpp:3319
 msgid "Greek"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3306
+#: src/screenshot_tool.cpp:3320
 msgid "Cyrillic"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3307
+#: src/screenshot_tool.cpp:3321
 msgid "Arabic"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3308
+#: src/screenshot_tool.cpp:3322
 msgid "Hebrew"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3309
+#: src/screenshot_tool.cpp:3323
 msgid "Devanagari"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3310
+#: src/screenshot_tool.cpp:3324
 msgid "Thai"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3311
+#: src/screenshot_tool.cpp:3325
 msgid "Chinese"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3312
+#: src/screenshot_tool.cpp:3326
 msgid "Japanese"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3313
+#: src/screenshot_tool.cpp:3327
 msgid "Korean"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3360
+#: src/screenshot_tool.cpp:3374
 msgid "Not found: not an existing file, nor a file in the system font folders"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3361
+#: src/screenshot_tool.cpp:3375
 msgid "Can't be loaded: only TrueType and OpenType fonts work (.ttf, .otf, .ttc)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3380
+#: src/screenshot_tool.cpp:3394
 msgid "Has this script"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3380
+#: src/screenshot_tool.cpp:3394
 msgid "Lacks this script, a font after it can fill it in"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3402
+#: src/screenshot_tool.cpp:3416
 msgid "Type to preview your own text"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3519
+#: src/screenshot_tool.cpp:3533
 msgid "Fonts"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3521
+#: src/screenshot_tool.cpp:3535
 msgid "The first font draws the interface, the next ones fill in the characters it lacks, e.g. NotoSansCJK-Regular.ttc after Roboto-Regular.ttf for Chinese or Japanese. The system UI font fills in what is still missing."
 msgstr ""
 
-#: src/screenshot_tool.cpp:3526
+#: src/screenshot_tool.cpp:3540
 msgid "Use the built-in font"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3529
+#: src/screenshot_tool.cpp:3543
 msgid ""
 "ImGui's ProggyClean, a small pixel font, instead of the system UI font.\n"
 "The fonts below still come first, and system fonts still fill in the characters it lacks."
 msgstr ""
 
-#: src/screenshot_tool.cpp:3537
+#: src/screenshot_tool.cpp:3551
 msgid "Font size"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3545
+#: src/screenshot_tool.cpp:3559
 msgid "Default"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3550
+#: src/screenshot_tool.cpp:3564
 msgid "default"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3554
+#: src/screenshot_tool.cpp:3568
 msgid ""
 "The size of all the text in oshot's windows, applied when saved. The preview below uses it.\n"
 "The default is the main font's own size, 16 px, or 13 px with the built-in font, which is blurry at any other size."
 msgstr ""
 
-#: src/screenshot_tool.cpp:3610
+#: src/screenshot_tool.cpp:3624
 msgid "Main"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3610
+#: src/screenshot_tool.cpp:3624
 msgid "Fallback"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3617
+#: src/screenshot_tool.cpp:3631
 msgid "No fonts added, the system UI font is used."
 msgstr ""
 
-#: src/screenshot_tool.cpp:3628
+#: src/screenshot_tool.cpp:3642
 msgid "Move up, or drag the row"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3634
+#: src/screenshot_tool.cpp:3648
 msgid "Move down, or drag the row"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3638
+#: src/screenshot_tool.cpp:3652
 msgid "Remove"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3654 src/screenshot_tool.cpp:3669
+#: src/screenshot_tool.cpp:3668 src/screenshot_tool.cpp:3683
 msgid "Add font"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3672
+#: src/screenshot_tool.cpp:3686
 msgid "Already in the list"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3698
+#: src/screenshot_tool.cpp:3712
 msgid "Type to search the installed fonts, or enter a font file's path"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3700
+#: src/screenshot_tool.cpp:3714
 msgid "Searching the font folders..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:3702
+#: src/screenshot_tool.cpp:3716
 msgid "No installed font matches, Enter adds the name as typed"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3704
+#: src/screenshot_tool.cpp:3718
 msgid "Up and Down choose a font, Enter adds it"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3719
+#: src/screenshot_tool.cpp:3733
 msgid "main font"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3719
+#: src/screenshot_tool.cpp:3733
 msgid "fallback font"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3726
+#: src/screenshot_tool.cpp:3740
 msgid "Interface font"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3726
+#: src/screenshot_tool.cpp:3740
 msgid "in use now"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3740
+#: src/screenshot_tool.cpp:3754
 msgid "Edit default config"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3760
+#: src/screenshot_tool.cpp:3774
 msgid "Language"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3763
+#: src/screenshot_tool.cpp:3777
 msgid ""
 "Applies the next time oshot starts, after saving.\n"
 "To add or test a translation, put its .po file in the locale folder of the config directory."
 msgstr ""
 
-#: src/screenshot_tool.cpp:3770 src/screenshot_tool.cpp:3774
+#: src/screenshot_tool.cpp:3784 src/screenshot_tool.cpp:3788
 msgid "System language"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3792
+#: src/screenshot_tool.cpp:3806
 msgid "Default OCR path"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3794
-msgid "Full path to the OCR models (.traineddata). Supports drag-and-drop."
-msgstr ""
-
-#: src/screenshot_tool.cpp:3799
+#: src/screenshot_tool.cpp:3813
 msgid "Default OCR model"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3804
+#: src/screenshot_tool.cpp:3818
 msgid "Capture delay"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3807
+#: src/screenshot_tool.cpp:3821
 msgid ""
 "Delay before acquiring a screenshot (milliseconds).\n"
 "Has no effect when opening an external image (e.g. -f flag)."
 msgstr ""
 
-#: src/screenshot_tool.cpp:3813
+#: src/screenshot_tool.cpp:3827
 msgid "Default Theme file path"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3816
-msgid "Full path to the theme file (aka. theme.toml), or relative to the config directory. Supports drag-and-drop."
+#: src/screenshot_tool.cpp:3830
+msgid "Full path to the theme file (theme.toml by default), or relative to the config directory. Supports drag-and-drop."
 msgstr ""
 
-#: src/screenshot_tool.cpp:3829
+#: src/screenshot_tool.cpp:3843
 msgid "File doesn't exist, fallback to default hardcoded theme"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3833
+#: src/screenshot_tool.cpp:3847
 msgid "Color picker style"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3834
+#: src/screenshot_tool.cpp:3848
 msgid "Bar - Square"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3834
+#: src/screenshot_tool.cpp:3848
 msgid "Wheel - Triangle"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3839
+#: src/screenshot_tool.cpp:3853
 msgid "Annotation alpha editing"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3840
+#: src/screenshot_tool.cpp:3854
 msgid "Inline slider"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3840
+#: src/screenshot_tool.cpp:3854
 msgid "Dedicated bar"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3847
+#: src/screenshot_tool.cpp:3861
 msgid "Exclusive fullscreen"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3850
+#: src/screenshot_tool.cpp:3864
 msgid ""
 "On some desktop environments (e.g. MATE) the compositor may make the capture window look grainy. Enabling this uses exclusive fullscreen to bypass the compositor.\n"
 "Downside: the window may briefly take over the display on some setups."
 msgstr ""
 
-#: src/screenshot_tool.cpp:3856
+#: src/screenshot_tool.cpp:3870
 msgid "Vertical sync (VSync)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3859
+#: src/screenshot_tool.cpp:3873
 msgid ""
-"Renders in sync with your monitor's refresh rate for a smoother overlay, at the cost of slightly more CPU/GPU usage.\n"
-"Disable if the overlay feels sluggish."
-msgstr ""
-
-#: src/screenshot_tool.cpp:3863
-msgid "Allow output edits"
-msgstr ""
-
-#: src/screenshot_tool.cpp:3865
-msgid "Show text tools at startup"
-msgstr ""
-
-#: src/screenshot_tool.cpp:3867
-msgid "Prefer config variables over environment variables"
-msgstr ""
-
-#: src/screenshot_tool.cpp:3871
-msgid "In some OSes such as NixOS, in order to get the OCR models installed through the package manager, we need to rely on environment variables such as $TESSDATA_PREFIX. Enabling this option overrides those environment variables with the paths set in the config file."
-msgstr ""
-
-#: src/screenshot_tool.cpp:3875
-msgid "Consider annotations when scanning"
+"Draws in step with your monitor's refresh rate, which looks smoother and draws no more frames than the monitor shows.\n"
+"Disable it if the overlay feels sluggish."
 msgstr ""
 
 #: src/screenshot_tool.cpp:3877
-msgid "When enabled, annotations are included in the region passed to the text extractor."
+msgid "Allow output edits"
 msgstr ""
 
 #: src/screenshot_tool.cpp:3879
-msgid "Legacy toolbar placement"
+msgid "Allow more than one tray"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3881
-msgid "Put all tools buttons at the bottom of the main selection border in the same line"
-msgstr ""
-
-#: src/screenshot_tool.cpp:3883
-msgid "Use CTRL+C to copy image"
+#: src/screenshot_tool.cpp:3882
+msgid ""
+"Lets 'oshot --tray' start another tray icon when one is already running, instead of exiting. Only the first tray registers the global hotkey.\n"
+"Takes effect on the next launch."
 msgstr ""
 
 #: src/screenshot_tool.cpp:3886
+msgid "Allow more than one overlay"
+msgstr ""
+
+#: src/screenshot_tool.cpp:3890
+msgid "Lets a capture open while another overlay is already open, e.g. to take a screenshot of oshot itself. When disabled, the new capture is ignored, so holding or mashing the capture key opens just one overlay."
+msgstr ""
+
+#: src/screenshot_tool.cpp:3893
+msgid "Show text tools at startup"
+msgstr ""
+
+#: src/screenshot_tool.cpp:3895
+msgid "Prefer config variables over environment variables"
+msgstr ""
+
+#: src/screenshot_tool.cpp:3899
+msgid "Some systems, such as NixOS, point oshot to the OCR models from the package manager with environment variables like $TESSDATA_PREFIX. Enabling this makes the paths in the config file win over those variables."
+msgstr ""
+
+#: src/screenshot_tool.cpp:3903
+msgid "Consider annotations when scanning"
+msgstr ""
+
+#: src/screenshot_tool.cpp:3905
+msgid "When enabled, annotations are included in the region passed to the text extractor."
+msgstr ""
+
+#: src/screenshot_tool.cpp:3907
+msgid "Legacy toolbar placement"
+msgstr ""
+
+#: src/screenshot_tool.cpp:3909
+msgid "Put all the toolbar buttons on one line under the selection"
+msgstr ""
+
+#: src/screenshot_tool.cpp:3911
+msgid "Anti-aliased toolbar icons"
+msgstr ""
+
+#: src/screenshot_tool.cpp:3914
+msgid ""
+"Draw the toolbar icons with smooth edges. Disable it for pixel-perfect icons.\n"
+"Applies from the next capture."
+msgstr ""
+
+#: src/screenshot_tool.cpp:3917
+msgid "Use CTRL+C to copy image"
+msgstr ""
+
+#: src/screenshot_tool.cpp:3920
 msgid ""
 "Shortcut to use when copying the image selection.\n"
 "If disabled, the shortcut will be CTRL+SHIFT+C."
 msgstr ""
 
-#: src/screenshot_tool.cpp:3899
+#: src/screenshot_tool.cpp:3933
 msgid "Output filename extension"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3921
+#: src/screenshot_tool.cpp:3955
 msgid "Size preview unit"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3923
+#: src/screenshot_tool.cpp:3957
 msgid "Unit used to show the selection's estimated file size next to the selection border"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3944
+#: src/screenshot_tool.cpp:3978
 msgid "Output filename format"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3946
+#: src/screenshot_tool.cpp:3980
 msgid "The image extension is appended automatically. Uses {fmt} chrono specifiers."
 msgstr ""
 
-#: src/screenshot_tool.cpp:3959
+#: src/screenshot_tool.cpp:3993
 msgid "Format help"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3970
+#: src/screenshot_tool.cpp:4004
 msgid "Specifiers:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3972
+#: src/screenshot_tool.cpp:4006
 msgid "Date:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3977
+#: src/screenshot_tool.cpp:4011
 msgid "full year                (e.g. 2025)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3978
+#: src/screenshot_tool.cpp:4012
 msgid "2-digit year             (e.g. 25)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3979
+#: src/screenshot_tool.cpp:4013
 msgid "century                  (e.g. 20)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3980
+#: src/screenshot_tool.cpp:4014
 msgid "month (01-12)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3981
+#: src/screenshot_tool.cpp:4015
 msgid "day of month (01-31)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3982
+#: src/screenshot_tool.cpp:4016
 msgid "day of year (001-366)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3983
+#: src/screenshot_tool.cpp:4017
 msgid "short for %Y-%m-%d       (e.g. 2025-04-19)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3988
+#: src/screenshot_tool.cpp:4022
 msgid "Time:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3991
+#: src/screenshot_tool.cpp:4025
 msgid "hour 24h      (00-23)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3992
+#: src/screenshot_tool.cpp:4026
 msgid "hour 12h      (01-12)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3993
+#: src/screenshot_tool.cpp:4027
 msgid "minute        (00-59)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3994
+#: src/screenshot_tool.cpp:4028
 msgid "second        (00-60)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:3995
+#: src/screenshot_tool.cpp:4029
 msgid "AM / PM"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4000
+#: src/screenshot_tool.cpp:4034
 msgid "Week / Weekday:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4003
+#: src/screenshot_tool.cpp:4037
 msgid "weekday ISO                    (1=Mon ... 7=Sun)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4004
+#: src/screenshot_tool.cpp:4038
 msgid "weekday                        (0=Sun ... 6=Sat)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4005
+#: src/screenshot_tool.cpp:4039
 msgid "abbreviated weekday            (e.g. Sat)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4006
+#: src/screenshot_tool.cpp:4040
 msgid "full weekday name              (e.g. Saturday)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4007
+#: src/screenshot_tool.cpp:4041
 msgid "week of year, Sun-start        (00-53)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4008
+#: src/screenshot_tool.cpp:4042
 msgid "week of year, Mon-start        (00-53)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4009
+#: src/screenshot_tool.cpp:4043
 msgid "ISO week number                (01-53)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4010
+#: src/screenshot_tool.cpp:4044
 msgid "ISO week-based year            (e.g. 2025)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4011
+#: src/screenshot_tool.cpp:4045
 msgid "ISO week-based year, 2-digit   (e.g. 25)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4016
+#: src/screenshot_tool.cpp:4050
 msgid "Month name:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4019
+#: src/screenshot_tool.cpp:4053
 msgid "abbreviated month           (e.g. Apr)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4020
+#: src/screenshot_tool.cpp:4054
 msgid "full month name             (e.g. April)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4025
+#: src/screenshot_tool.cpp:4059
 msgid "Other:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4028
+#: src/screenshot_tool.cpp:4062
 msgid "literal %"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4034
+#: src/screenshot_tool.cpp:4068
 msgid "Examples:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4043
+#: src/screenshot_tool.cpp:4077
 msgid "Warnings:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4047
+#: src/screenshot_tool.cpp:4081
 #, no-c-format
 msgid "The colon inside {} is required: {:%F} correct, {%F} will error."
 msgstr ""
 
-#: src/screenshot_tool.cpp:4048
+#: src/screenshot_tool.cpp:4082
 msgid "Avoid %T -- it expands to HH:MM:SS (colons break paths on Windows)."
 msgstr ""
 
-#: src/screenshot_tool.cpp:4049
+#: src/screenshot_tool.cpp:4083
 msgid "%H-%M is 1-minute precise; add %S if you take rapid shots."
 msgstr ""
 
-#: src/screenshot_tool.cpp:4152
+#: src/screenshot_tool.cpp:4186
 msgid "Text transformers"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4154
+#: src/screenshot_tool.cpp:4188
 msgid "They rewrite the text OCR and the QR/barcode scan read before it's shown, from top to bottom. Each one gets the text the one above it returned."
 msgstr ""
 
-#: src/screenshot_tool.cpp:4157
+#: src/screenshot_tool.cpp:4191
 msgid "Wait for the plugin operation to finish to change them."
 msgstr ""
 
-#: src/screenshot_tool.cpp:4239
+#: src/screenshot_tool.cpp:4273
 msgid "No plugins are loaded."
 msgstr ""
 
-#: src/screenshot_tool.cpp:4239
+#: src/screenshot_tool.cpp:4273
 msgid "None of the loaded plugins have settings."
 msgstr ""
 
-#: src/screenshot_tool.cpp:4276
+#: src/screenshot_tool.cpp:4310
 msgid "Custom theme options"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4278
+#: src/screenshot_tool.cpp:4312
 msgid "Enable smooth animations"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4280
+#: src/screenshot_tool.cpp:4314
 msgid "Style overrides"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4288
+#: src/screenshot_tool.cpp:4322
 msgid "reset"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4292
+#: src/screenshot_tool.cpp:4326
 msgid "Window rounding"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4293
+#: src/screenshot_tool.cpp:4327
 msgid "Frame rounding"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4294
+#: src/screenshot_tool.cpp:4328
 msgid "Grab rounding"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4295
+#: src/screenshot_tool.cpp:4329
 msgid "Tab rounding"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4296
+#: src/screenshot_tool.cpp:4330
 msgid "Window border"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4297
+#: src/screenshot_tool.cpp:4331
 msgid "Frame border"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4300
+#: src/screenshot_tool.cpp:4334
 msgid "Color overrides"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4301
+#: src/screenshot_tool.cpp:4335
 msgid "Click a swatch to edit. Changes apply on Save."
 msgstr ""
 
-#: src/screenshot_tool.cpp:4354
+#: src/screenshot_tool.cpp:4387
 msgid "Clear all color overrides"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4357
+#: src/screenshot_tool.cpp:4390
 msgid "Reverts to the base theme colors on next Save."
 msgstr ""
 
-#: src/screenshot_tool.cpp:4364 src/screenshot_tool.cpp:4366
+#: src/screenshot_tool.cpp:4397 src/screenshot_tool.cpp:4399
 msgid "Defaults"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4364 src/screenshot_tool.cpp:5316
-#: src/screenshot_tool.cpp:5969
+#: src/screenshot_tool.cpp:4397 src/screenshot_tool.cpp:5340
+#: src/screenshot_tool.cpp:5993
 msgid "Plugins"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4364 src/screenshot_tool.cpp:4366
+#: src/screenshot_tool.cpp:4397 src/screenshot_tool.cpp:4399
 msgid "Theme"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4416 src/screenshot_tool.cpp:4568
+#: src/screenshot_tool.cpp:4449 src/screenshot_tool.cpp:4601
 msgid "Theme file path is empty"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4480
+#: src/screenshot_tool.cpp:4513
 msgid "Preferences"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4487 src/screenshot_tool.cpp:4539
+#: src/screenshot_tool.cpp:4520 src/screenshot_tool.cpp:4572
 msgid "Unsaved changes"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4523
+#: src/screenshot_tool.cpp:4556
 msgid "Save"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4523 src/util.cpp:549 src/util.cpp:580
+#: src/screenshot_tool.cpp:4556 src/util.cpp:608 src/util.cpp:639
 msgid "Saved!"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4532
+#: src/screenshot_tool.cpp:4565
 msgid "Restart oshot for the new settings to take effect"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4541
+#: src/screenshot_tool.cpp:4574
 msgid "You have unsaved changes. What would you like to do?"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4544 src/screenshot_tool.cpp:4545
+#: src/screenshot_tool.cpp:4577 src/screenshot_tool.cpp:4578
 msgid "Save & Close"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4544 src/screenshot_tool.cpp:4552
+#: src/screenshot_tool.cpp:4577 src/screenshot_tool.cpp:4585
 msgid "Discard"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4544 src/screenshot_tool.cpp:4559
-#: src/screenshot_tool.cpp:5646
+#: src/screenshot_tool.cpp:4577 src/screenshot_tool.cpp:4592
+#: src/screenshot_tool.cpp:5670
 msgid "Cancel"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4571
+#: src/screenshot_tool.cpp:4604
 msgid ""
 "Please set a theme file path like 'theme.toml' before saving theme changes.\n"
 "Changes will be set temporarily for the current session."
 msgstr ""
 
-#: src/screenshot_tool.cpp:4574
+#: src/screenshot_tool.cpp:4607
 msgid "OK"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4611
+#: src/screenshot_tool.cpp:4644
 msgid "Download OCR Model"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4617 src/screenshot_tool.cpp:5890
+#: src/screenshot_tool.cpp:4650 src/screenshot_tool.cpp:5914
 msgid "Source"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4618
+#: src/screenshot_tool.cpp:4651
 msgid "GitHub repository containing Tesseract '.traineddata' models"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4626
+#: src/screenshot_tool.cpp:4659
 msgid "Language code (e.g eng, fra, deu, chi_sim)"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4633
+#: src/screenshot_tool.cpp:4666
 msgid "Destination"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4675
+#: src/screenshot_tool.cpp:4707
 msgid "Download"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4743
+#: src/screenshot_tool.cpp:4775
 msgid "Download already in progress"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4745
+#: src/screenshot_tool.cpp:4777
 msgid "Fill all fields first"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4747
+#: src/screenshot_tool.cpp:4779
 msgid "Fix the destination path error first"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4749
+#: src/screenshot_tool.cpp:4781
 msgid "A download error occurred — see error below"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4764
+#: src/screenshot_tool.cpp:4796
 msgid "Downloading..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:4789
+#: src/screenshot_tool.cpp:4821
 #, c++-format
 msgid ""
 "Failed to download '{}' to '{}':\n"
 "{}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4809
+#: src/screenshot_tool.cpp:4841
 msgid "Downloaded successfully!"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4856
+#: src/screenshot_tool.cpp:4888
 msgid "Logs"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4864
+#: src/screenshot_tool.cpp:4896
 msgid "Copy All"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4866
+#: src/screenshot_tool.cpp:4898
 msgid "Auto-scroll"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4883
+#: src/screenshot_tool.cpp:4915
 msgid "Filter"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4921
+#: src/screenshot_tool.cpp:4953
 msgid "Copy line"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4962
+#: src/screenshot_tool.cpp:4994
 msgid "Choose an output to capture"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4975
+#: src/screenshot_tool.cpp:5007
 msgid "Unknown"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4985
+#: src/screenshot_tool.cpp:5017
 #, c-format
 msgid "Detected transform: %d"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4988
+#: src/screenshot_tool.cpp:5020
 msgid "No Rotation"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4988
+#: src/screenshot_tool.cpp:5020
 msgid "Left Rotation"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4988
+#: src/screenshot_tool.cpp:5020
 msgid "Down Rotation"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4988
+#: src/screenshot_tool.cpp:5020
 msgid "Right Rotation"
 msgstr ""
 
-#: src/screenshot_tool.cpp:4992
+#: src/screenshot_tool.cpp:5024
 msgid ""
 "Overrides the auto-detected output rotation for this crop.\n"
 "Should normally stay \"No Rotation\"."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5001
+#: src/screenshot_tool.cpp:5033
 msgid "Crop"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5045
+#: src/screenshot_tool.cpp:5077
 msgid "Uses the internet"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5046
+#: src/screenshot_tool.cpp:5078
 msgid "Uses your files"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5047
+#: src/screenshot_tool.cpp:5079
 msgid "Runs programs"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5051
+#: src/screenshot_tool.cpp:5083
 msgid "According to its author. oshot can't check or limit what plugins do."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5153
+#: src/screenshot_tool.cpp:5185
 msgid "Done. Changes apply the next time oshot starts."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5413
+#: src/screenshot_tool.cpp:5437
 msgid "Copy"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5445
+#: src/screenshot_tool.cpp:5469
 msgid "Original"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5447
+#: src/screenshot_tool.cpp:5471
 msgid "Show the text as it was read, before the plugins' text transformers changed it"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5468
+#: src/screenshot_tool.cpp:5492
 msgid "Manage plugins"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5472
+#: src/screenshot_tool.cpp:5496
 msgid "Working, see the Plugins status window. This list refreshes once it's done."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5478
+#: src/screenshot_tool.cpp:5502
 msgid "Browse plugins..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5481
+#: src/screenshot_tool.cpp:5505
 msgid "Install from a URL or file..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5484
+#: src/screenshot_tool.cpp:5508
 msgid "Check for updates"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5485
+#: src/screenshot_tool.cpp:5509
 msgid "Updating plugins"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5489
+#: src/screenshot_tool.cpp:5513
 msgid "Changes apply the next time oshot starts. If oshot runs in the tray, quit it from the tray menu first."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5504
+#: src/screenshot_tool.cpp:5528
 msgid "No plugins installed."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5518 src/screenshot_tool.cpp:5778
+#: src/screenshot_tool.cpp:5542 src/screenshot_tool.cpp:5802
 msgid "Homepage:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5525
+#: src/screenshot_tool.cpp:5549
 msgid "Installed from a folder or an archive: install it again to update it"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5527
+#: src/screenshot_tool.cpp:5551
 #, c-format
 msgid "Commit %.7s"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5530 src/screenshot_tool.cpp:5531
+#: src/screenshot_tool.cpp:5554 src/screenshot_tool.cpp:5555
 msgid "Uninstall all"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5536
+#: src/screenshot_tool.cpp:5560
 #, c++-format
 msgid "'{}' and its {} plugin"
 msgid_plural "'{}' and its {} plugins"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/screenshot_tool.cpp:5565
+#: src/screenshot_tool.cpp:5589
 msgid "Missing"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5570
+#: src/screenshot_tool.cpp:5594
 msgid "Enabled"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5570
+#: src/screenshot_tool.cpp:5594
 msgid "Not loaded"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5579 src/screenshot_tool.cpp:5765
+#: src/screenshot_tool.cpp:5603 src/screenshot_tool.cpp:5789
 #, c-format
 msgid "By %s"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5583
+#: src/screenshot_tool.cpp:5607
 msgid "License:"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5593
+#: src/screenshot_tool.cpp:5617
 msgid "The library is missing: reinstall the plugin"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5596
+#: src/screenshot_tool.cpp:5620
 msgid "Not loaded: restart oshot, or see View Logs if it failed to load"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5598
+#: src/screenshot_tool.cpp:5622
 msgid "Disable"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5598
+#: src/screenshot_tool.cpp:5622
 msgid "Enable"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5599 src/screenshot_tool.cpp:5610
-#: src/screenshot_tool.cpp:5652
+#: src/screenshot_tool.cpp:5623 src/screenshot_tool.cpp:5634
+#: src/screenshot_tool.cpp:5676
 msgid "Uninstall"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5637 src/screenshot_tool.cpp:5640
+#: src/screenshot_tool.cpp:5661 src/screenshot_tool.cpp:5664
 msgid "Uninstall?"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5642
+#: src/screenshot_tool.cpp:5666
 #, c-format
 msgid "Uninstall %s?"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5643
+#: src/screenshot_tool.cpp:5667
 msgid "Their settings are deleted too."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5654
+#: src/screenshot_tool.cpp:5678
 #, c++-format
 msgid "Uninstalling {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5683
+#: src/screenshot_tool.cpp:5707
 msgid "Browse plugins"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5692
+#: src/screenshot_tool.cpp:5716
 msgid "Refresh"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5697
+#: src/screenshot_tool.cpp:5721
 msgid "Downloading the plugin index..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5701
+#: src/screenshot_tool.cpp:5725
 msgid "Search"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5705
+#: src/screenshot_tool.cpp:5729
 msgid "Plugins listed in the oshot plugin index. Listed doesn't mean audited: plugins run with the same permissions as oshot, so only install the ones you trust."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5711
+#: src/screenshot_tool.cpp:5735
 msgid "Offline: this is the last downloaded copy of the index."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5723
+#: src/screenshot_tool.cpp:5747
 msgid "Working, see the Plugins status window."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5785
+#: src/screenshot_tool.cpp:5809
 #, c-format
 msgid "Can't be installed here: %s"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5787
+#: src/screenshot_tool.cpp:5811
 #, c-format
 msgid "Prebuilt for %s"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5789
+#: src/screenshot_tool.cpp:5813
 msgid "Built from source when installed: needs git, CMake and a C compiler"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5795
+#: src/screenshot_tool.cpp:5819
 #, c++-format
 msgid "Your version ({}) was withdrawn"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5796
+#: src/screenshot_tool.cpp:5820
 #, c++-format
 msgid "Your version ({}) was withdrawn: {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5803
+#: src/screenshot_tool.cpp:5827
 #, c-format
 msgid "Installed from %s"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5807
+#: src/screenshot_tool.cpp:5831
 #, c++-format
 msgid "Update {} -> {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5818
+#: src/screenshot_tool.cpp:5842
 #, c++-format
 msgid "Installed {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5827
+#: src/screenshot_tool.cpp:5851
 #, c++-format
 msgid "Install {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5843
+#: src/screenshot_tool.cpp:5867
 msgid "The plugin index is empty."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5843
+#: src/screenshot_tool.cpp:5867
 msgid "No plugin matches."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5849
+#: src/screenshot_tool.cpp:5873
 #, c++-format
 msgid "Updating {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5849 src/screenshot_tool.cpp:5896
+#: src/screenshot_tool.cpp:5873 src/screenshot_tool.cpp:5920
 #, c++-format
 msgid "Installing {}"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5873
+#: src/screenshot_tool.cpp:5897
 msgid "Install plugins"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5877
+#: src/screenshot_tool.cpp:5901
 msgid "A git URL, a folder with an oshot-plugin.toml, or a prebuilt plugin archive (.zip, .tar.gz, .tar.xz). From git or a folder, the plugin is built on this computer, which needs git and its build tools."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5882
+#: src/screenshot_tool.cpp:5906
 msgid "Plugins run with the same permissions as oshot. Only install them from people you trust."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5895
+#: src/screenshot_tool.cpp:5919
 msgid "Install"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5905
+#: src/screenshot_tool.cpp:5929
 msgid "Working, see the status window..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:5933
+#: src/screenshot_tool.cpp:5957
 msgid "Output"
 msgstr ""
 
-#: src/screenshot_tool.cpp:6011
+#: src/screenshot_tool.cpp:6035
 msgid "Working..."
 msgstr ""
 
-#: src/screenshot_tool.cpp:6022 src/screenshot_tool.cpp:6025
+#: src/screenshot_tool.cpp:6046 src/screenshot_tool.cpp:6049
 msgid "Confirm"
 msgstr ""
 
-#: src/screenshot_tool.cpp:6029
+#: src/screenshot_tool.cpp:6053
 msgid "Yes"
 msgstr ""
 
-#: src/screenshot_tool.cpp:6037
+#: src/screenshot_tool.cpp:6061
 msgid "No"
 msgstr ""
 
-#: src/util.cpp:538
+#: src/util.cpp:597
 msgid "Screenshot copied to clipboard"
 msgstr ""
 
-#: src/util.cpp:549 src/util.cpp:580
+#: src/util.cpp:608 src/util.cpp:639
 msgid "Screenshot saved successfully"
 msgstr ""
 
-#: src/util.cpp:561
+#: src/util.cpp:620
 msgid "Save File"
 msgstr ""
 
-#: src/util.cpp:574
+#: src/util.cpp:633
 msgid "Canceled"
 msgstr ""
 
-#: src/util.cpp:574
+#: src/util.cpp:633
 msgid "Save canceled by user"
 msgstr ""

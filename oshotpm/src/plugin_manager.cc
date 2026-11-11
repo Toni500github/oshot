@@ -178,7 +178,7 @@ Result<fs::path> find_library_in(const fs::path& dir)
 Result<> extract_archive(const fs::path& archive, const fs::path& dest_dir)
 {
 #if OSHOT_WINDOWS || OSHOT_MACOS
-    // bsdtar, which also reads zip files
+    // Their tar is bsdtar, which also reads zip files
     std::vector<std::string> cmd{ "tar", "-xf", archive.string(), "-C", dest_dir.string() };
 #else
     std::vector<std::string> cmd;

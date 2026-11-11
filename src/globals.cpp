@@ -44,7 +44,7 @@
 #include "util.hpp"
 #include "version.h"
 
-// Extern variables declarations
+// Definitions of the extern globals.
 // These have to be globals and only a failed allocation could throw here
 // NOLINTBEGIN(bugprone-throwing-static-initialization)
 std::deque<std::string> g_dropped_paths;

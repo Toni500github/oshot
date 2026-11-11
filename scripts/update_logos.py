@@ -10,7 +10,7 @@ assets/oshot-tray.svg or assets/oshot-tray-24.svg, from any directory:
 Needs rsvg-convert (librsvg) and Pillow. Files whose pixels didn't change are left alone.
 
 assets/oshot.svg      -> assets/oshot.png (64), assets/linux/oshot-256.png, assets/windows/oshot.ico,
-                         include/oshot_png.h (colour tray icon), OSHOT_LOGO in include/tool_icons.h
+                         include/oshot_png.h (color tray icon), OSHOT_LOGO in include/tool_icons.h
 assets/oshot-tray.svg -> assets/windows/oshot-tray.ico (16, 20, 32), include/tray_icon_png.h
                          (white tray icon)
 assets/oshot-tray-24.svg -> the 24x24 frame of oshot-tray.ico, ICON_TEXT_TOOLS in include/tool_icons.h
@@ -92,7 +92,7 @@ def same_pixels(data, img):
 
 
 def png_bytes(img):
-    """Lossless PNG, as a palette image when it has at most 256 colours (like the committed ones)."""
+    """Lossless PNG, as a palette image when it has at most 256 colors (like the committed ones)."""
     pixels = pixel_list(img)
     colors = sorted(set(pixels))
     out = io.BytesIO()
@@ -134,7 +134,7 @@ def ico_bytes(frames):
                     bits = (bits << 1) | (row[x * 4 + 3] == 0)  # 1 = transparent
                 bits <<= stride * 8 - w
                 mask += bits.to_bytes(stride, "big")
-            # biSizeImage counts only the colour data, as ImageMagick writes it
+            # biSizeImage counts only the color data, as ImageMagick writes it
             header = struct.pack("<IiiHHIIiiII", 40, w, h * 2, 1, 32, 0, len(bgra), 0, 0, 0, 0)
             blob = header + bgra + mask
         entries += struct.pack("<BBBBHHII", w % 256, h % 256, 0, 0, 1, 32, len(blob), offset)

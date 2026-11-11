@@ -3,7 +3,7 @@
 > Plugins are **experimental**: the API below can still change before it's declared stable, and
 > plugins then need to be rebuilt.
 
-Plugins only work in the `-plugins` builds of oshot. A plugin is a shared library (`.so`, `.dll`, or `.dylib` or `.so` on macOS) with a plain
+Plugins only work in the `-plugins` builds of oshot. A plugin is a shared library (`.so`, `.dll`, or on macOS `.dylib` or `.so`) with a plain
 C interface, so it can be written in any language that can export a C function: C, C++, Rust, Zig, and so on.
 [`examples/plugins`](../examples/plugins) has the same complete plugin in C and C++, one that uses cimgui, one that
 uses the scan results and host services, two text transformers and an export action. To start a plugin of your own,
@@ -209,7 +209,7 @@ OSHOT_PLUGIN_EXPORT const oshot_plugin_t* oshot_plugin_entry(void) { return &des
 
 ### Scan results
 
-`on_ocr_done()` gets the text, and since the host services came in, every word Tesseract read (`words`, `n_words`):
+`on_ocr_done()` gets the text and every word Tesseract read (`words`, `n_words`):
 its text, box, confidence (0-100), and the indexes of its text line and block, in reading order. Check
 `OSHOT_OCR_HAS_WORDS(host)` before reading them: an older oshot passes a shorter `oshot_ocr_result_t`. It also runs
 when OCR read nothing or failed, with empty text, no words and a confidence and `psm` of -1, so the plugin can clear

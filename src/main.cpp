@@ -121,7 +121,7 @@ struct GLFWwindow;
 
 std::error_code ec;
 
-// Show the version and some other infos, then exit successfully
+// Show the version and build details, then exit successfully
 static void version()
 {
 #if OSHOT_WINDOWS
@@ -134,7 +134,7 @@ static void version()
     std::exit(EXIT_SUCCESS);
 }
 
-// Show the args help menu, then exit with code depending if it's from invalid or -h arg
+// Show the help, then exit with 1 after an invalid option, else 0
 static void help(const bool invalid_opt = false, const std::string_view bad_opt = {})
 {
 #if OSHOT_WINDOWS
@@ -154,8 +154,8 @@ static void help(const bool invalid_opt = false, const std::string_view bad_opt 
 
 // clang-format off
 // NOLINTBEGIN
-// parseargs() but only for parsing the user config path through args
-// and so we can directly construct Config
+// parseargs() for only the config path, so Config can be constructed
+// before the other options are parsed
 static fs::path parse_config_path(int argc, char* argv[], const fs::path& configDir)
 {
     int opt = 0;
@@ -190,7 +190,7 @@ static bool parseargs(int argc, char* argv[], const fs::path& configFile)
 {
     int opt = 0;
     int option_index = 0;
-    opterr = 1; // re-enable since before we disabled for "invalid option" error
+    opterr = 1; // re-enable the "invalid option" errors parse_config_path() turned off
     const char *optstring = "-Vhtgd:C:f:O:";
     static const struct option opts[] = {
         {"version", no_argument,       0, 'V'},
@@ -334,7 +334,6 @@ static void exit_handler_nc()
     // thread) would crash it instead of exiting
     if (!capture_active.load())
         extern_glfwTerminate();
-    release_shared_default_logger();
 }
 
 int run_main_tool();
@@ -672,7 +671,7 @@ static void spawn_gui_instance(const std::string& source)
     AllowSetForegroundWindow(ASFW_ANY);
 #endif
 
-    // Waited on from its own thread so it doesn't stay a zombie on unix
+    // Waited on from its own thread so it doesn't stay a zombie on Unix
     auto proc = std::make_shared<TinyProcessLib::Process>(args, string_type{});
     std::thread([proc] {
         const int code = proc->get_exit_status();
@@ -905,12 +904,9 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     logger->set_pattern("[%Y-%m-%d %T.%e] [%l] %^%v%$");
     logger->flush_on(spdlog::level::trace);
     spdlog::set_default_logger(logger);
-    set_shared_default_logger(logger);
 
-    // Registered only now that spdlog's registries exist. Exit handlers run in reverse order, so they
-    // still exist in exit_handler_nc(). Registered earlier, liboshot_common's own registry
-    // (macOS Release builds have one, see set_shared_default_logger()) was already
-    // destroyed there, and release_shared_default_logger() aborted on its mutex
+    // Registered only now that spdlog's registry exists. Exit handlers run in reverse order, so it
+    // still exists in exit_handler_nc()
     atexit(exit_handler_nc);
     g_imgui_log_sink = imgui;
 
@@ -1016,7 +1012,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     init_dialogs();
 
     // The white icon on a dark panel. Anywhere else, or when that can't be told,
-    // the full-colour one, since it shows on any panel
+    // the full-color one, since it shows on any panel
 #if OSHOT_WINDOWS
     const std::string white_icon = (get_exe_dir() / "oshot-tray.ico").string();
     const std::string color_icon = get_exe_path().string();

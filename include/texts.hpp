@@ -133,7 +133,7 @@ Options:
 // oshot
 
 inline constexpr std::string_view oshot_help = (R"(Usage: oshot [OPTIONS]...
-Lightweight screenshot tool to extract text (and more) on the fly.
+Screenshot tool for extracting text and QR codes on the fly.
 
 GENERAL OPTIONS:
     -h, --help                  Print this help menu.
@@ -142,7 +142,7 @@ GENERAL OPTIONS:
     -C, --config <PATH>         Path to the config file to use (default: ~/.config/oshot/config.toml).
     -O, --override <OPTION>     Override a config option (e.g. "delay=200", "default.ocr-model='jpn'",
                                 "fonts=['/path/to/font.ttf']").
-    -d, --delay <MILLIS>        Delay the app before acquiring the screenshot by milliseconds.
+    -d, --delay <MILLIS>        Wait MILLIS milliseconds before taking the screenshot.
                                 Has no effect with the -f flag.
 
     --instant-copy/save         Instantly copy/save a selection once it's selected.
@@ -156,50 +156,50 @@ GENERAL OPTIONS:
                                 --instant-copy or --instant-save, and skips the overlay.
                                 --instant-save then saves without asking (to DIR, or the last used folder)
                                 and prints the path.
-    --gen-config [<PATH>]       Generate default config file. If PATH is omitted, saves to default location.
+    --gen-config [<PATH>]       Generate the default config file, at PATH or else the default location.
                                 Prompts before overwriting.
 
     -g, --gui                   Only launch the GUI.
-    -t, --tray                  Only launch system tray.
+    -t, --tray                  Only launch the system tray.
 )");
 
 // default oshot config
 inline constexpr std::string_view AUTOCONFIG = R"#([default]
-# Default path to where we'll use all the '.traineddata' models.
+# Folder with the OCR models ('.traineddata' files).
 # The TESSDATA_PREFIX environment variable supersedes this.
 ocr-path = "{}"
 
 # Default OCR model.
 ocr-model = "{}"
 
-# GitHub repository from where we are going to
-# download an OCR '.traineddata' model.
+# GitHub repository the OCR model downloader gets
+# '.traineddata' models from.
 # The models must be in the root directory of the repository.
 ocr-repo-download = "{}"
 
-# Delay the app before acquiring a screenshot (in milliseconds)
-# Has no effect when opening an external image (i.e. -f flag)
+# Milliseconds to wait before taking a screenshot.
+# Has no effect when opening an image with -f.
 delay = {}
 
 # Which ImGui color picker widget to use for annotation colors.
 # 0 = "Bar - Square"; 1 = "Wheel - Triangle"
 color-picker = {}
- 
+
 # Alpha (transparency) editing behavior for the annotation color picker.
 # 0 = Disabled (alpha not editable)
 # 1 = Inline slider
 # 2 = Dedicated alpha bar
 color-picker-alpha-mode = {}
- 
+
 # On some desktop environments (e.g. MATE), the compositor may cause
 # the capture window to look grainy or pixelated. Enabling this uses exclusive
 # fullscreen mode which bypasses the compositor and fixes it.
 # Downside: the window may briefly take over the display on some setups.
 real-full-screen = {}
 
-# Controls vertical sync (VSync). When enabled, the capture window renders in sync
-# with your monitor's refresh rate, thus being smoother visually but uses slightly more CPU/GPU.
-# Disable if the overlay feels sluggish or unresponsive.
+# Vertical sync (VSync). When enabled, the overlay draws in step with your monitor's
+# refresh rate, which looks smoother and draws no more frames than the monitor shows.
+# Disable it if the overlay feels sluggish or unresponsive.
 vsync = {}
 
 # Let 'oshot --tray' start another tray icon when one is already running.
@@ -222,20 +222,20 @@ allow-multiple-overlays = {}
 # unless config-over-env is true.
 glx-vendor = "{}"
 
-# Allow the extracted output to be editable.
+# Let the extracted text be edited.
 allow-text-edit = {}
 
 # Display the text tools window (OCR, Bar/QR code scan) at startup.
 show-text-tools = {}
 
-# Prefer using config variables over environment variables.
+# Let this config win over environment variables like TESSDATA_PREFIX.
 config-over-env = {}
 
 # Consider annotations when scanning (true)
 # or only when saving the selection (false).
 annotations-in-text-tools = {}
 
-# Disable dynamic tools position for legacy placement (same line)
+# Put all the toolbar buttons on one line instead of around the selection.
 legacy-toolbar-pos = {}
 
 # Draw the toolbar icons with smooth (anti-aliased) edges.
@@ -262,7 +262,7 @@ language = "{}"
 
 # Fonts to use for the application. Can be an absolute path, or just a name.
 # You can combine multiple fonts for multiple language support.
-# for example, using "Roboto-Regular.ttf" and "RobotoCJK-Regular.ttc" for Chinese, Japanese, and Korean support alongside English support.
+# For example, "Roboto-Regular.ttf" and "RobotoCJK-Regular.ttc" for Chinese, Japanese, and Korean support alongside English support.
 # If empty, or non-existent (or commented out), oshot will use the system UI font
 # (fontconfig's sans-serif on Linux/BSD, Segoe UI on Windows, Helvetica on macOS),
 # plus a font for the language's script when it lacks one (e.g. Chinese or Arabic).
@@ -291,9 +291,8 @@ image-out-ext = "{}"
 # Default: "oshot_{{:%F_%H-%M}}"
 image-out-fmt = "{}"
 
-# Size format of the capture in the selected image
-# extension from image-out-ext, shown under the capture size widget.
-# Case sensitive.
+# Unit of the estimated file size (in the image-out-ext format)
+# shown under the selection size. Case sensitive.
 # Accepts: "off", "auto", "B", "KiB", "MiB", "KB", "MB", more...
 image-out-size-ind = "{}"
 
@@ -419,7 +418,7 @@ platforms = ["all"]
 
 # Building from source (git URL or folder): each step runs in the repository's root folder,
 # with `sh -c` (cmd.exe on Windows), and installing stops at the first failing step.
-# The environment has OSHOT_SDK (the folder with include/oshot/oshot_plugin.h, and lib/ on Windows),
+# The environment has OSHOT_SDK (the folder with include/oshot/oshot_plugin.h and lib/cmake/oshot),
 # OSHOT_PLATFORM, OSHOT_ARCH, OSHOT_TARGET (e.g. "linux-x86_64") and OSHOT_VERSION.
 # build-steps-<platform> (e.g. build-steps-windows) replaces build-steps on that platform.
 build-steps = [

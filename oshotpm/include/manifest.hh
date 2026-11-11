@@ -131,7 +131,7 @@ struct manifest_t
     // The repository name. See Manifest::IsValidName()
     std::string name;
 
-    // The repository git url or homepage
+    // The repository's git URL or homepage
     std::string url;
 
     // The installed commit. Only for RepoSource::GitRepository

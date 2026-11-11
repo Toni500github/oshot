@@ -107,8 +107,7 @@ enum class HandleHovered : std::uint8_t
     Move
 };
 
-// Clock-wise order of where we place the
-// annotations buttons
+// The selection's borders the toolbar buttons go on, clockwise
 enum class SelectionBorder : std::uint8_t
 {
     Bottom,
@@ -250,8 +249,7 @@ struct annotation_t
     float    thickness = 3.0f;
 };
 
-// Contains user inputs, APIs results,
-// and maybe some user settings.
+// The text tools' inputs and scan results, and a few settings from the config.
 // StartWindow() sets it with designated initializers, so keep the field order
 struct inputs_results_t
 {
@@ -304,10 +302,9 @@ struct install_node_t
     std::string                  output;  // build output printed while this step ran
 };
 
-// Shared between the render thread and the install worker thread for the
-// duration of a single install operation. Owned via shared_ptr so the
-// worker thread can finish writing to it even if the UI drops its own
-// reference first (e.g. oshot is closed mid-install).
+// One plugin task's state, shared by the render thread and the worker thread.
+// A shared_ptr, so the worker can finish writing to it after the UI dropped
+// its reference (oshot closed mid-install).
 struct plugin_install_state_t
 {
     // PluginCallbacks::on_* events, drained by DrawPluginInstallStatus()
@@ -492,8 +489,7 @@ public:
     // ------------------------------
     // Frame read-back
     // ------------------------------
-    // Marks that the user asked to save/copy; the actual work is deferred
-    // until OnCleanFrame() is called after the frame has been rendered.
+    // Saves or copies the selection once OnCleanFrame() reads back the next frame
     void RequestComplete(SavingOp op) { m_completed_op = op; }
 
     // Whether the next frame must be drawn with only the screenshot and the annotations,
@@ -544,10 +540,10 @@ public:
     Result<ImTextureRef> CreateTexture(ImTextureID tex, std::span<const uint8_t> data, int w, int h);
 
     // Fonts by path and size, added to the atlas the first time. Sizes under 16 share one entry.
-    // The default font for a file that can't be loaded
+    // Returns the default font for a file that can't be loaded
     ImFont* CacheAndGetFont(const std::string& font_name, const float font_size);
 
-    // The default font for an empty path, nullptr if CacheAndGetFont() didn't load it yet
+    // A font CacheAndGetFont() loaded, nullptr if it didn't yet, or the default font for an empty path
     [[nodiscard]] ImFont* GetCachedFont(const std::string& font_path, const float font_size) const;
 
     // Applies oshot's default ImGui colors
@@ -723,7 +719,7 @@ private:
     PluginCallbacks m_plugin_cb;
     PluginManager   m_plugin_manager;
 
-    // text field backing the install window
+    // The install window's source field
     std::string m_install_source;
 
     // The running plugin task (StartPluginTask()), shared with m_install_thread
@@ -807,10 +803,9 @@ private:
     // The annotation's bounds on screen
     [[nodiscard]] ImRect GetAnnotationBBox(const annotation_t& ann) const;
 
-    // GetAnnotationBBox() expanded by the same border padding DrawAnnotationResizeBorder()
-    // draws with, so the resize handles you see and the ones you can actually
-    // click line up exactly. Only used for Circle/CircleFilled/CounterBubble/Text;
-    // Line/Arrow keep their raw, un-normalized start/end to preserve direction.
+    // GetAnnotationBBox() plus the padding DrawAnnotationResizeBorder() draws with, so the
+    // drawn handles and the clickable ones match. Only for Circle/CircleFilled/CounterBubble/Text
+    // (lines and arrows keep their own start and end, for the direction)
     [[nodiscard]] ImRect GetAnnotationHandleBox(const annotation_t& ann) const;
 
     ImVec2 GetToolButtonSize();
@@ -829,7 +824,7 @@ private:
     // ------------------------------
     // Drawing
     // ------------------------------
-    // Special util draw function, used in DrawAnnotationResizeBorder() and DrawSelectionBorder()
+    // Draws a selection's border and handles, for DrawAnnotationResizeBorder() and DrawSelectionBorder()
     void DrawASelectionBorder(selection_info_t& sel,
                               const float       sel_x,
                               const float       sel_y,
@@ -864,13 +859,12 @@ private:
     // Downloads the plugin index into m_index_state, on m_index_thread
     void FetchIndexAsync();
 
-    // Runs a PluginManager operation (install, update, uninstall) on a
-    // background thread. Wires fresh PluginCallbacks around a new
-    // plugin_install_state_t so the render thread can drain progress from
-    // it without touching ImGui from off the render thread.
+    // Runs a PluginManager operation (install, update, uninstall) on a worker
+    // thread, with callbacks that queue its progress in a new plugin_install_state_t
+    // for the render thread to draw
     void StartPluginTask(const std::string& title, std::function<Result<>(PluginManager&)> task);
 
-    // Calls the plugins' on_capture_start(), or on_capture_end() for the ones that got it
+    // Call the plugins' on_capture_start(), and on_capture_end() for the ones that got it
     void StartPluginsCapture();
     void EndPluginsCapture();
 

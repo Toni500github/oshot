@@ -145,7 +145,8 @@ SessionType get_session_type()
     const char* x11     = std::getenv("DISPLAY");
     const char* kde     = std::getenv("KDE_FULL_SESSION");
 
-    // A Flatpak can't run the host's spectacle, so KDE goes through the portal (or X11) there
+    // A Flatpak can't reach KWin's D-Bus interface or run the host's spectacle, so KDE goes
+    // through the portal (or X11) there
     if (!g_is_flatpak)
     {
         if (xdg && strstr(xdg, "KDE") != nullptr)
@@ -262,7 +263,7 @@ Result<capture_result_t> capture_full_screen_portal();
 
 // Query the geometry of the monitor under the cursor via Xlib + XRandR.
 // Works on native X11 and on any Wayland compositor that runs XWayland.
-// Returns false if X is unavailable (pure Wayland without XWayland).
+// Returns nullopt if X is unavailable (pure Wayland without XWayland).
 static std::optional<region_t> get_cursor_monitor_xrandr(Display* display)
 {
     const char* disp_env = std::getenv("DISPLAY");
@@ -632,10 +633,9 @@ Result<capture_result_t> capture_full_screen_kwin()
     return Ok(std::move(out));
 }
 
-// Capture the monitor that contains the pointer using KDE's `spectacle`.
-// `spectacle -m` (--screen) always captures the monitor the cursor is on,
-// which is exactly what we need and what the generic XDG portal does NOT
-// guarantee when it runs non-interactively on a multi-monitor setup.
+// Capture the monitor under the cursor with KDE's `spectacle -m` (--screen),
+// which the portal doesn't guarantee when it runs non-interactively on
+// several monitors
 Result<capture_result_t> capture_full_screen_spectacle()
 {
     capture_result_t result;
@@ -862,19 +862,15 @@ Result<capture_result_t> capture_full_screen_portal()
                                                             &st,
                                                             nullptr);
 
-    // Don't hang forever if nothing responds.
-    // Save the source ID so we can cancel it if on_response fires first -- otherwise
-    // the timeout fires after this stack frame is gone, passing a dangling portal_state_t*
-    // to on_timeout and crashing on g_main_loop_quit (the SIGSEGV from the tray loop).
+    // Give up if nothing responds. The source ID is kept to remove it if on_response fires
+    // first, or the timeout would fire after this stack frame is gone and crash on
+    // g_main_loop_quit with a dangling portal_state_t* (the SIGSEGV from the tray loop)
     st.timeout_id = g_timeout_add_seconds(5, on_timeout, &st);
 
     g_main_loop_run(st.loop);
 
-    // Cancel whichever of {timeout, signal subscription} did NOT fire.
-    // on_timeout  zeros st.timeout_id      before returning G_SOURCE_REMOVE.
-    // on_response zeros st.subscription_id after calling signal_unsubscribe.
-    // A non-zero value here means the other path exited the loop and we must
-    // remove this source ourselves before st goes out of scope.
+    // Remove whichever of the timeout and the subscription didn't fire, before st goes
+    // out of scope. on_timeout and on_response zero their own ID
     if (st.timeout_id)
         g_source_remove(st.timeout_id);
     if (st.subscription_id)

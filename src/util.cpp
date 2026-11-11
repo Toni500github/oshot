@@ -66,7 +66,6 @@
 #include "nvdialog/nvdialog_notification.h"
 #include "platform.hpp"
 #include "screen_capture.hpp"
-#include "spdlog/sinks/stdout_color_sinks.h"
 #include "tinyfiledialogs.h"
 
 // stb_image_write's own deflate is slow and compresses poorly (a 1080p screenshot took 143 ms
@@ -528,26 +527,6 @@ void create_dialog(const char* title, const NvdDialogType type, const std::strin
 #endif
 }
 
-static bool own_spdlog_registry = false;
-
-void set_shared_default_logger(std::shared_ptr<spdlog::logger> logger)
-{
-    // With a single registry (Linux, builds without plugins) it's already the default
-    if (spdlog::default_logger_raw() == logger.get())
-        return;
-    own_spdlog_registry = true;
-    spdlog::set_default_logger(std::move(logger));
-}
-
-void release_shared_default_logger()
-{
-    if (!own_spdlog_registry)
-        return;
-    // Same name, so it also replaces the old logger in the registry
-    spdlog::set_default_logger(
-        std::make_shared<spdlog::logger>("oshot_logger", std::make_shared<spdlog::sinks::stderr_color_sink_mt>()));
-}
-
 Result<> write_image_file(const std::string& path, const capture_result_t& img, ImageExt ext)
 {
     const std::vector<uint8_t>& data = encode_to_image(img, ext);
@@ -719,8 +698,7 @@ bool parse_hex_rgba(const std::string_view hex, rgba_t& out)
     if (hex.size() != 7 && hex.size() != 9)
         return false;
 
-    // strtoul needs a null-terminated string. Construct one explicitly
-    // from the substring
+    // strtoul() needs a NUL-terminated string
     const std::string s(hex.substr(1));
 
     // strtoul() also takes a sign, leading spaces and a 0x prefix

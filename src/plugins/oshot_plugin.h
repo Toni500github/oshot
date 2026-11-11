@@ -74,7 +74,7 @@ extern "C" {
  **/
 #define OSHOT_IMGUI_VERSION 19284u
 
-/* Use this in the `imgui_version` fields if the plugin doesn't use ImGui (or cimgui)*/
+/* imgui_version of a plugin that doesn't call Dear ImGui through cimgui */
 #define OSHOT_NO_IMGUI 0
 
 /* Text buffers that get_text()/set_text() accept */
@@ -110,7 +110,7 @@ extern "C" {
 /* The largest icon register_action() accepts, in pixels on each side */
 #define OSHOT_ACTION_ICON_MAX 256
 
-/* Suggested icon size for toolbar */
+/* Suggested size of a toolbar icon, in pixels on each side */
 #define OSHOT_TOOLBAR_ICON_SIZE 24
 
 #if defined(OSHOT_HOST)
@@ -379,7 +379,7 @@ typedef struct
      *
      * Labels and text are drawn as they are, never read as format strings.
      * A label must be unique within the plugin's section. Add "##suffix" to
-     * tell apart widgets with the same text ("Copy##url"), the part after
+     * tell apart widgets with the same text ("Copy##url"). The part after
      * "##" isn't shown. Functions returning bool return true when the person
      * pressed or changed the widget in this frame.
      **/
@@ -473,7 +473,7 @@ typedef struct
     /**
      * Stops a process run_process() started. Its on_exit still gets called,
      * with killed = true. OSHOT_ERR_NOT_FOUND if it has already exited. On
-     * unix it gets SIGTERM, as do the processes it started. Any thread.
+     * Unix it gets SIGTERM, as do the processes it started. Any thread.
      **/
     oshot_err_t (*kill_process)(oshot_ctx_t* ctx, int64_t id, oshot_str_t* err);
 
@@ -687,7 +687,7 @@ static inline oshot_str_t oshot_str_borrow(const char* s)
     return r;
 }
 
-/* Abbreviated oshot_str_borrow() for literal strings calls. */
+/* oshot_str_borrow() with a shorter name, for string literals */
 static inline oshot_str_t oshot_str(const char* s)
 {
     return oshot_str_borrow(s);

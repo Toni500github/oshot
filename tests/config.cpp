@@ -19,8 +19,8 @@ static Config::config_file_t as_loaded(Config::config_file_t file, const fs::pat
 }
 
 // Each option on its own, so a failure names it, then the whole struct, which
-// also catches an option added to config_file_t but missing in one of the
-// places that writes or reads it (see CLAUDE.md, "Config")
+// also catches an option added to config_file_t but missing from LoadConfigFile(),
+// the AUTOCONFIG template in texts.hpp or its print call in GenerateConfig()
 static void check_same(const Config::config_file_t& got, const Config::config_file_t& want)
 {
     CHECK(got.ocr_path == want.ocr_path);

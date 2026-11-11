@@ -63,8 +63,8 @@ struct PluginCallbacks
     // Raw output of git and of build steps, as it arrives. Optional.
     std::function<void(const std::string_view)> on_output;
 
-    // `default_answer` is both what a CLI prompt should suggest AND what a
-    // non-interactive caller (--yes) should assume without asking.
+    // `default_answer` is what a CLI prompt suggests, and what a
+    // non-interactive caller (--yes) assumes without asking.
     std::function<bool(const std::string_view prompt, bool default_answer)> confirm;
 
     std::function<void(const std::string_view)> on_status;
@@ -116,8 +116,8 @@ public:
     // called while an operation runs on another thread.
     void SetCallbacks(PluginCallbacks callbacks) { m_callbacks = std::move(callbacks); }
 
-    // The plugin SDK (include/oshot/*.h, and lib/ on Windows) that came with
-    // this oshot, or empty if there's none. $OSHOT_SDK overrides it.
+    // The plugin SDK (include/oshot/ and lib/) that came with this oshot,
+    // or empty if there's none. $OSHOT_SDK overrides it.
     static fs::path FindSdk();
 
     StateManager& GetStateManager() { return m_state_manager; }

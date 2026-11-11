@@ -121,7 +121,7 @@ static GLFWmonitor* get_monitor_at_cursor()
         if (!mode)
             continue;
 
-        // Found focused monitor
+        // The monitor under the cursor
         if (cursor_x >= mx && cursor_x < mx + mode->width && cursor_y >= my && cursor_y < my + mode->height)
             return monitors[i];
     }
@@ -245,7 +245,6 @@ int run_main_tool()
     register_window_callbacks(
         minimize_window_, hide_window_, show_window_, dialog_parent_, glfwTerminate, glfwSwapInterval);
 
-    // Before the window exists, so the screenshot is taken right away and without the overlay
     g_ss_tool.SetOnCancel([&]() {
         spdlog::info("Canceled screenshot");
         glfwSwapInterval(0);  // Disable vsync
@@ -292,6 +291,7 @@ int run_main_tool()
         return true;
     });
 
+    // Before the window exists, so the screenshot is taken right away and without the overlay
     MUST_OK(g_ss_tool.Start(), {
         error("Failed to start capture: {}", _r.error_v());
         return EXIT_FAILURE;
@@ -325,7 +325,7 @@ int run_main_tool()
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // Required on Mac
 #  else
-    // GL 3.0 + GLSL 130
+    // GL 3.3 + GLSL 330 (3.0 + GLSL 130 below if the driver can't)
     const char* glsl_version = "#version 330 core";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -431,13 +431,6 @@ int run_main_tool()
     while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive() && !app_quitting())
     {
         // Poll and handle events (inputs, window resize, etc.)
-        // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your
-        // inputs.
-        // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or
-        // clear/overwrite your copy of the mouse data.
-        // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or
-        // clear/overwrite your copy of the keyboard data. Generally you may always pass all inputs to dear imgui, and
-        // hide them from your application based on those two flags.
         glfwPollEvents();
         if (glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0)
         {

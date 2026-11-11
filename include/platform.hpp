@@ -79,7 +79,7 @@
 
 /**
  * System-wide shortcut that starts a capture from the tray instance.
- * Registration is only implemented on Windows and macOS, on Linux the
+ * Registration is only implemented on Windows and macOS. On Linux the
  * WM/DE owns global keybinds, so users bind `oshot --gui` there instead.
  **/
 #if (OSHOT_WINDOWS || OSHOT_MACOS)

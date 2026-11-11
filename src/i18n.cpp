@@ -280,7 +280,7 @@ void load_catalog(const std::string& code, catalog_t& cat)
 
     dict.foreach ([&](const std::string& msgid, const std::vector<std::string>& msgstrs) {
         // tinygettext doesn't keep a plural's msgid_plural, so every form is checked against
-        // the singular, so both English forms have to use the same placeholders
+        // the singular. Both English forms have to use the same placeholders
         const auto& expected = placeholders(msgid);
         for (const std::string& msgstr : msgstrs)
         {

@@ -12,6 +12,7 @@ oshot's tests, with [Catch2](https://github.com/catchorg/Catch2) v3.16.1's amalg
 | `plugin_index.cpp` | `[plugins]` | `compare_versions()`, `sha256_file()`, `parse_plugin_index()`, `is_installable()`, `pick_version()` |
 | `manifest.cpp` | `[plugins]` | `Manifest` (names, IDs, `oshot-plugin.toml`) and `StateManager` (`state.toml`, the text transformers' order included) |
 | `text_transformers.cpp` | `[plugins]` | `arrange_text_transformers()` (the saved order, new and missing plugins) and `run_text_steps()` (order, pass-through, empty and invalid results, slow steps) |
+| `plugin_mock.cpp`, `plugin_mock_c.c` | `[plugins][mock]` | the SDK's mock host (`oshot/oshot_mock_host.h`) running the uppercase, text transformer and export-png examples, compiled in with their `oshot_plugin_entry()` renamed, plus the mock compiled as C with a small plugin of its own |
 
 The `[plugins]` ones are only built with plugins (`DISABLE_PLUGINS=OFF`).
 

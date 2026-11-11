@@ -160,9 +160,7 @@ void Config::LoadThemeFile(const std::string& filename)
     theme_overrides = {};
     theme_overrides.colors.clear();
 
-    // Since the filename (default.theme-file) will be likely
-    // related to relative path of the config directory, let's
-    // snapshot and switch to that directory.
+    // default.theme-file is usually relative to the config directory
     CdGuard guard(m_config_dir_path);
 
     if (fs::exists(filename))

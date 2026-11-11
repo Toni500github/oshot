@@ -141,7 +141,8 @@ Result<capture_result_t> capture_full_screen_macos();
 
 /**
  * Detect the platform and, on Linux and the BSDs, the desktop session.
- * KDE is only reported outside a Flatpak, which can't run the host's spectacle
+ * KDE is only reported outside a Flatpak, which can't reach KWin's D-Bus interface
+ * or run the host's spectacle
  **/
 SessionType get_session_type();
 
