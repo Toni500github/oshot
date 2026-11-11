@@ -147,11 +147,10 @@ static bool on_wayland()
 #  endif
 }
 
-// GLFW 3.4 doesn't stop its Wayland key repeat timer when the window that has the keyboard is
-// destroyed. Closing the overlay with a key still down (Escape, every time) leaves the timer
-// running, and in the tray the next overlay's first glfwPollEvents() delivers the repeat to a
-// NULL window and crashes. The timer is only stopped by a key release or a keyboard leave that
-// arrives while the window exists, so unmap the window and wait for the leave.
+// GLFW 3.4 on Wayland leaves its key repeat timer running if the window is destroyed with a key
+// down (the Escape that closed the overlay), and the tray's next capture crashes on the repeat.
+// Only a key release or a keyboard leave stops the timer, so hide the window and wait for one.
+// Hyprland sends no leave for a hidden window.
 static void stop_wayland_key_repeat()
 {
     int major = 0, minor = 0;
@@ -159,17 +158,26 @@ static void stop_wayland_key_repeat()
     if (!on_wayland() || major != 3 || minor >= 5)
         return;
 
+    bool key_down = false;
+    for (int key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST && !key_down; ++key)
+        key_down = glfwGetKey(window, key) == GLFW_PRESS;
+    if (!key_down)
+        return;
+
+    static bool released;
+    released = false;
+    glfwSetKeyCallback(window, [](GLFWwindow*, int, int, int action, int) { released = action == GLFW_RELEASE; });
+
     // glfwHideWindow() ignores fullscreen windows
     if (glfwGetWindowMonitor(window))
         glfwSetWindowMonitor(window, nullptr, 0, 0, g_scr_w, g_scr_h, GLFW_DONT_CARE);
     glfwHideWindow(window);
 
-    // The leave comes with the compositor's next reply, well under a millisecond normally
     const auto deadline = std::chrono::steady_clock::now() + 500ms;
-    while (glfwGetWindowAttrib(window, GLFW_FOCUSED) && std::chrono::steady_clock::now() < deadline)
-        glfwWaitEventsTimeout(0.01);
+    while (!released && glfwGetWindowAttrib(window, GLFW_FOCUSED) && std::chrono::steady_clock::now() < deadline)
+        glfwWaitEventsTimeout(0.1);
 
-    if (glfwGetWindowAttrib(window, GLFW_FOCUSED))
+    if (!released && glfwGetWindowAttrib(window, GLFW_FOCUSED))
         spdlog::warn("The compositor didn't take the keyboard from the closed overlay, key repeat may still be on");
 }
 
