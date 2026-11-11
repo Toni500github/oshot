@@ -1043,9 +1043,9 @@ if(UNIX AND NOT APPLE)
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/64x64/apps
     )
 
-    set(OSHOT_MAN_PAGES assets/linux/oshot.1)
+    set(OSHOT_MAN_PAGES docs/oshot.1)
     if(NOT DISABLE_PLUGINS)
-        list(APPEND OSHOT_MAN_PAGES assets/linux/oshotpm.1)
+        list(APPEND OSHOT_MAN_PAGES docs/oshotpm.1)
     endif()
     install(FILES ${OSHOT_MAN_PAGES} DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 endif()
