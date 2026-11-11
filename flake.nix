@@ -1,5 +1,5 @@
 {
-  description = "oshot; a program to screenshot and get text from images";
+  description = "oshot, the screenshot tool for extracting text and QR codes on the fly";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
@@ -85,7 +85,7 @@
           '';
 
           meta = with pkgs.lib; {
-            description = "Screenshot tool to extract text, scan QR codes and barcodes on the fly";
+            description = "Screenshot tool for extracting text and QR codes on the fly";
             homepage = "https://github.com/Toni500github/oshot";
             license = licenses.bsd3;
             mainProgram = "oshot";

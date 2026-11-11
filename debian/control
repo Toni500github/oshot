@@ -42,8 +42,9 @@ Recommends:
  libdecor-0-plugin-1-cairo | libdecor-0-plugin-1-gtk
 Suggests:
  tesseract-ocr-all
-Description: Fast and lightweight screenshot tool for extracting text on the fly
+Description: Screenshot tool for extracting text and QR codes on the fly
  oshot is a cross-platform screenshot and annotation tool with built-in OCR
- (via tesseract), barcode/QR scanning (via ZBar), and clipboard integration.
- Supports X11, Wayland (via KWin, the screenshot portal or grim), and
- multi-monitor setups.
+ (Tesseract), QR code and barcode decoding (ZBar), and clipboard integration.
+ It supports X11, Wayland (through KWin, the screenshot portal or grim) and
+ multi-monitor setups, and can also read text and codes from scripts with
+ --extract-text and --extract-barcode.

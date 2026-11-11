@@ -13,7 +13,7 @@ BEGIN
         BLOCK "040904B0"
         BEGIN
             VALUE "CompanyName",      "Toni500"
-            VALUE "FileDescription",  "oshot - screenshot text extractor"
+            VALUE "FileDescription",  "oshot screenshot tool"
             VALUE "FileVersion",      "@PROJECT_FULL_VERSION@"
             VALUE "InternalName",     "oshot"
             VALUE "LegalCopyright",   "Copyright (C) 2025-2026 Toni500, BSD-3-Clause"

@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>io.github.toni500github.oshot</id>
   <name>oshot</name>
-  <summary>Take a screenshot and extract its text on the fly</summary>
+  <summary>Extract on-screen text and QR codes</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>BSD-3-Clause</project_license>
   <developer id="io.github.toni500github">
@@ -10,17 +10,20 @@
   </developer>
   <description>
     <p>
-      oshot is a lightweight screenshot overlay: select a region of the screen
-      and extract its text with Tesseract OCR, decode QR codes and barcodes with
-      ZBar, annotate it, then copy or save it.
+      oshot is a screenshot tool for extracting text and QR codes on the fly.
+      Select a region of the screen to read its text with Tesseract OCR, decode
+      its QR codes and barcodes with ZBar, or annotate it, then copy or save it.
+      OCR and decoding run on your computer.
     </p>
     <p>Features:</p>
     <ul>
-      <li>Text extraction (OCR) in any language Tesseract has a model for</li>
-      <li>QR code and barcode scanning</li>
+      <li>Text extraction (OCR) in any language Tesseract has a model for, with an in-app model downloader</li>
+      <li>QR code and barcode decoding</li>
+      <li>Edit the recognized text before copying it</li>
       <li>Annotations: arrows, lines, rectangles, circles, numbered counters, text and freehand drawing</li>
       <li>Works on X11 and Wayland, with multiple monitors</li>
       <li>Optional system tray mode</li>
+      <li>Text and code extraction from the command line, for scripts</li>
     </ul>
   </description>
   <launchable type="desktop-id">oshot.desktop</launchable>
