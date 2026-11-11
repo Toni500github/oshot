@@ -488,6 +488,9 @@ int run_main_tool()
     glfwDestroyWindow(window);
     window = nullptr;
 
+    if (g_is_systray && on_wayland())
+        glfwPollEvents();
+
     if (!g_is_systray)
         glfwTerminate();
 
