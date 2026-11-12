@@ -76,7 +76,6 @@ using std::move;
 using namespace spdlog;
 
 #if !OSHOT_WINDOWS
-// Returns an empty string on failure
 static std::string create_temp_png()
 {
     std::string tmppath = "/tmp/oshot_XXXXXX.png";
@@ -116,15 +115,14 @@ Result<capture_result_t> crop_image(const capture_result_t& src, const region_t&
     return Ok(std::move(out));
 }
 
-Result<region_t> parse_region(std::string_view str)
+Result<region_t> parse_region(const char* str)
 {
-    const std::string s(str);
-    region_t          r{};
-    char              tail = 0;
+    region_t r{};
+    char     tail = 0;
 
     // %c catches trailing garbage; a full match leaves it unassigned
-    if (std::sscanf(s.c_str(), "%dx%d+%d+%d%c", &r.w, &r.h, &r.x, &r.y, &tail) != 4 &&
-        std::sscanf(s.c_str(), "%d,%d %dx%d%c", &r.x, &r.y, &r.w, &r.h, &tail) != 4)
+    if (std::sscanf(str, "%dx%d+%d+%d%c", &r.w, &r.h, &r.x, &r.y, &tail) != 4 &&
+        std::sscanf(str, "%d,%d %dx%d%c", &r.x, &r.y, &r.w, &r.h, &tail) != 4)
         return Err("Invalid region '{}', expected WxH+X+Y or \"X,Y WxH\"", str);
 
     if (r.w <= 0 || r.h <= 0 || r.x < 0 || r.y < 0)
@@ -426,8 +424,9 @@ static void warn_kwin_not_authorized()
     // file can name it
     if (std::getenv("APPIMAGE"))
     {
-        spdlog::warn("Before Plasma 6.8 KWin only gives screenshots to installed programs, so the AppImage uses "
-                     "a slower capture (Spectacle or the portal)");
+        spdlog::warn(
+            "Before Plasma 6.8 KWin only gives screenshots to installed programs, so the AppImage uses "
+            "a slower capture (Spectacle or the portal)");
         return;
     }
 
@@ -437,11 +436,12 @@ static void warn_kwin_not_authorized()
     if (name.size() > 9 && name.front() == '.' && name.ends_with("-wrapped"))
         exe.replace_filename(name.substr(1, name.size() - 9));
 
-    spdlog::warn("Before Plasma 6.8 KWin only gives screenshots to programs with a desktop file, so oshot uses a "
-                 "slower capture (Spectacle or the portal). To fix it, install oshot (make install, a package), "
-                 "or save oshot.desktop from the source's assets/linux folder as "
-                 "~/.local/share/applications/oshot.desktop with its first Exec line changed to \"Exec={}\"",
-                 exe.string());
+    spdlog::warn(
+        "Before Plasma 6.8 KWin only gives screenshots to programs with a desktop file, so oshot uses a "
+        "slower capture (Spectacle or the portal). To fix it, install oshot (make install, a package), "
+        "or save oshot.desktop from the source's assets/linux folder as "
+        "~/.local/share/applications/oshot.desktop with its first Exec line changed to \"Exec={}\"",
+        exe.string());
 }
 
 bool kde_on_wayland()

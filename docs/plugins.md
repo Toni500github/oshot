@@ -249,7 +249,7 @@ static bool my_transform(void* state, const char* buffer_id, oshot_str_t in, osh
   plugin. oshot keeps that in `plugins/state.toml` under `[text-transformers]`. Transformers not ordered yet (a plugin
   installed since) run after the others, sorted by ID.
 - It runs on the UI thread and the overlay waits for it, so keep it fast: oshot logs a transformer that takes over
-  100 ms, once per plugin. Slow work, like a translation over the network, belongs in an [action](#actions).
+  200 ms, once per plugin. Slow work, like a translation over the network, belongs in an [action](#actions).
 - `on_ocr_done()` runs after the chain and gets the transformed text. Its `words` stay as Tesseract read them, so
   their text no longer matches the transformed text.
 - `get_text()` returns the transformed text. A `set_text()` from `on_ocr_done()` still works and replaces what the

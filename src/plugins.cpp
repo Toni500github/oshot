@@ -61,6 +61,8 @@
 #  include "toml_api.hpp"
 #  include "util.hpp"
 
+using namespace std::chrono_literals;
+
 static_assert(OSHOT_IMGUI_VERSION == IMGUI_VERSION_NUM,
               "Update OSHOT_IMGUI_VERSION in src/plugins/oshot_plugin.h together with imgui");
 
@@ -76,7 +78,7 @@ static std::atomic<bool> g_plugin_overlay_open = false;
 std::vector<text_transformer_t> g_text_transformers;
 
 // A transformer slower than this is logged, since the chain blocks the UI thread
-static constexpr std::chrono::milliseconds SLOW_TRANSFORM{ 100 };
+static constexpr auto SLOW_TRANSFORM = 200ms;
 
 // The size of oshot_plugin_t in the plugin API's first version, which every
 // plugin's descriptor has at least; fields after it are checked with OSHOT_PLUGIN_HAS
@@ -361,7 +363,7 @@ static Result<> validate_settings(const oshot_plugin_t* plugin)
             case OSHOT_SETTING_FLOAT:  kind = OSHOT_VAL_DOUBLE; break;
             case OSHOT_SETTING_STRING:
             case OSHOT_SETTING_CHOICE: kind = OSHOT_VAL_STRING; break;
-            default:                   return Err("setting '{}' has an unknown kind {}", s.key, static_cast<int>(s.kind));
+            default: return Err("setting '{}' has an unknown kind {}", s.key, static_cast<int>(s.kind));
         }
         if (s.fallback.kind != kind)
             return Err("setting '{}' has a fallback of the wrong kind", s.key);

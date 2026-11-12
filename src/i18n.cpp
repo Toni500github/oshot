@@ -44,11 +44,11 @@
 #include "platform.hpp"
 #include "spdlog/spdlog.h"
 #include "tinygettext/dictionary.hpp"
-#include "tinygettext/plural_forms.hpp"
-#include "util.hpp"
 #include "tinygettext/language.hpp"
 #include "tinygettext/log.hpp"
+#include "tinygettext/plural_forms.hpp"
 #include "tinygettext/po_parser.hpp"
+#include "util.hpp"
 
 #if OSHOT_WINDOWS
 #  include <windows.h>

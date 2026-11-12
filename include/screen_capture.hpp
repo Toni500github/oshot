@@ -178,13 +178,13 @@ Result<capture_result_t> crop_to_monitor(const capture_result_t&     full,
  * @param src The image
  * @param quarter_turns_cw How many quarter turns (1 = 90, 2 = 180, 3 = 270)
  **/
-capture_result_t rotate_rgba(const capture_result_t& src, int quarter_turns_cw);
+capture_result_t rotate_rgba(const capture_result_t& src, const int quarter_turns_cw);
 
 /**
  * Parse a region from --selection
  * @param str "WxH+X+Y" (X11 geometry, slop) or "X,Y WxH" (slurp)
  **/
-Result<region_t> parse_region(std::string_view str);
+Result<region_t> parse_region(const char* str);
 
 #if OSHOT_FREEDESKTOP
 /**

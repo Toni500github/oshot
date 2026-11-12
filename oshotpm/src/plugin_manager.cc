@@ -44,6 +44,8 @@
 #include "spdlog/spdlog.h"
 #include "tiny-process-library/process.hpp"
 
+using namespace std::chrono_literals;
+
 namespace
 {
 // Deletes a work dir on every early return, unless dismissed
@@ -285,7 +287,7 @@ void PluginManager::RemoveStaleWorkDirs()
         if (!entry.path().filename().string().starts_with("tmp-"))
             continue;
         const auto mtime = entry.last_write_time(ec);
-        if (!ec && now - mtime > std::chrono::hours(1))
+        if (!ec && now - mtime > 1h)
             remove_tree(entry.path());
     }
 }

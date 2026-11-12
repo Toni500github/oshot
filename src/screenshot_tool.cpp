@@ -338,9 +338,8 @@ Result<> ScreenshotTool::Start()
 
     // g_ss_tool outlives a capture, since the tray runs every one of them with it
     ResetSelection();
-    m_anno_sel.handle_hover    = HandleHovered::kNone;
-    m_anno_sel.dragging_handle = HandleHovered::kNone;
-    m_annotations.clear();
+    m_anno_sel.handle_hover     = HandleHovered::kNone;
+    m_anno_sel.dragging_handle  = HandleHovered::kNone;
     m_current_annotation        = {};
     m_current_annotation_resize = nullptr;
     m_current_actions           = {};
@@ -349,6 +348,7 @@ Result<> ScreenshotTool::Start()
     m_final_image_requested     = false;
     m_popup_open                = false;
     m_show_window.Clear(SubWindow::OutputMenuSelection);
+    m_annotations.clear();
 
     if (!g_config->Runtime.source_file.empty())
     {
@@ -635,6 +635,7 @@ void ScreenshotTool::RenderOverlay()
                                 right ? ImVec2(1.0f, 0.0f) : ImVec2(0.0f, 0.0f));
         ImGui::SetNextWindowSize(font_relative(22, 0), ImGuiCond_FirstUseEver);  // 0 = auto height
         ImGui::Begin(text_tools_name, &open, ImGuiWindowFlags_MenuBar);
+
         DrawMenuItems();
         DrawPreferencesWindow();
         DrawDownloadOCRWindow();
@@ -1037,7 +1038,7 @@ ImFont* ScreenshotTool::GetCachedFont(const std::string& font_path, const float 
 void ScreenshotTool::StyleDefaultColor()
 {
     // clang-format off
-    static const std::unordered_map<ImGuiCol, rgba_t> theme_colors = {
+    constexpr std::array theme_colors = std::to_array<std::pair<ImGuiCol, rgba_t>>({
         { ImGuiCol_Text,          0xDCDDE1FF_rgba },
         { ImGuiCol_TextDisabled,  0x666870FF_rgba },
         { ImGuiCol_WindowBg,      0x0D1015FF_rgba },
@@ -1074,7 +1075,7 @@ void ScreenshotTool::StyleDefaultColor()
         { ImGuiCol_CheckMark,     0x5274F0FF_rgba },
         { ImGuiCol_MenuBarBg,     0x090B0FFF_rgba },
         { ImGuiCol_PlotHistogram, 0x5274F0FF_rgba },
-    };
+    });
     // clang-format on
 
     ImGui::StyleColorsDark();
@@ -2408,7 +2409,7 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
                              ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_AlwaysAutoResize))
             ImGui::TextUnformatted(str.begin(), str.end());
-        ImGui::End();  // even when Begin() returns false
+        ImGui::End();
 
         ImGui::PopStyleColor(3);
         ImGui::PopStyleVar(3);
@@ -2539,7 +2540,7 @@ void ScreenshotTool::DrawAnnotations()
                 continue;  // too close to the last stamp, skip
 
             const float d  = std::sqrt(d_sq);
-            const int   n  = static_cast<int>(d / step);
+            const int   n  = int(d / step);
             const float sx = dx / d * step;
             const float sy = dy / d * step;
 
@@ -2863,13 +2864,13 @@ void ScreenshotTool::DrawMenuItems()
             {
                 const bool hidden = hide_window();
 
-                static constexpr auto filter    = std::to_array({ "*.png", "*.jpeg", "*.jpg", "*.bmp" });
-                const char*           open_path = tinyfd_openFileDialog(_("Open Image"),
-                                                                        "",             // default path
-                                                                        filter.size(),  // number of filter patterns
-                                                                        filter.data(),  // file filters
-                                                                        _("Images"),    // filter description
-                                                                        false           // allow multiple selections
+                constexpr auto filter    = std::to_array({ "*.png", "*.jpeg", "*.jpg", "*.bmp" });
+                const char*    open_path = tinyfd_openFileDialog(_("Open Image"),
+                                                                 "",             // default path
+                                                                 filter.size(),  // number of filter patterns
+                                                                 filter.data(),  // file filters
+                                                                 _("Images"),    // filter description
+                                                                 false           // allow multiple selections
                 );
 
                 if (hidden)
@@ -3248,7 +3249,7 @@ void ScreenshotTool::DrawAboutWindow()
         if (ImGui::Button(_("Close")))
             open = false;
     }
-    ImGui::End();  // even when Begin() returns false: collapsed or clipped
+    ImGui::End();
     m_show_window.Set(SubWindow::About, open);
 }
 
@@ -3520,7 +3521,7 @@ static void draw_preference_fonts(const bool window_just_opened)
     selected = std::min(selected, fonts.empty() ? 0 : fonts.size() - 1);
 
     bool listed_now = false;
-    if (listing.valid() && listing.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+    if (listing.valid() && listing.wait_for(0s) == std::future_status::ready)
     {
         installed  = listing.get();
         listed_now = true;
@@ -3933,8 +3934,7 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
           "Only the first tray registers the global hotkey.\n"
           "Takes effect on the next launch."));
 
-    ImGui::Checkbox(_("Allow more than one overlay##config_allow_multi_overlay"),
-                    &g_config->File.allow_multi_overlay);
+    ImGui::Checkbox(_("Allow more than one overlay##config_allow_multi_overlay"), &g_config->File.allow_multi_overlay);
     ImGui::SameLine();
     HelpMarker(
         _("Lets a capture open while another overlay is already open, e.g. to take a screenshot of oshot itself. "
@@ -4915,7 +4915,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         if (refit)
             ImGui::SetWindowSize(ImVec2(ImGui::GetWindowWidth(), 0.0f));
     }
-    ImGui::End();  // even when Begin() returns false: collapsed or clipped
+    ImGui::End();
 
     m_show_window.Set(SubWindow::OcrDownload, open);
 }
@@ -5046,7 +5046,7 @@ void ScreenshotTool::DrawLogsWindow()
 
         ImGui::EndChild();
     }
-    ImGui::End();  // even when Begin() returns false: collapsed or clipped
+    ImGui::End();
 
     m_show_window.Set(SubWindow::Logs, open);
 }
@@ -5246,7 +5246,7 @@ void ScreenshotTool::StartPluginTask(const std::string& title, std::function<Res
     m_install_state = state;
     m_show_window.Set(SubWindow::PluginInstallStatus);
 
-    m_install_thread = std::thread([this, state, title = std::move(title), task = std::move(task)]() {
+    m_install_thread = std::thread([this, state, title, task = std::move(task)]() {
         {
             std::scoped_lock lock(state->events_mutex);
             state->pending_events.push_back({ .kind = plugin_install_event_t::Kind::Info, .text = title });
@@ -6143,7 +6143,7 @@ void ScreenshotTool::DrawPluginInstallStatus()
             ImGui::EndPopup();
         }
     }
-    ImGui::End();  // even when Begin() returns false: collapsed or clipped
+    ImGui::End();
 
     // Keep the window open while an install runs. Nothing would drain the worker's
     // events, and a pending confirm would wait forever with no popup to answer it

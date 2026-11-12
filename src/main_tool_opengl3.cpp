@@ -279,7 +279,7 @@ int run_main_tool()
 
         // glReadPixels() returns the rows bottom to top. Flip them here rather than
         // with stbi_flip_vertically_on_write(), because the clipboard on Windows takes
-        // the raw pixels and never goes through stb
+        // the raw pixels and never goes through stb. The cost is negligible
         for (int y = 0; y < region.h / 2; ++y)
         {
             unsigned char* top = pixels.data() + (size_t(y) * row);

@@ -679,7 +679,7 @@ typedef struct
      * the new text in *out, allocated with host->str_new(); oshot frees it.
      * `in` is borrowed for the call. It runs on the UI thread and blocks the
      * overlay, so keep it fast (oshot logs a transformer that takes over
-     * 100 ms); slow work such as a translation over the network belongs in an
+     * 200 ms); slow work such as a translation over the network belongs in an
      * action (register_action()).
      **/
     bool (*transform_text)(void* state, const char* buffer_id, oshot_str_t in, oshot_str_t* out);
