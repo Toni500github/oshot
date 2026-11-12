@@ -567,7 +567,7 @@ Result<std::string> save_image_to_dir(const fs::path& dir, const capture_result_
     return Ok(path.string());
 }
 
-Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
+Result<bool> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
 {
     auto deleter = [](NvdNotification* p) {
         nvd_send_notification(p);
@@ -578,11 +578,11 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
     const bool notify = init_dialogs();
     if (op == SavingOp::Clipboard)
     {
-        const Result<>& res = g_clipboard.CopyImage(img, ext);
-        if (res.ok() && notify)
+        TRY(g_clipboard.CopyImage(img, ext));
+        if (notify)
             notif.reset(
                 nvd_notification_new(_("Copied!"), _("Screenshot copied to clipboard"), NVD_NOTIFICATION_SIMPLE));
-        return res;
+        return Ok(true);
     }
 
     // --instant-save=DIR: no dialog
@@ -593,7 +593,7 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
         spdlog::info("Saved to {}", saved.get());
         if (notify)
             notif.reset(nvd_notification_new(_("Saved!"), _("Screenshot saved successfully"), NVD_NOTIFICATION_SIMPLE));
-        return Ok();
+        return Ok(true);
     }
 
     const Result<std::string>& fmt = get_config_image_out_fmt();
@@ -615,11 +615,7 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
         show_window();
 
     if (!save_path)
-    {
-        if (notify)
-            notif.reset(nvd_notification_new(_("Canceled"), _("Save canceled by user"), NVD_NOTIFICATION_WARNING));
-        return Ok();  // Not really an error, maybe the user cancelled
-    }
+        return Ok(false);
 
     TRY(write_image_file(save_path, img, ext));
     if (notify)
@@ -628,7 +624,7 @@ Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
     fs::path path(save_path);
     g_cache->SetValue(CacheEntry::ImgSavePath, path.parent_path().string());
 
-    return Ok();
+    return Ok(true);
 }
 
 void rgba_to_grayscale(const uint8_t* src, uint8_t* result, int width, int height)

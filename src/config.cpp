@@ -136,6 +136,8 @@ void Config::LoadConfigFile(const std::string& filename)
     }
     else
     {
+        spdlog::warn("Unknown image-out-ext '{}', using PNG (accepted: png, jpeg, bmp, tga)",
+                     File.image_out_type.first);
         File.image_out_type.first  = "PNG";
         File.image_out_type.second = ImageExt::PNG;
     }

@@ -288,14 +288,18 @@ int run_main_tool()
         return capture_result_t{ .data = std::move(pixels), .w = region.w, .h = region.h };
     });
     g_ss_tool.SetOnComplete([&](SavingOp op, const capture_result_t& img, ImageExt ext) {
-        MUST_OK(save_image(op, img, ext), {
+        const Result<bool>& saved = save_image(op, img, ext);
+        if (!saved.ok())
+        {
             // The overlay stays open; create_dialog() keeps the error in front of it
             if (op == SavingOp::Clipboard)
-                error("Failed to copy the image: {}", _r.error_v());
+                error("Failed to copy the image: {}", saved.error_v());
             else
-                error("Failed to save as {}: {}", g_config->File.image_out_type.first, _r.error_v());
+                error("Failed to save as {}: {}", g_config->File.image_out_type.first, saved.error_v());
             return false;
-        });
+        }
+        if (!saved.get())  // the save dialog was canceled, so go back to the overlay
+            return false;
 
         glfwSwapInterval(0);  // Disable vsync
         glfwSetWindowShouldClose(window, GLFW_TRUE);

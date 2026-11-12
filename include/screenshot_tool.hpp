@@ -753,7 +753,11 @@ private:
     {
         bool has = ctx.Has(e);
         if (has)
-            ImGui::TextColored(ImVec4(1, 0, 0, 1), "%s", ctx.Get(e).c_str());
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0, 0, 1));
+            ImGui::TextWrapped("%s", ctx.Get(e).c_str());
+            ImGui::PopStyleColor();
+        }
         return has;
     }
 

@@ -403,7 +403,8 @@ static bool search_index(const StateManager& state, const PluginCallbacks& cb)
 
     if (shown == 0)
         fmt::println("{}", options.arguments.empty() ? "The plugin index is empty" : "No plugin in the index matches");
-    return true;
+    // Like grep, so scripts can tell
+    return shown > 0 || options.arguments.empty();
 }
 
 static int oshotpm_main(int argc, char** argv)

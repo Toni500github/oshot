@@ -69,6 +69,7 @@ The plugin index is https://github.com/Toni500github/oshot-plugin-index ($OSHOT_
 inline constexpr std::string_view oshotpm_help_search = (R"(Usage: oshotpm search [<WORD>...]
 List the plugins in the plugin index (https://github.com/Toni500github/oshot-plugin-index), or only the ones
 whose ID, name, description or tags contain every WORD. Install one with `oshotpm install <ID>`.
+Exits with status 1 if WORDs are given and no plugin matches them.
 
 Options:
     -v, --verbose      Also show every version, the owners, the license and the homepage.

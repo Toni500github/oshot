@@ -978,8 +978,9 @@ Result<std::string> save_image_to_dir(const fs::path& dir, const capture_result_
  * @param op Clipboard or File
  * @param img The RGBA image
  * @param ext The format to encode to
+ * @return false if the user canceled the save dialog
  **/
-Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext);
+Result<bool> save_image(SavingOp op, const capture_result_t& img, ImageExt ext);
 
 /**
  * Get the file name for a new image, from the image-out-fmt option and the current local time

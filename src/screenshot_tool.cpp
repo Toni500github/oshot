@@ -832,7 +832,7 @@ void ScreenshotTool::OnCleanFrame()
     if (op == SavingOp::kNone)
         return;
 
-    // If it failed, keep the selection and annotations for another try. Not with
+    // If it failed or the save dialog was canceled, keep the selection and annotations for another try. Not with
     // --instant-copy/--instant-save, which would request it again every frame
     const bool done = !m_on_complete || m_on_complete(op, img, g_config->File.image_out_type.second);
     if (done || g_config->Runtime.instant_copy_save != SavingOp::kNone)
@@ -1565,6 +1565,13 @@ void ScreenshotTool::HandleAnnotationInput()
         float dx         = m_current_annotation.end.x - m_current_annotation.start.x;
         float dy         = m_current_annotation.end.y - m_current_annotation.start.y;
         bool  should_add = (m_current_tool == ToolType::Pencil || (dx * dx + dy * dy) > 25.0f);  // at least 5px long
+
+        // A drag sizes the bubble, a click places one of the default size
+        if (m_current_tool == ToolType::CounterBubble && !should_add)
+        {
+            m_current_annotation.end = { .x = m_current_annotation.start.x + 20.0f, .y = m_current_annotation.start.y };
+            should_add               = true;
+        }
         if (should_add)
             m_annotations.push_back(m_current_annotation);
 
@@ -1874,6 +1881,7 @@ void ScreenshotTool::RefreshOcrModels()
         m_ocr_models_list,
         [](const fs::path& entry) { return entry.extension().string() == ".traineddata"; },
         [](const fs::path& entry) { return entry.stem().string(); });
+    std::ranges::sort(m_ocr_models_list);
 
     m_last_scanned_ocr_path = m_inputs.ocr_path;
     ClearError(ectx, OcrError::NeedToScanDir);
@@ -3031,9 +3039,8 @@ void ScreenshotTool::DrawOcrTools()
 
         if (HasError(ectx, OcrError::FailedToOCR))
         {
-            ImGui::SameLine();
-            ImGui::TextColored(
-                Colors::RED, _("Failed to initialize OCR: %s"), GetError(ectx, OcrError::FailedToOCR).c_str());
+            ImGui::NewLine();  // own line, it can be wider than the panel
+            ShowIfError(ectx, OcrError::FailedToOCR);
         }
         else
         {
@@ -3065,16 +3072,17 @@ void ScreenshotTool::DrawOcrTools()
         ImGui::InputTextMultiline("##ocr_original",
                                   &m_inputs.ocr_original,
                                   ImVec2(-1, ImGui::GetTextLineHeight() * 8),
-                                  ImGuiInputTextFlags_ReadOnly);
+                                  ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_WordWrap);
         CreateCopyTextButton(m_inputs.ocr_original);
         ImGui::PopID();
         return;
     }
 #endif
-    ImGui::InputTextMultiline("##" OSHOT_TEXT_OCR,
-                              &m_inputs.ocr_results.data,
-                              ImVec2(-1, ImGui::GetTextLineHeight() * 8),
-                              g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+    ImGui::InputTextMultiline(
+        "##" OSHOT_TEXT_OCR,
+        &m_inputs.ocr_results.data,
+        ImVec2(-1, ImGui::GetTextLineHeight() * 8),
+        ImGuiInputTextFlags_WordWrap | (g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly));
 
     if (!m_inputs.ocr_results.data.empty())
         CreateCopyTextButton(m_inputs.ocr_results.data);
@@ -3092,12 +3100,8 @@ void ScreenshotTool::DrawBarDecodeTools()
     if (ImGui::Button(_("Extract Text")))
         RequestScan(ScanType::Barcode);
 
-    if (HasError(ectx, ZbarError::FailedToScan))
-    {
-        ImGui::SameLine();
-        ImGui::TextColored(Colors::RED, _("Failed to decode: %s"), GetError(ectx, ZbarError::FailedToScan).c_str());
-    }
-    else if (!m_inputs.zbar_scan_result.datas.empty() && ImGui::TreeNode(_("Details")))
+    if (!ShowIfError(ectx, ZbarError::FailedToScan) && !m_inputs.zbar_scan_result.datas.empty() &&
+        ImGui::TreeNode(_("Details")))
     {
         ImGui::TextUnformatted(_("Detected barcodes:"));
         for (const auto& [sym, count] : m_inputs.zbar_scan_result.symbologies)
@@ -3112,16 +3116,17 @@ void ScreenshotTool::DrawBarDecodeTools()
         ImGui::InputTextMultiline("##barcode_original",
                                   &m_inputs.barcode_original,
                                   ImVec2(-1, ImGui::GetTextLineHeight() * 8),
-                                  ImGuiInputTextFlags_ReadOnly);
+                                  ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_WordWrap);
         CreateCopyTextButton(m_inputs.barcode_original);
         ImGui::PopID();
         return;
     }
 #endif
-    ImGui::InputTextMultiline("##" OSHOT_TEXT_BARCODE,
-                              &m_inputs.barcode_text,
-                              ImVec2(-1, ImGui::GetTextLineHeight() * 8),
-                              g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly);
+    ImGui::InputTextMultiline(
+        "##" OSHOT_TEXT_BARCODE,
+        &m_inputs.barcode_text,
+        ImVec2(-1, ImGui::GetTextLineHeight() * 8),
+        ImGuiInputTextFlags_WordWrap | (g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly));
 
     if (!m_inputs.barcode_text.empty())
         CreateCopyTextButton(m_inputs.barcode_text);
@@ -4628,6 +4633,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
     static bool        has_downloaded = false;
     static std::string model_to_get   = "eng";
     static std::string prev_model;
+    bool               refit = false;  // the result below the button appeared or changed
 
     // Reset success banner when the user targets a different model
     if (prev_model != model_to_get)
@@ -4696,8 +4702,8 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         // Determine why the button should be disabled (if at all)
         const bool fields_filled =
             !m_inputs.ocr_download_repo.empty() && !model_to_get.empty() && !m_inputs.ocr_model_downloaded_path.empty();
-        const bool can_download = !m_ocr_download && fields_filled &&
-                                  !ectx.HasAny(OcrDownloadError::InvalidPath, OcrDownloadError::FailedToDownload);
+        // A failed download can be retried as it is, e.g. after a network error
+        const bool can_download = !m_ocr_download && fields_filled && !HasError(ectx, OcrDownloadError::InvalidPath);
 
         if (!can_download)
             ImGui::BeginDisabled();
@@ -4705,6 +4711,9 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         // Only show button when not already downloading
         if (ImGui::Button(_("Download"), ImVec2(-1, 0)))
         {
+            ClearError(ectx, OcrDownloadError::FailedToDownload);
+            has_downloaded = false;
+            refit          = true;
             std::vector<std::string> cmd{ "curl",
                                           "-fL",
                                           fmt::format("https://raw.githubusercontent.com/{}/main/{}.traineddata",
@@ -4770,14 +4779,12 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         if (!can_download && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
         {
             ImGui::BeginTooltip();
-            if (is_downloading)
+            if (m_ocr_download)  // also right after the click, before the thread marks itself running
                 ImGui::TextUnformatted(_("Download already in progress"));
             else if (!fields_filled)
                 ImGui::TextUnformatted(_("Fill all fields first"));
-            else if (HasError(ectx, OcrDownloadError::InvalidPath))
-                ImGui::TextUnformatted(_("Fix the destination path error first"));
             else
-                ImGui::TextUnformatted(_("A download error occurred — see error below"));
+                ImGui::TextUnformatted(_("Fix the destination path error first"));
             ImGui::EndTooltip();
         }
 
@@ -4831,13 +4838,35 @@ void ScreenshotTool::DrawDownloadOCRWindow()
                     RefreshOcrModels();
                 }
                 m_ocr_download.reset();
+                refit = true;
             }
         }
 
         ImGui::Spacing();
         ShowIfError(ectx, OcrDownloadError::FailedToDownload);
         if (has_downloaded && !HasError(ectx, OcrDownloadError::FailedToDownload))
+        {
             ImGui::TextColored((0x33D933FF_rgba), "%s", _("Downloaded successfully!"));
+
+            // The Model list only shows the OCR path's models, often a system folder oshot can't write to
+            std::error_code ec;
+            if (!fs::equivalent(m_inputs.ocr_path, m_inputs.ocr_model_downloaded_path, ec))
+            {
+                ImGui::TextWrapped("%s",
+                                   _("The OCR path is another folder, so the model isn't in the Model list yet."));
+                if (ImGui::Button(_("Use this folder")))
+                {
+                    m_inputs.ocr_path  = m_inputs.ocr_model_downloaded_path;
+                    m_inputs.ocr_model = model_to_get;
+                    RefreshOcrModels();
+                    refit = true;
+                }
+            }
+        }
+
+        // Its height was fitted when it opened, so grow it to show the error or the progress bar
+        if (refit)
+            ImGui::SetWindowSize(ImVec2(ImGui::GetWindowWidth(), 0.0f));
     }
     ImGui::End();  // even when Begin() returns false: collapsed or clipped
 
