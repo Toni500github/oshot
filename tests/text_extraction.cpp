@@ -144,7 +144,7 @@ static void check_ocr_group(const std::string_view prefix, const double max_cer)
 
 // Decode an image of the test set and check it gives exactly its payloads.
 // known_failure only changes what the progress line says
-static void check_barcode(ZbarAPI& zbar, const std::string& name, const bool known_failure = false)
+static void check_barcode(BarcodeAPI& scanner, const std::string& name, const bool known_failure = false)
 {
     const capture_result_t& img = load_image(data_dir / "barcode" / (name + ".png"));
 
@@ -158,7 +158,7 @@ static void check_barcode(ZbarAPI& zbar, const std::string& name, const bool kno
         want.insert(line);
     }
 
-    Result<zbar_result_t>           res   = zbar.ExtractTextsCapture(img);
+    Result<barcode_result_t>        res   = scanner.ExtractTextsCapture(img);
     const std::vector<std::string>& datas = res.ok() ? res.get().datas : std::vector<std::string>();
     std::multiset<std::string>      got(datas.begin(), datas.end());
 
@@ -177,12 +177,12 @@ static void check_barcode(ZbarAPI& zbar, const std::string& name, const bool kno
 
 static void check_barcode_group(const std::string_view prefix, const std::set<std::string_view>& skip = {})
 {
-    ZbarAPI                         zbar;
+    BarcodeAPI                      scanner;
     const std::vector<std::string>& names = list_images("barcode", prefix);
     REQUIRE_FALSE(names.empty());
     for (const std::string& name : names)
         if (!skip.contains(name))
-            check_barcode(zbar, name);
+            check_barcode(scanner, name);
 }
 
 // ------------------------------
@@ -298,7 +298,7 @@ TEST_CASE("Barcodes: images without codes decode nothing", "[barcode][neg]")
 // reads it the same), bar_ean13_tiny is an aliased render ZBar can't read at most scales
 TEST_CASE("Barcodes: known failures", "[barcode][!mayfail]")
 {
-    ZbarAPI zbar;
-    check_barcode(zbar, "bar_code39", true);
-    check_barcode(zbar, "bar_ean13_tiny", true);
+    BarcodeAPI scanner;
+    check_barcode(scanner, "bar_code39", true);
+    check_barcode(scanner, "bar_ean13_tiny", true);
 }

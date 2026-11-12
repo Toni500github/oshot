@@ -40,6 +40,7 @@
 #  include "imgui/imgui_impl_metal.h"
 
 #  undef fract1
+#  include "app.hpp"
 #  include "config.hpp"
 #  include "screen_capture.hpp"
 #  include "screenshot_tool.hpp"
@@ -47,8 +48,6 @@
 #  include "util.hpp"
 
 void apply_imgui_theme();
-void glfw_error_callback(int error, const char* description);
-void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
 
 GLFWwindow* window = nullptr;
 
@@ -106,9 +105,6 @@ static id<MTLTexture> create_metal_texture(id<MTLDevice> device, const uint8_t* 
 
     return tex;
 }
-
-bool app_quitting();  // main.cpp
-void request_quit();  // main.cpp
 
 int run_main_tool()
 {

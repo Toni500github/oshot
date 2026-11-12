@@ -26,6 +26,7 @@
 #include "platform.hpp"
 
 #if !OSHOT_METAL
+#  include "app.hpp"
 #  include "config.hpp"
 #  include "imgui/imgui.h"
 #  include "imgui/imgui_impl_glfw.h"
@@ -75,8 +76,6 @@ using namespace std::chrono_literals;
 GLFWwindow* window = nullptr;
 
 void apply_imgui_theme();
-void glfw_error_callback(int i_error, const char* description);
-void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
 
 // The GLFW monitor under the cursor, or the primary one if the cursor can't
 // be found (e.g. on Wayland without XWayland)
@@ -247,9 +246,6 @@ static void* dialog_parent_()
 #  endif
     return nullptr;
 }
-
-bool app_quitting();  // main.cpp
-void request_quit();  // main.cpp
 
 int run_main_tool()
 {

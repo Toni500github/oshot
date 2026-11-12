@@ -27,7 +27,6 @@
 #define _TEXT_EXTRACTION_HPP_
 
 #include <tesseract/publictypes.h>
-#include <zbar.h>
 
 #include <memory>
 #include <optional>
@@ -129,7 +128,7 @@ private:
 };
 
 // ------------------------------
-// Zbar (QR/Bar Codes)
+// Barcodes (QR and bar codes)
 // ------------------------------
 // A decoded code, with the box around its location points in the pixels of the scanned image
 struct barcode_t
@@ -139,36 +138,35 @@ struct barcode_t
     float       x = 0, y = 0, w = 0, h = 0;
 };
 
-struct zbar_result_t
+struct barcode_result_t
 {
     std::vector<std::string>             datas;        // decoded payloads, without duplicates
     std::unordered_map<std::string, int> symbologies;  // how many of each, e.g. "QRCODE", "EAN-13", ...
     std::vector<barcode_t>               codes;        // every code found, duplicates included
 };
 
-class ZbarAPI
+// The backend (ZBar) is chosen at build time and stays out of this header
+class BarcodeAPI
 {
 public:
     // Every symbology is enabled
-    ZbarAPI();
+    BarcodeAPI();
+    ~BarcodeAPI();
+
+    BarcodeAPI(const BarcodeAPI&)            = delete;
+    BarcodeAPI& operator=(const BarcodeAPI&) = delete;
 
     /**
      * Decode the QR codes and barcodes in an image. Also tries the inverted image
      * (light codes on dark) and, for small images, a 2x upscale
      * @param cap The RGBA image
      **/
-    Result<zbar_result_t> ExtractTextsCapture(const capture_result_t& cap);
-
-    /**
-     * Enable or disable a symbology
-     * @param zbar_code The symbology, or ZBAR_NONE for all of them
-     * @param enable 1 to enable it, 0 to disable it
-     * @return false if ZBar refused the setting
-     **/
-    bool SetConfig(zbar::zbar_symbol_type_e zbar_code, int enable);
+    Result<barcode_result_t> ExtractTextsCapture(const capture_result_t& cap);
 
 private:
-    zbar::ImageScanner m_scanner;
+    // The backend's state, defined in its source file
+    struct scanner_t;
+    std::unique_ptr<scanner_t> m_scanner;
 };
 
 #endif  // !_TEXT_EXTRACTION_HPP_

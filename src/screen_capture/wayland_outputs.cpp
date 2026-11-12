@@ -1,7 +1,6 @@
 #include <wayland-client.h>
 
 #include <array>
-#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <deque>

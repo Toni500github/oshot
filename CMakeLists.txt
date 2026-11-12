@@ -162,7 +162,7 @@ list(REMOVE_DUPLICATES LEPTONICA_INCLUDE_DIRS)
 message(STATUS "LEPTONICA_INCLUDE_DIRS after: ${LEPTONICA_INCLUDE_DIRS}")
 
 # Tesseract runs its LSTM on OpenMP threads, which makes it slower. The
-# OpenMP runtime lets text_extraction.cpp turn that off. macOS's Tesseract
+# OpenMP runtime lets src/text_extraction/ocr.cpp turn that off. macOS's Tesseract
 # (static, built with Apple clang) has no OpenMP
 if(NOT APPLE)
     find_package(OpenMP COMPONENTS CXX)
@@ -574,21 +574,28 @@ set(OSHOT_COMMON_SOURCES
     src/globals.cpp
     src/hotkey.cpp
     src/i18n.cpp
-    src/screen_capture.cpp
-    src/screenshot_tool.cpp
-    src/text_extraction.cpp
+    src/screen_capture/common.cpp
+    src/screenshot_tool/core.cpp
+    src/screenshot_tool/draw.cpp
+    src/screenshot_tool/input.cpp
+    src/screenshot_tool/preferences.cpp
+    src/screenshot_tool/subwindows.cpp
+    src/text_extraction/barcode_zbar.cpp
+    src/text_extraction/ocr.cpp
+    src/text_extraction/ocr_image.cpp
     src/util.cpp
     ${TRANSLATIONS_SOURCE}
 )
 
 # The plugin and oshotpm sources are compiled in too. globals.cpp makes a
-# StateManager and screenshot_tool.cpp loads plugins, while those sources need
+# StateManager and src/screenshot_tool/ loads plugins, while those sources need
 # oshot_common, so as libraries of their own they'd form a link cycle
 if(NOT DISABLE_PLUGINS)
     list(
         APPEND OSHOT_COMMON_SOURCES
         src/plugins.cpp
         src/plugins/oshot_plugins.cc
+        src/screenshot_tool/plugins.cpp
         oshotpm/src/manifest.cc
         oshotpm/src/plugin_index.cc
         oshotpm/src/plugin_manager.cc
@@ -616,8 +623,20 @@ if(APPLE)
     )
 endif()
 
+# The capture backends of this platform only
 if(UNIX AND NOT APPLE)
-    list(APPEND OSHOT_COMMON_SOURCES src/wl_get_monitors.cpp ${PROTOCOL_SOURCE})
+    list(
+        APPEND OSHOT_COMMON_SOURCES
+        src/screen_capture/kde.cpp
+        src/screen_capture/wayland.cpp
+        src/screen_capture/wayland_outputs.cpp
+        src/screen_capture/x11.cpp
+        ${PROTOCOL_SOURCE}
+    )
+elseif(APPLE)
+    list(APPEND OSHOT_COMMON_SOURCES src/screen_capture/macos.cpp)
+elseif(WIN32)
+    list(APPEND OSHOT_COMMON_SOURCES src/screen_capture/windows.cpp)
 endif()
 
 add_library(oshot_common ${OSHOT_COMMON_LIB_TYPE} ${OSHOT_COMMON_SOURCES})
@@ -736,6 +755,8 @@ endif()
 add_executable(
     ${PROJECT_NAME}
     src/main.cpp
+    src/app.cpp
+    src/cli.cpp
     src/main_tool_opengl3.cpp
     src/libs/getopt_port/getopt.c
 )

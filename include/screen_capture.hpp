@@ -98,48 +98,6 @@ enum class SessionType : std::uint8_t
 Result<capture_result_t> capture_full_screen(SessionType session);
 
 /**
- * Capture the monitor under the cursor with XGetImage() + XRandR.
- * Falls back to the xdg-desktop-portal
- **/
-Result<capture_result_t> capture_full_screen_x11();
-
-/**
- * Capture the whole desktop through the xdg-desktop-portal,
- * falling back to `grim` (wlroots compositors)
- **/
-Result<capture_result_t> capture_full_screen_wayland();
-
-/**
- * Capture under KDE Plasma. An X11 session goes through capture_full_screen_x11(),
- * Wayland tries capture_full_screen_kwin(), then `spectacle` if it's installed,
- * then capture_full_screen_wayland()
- **/
-Result<capture_result_t> capture_full_screen_kde();
-
-/**
- * Capture the monitor KWin considers active (by default the one under the cursor)
- * through KWin's org.kde.KWin.ScreenShot2 D-Bus interface, the call `spectacle -m` makes.
- * Before Plasma 6.8 KWin only answers executables whose installed desktop file lists
- * X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2 with an absolute Exec path
- **/
-Result<capture_result_t> capture_full_screen_kwin();
-
-/**
- * Capture the monitor under the cursor with KDE's `spectacle`.
- * Falls back to capture_full_screen_wayland()
- **/
-Result<capture_result_t> capture_full_screen_spectacle();
-
-/* Capture the monitor under the cursor with DXGI desktop duplication, falling back to GDI */
-Result<capture_result_t> capture_full_screen_windows();
-
-/**
- * Capture the display under the cursor with CoreGraphics.
- * macOS asks for the Screen Recording permission on first use
- **/
-Result<capture_result_t> capture_full_screen_macos();
-
-/**
  * Detect the platform and, on Linux and the BSDs, the desktop session.
  * KDE is only reported outside a Flatpak, which can't reach KWin's D-Bus interface
  * or run the host's spectacle

@@ -196,7 +196,7 @@ enum class OcrError : std::uint8_t
     COUNT
 };
 
-enum class ZbarError : std::uint8_t
+enum class BarcodeError : std::uint8_t
 {
     FailedToScan,
     COUNT,
@@ -260,8 +260,8 @@ struct inputs_results_t
     std::string  ocr_model_downloaded_path;  // where the OCR model downloader saves models
     ocr_result_t ocr_results;
 
-    std::string   barcode_text;
-    zbar_result_t zbar_scan_result;
+    std::string      barcode_text;
+    barcode_result_t barcode_scan_result;
 
     std::string ann_font;
     std::string resolved_ann_font_path;  // ann_font found by get_font_path()
@@ -700,12 +700,12 @@ private:
     std::atomic<bool>                     m_redraw_requested    = false;
 
     OcrAPI                          m_ocr_api;
-    ZbarAPI                         m_zbar_api;
+    BarcodeAPI                      m_barcode_api;
     inputs_results_t                m_inputs;
     std::shared_ptr<ocr_download_t> m_ocr_download;
     std::vector<std::string>        m_ocr_models_list;
     ErrorContext<OcrError>          m_ocr_errors;
-    ErrorContext<ZbarError>         m_zbar_errors;
+    ErrorContext<BarcodeError>      m_barcode_errors;
     ErrorContext<OcrDownloadError>  m_download_errors;
     ErrorContext<GeneralError>      m_general_errors;
 
