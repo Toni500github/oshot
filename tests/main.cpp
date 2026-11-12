@@ -13,6 +13,7 @@
 #include "platform.hpp"
 #include "spdlog/spdlog.h"
 #include "text_extraction.hpp"
+#include "util/paths.hpp"
 
 namespace fs = std::filesystem;
 

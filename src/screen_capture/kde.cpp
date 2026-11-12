@@ -47,7 +47,10 @@
 #include "spdlog/spdlog.h"
 #include "stb_image.h"
 #include "tiny-process-library/process.hpp"
-#include "util.hpp"
+#include "util/color.hpp"
+#include "util/image.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 using namespace spdlog;
 

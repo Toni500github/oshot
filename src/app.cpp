@@ -48,6 +48,11 @@
 #  include <malloc.h>
 #endif
 
+#if OSHOT_WINDOWS
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
+#endif
+
 #if OSHOT_TOOL_ON_MAIN_THREAD
 #  include <ranges>
 
@@ -66,6 +71,10 @@
 #include "tray.hpp"
 #include "tray_icon_png.h"
 #include "util.hpp"
+#include "util/dialogs.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
+#include "util/window.hpp"
 
 using namespace Tray;
 using namespace std::chrono_literals;
@@ -113,7 +122,7 @@ void exit_handler_nc()
 
     request_quit();
 
-    // Terminating GLFW under a running capture (e.g. die() from the worker
+    // Terminating GLFW under a running capture (e.g. dialog::die() from the worker
     // thread) would crash it instead of exiting
     if (!capture_active.load())
         extern_glfwTerminate();
@@ -160,7 +169,7 @@ int run_capture()
 
 void glfw_error_callback(int i_error, const char* description)
 {
-    error("GLFW Error {}: {}", i_error, description);
+    dialog::error("GLFW Error {}: {}", i_error, description);
 }
 
 void glfw_drop_callback(GLFWwindow*, int count, const char** paths)
@@ -274,7 +283,7 @@ static void sync_hotkey()
     const std::string& body = i18n::tr_fmt("{}\nPick another shortcut in Preferences, or set 'hotkey' in the config.",
                                            hk.ok() ? hotkey::status() : res.error_v());
     NvdNotification*   notif =
-        init_dialogs() ? nvd_notification_new(_("oshot: hotkey not set"), body.c_str(), NVD_NOTIFICATION_WARNING)
+        dialog::init() ? nvd_notification_new(_("oshot: hotkey not set"), body.c_str(), NVD_NOTIFICATION_WARNING)
                        : nullptr;
     if (notif)
     {
@@ -474,9 +483,9 @@ int run_tray()
 #endif
 
     // Set up dialogs here on the main thread, where the tray runs.
-    // The worker only reaches init_dialogs() once its overlay is on
+    // The worker only reaches dialog::init() once its overlay is on
     // screen, so this call gets there first and the worker's is a no-op.
-    init_dialogs();
+    dialog::init();
 
     // The white icon on a dark panel. Anywhere else, or when that can't be told,
     // the full-color one, since it shows on any panel
@@ -573,12 +582,12 @@ int run_tray()
     }
     else if (g_config->Runtime.only_launch_tray)
     {
-        die("Systray initialization failed");
+        dialog::die("Systray initialization failed");
     }
     else
     {
         // e.g. there's no StatusNotifier host. Still finish the capture the user asked for
-        warn("Systray initialization failed, exiting after the current capture");
+        dialog::warn("Systray initialization failed, exiting after the current capture");
 #if !OSHOT_TOOL_ON_MAIN_THREAD
         std::unique_lock lk(mtx);
         cv.wait(lk, [] { return quit.load() || (!do_capture && !capture_active.load()); });

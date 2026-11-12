@@ -49,7 +49,8 @@
 #  include "../src/plugins/oshot_plugin.h"
 #  include "dylib.hpp"
 #  include "toml_api.hpp"
-#  include "util.hpp"
+#  include "util/paths.hpp"
+#  include "util/result.hpp"
 
 class StateManager;
 struct capture_result_t;

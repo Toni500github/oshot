@@ -55,6 +55,13 @@
 #include "text_extraction.hpp"
 #include "tool_icons.h"
 #include "util.hpp"
+#include "util/color.hpp"
+#include "util/dialogs.hpp"
+#include "util/fonts.hpp"
+#include "util/image.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
+#include "util/window.hpp"
 #ifndef DISABLE_PLUGINS
 #  include "plugin.hpp"
 #endif
@@ -470,7 +477,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
 {
     Result<capture_result_t> cap = load_image_rgba(path);
     MUST_OK(cap, {
-        error("Failed to load image: {}", cap.error_v());
+        dialog::error("Failed to load image: {}", cap.error_v());
         return false;
     });
 
@@ -487,7 +494,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     const Result<ImTextureRef>& r =
         CreateTexture(m_texture_id._TexID, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
     MUST_OK(r, {
-        error("Failed to create openGL texture: {}", r.error_v());
+        dialog::error("Failed to create openGL texture: {}", r.error_v());
         return false;
     });
 

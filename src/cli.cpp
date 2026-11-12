@@ -53,6 +53,10 @@
 #include "text_extraction.hpp"
 #include "texts.hpp"
 #include "util.hpp"
+#include "util/dialogs.hpp"
+#include "util/image.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 // clang-format off
 // https://cfengine.com/blog/2021/optional-arguments-with-getopt-long/
@@ -68,7 +72,7 @@
 static void version()
 {
 #if OSHOT_WINDOWS
-    create_dialog("oshot version", NVD_DIALOG_SIMPLE, version_infos);
+    dialog::create("oshot version", NVD_DIALOG_SIMPLE, version_infos);
 #else
     fmt::print(FMT_COMPILE("{}"), version_infos);
     fmt::print("\n");
@@ -82,9 +86,9 @@ static void help(const std::string_view error = {})
 {
 #if OSHOT_WINDOWS
     if (!error.empty())
-        create_dialog("oshot", NVD_DIALOG_WARNING, fmt::format("{}\n\n{}", error, oshot_help));
+        dialog::create("oshot", NVD_DIALOG_WARNING, fmt::format("{}\n\n{}", error, oshot_help));
     else
-        create_dialog("oshot help", NVD_DIALOG_SIMPLE, std::string(oshot_help));
+        dialog::create("oshot help", NVD_DIALOG_SIMPLE, std::string(oshot_help));
 #else
     if (!error.empty())
         fmt::print("{}\n\n", error);
@@ -146,7 +150,7 @@ fs::path parse_config_path(int argc, char* argv[], const fs::path& configDir)
             case "extract-text"_fnv1a16:
             case "extract-barcode"_fnv1a16:
             case "selection"_fnv1a16:
-                disable_dialogs(); break;
+                dialog::disable(); break;
 
             case 'C':
                 config = optarg; break;
@@ -158,7 +162,7 @@ fs::path parse_config_path(int argc, char* argv[], const fs::path& configDir)
     }
 
     if (!fs::exists(config) && config != configDir / "config.toml")
-        die("config file '{}' doesn't exist", config.string());
+        dialog::die("config file '{}' doesn't exist", config.string());
     return config;
 }
 

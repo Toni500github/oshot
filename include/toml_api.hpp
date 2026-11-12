@@ -40,7 +40,9 @@
 #include <utility>
 #include <vector>
 
-#include "util.hpp"
+#include "util/dialogs.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 #define TOML_HEADER_ONLY 0
 #include "fmt/format.h"
@@ -280,7 +282,8 @@ public:
     {
         const size_t pos = opt.find('=');
         if (pos == std::string::npos)
-            die("Option to override '{}' doesn't have an equal sign '=' for separating name and value\n"
+            dialog::die(
+                "Option to override '{}' doesn't have an equal sign '=' for separating name and value\n"
                 "See --help for more information",
                 opt);
 
@@ -306,7 +309,8 @@ public:
         else if (value.starts_with('['))
             m_overrides[name] = { .value_type = ValueType::ArrayStr, .array_value = ParseArrayStr(name, value) };
         else
-            die("looks like override value '{}' from '{}' is neither a bool, int, string or array value "
+            dialog::die(
+                "looks like override value '{}' from '{}' is neither a bool, int, string or array value "
                 "(strings need quotes)",
                 value,
                 name);
@@ -453,14 +457,14 @@ private:
         }
         catch (const toml::parse_error& err)
         {
-            die("override value '{}' from '{}' is not a valid array: {}", value, name, err.description());
+            dialog::die("override value '{}' from '{}' is not a valid array: {}", value, name, err.description());
         }
 
         std::vector<std::string> ret;
         for (const toml::node& el : *tbl["v"].as_array())
         {
             if (!el.is_string())
-                die("override value '{}' from '{}' must be an array of strings", value, name);
+                dialog::die("override value '{}' from '{}' must be an array of strings", value, name);
             ret.push_back(**el.as_string());
         }
         return ret;

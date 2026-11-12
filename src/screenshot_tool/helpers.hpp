@@ -42,7 +42,9 @@
 #include "imgui/imgui_stdlib.h"
 #include "screenshot_tool.hpp"
 #include "tinyfiledialogs.h"
-#include "util.hpp"
+#include "util/color.hpp"
+#include "util/paths.hpp"
+#include "util/window.hpp"
 
 #ifdef DISABLE_PLUGINS
 #  define OSHOT_TEXT_OCR     "ocr_output"

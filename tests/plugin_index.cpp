@@ -12,7 +12,8 @@
 #include "fmt/format.h"
 #include "manifest.hh"
 #include "plugin.hpp"
-#include "util.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 using Catch::Matchers::ContainsSubstring;
 

@@ -11,6 +11,7 @@
 #include "catch2/catch_amalgamated.hpp"
 #include "common.hpp"
 #include "oshot/oshot_mock_host.h"
+#include "util/paths.hpp"
 
 extern "C" {
 const oshot_plugin_t* oshot_test_uppercase_entry(void);

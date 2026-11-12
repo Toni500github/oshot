@@ -37,7 +37,8 @@
 #include "platform.hpp"
 #include "screen_capture.hpp"
 #include "toml_api.hpp"
-#include "util.hpp"
+#include "util/image.hpp"
+#include "util/paths.hpp"
 
 class Config : public TomlAPI
 {

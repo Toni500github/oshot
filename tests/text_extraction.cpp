@@ -16,7 +16,9 @@
 #include "fmt/format.h"
 #include "screen_capture.hpp"
 #include "utf8.h"
-#include "util.hpp"
+#include "util/image.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 // The test set: ocr/<name>.png with its text in ocr/<name>.txt, and
 // barcode/<name>.png with one payload per line in barcode/<name>.txt

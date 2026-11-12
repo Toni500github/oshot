@@ -6,7 +6,9 @@
 
 #include "catch2/catch_amalgamated.hpp"
 #include "common.hpp"
-#include "util.hpp"
+#include "util/image.hpp"
+#include "util/paths.hpp"
+#include "util/strings.hpp"
 
 // What LoadConfigFile() makes of what GenerateConfig() wrote. The extension gets
 // uppercased, and a relative theme file ends up under the config folder

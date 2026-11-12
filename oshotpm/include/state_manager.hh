@@ -36,7 +36,8 @@
 
 #include "manifest.hh"
 #include "toml_api.hpp"
-#include "util.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 // The text transformer chain as state.toml's [text-transformers] stores it, by plugin ID
 struct text_transformers_t

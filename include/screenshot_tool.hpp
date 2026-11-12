@@ -53,6 +53,9 @@
 #include "screen_capture.hpp"
 #include "text_extraction.hpp"
 #include "util.hpp"
+#include "util/color.hpp"
+#include "util/image.hpp"
+#include "util/result.hpp"
 
 #ifndef DISABLE_PLUGINS
 #  include "plugin_index.hh"

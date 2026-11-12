@@ -35,7 +35,8 @@
 
 #include "platform.hpp"
 #include "toml_api.hpp"
-#include "util.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 // Platform name in manifests: build-steps-<platform>, dependencies.<platform>, platforms
 #if OSHOT_LINUX

@@ -33,7 +33,7 @@
 
 #include "platform.hpp"
 #include "screen_capture.hpp"
-#include "util.hpp"
+#include "util/result.hpp"
 
 #if OSHOT_FREEDESKTOP
 // Xlib's own typedef, so this header doesn't pull in Xlib and its macros

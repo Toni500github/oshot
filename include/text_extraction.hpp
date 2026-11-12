@@ -34,7 +34,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "util.hpp"
+#include "util/result.hpp"
 
 // ------------------------------
 // OCR (tesseract img2text)

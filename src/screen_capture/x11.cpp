@@ -37,7 +37,8 @@
 #include "backends.hpp"
 #include "screen_capture.hpp"
 #include "spdlog/spdlog.h"
-#include "util.hpp"
+#include "util/color.hpp"
+#include "util/result.hpp"
 
 using namespace spdlog;
 

@@ -66,7 +66,9 @@
 #include "spdlog/spdlog.h"
 #include "tiny-process-library/process.hpp"
 #include "toml_api.hpp"
-#include "util.hpp"
+#include "util/dialogs.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 #if !OSHOT_WINDOWS
 #  include <unistd.h>
@@ -649,7 +651,7 @@ static oshot_err_t send_notification(oshot_ctx_t*       ctx,
 {
     static std::mutex mutex;
     std::scoped_lock  lock(mutex);
-    if (!init_dialogs())
+    if (!dialog::init())
         return fail(ctx, err, OSHOT_ERR_UNSUPPORTED, func, "notifications aren't available");
 
     NvdNotification* notif = nvd_notification_new(title.c_str(), body.c_str(), NVD_NOTIFICATION_SIMPLE);

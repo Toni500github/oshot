@@ -53,6 +53,12 @@
 #include "screenshot_tool.hpp"
 #include "spdlog/spdlog.h"
 #include "util.hpp"
+#include "util/color.hpp"
+#include "util/fonts.hpp"
+#include "util/image.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
+#include "util/strings.hpp"
 #ifndef DISABLE_PLUGINS
 #  include "plugin.hpp"
 #  include "state_manager.hh"

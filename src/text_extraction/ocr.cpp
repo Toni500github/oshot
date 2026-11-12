@@ -57,7 +57,8 @@
 #include "screen_capture.hpp"
 #include "spdlog/spdlog.h"
 #include "text_extraction.hpp"
-#include "util.hpp"
+#include "util/result.hpp"
+#include "util/strings.hpp"
 
 #if defined(__GLIBC__)
 #  include <malloc.h>

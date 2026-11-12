@@ -35,7 +35,8 @@
 
 #include "fmt/format.h"
 #include "fmt/ranges.h"
-#include "util.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 static constexpr auto PLATFORMS = std::to_array<std::string_view>(
     { "all", "linux", "macos", "windows", "freebsd", "openbsd", "netbsd", "dragonfly" });

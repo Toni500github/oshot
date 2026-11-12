@@ -54,6 +54,10 @@
 #include "spdlog/spdlog.h"
 #include "text_extraction.hpp"
 #include "util.hpp"
+#include "util/color.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
+#include "util/window.hpp"
 #ifndef DISABLE_PLUGINS
 #  include "manifest.hh"
 #  include "plugin.hpp"

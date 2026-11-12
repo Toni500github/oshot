@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "catch2/catch_amalgamated.hpp"
-#include "util.hpp"
+#include "util/result.hpp"
 
 // An image whose every pixel says where it is: R, G = x, y and B, A = x / 256, y / 256
 static capture_result_t make_image(const int w, const int h)

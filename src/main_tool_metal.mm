@@ -46,6 +46,11 @@
 #  include "screenshot_tool.hpp"
 #  include "tool_icons.h"
 #  include "util.hpp"
+#  include "util/dialogs.hpp"
+#  include "util/fonts.hpp"
+#  include "util/image.hpp"
+#  include "util/result.hpp"
+#  include "util/window.hpp"
 
 void apply_imgui_theme();
 
@@ -152,11 +157,11 @@ int run_main_tool()
         const Result<bool>& saved = save_image(op, img, ext);
         if (!saved.ok())
         {
-            // The overlay stays open, and create_dialog() keeps the error in front of it
+            // The overlay stays open, and dialog::create() keeps the error in front of it
             if (op == SavingOp::Clipboard)
-                error("Failed to copy the image: {}", saved.error_v());
+                dialog::error("Failed to copy the image: {}", saved.error_v());
             else
-                error("Failed to save as {}: {}", g_config->File.image_out_type.first, saved.error_v());
+                dialog::error("Failed to save as {}: {}", g_config->File.image_out_type.first, saved.error_v());
             return false;
         }
         if (!saved.get())  // the save dialog was canceled, so go back to the overlay
@@ -174,12 +179,12 @@ int run_main_tool()
 
     // Before the window exists, so the screenshot is taken right away and without the overlay
     MUST_OK(g_ss_tool.Start(), {
-        error("Failed to start capture: {}", _r.error_v());
+        dialog::error("Failed to start capture: {}", _r.error_v());
         return EXIT_FAILURE;
     });
 
     // Set up dialogs only now that the screenshot is taken, so they can't delay it
-    init_dialogs();
+    dialog::init();
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -217,7 +222,7 @@ int run_main_tool()
     device = MTLCreateSystemDefaultDevice();
     if (!device)
     {
-        error("Metal is not supported on this device");
+        dialog::error("Metal is not supported on this device");
         glfwDestroyWindow(window);
         glfwTerminate();
         return EXIT_FAILURE;
@@ -226,7 +231,7 @@ int run_main_tool()
     commandQueue = [device newCommandQueue];
     if (!commandQueue)
     {
-        error("Failed to create Metal command queue");
+        dialog::error("Failed to create Metal command queue");
         glfwDestroyWindow(window);
         glfwTerminate();
         return EXIT_FAILURE;
@@ -260,7 +265,7 @@ int run_main_tool()
 
     // Start the overlay window
     MUST_OK(g_ss_tool.StartWindow(), {
-        error("Failed to start tool window: {}", _r.error_v());
+        dialog::error("Failed to start tool window: {}", _r.error_v());
         if (!g_is_systray)
             glfwTerminate();
         return EXIT_FAILURE;

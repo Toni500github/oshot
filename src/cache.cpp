@@ -31,6 +31,9 @@
 
 #include "spdlog/spdlog.h"
 #include "util.hpp"
+#include "util/dialogs.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 Cache::Cache(const std::string& cache_dir) : m_cache_dir_path(cache_dir)
 {
@@ -59,7 +62,7 @@ void Cache::CreateFile()
     ss << m_tbl;
 
     if (!SaveFile(ss.str(), mk_file_path))
-        error("Failed to write cache entry at path '{}'", mk_file_path);
+        dialog::error("Failed to write cache entry at path '{}'", mk_file_path);
 }
 
 Result<> Cache::LoadCacheFile()

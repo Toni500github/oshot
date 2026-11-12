@@ -9,6 +9,11 @@
 #include "catch2/catch_amalgamated.hpp"
 #include "common.hpp"
 #include "screen_capture.hpp"
+#include "util/color.hpp"
+#include "util/image.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
+#include "util/strings.hpp"
 
 using strings = std::vector<std::string>;
 

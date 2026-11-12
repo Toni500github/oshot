@@ -35,6 +35,12 @@
 #  include "screenshot_tool.hpp"
 #  include "spdlog/spdlog.h"
 #  include "util.hpp"
+#  include "util/dialogs.hpp"
+#  include "util/fonts.hpp"
+#  include "util/image.hpp"
+#  include "util/paths.hpp"
+#  include "util/result.hpp"
+#  include "util/window.hpp"
 #  if defined(IMGUI_IMPL_OPENGL_ES2)
 #    include <GLES2/gl2.h>
 #  endif
@@ -290,11 +296,11 @@ int run_main_tool()
         const Result<bool>& saved = save_image(op, img, ext);
         if (!saved.ok())
         {
-            // The overlay stays open, and create_dialog() keeps the error in front of it
+            // The overlay stays open, and dialog::create() keeps the error in front of it
             if (op == SavingOp::Clipboard)
-                error("Failed to copy the image: {}", saved.error_v());
+                dialog::error("Failed to copy the image: {}", saved.error_v());
             else
-                error("Failed to save as {}: {}", g_config->File.image_out_type.first, saved.error_v());
+                dialog::error("Failed to save as {}: {}", g_config->File.image_out_type.first, saved.error_v());
             return false;
         }
         if (!saved.get())  // the save dialog was canceled, so go back to the overlay
@@ -394,7 +400,7 @@ int run_main_tool()
     else
     {
         MUST_OK(g_ss_tool.Start(), {
-            error("Failed to start capture: {}", _r.error_v());
+            dialog::error("Failed to start capture: {}", _r.error_v());
             if (!g_is_systray)
                 glfwTerminate();
             return EXIT_FAILURE;
@@ -430,8 +436,8 @@ int run_main_tool()
     {
         const char* desc = nullptr;
         glfwGetError(&desc);
-        error("Failed to create the overlay window: {}\noshot needs OpenGL 3.0 or newer.",
-              desc ? desc : "unknown error");
+        dialog::error("Failed to create the overlay window: {}\noshot needs OpenGL 3.0 or newer.",
+                      desc ? desc : "unknown error");
         if (!g_is_systray)
             glfwTerminate();
         return EXIT_FAILURE;
@@ -444,7 +450,7 @@ int run_main_tool()
             // The dialog would try to hide the window first
             glfwDestroyWindow(window);
             window = nullptr;
-            error("Failed to start capture: {}", _r.error_v());
+            dialog::error("Failed to start capture: {}", _r.error_v());
             if (!g_is_systray)
                 glfwTerminate();
             return EXIT_FAILURE;
@@ -478,7 +484,7 @@ int run_main_tool()
 
     // Start the overlay window
     MUST_OK(g_ss_tool.StartWindow(), {
-        error("Failed to start tool window: {}", _r.error_v());
+        dialog::error("Failed to start tool window: {}", _r.error_v());
         if (!g_is_systray)
             glfwTerminate();
         return EXIT_FAILURE;

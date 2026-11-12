@@ -584,6 +584,13 @@ set(OSHOT_COMMON_SOURCES
     src/text_extraction/ocr.cpp
     src/text_extraction/ocr_image.cpp
     src/util.cpp
+    src/util/color.cpp
+    src/util/dialogs.cpp
+    src/util/fonts.cpp
+    src/util/image.cpp
+    src/util/paths.cpp
+    src/util/strings.cpp
+    src/util/window.cpp
     ${TRANSLATIONS_SOURCE}
 )
 

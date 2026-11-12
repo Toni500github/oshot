@@ -35,6 +35,7 @@
 #include "fmt/format.h"
 #include "toml_api.hpp"
 #include "util.hpp"
+#include "util/result.hpp"
 
 // Values remembered between runs, in cache.toml
 enum class CacheEntry : uint8_t

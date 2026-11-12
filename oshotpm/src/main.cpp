@@ -57,6 +57,9 @@
 #include "state_manager.hh"
 #include "texts.hpp"
 #include "util.hpp"
+#include "util/dialogs.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 /* If include before manifest.hpp
  * /usr/include/bits/getopt_core.h:91:12: error: declaration of ‘int getopt(int, char* const*, const char*) noexcept’ has a different exception specifier
@@ -436,7 +439,7 @@ static int oshotpm_main(int argc, char** argv)
     cb.confirm = [](const std::string_view prompt, bool default_answer) {
         if (options.install_shut_up)
             return default_answer;
-        return ask_user_yn(default_answer, "{}", prompt);
+        return dialog::ask_user_yn(default_answer, "{}", prompt);
     };
 
     PluginManager       plugin_manager(StateManager{}, cb, /*is_cli=*/true);
@@ -499,7 +502,8 @@ static int oshotpm_main(int argc, char** argv)
         case GEN_MANIFEST:
         {
             std::error_code ec;
-            if (fs::exists(MANIFEST_NAME, ec) && !ask_user_yn(false, "{} already exists. Overwrite it?", MANIFEST_NAME))
+            if (fs::exists(MANIFEST_NAME, ec) &&
+                !dialog::ask_user_yn(false, "{} already exists. Overwrite it?", MANIFEST_NAME))
                 return EXIT_FAILURE;
             auto f = fmt::output_file(MANIFEST_NAME, fmt::file::CREATE | fmt::file::WRONLY | fmt::file::TRUNC);
             f.print("{}", AUTO_MANIFEST);
@@ -530,7 +534,7 @@ static int oshotpm_main(int argc, char** argv)
 int main(int argc, char* argv[])
 {
     // It's a command line tool, so errors and questions go to the terminal, never to dialogs
-    disable_dialogs();
+    dialog::disable();
 
     // e.g. std::filesystem or fmt::output_file errors. Report them instead of std::terminate()
     try
@@ -539,7 +543,7 @@ int main(int argc, char* argv[])
     }
     catch (const std::exception& e)
     {
-        error("{}", e.what());
+        dialog::error("{}", e.what());
         return EXIT_FAILURE;
     }
 }

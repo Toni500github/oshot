@@ -29,7 +29,8 @@
 #include <cstdint>
 #include <string>
 
-#include "util.hpp"
+#include "util/image.hpp"
+#include "util/result.hpp"
 
 enum class SessionType : std::uint8_t;
 struct capture_result_t;

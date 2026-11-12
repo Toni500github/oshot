@@ -40,7 +40,11 @@
 #include "platform.hpp"
 
 #if OSHOT_WINDOWS
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
+// shellapi.h needs windows.h first
 #  include <process.h>
+#  include <shellapi.h>
 
 #  include "dylib.hpp"
 #else
@@ -63,6 +67,9 @@
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/spdlog.h"
 #include "util.hpp"
+#include "util/image.hpp"
+#include "util/paths.hpp"
+#include "util/window.hpp"
 
 // From ImGui's GLFW example: MSVC 2015+ needs it to link a glfw3.lib built with VS2010
 #if defined(_MSC_VER) && (_MSC_VER >= 1900) && !defined(IMGUI_DISABLE_WIN32_FUNCTIONS)

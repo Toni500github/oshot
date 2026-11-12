@@ -43,9 +43,17 @@
 #include "screen_capture.hpp"
 #include "spdlog/spdlog.h"
 #include "tiny-process-library/process.hpp"
-#include "util.hpp"
+#include "util/color.hpp"
+#include "util/result.hpp"
 
+// The order util.hpp used to include these in, before INITGUID
 #define WIN32_LEAN_AND_MEAN
+#include <combaseapi.h>
+#include <knownfolders.h>
+#include <shellapi.h>
+#include <shlobj.h>
+#include <windows.h>
+
 #define INITGUID
 #include <d3d11.h>
 #include <dxgi1_2.h>

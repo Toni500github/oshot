@@ -37,6 +37,11 @@
 #include "spdlog/spdlog.h"
 #include "texts.hpp"
 #include "util.hpp"
+#include "util/dialogs.hpp"
+#include "util/image.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
+#include "util/strings.hpp"
 
 using std::find;
 
@@ -92,7 +97,7 @@ void Config::SeedBundledModels(const fs::path& models_dir)
 
 void Config::LoadConfigFile(const std::string& filename)
 {
-    MUST_OK(LoadFile(filename), die("{}", _r.error_v()));
+    MUST_OK(LoadFile(filename), dialog::die("{}", _r.error_v()));
 
     // older versions wrote the misspelled "ocr-repo-downlaod" key
     const auto legacy_ocr_repo = GetValue<std::string>("default.ocr-repo-downlaod", "tesseract-ocr/tessdata");
@@ -170,7 +175,7 @@ void Config::LoadThemeFile(const std::string& filename)
     if (fs::exists(filename))
         MUST_OK(m_theme.LoadFile(filename), {
             m_theme.GetTbl().clear();
-            error("{}\nUsing the default theme.", _r.error_v());
+            dialog::error("{}\nUsing the default theme.", _r.error_v());
         });
 
     theme_overrides_t& ov = theme_overrides;
@@ -198,14 +203,14 @@ static fmt::ostream open_output_file(const std::string& filename)
     }
     catch (const std::system_error& err)
     {
-        die("Failed to write the file: {}", err.what());
+        dialog::die("Failed to write the file: {}", err.what());
     }
 }
 
 void Config::GenerateConfig(const std::string& filename, const bool force)
 {
     if (!force && fs::exists(filename) &&
-        !ask_user_yn(false, "WARNING: config file '{}' already exists. Do you want to overwrite it?", filename))
+        !dialog::ask_user_yn(false, "WARNING: config file '{}' already exists. Do you want to overwrite it?", filename))
         std::exit(1);
 
     auto f = open_output_file(filename);
@@ -252,7 +257,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
 void Config::GenerateTheme(const std::string& filename, const bool force)
 {
     if (!force && fs::exists(filename) &&
-        !ask_user_yn(false, "WARNING: theme file '{}' already exists. Do you want to overwrite it?", filename))
+        !dialog::ask_user_yn(false, "WARNING: theme file '{}' already exists. Do you want to overwrite it?", filename))
         std::exit(1);
 
     CdGuard guard(m_config_dir_path);

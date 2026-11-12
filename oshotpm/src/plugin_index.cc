@@ -42,6 +42,9 @@
 #include "plugin.hpp"
 #include "tiny-process-library/process.hpp"
 #include "toml_api.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
+#include "util/strings.hpp"
 
 // NOLINTBEGIN(modernize-avoid-c-arrays)
 static constexpr char const DEFAULT_INDEX_URL[] = "https://toni500github.github.io/oshot-plugin-index/index.toml";

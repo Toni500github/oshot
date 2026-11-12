@@ -39,6 +39,10 @@
 #include "config.hpp"
 #include "platform.hpp"
 #include "screen_capture.hpp"
+#include "util/image.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
+#include "util/strings.hpp"
 
 #if !OSHOT_WINDOWS
 #  include <unistd.h>  // write() and close(), compiled in on every platform

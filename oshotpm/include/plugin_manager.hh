@@ -36,7 +36,8 @@
 
 #include "plugin_index.hh"
 #include "state_manager.hh"
-#include "util.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 struct manifest_t;
 struct plugin_t;

@@ -48,7 +48,8 @@
 #include "tinygettext/log.hpp"
 #include "tinygettext/plural_forms.hpp"
 #include "tinygettext/po_parser.hpp"
-#include "util.hpp"
+#include "util/paths.hpp"
+#include "util/strings.hpp"
 
 #if OSHOT_WINDOWS
 #  include <windows.h>

@@ -54,6 +54,12 @@
 #include "text_extraction.hpp"
 #include "tinyfiledialogs.h"
 #include "util.hpp"
+#include "util/color.hpp"
+#include "util/fonts.hpp"
+#include "util/image.hpp"
+#include "util/result.hpp"
+#include "util/strings.hpp"
+#include "util/window.hpp"
 #ifndef DISABLE_PLUGINS
 #  include "plugin.hpp"
 #endif

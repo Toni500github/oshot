@@ -59,7 +59,8 @@
 #  include "spdlog/spdlog.h"
 #  include "state_manager.hh"
 #  include "toml_api.hpp"
-#  include "util.hpp"
+#  include "util/paths.hpp"
+#  include "util/result.hpp"
 
 using namespace std::chrono_literals;
 

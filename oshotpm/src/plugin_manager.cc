@@ -43,6 +43,8 @@
 #include "plugin.hpp"
 #include "spdlog/spdlog.h"
 #include "tiny-process-library/process.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 using namespace std::chrono_literals;
 

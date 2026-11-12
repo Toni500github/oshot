@@ -34,6 +34,8 @@
 
 #include "manifest.hh"
 #include "spdlog/spdlog.h"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 static constexpr std::string_view STATE_HEADER =
     "# Installed oshot plugins, written by oshot and oshotpm.\n"

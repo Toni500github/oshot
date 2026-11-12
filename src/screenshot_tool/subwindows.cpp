@@ -54,6 +54,11 @@
 #include "spdlog/spdlog.h"
 #include "tiny-process-library/process.hpp"
 #include "util.hpp"
+#include "util/color.hpp"
+#include "util/dialogs.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
+#include "util/window.hpp"
 
 // ------------------------------
 // Windows
@@ -482,7 +487,7 @@ void ScreenshotTool::DrawLogsWindow()
                 {
                     if (ImGui::MenuItem(_("Copy line")))
                         MUST_OK(g_clipboard.CopyText(std::string(msg.payload.data(), msg.payload.size())),
-                                error("Failed to copy line log: {}", _r.error_v()));
+                                dialog::error("Failed to copy line log: {}", _r.error_v()));
                     ImGui::EndPopup();
                 }
             }
@@ -493,7 +498,7 @@ void ScreenshotTool::DrawLogsWindow()
             std::string all_text;
             for (const auto* msg : shown)
                 all_text += fmt::format("[{}] {}\n", level_tag(msg->level), msg->payload);
-            MUST_OK(g_clipboard.CopyText(all_text), error("Failed to copy logs: {}", _r.error_v()));
+            MUST_OK(g_clipboard.CopyText(all_text), dialog::error("Failed to copy logs: {}", _r.error_v()));
         }
 
         if (autoscroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
@@ -564,7 +569,7 @@ void ScreenshotTool::DrawOutputMenuSelection()
     {
         m_show_window.Clear(SubWindow::OutputMenuSelection);
         MUST_OK(g_ss_tool.CropToOutput(layout, target, trans_sel),
-                error("Crop to focused monitor failed: {}", _r.error_v()));
+                dialog::error("Crop to focused monitor failed: {}", _r.error_v()));
     }
     ImGui::EndDisabled();
 

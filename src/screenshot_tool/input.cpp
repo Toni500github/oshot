@@ -41,6 +41,8 @@
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "util.hpp"
+#include "util/color.hpp"
+#include "util/image.hpp"
 
 // ------------------------------
 // Input

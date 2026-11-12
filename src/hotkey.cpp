@@ -32,6 +32,8 @@
 
 #include "fmt/format.h"
 #include "platform.hpp"
+#include "util/result.hpp"
+#include "util/strings.hpp"
 
 #if OSHOT_HAS_GLOBAL_HOTKEY
 #  include "i18n.hpp"

@@ -42,6 +42,7 @@
 #include "screenshot_tool.hpp"
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "util.hpp"
+#include "util/paths.hpp"
 #include "version.h"
 
 // Definitions of the extern globals.

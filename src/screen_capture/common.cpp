@@ -38,6 +38,7 @@
 #include "platform.hpp"
 #include "screen_capture.hpp"
 #include "util.hpp"
+#include "util/result.hpp"
 
 #if !OSHOT_WINDOWS
 #  include <unistd.h>

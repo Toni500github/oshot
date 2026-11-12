@@ -38,7 +38,8 @@
 #include <string_view>
 #include <vector>
 
-#include "util.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
 // A prebuilt file of a version, either a bare library or an archive
 struct index_artifact_t

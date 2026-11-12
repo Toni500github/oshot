@@ -33,7 +33,8 @@
 
 #include "screen_capture.hpp"
 #include "text_extraction.hpp"
-#include "util.hpp"
+#include "util/image.hpp"
+#include "util/result.hpp"
 
 // ------------------------------
 // Barcodes (ZBar)
