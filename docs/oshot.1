@@ -45,7 +45,8 @@ Has no effect with \fB\-f\fR.
 .BR \-\-instant\-copy ", " \-\-instant\-save [=\fIDIR\fR]
 Copy or save the selection as soon as it is made. With \fIDIR\fR, save it
 there without asking, named after the \fBimage-out-fmt\fR option; \fIDIR\fR is
-created if it doesn't exist.
+created if it doesn't exist. An existing file is never replaced: the name gets
+a "_2", "_3"... suffix instead.
 .TP
 .B \-\-extract\-text
 Print the text of the screenshot, or of the \fB\-f\fR image, recognized with OCR,

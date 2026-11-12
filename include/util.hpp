@@ -963,7 +963,8 @@ std::vector<uint8_t> encode_to_image(const capture_result_t& cap, ImageExt ext);
 Result<> write_image_file(const std::string& path, const capture_result_t& img, ImageExt ext);
 
 /**
- * Write an image in a directory, named after the image-out-fmt option
+ * Write an image in a directory, named after the image-out-fmt option.
+ * An existing file is never replaced, the name gets a "_2", "_3"... suffix instead
  * @param dir The directory, created if missing
  * @param img The RGBA image
  * @param ext The format to encode to

@@ -146,6 +146,10 @@ Result<capture_result_t> capture_full_screen_macos();
  **/
 SessionType get_session_type();
 
+#if OSHOT_FREEDESKTOP
+bool kde_on_wayland();
+#endif
+
 // ------------------------------
 // Image operations
 // ------------------------------

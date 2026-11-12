@@ -27,6 +27,7 @@
 #include <array>
 #include <atomic>
 #include <cerrno>
+#include <charconv>
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
@@ -134,83 +135,95 @@ static void version()
     std::exit(EXIT_SUCCESS);
 }
 
-// Show the help, then exit with 1 after an invalid option, else 0
-static void help(const bool invalid_opt = false, const std::string_view bad_opt = {})
+// Show the help, then exit with 1 after a command line error, else 0
+static void help(const std::string_view error = {})
 {
 #if OSHOT_WINDOWS
-    if (invalid_opt)
-        create_dialog("oshot", NVD_DIALOG_WARNING, fmt::format("Invalid option '{}'\n\n{}", bad_opt, oshot_help));
+    if (!error.empty())
+        create_dialog("oshot", NVD_DIALOG_WARNING, fmt::format("{}\n\n{}", error, oshot_help));
     else
         create_dialog("oshot help", NVD_DIALOG_SIMPLE, std::string(oshot_help));
 #else
-    if (invalid_opt)
-        fmt::print("Invalid option: {}\n\n", bad_opt);
+    if (!error.empty())
+        fmt::print("{}\n\n", error);
     fmt::print(FMT_COMPILE("{}"), oshot_help);
     fmt::print("\n");
 #endif
 
-    std::exit(invalid_opt);
+    std::exit(!error.empty());
+}
+
+// What getopt_long() just rejected. After a missing argument optind is past the
+// last argument (POSIX), so it can't index argv
+static std::string bad_option_error(const int argc, char* argv[])
+{
+    const std::string opt =
+        optopt != 0 ? fmt::format("-{}", char(optopt)) : std::string(argv[std::min(optind, argc) - 1]);
+    if (optind > argc)
+        return fmt::format("Option {} needs an argument", opt);
+    return fmt::format("Invalid option: {}", opt);
 }
 
 // clang-format off
 // NOLINTBEGIN
-// parseargs() for only the config path, so Config can be constructed
-// before the other options are parsed
+// Both passes need the whole table, or the first one would stop at the argument of an option it doesn't know
+static const char* const optstring = "-Vhtgd:C:f:O:";
+static const struct option opts[] = {
+    {"version", no_argument,       0, 'V'},
+    {"help",    no_argument,       0, 'h'},
+    {"tray",    no_argument,       0, 't'},
+    {"gui",     no_argument,       0, 'g'},
+    {"delay",   required_argument, 0, 'd'},
+    {"config",  required_argument, 0, 'C'},
+    {"source",  required_argument, 0, 'f'},
+    {"override",required_argument, 0, 'O'},
+
+    {"instant-save",    optional_argument, 0, "instant-save"_fnv1a16},
+    {"instant-copy",    no_argument,       0, "instant-copy"_fnv1a16},
+    {"extract-text",    no_argument,       0, "extract-text"_fnv1a16},
+    {"extract-barcode", no_argument,       0, "extract-barcode"_fnv1a16},
+    {"selection",       required_argument, 0, "selection"_fnv1a16},
+    {"gen-config",      optional_argument, 0, "gen-config"_fnv1a16},
+
+    {0,0,0,0}
+};
+
+// First pass over the options, before Config is constructed: the config path, and whether this
+// is a script run (--extract-*, --selection), which reports errors on stderr and never in a dialog
 static fs::path parse_config_path(int argc, char* argv[], const fs::path& configDir)
 {
     int opt = 0;
     int option_index = 0;
-    opterr = 0;
-    const char *optstring = "-C:";
-    static const struct option opts[] = {
-        {"config", required_argument, 0, 'C'},
-        {0,0,0,0}
-    };
+    fs::path config = configDir / "config.toml";
 
+    optind = 1;
     while ((opt = getopt_long(argc, argv, optstring, opts, &option_index)) != -1)
     {
         switch (opt)
         {
-            // skip errors or anything else
-            case 0:
-            case '?':
-                break;
+            case "extract-text"_fnv1a16:
+            case "extract-barcode"_fnv1a16:
+            case "selection"_fnv1a16:
+                disable_dialogs(); break;
 
             case 'C':
-                if (!fs::exists(optarg))
-                    die("config file '{}' doesn't exist", optarg);
-                return optarg;
+                config = optarg; break;
+
+            // everything else, errors included, is for parseargs()
+            default:
+                break;
         }
     }
 
-    return configDir / "config.toml";
+    if (!fs::exists(config) && config != configDir / "config.toml")
+        die("config file '{}' doesn't exist", config.string());
+    return config;
 }
 
 static bool parseargs(int argc, char* argv[], const fs::path& configFile)
 {
     int opt = 0;
     int option_index = 0;
-    opterr = 1; // re-enable the "invalid option" errors parse_config_path() turned off
-    const char *optstring = "-Vhtgd:C:f:O:";
-    static const struct option opts[] = {
-        {"version", no_argument,       0, 'V'},
-        {"help",    no_argument,       0, 'h'},
-        {"tray",    no_argument,       0, 't'},
-        {"gui",     no_argument,       0, 'g'},
-        {"delay",   required_argument, 0, 'd'},
-        {"config",  required_argument, 0, 'C'},
-        {"source",  required_argument, 0, 'f'},
-        {"override",required_argument, 0, 'O'},
-
-        {"instant-save",    optional_argument, 0, "instant-save"_fnv1a16},
-        {"instant-copy",    no_argument,       0, "instant-copy"_fnv1a16},
-        {"extract-text",    no_argument,       0, "extract-text"_fnv1a16},
-        {"extract-barcode", no_argument,       0, "extract-barcode"_fnv1a16},
-        {"selection",       required_argument, 0, "selection"_fnv1a16},
-        {"gen-config",      optional_argument, 0, "gen-config"_fnv1a16},
-
-        {0,0,0,0}
-    };
 
     /* parse operation */
     optind = 1;
@@ -222,7 +235,8 @@ static bool parseargs(int argc, char* argv[], const fs::path& configFile)
             case 'C':
                 break;
             case '?':
-                help(true, argv[optind - 1]); break;
+            case ':':
+                help(bad_option_error(argc, argv)); break;
 
             case 'V':
                 version(); break;
@@ -233,7 +247,12 @@ static bool parseargs(int argc, char* argv[], const fs::path& configFile)
             case 'O':
                 g_config->OverrideOption(optarg); break;
             case 'd':
-                g_config->OverrideOption("default.delay", std::atoi(optarg)); break;
+                if (int delay = -1;
+                    std::from_chars(optarg, optarg + strlen(optarg), delay).ec == std::errc() && delay >= 0)
+                    g_config->OverrideOption("default.delay", delay);
+                else
+                    help(fmt::format("Invalid delay '{}', expected milliseconds", optarg));
+                break;
             case 't':
                 g_config->Runtime.only_launch_tray = true; break;
             case 'g':
@@ -501,7 +520,7 @@ static int run_without_overlay()
         return EXIT_SUCCESS;
     }
 
-    fmt::print("{}", joined);
+    fmt::println("{}", joined);
     return EXIT_SUCCESS;
 }
 
@@ -935,7 +954,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
 
     g_config->LoadConfigFile(configFile);
     {
-        fs::path p(g_config->File.theme_file_path);
+        fs::path p(g_config->GetThemeFilePath());
         if (fs::exists(p) && p.has_filename())
             g_config->LoadThemeFile(p.string());
     }

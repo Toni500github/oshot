@@ -549,14 +549,22 @@ Result<std::string> save_image_to_dir(const fs::path& dir, const capture_result_
     const Result<std::string>& name = get_config_image_out_fmt();
     TRY(name);
 
-    std::error_code err;
-    fs::create_directories(dir, err);
-    if (err)
-        return Err("Failed to create the folder {}: {}", dir.string(), err.message());
+    // image-out-fmt may add folders of its own
+    const fs::path  base   = dir / name.get();
+    const fs::path& folder = base.parent_path();
 
-    const std::string path = (dir / name.get()).string();
-    TRY(write_image_file(path, img, ext));
-    return Ok(path);
+    std::error_code err;
+    fs::create_directories(folder, err);
+    if (err)
+        return Err("Failed to create the folder {}: {}", folder.string(), err.message());
+
+    // The default name changes once a minute, so a second save in the same minute gets "_2" and so on
+    fs::path path = base;
+    for (int n = 2; fs::exists(path, err); ++n)
+        path = folder / fmt::format("{}_{}{}", base.stem().string(), n, base.extension().string());
+
+    TRY(write_image_file(path.string(), img, ext));
+    return Ok(path.string());
 }
 
 Result<> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)

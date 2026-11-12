@@ -26,8 +26,7 @@
 #ifndef _TOML_API_HPP_
 #define _TOML_API_HPP_
 
-#include <algorithm>
-#include <cctype>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -293,18 +292,24 @@ public:
         if (name.find('.') == name.npos)
             name.insert(0, "default.");
 
+        int int_value = 0;
         if (value == "true")
             m_overrides[name] = { .value_type = ValueType::Bool, .bool_value = true };
         else if (value == "false")
             m_overrides[name] = { .value_type = ValueType::Bool, .bool_value = false };
-        else if ((value[0] == '"' && value.back() == '"') || (value[0] == '\'' && value.back() == '\''))
+        else if (value.size() >= 2 &&
+                 ((value[0] == '"' && value.back() == '"') || (value[0] == '\'' && value.back() == '\'')))
             m_overrides[name] = { .value_type = ValueType::String, .string_value = value.substr(1, value.size() - 2) };
-        else if (std::ranges::all_of(value, ::isdigit))
-            m_overrides[name] = { .value_type = ValueType::Int, .int_value = std::stoi(value) };
-        else if (value[0] == '[')
+        else if (const auto res = std::from_chars(value.data(), value.data() + value.size(), int_value);
+                 res.ec == std::errc() && res.ptr == value.data() + value.size())
+            m_overrides[name] = { .value_type = ValueType::Int, .int_value = int_value };
+        else if (value.starts_with('['))
             m_overrides[name] = { .value_type = ValueType::ArrayStr, .array_value = ParseArrayStr(name, value) };
         else
-            die("looks like override value '{}' from '{}' is neither a bool, int, string or array value", value, name);
+            die("looks like override value '{}' from '{}' is neither a bool, int, string or array value "
+                "(strings need quotes)",
+                value,
+                name);
     }
 
     /**

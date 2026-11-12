@@ -444,12 +444,17 @@ static void warn_kwin_not_authorized()
                  exe.string());
 }
 
+bool kde_on_wayland()
+{
+    const char* type    = std::getenv("XDG_SESSION_TYPE");
+    const char* wayland = std::getenv("WAYLAND_DISPLAY");
+    return !(type && strcmp(type, "x11") == 0) && wayland && wayland[0] != '\0';
+}
+
 Result<capture_result_t> capture_full_screen_kde()
 {
     // XGetImage needs neither KWin's permission nor spectacle
-    const char* type    = std::getenv("XDG_SESSION_TYPE");
-    const char* wayland = std::getenv("WAYLAND_DISPLAY");
-    if ((type && strcmp(type, "x11") == 0) || !wayland || wayland[0] == '\0')
+    if (!kde_on_wayland())
         return capture_full_screen_x11();
 
     Result<capture_result_t> res = capture_full_screen_kwin();

@@ -2154,6 +2154,9 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
     Result<ocr_result_t> result = m_ocr_api.ExtractTextCapture(img);
     if (!result.ok())
     {
+        // Don't leave the previous selection's text under the error, where Copy Text would still copy it
+        m_inputs.ocr_results = {};
+        m_inputs.ocr_original.clear();
         SetError(ectx, OcrError::FailedToOCR, result.error_v());
 #ifndef DISABLE_PLUGINS
         NotifyPluginsOfOcr(nullptr);
@@ -2176,6 +2179,9 @@ void ScreenshotTool::RunBarcodeScan(const capture_result_t& img)
     Result<zbar_result_t> scan = m_zbar_api.ExtractTextsCapture(img);
     if (!scan.ok())
     {
+        m_inputs.zbar_scan_result = {};
+        m_inputs.barcode_text.clear();
+        m_inputs.barcode_original.clear();
         SetError(ectx, ZbarError::FailedToScan, scan.error_v());
 #ifndef DISABLE_PLUGINS
         for (auto& [id, rt] : g_plugins)
@@ -3830,17 +3836,8 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     HelpMarker(
         _("Full path to the theme file (theme.toml by default), or relative to the config directory. Supports "
           "drag-and-drop."));
-    draw_input_text_file(
-        "",
-        "##config_theme_file_path",
-        toml_filters,
-        [&] {
-            std::string& s = g_config->File.theme_file_path;
-            if (fs::path(s).is_relative())
-                s.insert(0, g_config->GetConfigDirPath());
-        },
-        g_config->File.theme_file_path);
-    if (!fs::exists(g_config->File.theme_file_path))
+    draw_input_text_file("", "##config_theme_file_path", toml_filters, nullptr, g_config->File.theme_file_path);
+    if (!fs::exists(g_config->GetThemeFilePath()))
         ImGui::TextColored((0xff7444FF_rgba), "%s", _("File doesn't exist, fallback to default hardcoded theme"));
     ImGui::Spacing();
 
@@ -4431,7 +4428,7 @@ void ScreenshotTool::DrawPreferencesWindow()
             g_config->LoadConfigFile(g_config->GetConfigPath());
             SyncRuntimeFromConfig();
             if (!g_config->File.theme_file_path.empty())
-                g_config->LoadThemeFile(g_config->File.theme_file_path);
+                g_config->LoadThemeFile(g_config->GetThemeFilePath());
             apply_imgui_theme();
             config_snapshot = g_config->File;
             theme_snapshot  = g_config->theme_overrides;
@@ -4441,8 +4438,8 @@ void ScreenshotTool::DrawPreferencesWindow()
         {
             if (!g_config->File.theme_file_path.empty())
             {
-                g_config->GenerateTheme(g_config->File.theme_file_path, true);
-                g_config->LoadThemeFile(g_config->File.theme_file_path);
+                g_config->GenerateTheme(g_config->GetThemeFilePath(), true);
+                g_config->LoadThemeFile(g_config->GetThemeFilePath());
                 color_name_map().clear();
             }
             else

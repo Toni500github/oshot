@@ -206,6 +206,12 @@ public:
      **/
     void GenerateTheme(const std::string& filename, const bool force = false);
 
+    /**
+     * The theme-file option as a full path. The option itself keeps what the user wrote,
+     * often relative to the config directory, so the config file stays that way when saved
+     **/
+    [[nodiscard]] std::string GetThemeFilePath() const;
+
     [[nodiscard]] const std::string& GetConfigPath() const { return m_config_path; }
     [[nodiscard]] const std::string& GetConfigDirPath() const { return m_config_dir_path; }
 

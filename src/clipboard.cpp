@@ -51,12 +51,22 @@
 #  include <thread>
 #endif
 
+static bool wayland_clipboard(SessionType session)
+{
+#if OSHOT_FREEDESKTOP
+    return session == SessionType::Wayland || (session == SessionType::KDE && kde_on_wayland());
+#else
+    return false;
+#endif
+}
+
 // Starts wl-copy/xclip in the background and returns the write end of its stdin pipe.
 // The one started before exits by itself once this one takes the selection
 Result<int> start_linux_copy(SessionType session, const std::string& mime_type)
 {
 #if OSHOT_FREEDESKTOP
-    const char* tool = (session == SessionType::Wayland) ? "wl-copy" : "xclip";
+    const bool  wayland = wayland_clipboard(session);
+    const char* tool    = wayland ? "wl-copy" : "xclip";
     if (which(tool) == UNKNOWN)
         return Err("{} not found in PATH, please install it to enable clipboard support", tool);
 
@@ -74,7 +84,7 @@ Result<int> start_linux_copy(SessionType session, const std::string& mime_type)
         dup2(copy_pipe[0], STDIN_FILENO);
         close(copy_pipe[0]);
 
-        if (session == SessionType::Wayland)
+        if (wayland)
         {
             std::array<const char*, 5> args{ tool, "--foreground", "--type", mime_type.data(), nullptr };
             execvp(tool, const_cast<char* const*>(args.data()));
@@ -108,9 +118,9 @@ Result<int> start_linux_copy(SessionType session, const std::string& mime_type)
 
 Result<> Clipboard::CopyText(const std::string& text)
 {
-    if (m_session == SessionType::Wayland || m_session == SessionType::X11)
+    if (m_session != SessionType::Windows && m_session != SessionType::MacOS)
     {
-        const char*        mime = (m_session == SessionType::X11) ? "UTF8_STRING" : "text/plain;charset=utf-8";
+        const char*        mime = wayland_clipboard(m_session) ? "text/plain;charset=utf-8" : "UTF8_STRING";
         const Result<int>& res  = start_linux_copy(m_session, mime);
         TRY(res);
 
@@ -139,7 +149,7 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap, ImageExt ext)
     if (cap.w <= 0 || cap.h <= 0)
         return Err("Image size is empty");
 
-    if (m_session == SessionType::Wayland || m_session == SessionType::X11)
+    if (m_session != SessionType::Windows && m_session != SessionType::MacOS)
     {
         const Result<int>& res =
             start_linux_copy(m_session, "image/" + str_tolower(g_config->File.image_out_type.first));

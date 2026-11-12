@@ -10,11 +10,9 @@
 
 // What LoadConfigFile() makes of what GenerateConfig() wrote. The extension gets
 // uppercased, and a relative theme file ends up under the config folder
-static Config::config_file_t as_loaded(Config::config_file_t file, const fs::path& dir)
+static Config::config_file_t as_loaded(Config::config_file_t file)
 {
     file.image_out_type.first = str_toupper(file.image_out_type.first);
-    if (fs::path(file.theme_file_path).is_relative())
-        file.theme_file_path = dir.string() + DIR_SEP_STR + file.theme_file_path;
     return file;
 }
 
@@ -68,7 +66,7 @@ TEST_CASE("Config: the generated config loads back the same", "[config]")
         Config loaded(file, dir);
         loaded.LoadConfigFile(file.string());
 
-        Config::config_file_t want = as_loaded(written.File, dir);
+        Config::config_file_t want = as_loaded(written.File);
         if (const char* env = std::getenv("TESSDATA_PREFIX"))
             want.ocr_path = env;  // the default config-over-env = false lets it win
         check_same(loaded.File, want);
@@ -111,7 +109,7 @@ TEST_CASE("Config: the generated config loads back the same", "[config]")
 
         Config loaded(file, dir);
         loaded.LoadConfigFile(file.string());
-        check_same(loaded.File, as_loaded(written.File, dir));
+        check_same(loaded.File, as_loaded(written.File));
     }
 
     SECTION("An absolute theme file is kept as it is")
@@ -123,6 +121,19 @@ TEST_CASE("Config: the generated config loads back the same", "[config]")
         Config loaded(file, dir);
         loaded.LoadConfigFile(file.string());
         CHECK(loaded.File.theme_file_path == written.File.theme_file_path);
+        CHECK(loaded.GetThemeFilePath() == written.File.theme_file_path);
+    }
+
+    SECTION("A relative theme file stays relative, and resolves against the config folder")
+    {
+        Config written(file, dir);
+        written.File.theme_file_path = "mytheme.toml";
+        written.GenerateConfig(file.string(), true);
+
+        Config loaded(file, dir);
+        loaded.LoadConfigFile(file.string());
+        CHECK(loaded.File.theme_file_path == "mytheme.toml");
+        CHECK(fs::path(loaded.GetThemeFilePath()) == dir / "mytheme.toml");
     }
 }
 

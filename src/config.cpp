@@ -146,13 +146,14 @@ void Config::LoadConfigFile(const std::string& filename)
     File.image_out_size_fmt = GetValue<std::string>("default.image-out-size-ind", "auto");
     if (std::ranges::find(prefixes, File.image_out_size_fmt) == prefixes.end())
         File.image_out_size_fmt = "auto";
+}
 
-    {
-        std::string& s = File.theme_file_path;
-        fs::path     p(s);
-        if (p.has_filename() && p.is_relative())
-            s.insert(0, m_config_dir_path + DIR_SEP_STR);
-    }
+std::string Config::GetThemeFilePath() const
+{
+    const fs::path p(File.theme_file_path);
+    if (p.has_filename() && p.is_relative())
+        return (fs::path(m_config_dir_path) / p).string();
+    return File.theme_file_path;
 }
 
 void Config::LoadThemeFile(const std::string& filename)
@@ -163,8 +164,12 @@ void Config::LoadThemeFile(const std::string& filename)
     // default.theme-file is usually relative to the config directory
     CdGuard guard(m_config_dir_path);
 
+    // A broken theme isn't worth refusing to start over, so it falls back to the default one
     if (fs::exists(filename))
-        MUST_OK(m_theme.LoadFile(filename), die("{}", _r.error_v()));
+        MUST_OK(m_theme.LoadFile(filename), {
+            m_theme.GetTbl().clear();
+            error("{}\nUsing the default theme.", _r.error_v());
+        });
 
     theme_overrides_t& ov = theme_overrides;
     if (const toml::table* colors = m_theme.GetTbl().at_path("theme.colors").as_table())
@@ -182,13 +187,26 @@ void Config::LoadThemeFile(const std::string& filename)
     ov.frame_border      = m_theme.GetValue<float>("frame-border", -1.f);
 }
 
+// fmt::output_file() throws if the file can't be created (missing folder, no permission)
+static fmt::ostream open_output_file(const std::string& filename)
+{
+    try
+    {
+        return fmt::output_file(filename.data());
+    }
+    catch (const std::system_error& err)
+    {
+        die("Failed to write the file: {}", err.what());
+    }
+}
+
 void Config::GenerateConfig(const std::string& filename, const bool force)
 {
     if (!force && fs::exists(filename) &&
         !ask_user_yn(false, "WARNING: config file '{}' already exists. Do you want to overwrite it?", filename))
         std::exit(1);
 
-    auto f = fmt::output_file(filename.data());
+    auto f = open_output_file(filename);
 
     std::string fonts_str;
     if (!File.fonts.empty())
@@ -237,7 +255,7 @@ void Config::GenerateTheme(const std::string& filename, const bool force)
 
     CdGuard guard(m_config_dir_path);
 
-    auto f = fmt::output_file(filename.data());
+    auto f = open_output_file(filename);
     if (!force)
     {
         f.print("{}", AUTOTHEME);

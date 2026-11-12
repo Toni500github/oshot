@@ -196,6 +196,15 @@ static bool hide_window_()
     // glfwHideWindow() and glfwShowWindow() ignore fullscreen windows
     if (OSHOT_MACOS || on_wayland())
     {
+        // With vsync, Mesa's next eglSwapBuffers() waits for the frame callback of the last one, which
+        // the compositor never sends to an unmapped window, so the overlay hung once shown again.
+        // Present once more without vsync (waiting while still mapped, asking for no new callback)
+        if (on_wayland())
+        {
+            glfwSwapInterval(0);
+            glfwSwapBuffers(window);
+        }
+
         hidden_monitor = glfwGetWindowMonitor(window);
         if (hidden_monitor)
             glfwSetWindowMonitor(window, nullptr, 0, 0, g_scr_w, g_scr_h, GLFW_DONT_CARE);
@@ -217,6 +226,8 @@ static void show_window_()
         if (hidden_monitor)
             glfwSetWindowMonitor(window, hidden_monitor, 0, 0, g_scr_w, g_scr_h, GLFW_DONT_CARE);
         hidden_monitor = nullptr;
+        if (on_wayland())
+            glfwSwapInterval(int(g_config->File.enable_vsync));
     }
     else
     {
