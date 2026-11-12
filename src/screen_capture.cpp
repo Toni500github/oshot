@@ -53,6 +53,7 @@
 #  include <gio/gio.h>
 #  include <gio/gunixfdlist.h>
 #  include <unistd.h>
+#  include <wayland-client.h>
 
 #  include <cerrno>
 
@@ -680,9 +681,33 @@ Result<capture_result_t> capture_full_screen_spectacle()
 
 Result<capture_result_t> capture_full_screen_wayland()
 {
-    Result<capture_result_t> res = capture_full_screen_portal();
-    if (res.ok())
-        return res;
+    // grim reads the screen through the compositor's screencopy protocol (wlroots, Hyprland, niri),
+    // in a third of the time the portal takes to save a PNG file for us to decode. GNOME has only the portal
+    bool screencopy = false;
+    if (wl_display* display = wl_display_connect(nullptr))
+    {
+        static constexpr wl_registry_listener listener = {
+            .global =
+                [](void* data, wl_registry*, uint32_t, const char* interface, uint32_t) {
+                    if (strcmp(interface, "zwlr_screencopy_manager_v1") == 0 ||
+                        strcmp(interface, "ext_image_copy_capture_manager_v1") == 0)
+                        *static_cast<bool*>(data) = true;
+                },
+            .global_remove = [](void*, wl_registry*, uint32_t) {}
+        };
+        wl_registry* registry = wl_display_get_registry(display);
+        wl_registry_add_listener(registry, &listener, &screencopy);
+        wl_display_roundtrip(display);
+        wl_registry_destroy(registry);
+        wl_display_disconnect(display);
+    }
+
+    if (!screencopy)
+    {
+        Result<capture_result_t> res = capture_full_screen_portal();
+        if (res.ok())
+            return res;
+    }
 
     capture_result_t result;
 
@@ -701,7 +726,15 @@ Result<capture_result_t> capture_full_screen_wayland()
             err.append(p, n);
         });
     if (proc.get_exit_status() != 0)
+    {
+        // Not installed, or the compositor refused (e.g. Hyprland's permissions)
+        if (screencopy)
+        {
+            spdlog::debug("Capture with grim failed: {}", err);
+            return capture_full_screen_portal();
+        }
         return Err("Capture with grim failed: {}", err);
+    }
 
     // stbi_load_from_memory takes an int length
     if (buf.size() > INT_MAX)
@@ -761,10 +794,10 @@ static Result<std::string> uri_to_path(const char* uri)
 }
 
 static void on_response(GDBusConnection* conn,
-                        const gchar*,  // sender_name,
-                        const gchar*,  // object_path,
-                        const gchar*,  // interface_name,
-                        const gchar*,  // signal_name,
+                        const gchar* /* sender_name */,
+                        const gchar* /* object_path */,
+                        const gchar* /* interface_name */,
+                        const gchar* /* signal_name */,
                         GVariant* parameters,
                         gpointer  user_data)
 {

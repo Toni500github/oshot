@@ -791,7 +791,11 @@ if(WIN32)
             ${CMAKE_CURRENT_BINARY_DIR}/manifest.rc
     )
 elseif(UNIX AND NOT APPLE)
-    target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
+    # main_tool_opengl3.cpp loads its configuration early
+    target_link_libraries(
+        ${PROJECT_NAME}
+        PRIVATE X11::X11 PkgConfig::FONTCONFIG
+    )
 endif()
 
 # =============================================================================

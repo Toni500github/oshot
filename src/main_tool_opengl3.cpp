@@ -56,12 +56,14 @@
 #    include <GLFW/glfw3native.h>
 #  elif OSHOT_FREEDESKTOP
 #    include <X11/Xlib.h>
+#    include <fontconfig/fontconfig.h>
 #  endif
 
 #  include <algorithm>
 #  include <chrono>
 #  include <cmath>
 #  include <cstdlib>
+#  include <future>
 #  include <memory>
 #  include <string>
 #  include <thread>
@@ -307,17 +309,22 @@ int run_main_tool()
         return true;
     });
 
-    // Before the window exists, so the screenshot is taken right away and without the overlay
-    MUST_OK(g_ss_tool.Start(), {
-        error("Failed to start capture: {}", _r.error_v());
-        return EXIT_FAILURE;
-    });
-
     glfwSetErrorCallback(glfw_error_callback);
+#  ifdef GLFW_WAYLAND_LIBDECOR  // GLFW 3.4+
+    // The overlay is fullscreen without decorations, and libdecor slows glfwInit() down
+    // by ~45 ms trying to load its GTK plugin
+    glfwInitHint(GLFW_WAYLAND_LIBDECOR, GLFW_WAYLAND_DISABLE_LIBDECOR);
+#  endif
     if (!glfwInit())
         return EXIT_FAILURE;
 #  if OSHOT_MACOS
     install_quit_handler(request_quit);
+#  endif
+
+#  if OSHOT_FREEDESKTOP
+    // build_font_atlas() looks up the system font with fontconfig, whose configuration
+    // takes ~8 ms to load, so load it while the window is set up
+    std::future<void> fontconfig = std::async(std::launch::async, [] { FcInit(); });
 #  endif
 
     // Decide GL+GLSL versions
@@ -380,6 +387,24 @@ int run_main_tool()
     fullscreen = true;
 #  endif
 
+    // The screenshot has to be taken before the window shows up. Wayland shows a window only
+    // with its first frame, so there the capture runs while the window and its GL context are
+    // set up (~40 ms). On X11 the server would handle the two one after the other anyway
+    std::future<Result<>> capture;
+    if (on_wayland())
+    {
+        capture = std::async(std::launch::async, [] { return g_ss_tool.Start(); });
+    }
+    else
+    {
+        MUST_OK(g_ss_tool.Start(), {
+            error("Failed to start capture: {}", _r.error_v());
+            if (!g_is_systray)
+                glfwTerminate();
+            return EXIT_FAILURE;
+        });
+    }
+
     GLFWmonitor*       monitor = get_monitor_at_cursor();
     const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
 
@@ -416,6 +441,20 @@ int run_main_tool()
         return EXIT_FAILURE;
     }
     glfwMakeContextCurrent(window);
+
+    if (capture.valid())
+    {
+        MUST_OK(capture.get(), {
+            // The dialog would try to hide the window first
+            glfwDestroyWindow(window);
+            window = nullptr;
+            error("Failed to start capture: {}", _r.error_v());
+            if (!g_is_systray)
+                glfwTerminate();
+            return EXIT_FAILURE;
+        });
+    }
+
     glfwSetDropCallback(window, glfw_drop_callback);
     glfwSwapInterval(1);  // Enable vsync
 
@@ -435,6 +474,9 @@ int run_main_tool()
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
+#  if OSHOT_FREEDESKTOP
+    fontconfig.wait();
+#  endif
     build_font_atlas(io);
     apply_imgui_theme();
 
