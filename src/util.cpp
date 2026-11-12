@@ -569,19 +569,20 @@ Result<std::string> save_image_to_dir(const fs::path& dir, const capture_result_
 
 Result<bool> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
 {
-    auto deleter = [](NvdNotification* p) {
-        nvd_send_notification(p);
-        nvd_delete_notification(p);
+    // Dialogs are set up after the copy or save, so starting GTK doesn't delay it
+    const auto notify = [&](const char* title, const char* body) {
+        if (init_dialogs())
+        {
+            NvdNotification* p = nvd_notification_new(title, body, NVD_NOTIFICATION_SIMPLE);
+            nvd_send_notification(p);
+            nvd_delete_notification(p);
+        }
     };
-    std::unique_ptr<NvdNotification, decltype(deleter)> notif(nullptr, deleter);
 
-    const bool notify = init_dialogs();
     if (op == SavingOp::Clipboard)
     {
         TRY(g_clipboard.CopyImage(img, ext));
-        if (notify)
-            notif.reset(
-                nvd_notification_new(_("Copied!"), _("Screenshot copied to clipboard"), NVD_NOTIFICATION_SIMPLE));
+        notify(_("Copied!"), _("Screenshot copied to clipboard"));
         return Ok(true);
     }
 
@@ -591,8 +592,7 @@ Result<bool> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
         const Result<std::string>& saved = save_image_to_dir(g_config->Runtime.instant_save_dir, img, ext);
         TRY(saved);
         spdlog::info("Saved to {}", saved.get());
-        if (notify)
-            notif.reset(nvd_notification_new(_("Saved!"), _("Screenshot saved successfully"), NVD_NOTIFICATION_SIMPLE));
+        notify(_("Saved!"), _("Screenshot saved successfully"));
         return Ok(true);
     }
 
@@ -618,8 +618,7 @@ Result<bool> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
         return Ok(false);
 
     TRY(write_image_file(save_path, img, ext));
-    if (notify)
-        notif.reset(nvd_notification_new(_("Saved!"), _("Screenshot saved successfully"), NVD_NOTIFICATION_SIMPLE));
+    notify(_("Saved!"), _("Screenshot saved successfully"));
 
     fs::path path(save_path);
     g_cache->SetValue(CacheEntry::ImgSavePath, path.parent_path().string());

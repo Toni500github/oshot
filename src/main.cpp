@@ -535,13 +535,34 @@ void glfw_drop_callback(GLFWwindow*, int count, const char** paths)
         g_dropped_paths.emplace_back(paths[i]);
 }
 
+// The tray keeps GLFW, and so the GL driver, loaded between captures, which opens the
+// next overlay ~50 ms sooner. The driver also keeps its buffers (~25 MB of GPU memory
+// at 1080p) and 10-30 MB of RAM until GLFW is terminated, so do that after this long idle
+static constexpr std::chrono::seconds GL_IDLE_RELEASE{ 30 };
+
 void capture_worker()
 {
+    bool gl_loaded = false;
     while (!quit.load())
     {
         // wait for command
         std::unique_lock lk(mtx);
-        cv.wait(lk, [] { return quit.load() || do_capture || do_copy_image; });
+        const auto       has_command = [] { return quit.load() || do_capture || do_copy_image; };
+        if (!gl_loaded)
+        {
+            cv.wait(lk, has_command);
+        }
+        else if (!cv.wait_for(lk, GL_IDLE_RELEASE, has_command))
+        {
+            lk.unlock();
+            // On this thread, where the captures called glfwInit()
+            extern_glfwTerminate();
+            gl_loaded = false;
+#ifdef __GLIBC__
+            malloc_trim(0);
+#endif
+            continue;
+        }
         if (quit.load())
             break;
 
@@ -566,6 +587,7 @@ void capture_worker()
         std::this_thread::sleep_for(delay);
         run_overlay();
         release_capture_memory();
+        gl_loaded = true;
 
         lk.lock();
         capture_active.store(false);
@@ -1074,8 +1096,8 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
                         .onClicked =
                             [&](TrayMenu*) {
                                 // Patterns are case-sensitive with zenity/kdialog
-                                const std::array<const char*, 8> filters = { "*.png", "*.jpeg", "*.jpg", "*.bmp",
-                                                                             "*.PNG", "*.JPEG", "*.JPG", "*.BMP" };
+                                constexpr std::array<const char*, 8> filters = { "*.png", "*.jpeg", "*.jpg", "*.bmp",
+                                                                                 "*.PNG", "*.JPEG", "*.JPG", "*.BMP" };
 
                                 const char* open_path =
                                     tinyfd_openFileDialog(_("Open Image"),

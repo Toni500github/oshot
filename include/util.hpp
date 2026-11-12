@@ -684,9 +684,9 @@ inline bool ask_user_yn(bool def, const std::string_view fmt, Args&&... args)
 
 /**
  * Set up nvdialog the first time a dialog or notification needs it.
- * On Linux this starts GTK, which takes tens of milliseconds, so it runs after
- * the screenshot is taken instead of at startup. Thread-safe; call it on the
- * main thread where possible, since that's where GTK gets set up.
+ * On Linux this starts GTK, which takes tens of milliseconds and several MB, so an
+ * overlay that never shows a dialog or notification never starts it. Thread-safe;
+ * call it on the main thread where possible, since that's where GTK gets set up.
  * @return false if dialogs are unavailable (init failed, or disable_dialogs())
  **/
 bool init_dialogs() noexcept;

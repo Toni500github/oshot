@@ -348,6 +348,11 @@ int run_main_tool()
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
 #  endif
 
+    // ImGui draws without depth or stencil tests. GLFW asks for both by default, a
+    // depth/stencil buffer as big as the screen (8 MB at 1080p, in RAM with software GL)
+    glfwWindowHint(GLFW_DEPTH_BITS, 0);
+    glfwWindowHint(GLFW_STENCIL_BITS, 0);
+
 #  if !DEBUG
     // Don't make the window actually fullscreen if debug build
     // this because on Windows it hanged in gdb and every time I had to restart the VM
@@ -441,8 +446,7 @@ int run_main_tool()
         return EXIT_FAILURE;
     });
 
-    bool clean_frame    = false;
-    bool dialogs_inited = false;
+    bool clean_frame = false;
     register_wake_overlay(glfwPostEmptyEvent);
     // app_quitting() covers tray Quit and signals received while capturing
     while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive() && !app_quitting())
@@ -489,15 +493,6 @@ int run_main_tool()
         }
 
         glfwSwapBuffers(window);
-
-        // Set up dialogs only once the overlay is on screen. On Linux this
-        // starts GTK, which would otherwise delay the capture and the overlay
-        // by tens of milliseconds. An error before this sets them up itself.
-        if (!dialogs_inited)
-        {
-            init_dialogs();
-            dialogs_inited = true;
-        }
     }
 
     register_wake_overlay(nullptr);
