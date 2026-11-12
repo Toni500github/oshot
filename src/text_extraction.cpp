@@ -180,14 +180,9 @@ static std::vector<rgb_t> main_colors(const std::vector<rgb_t>& px)
     return colors;
 }
 
-// Grayscale where each pixel is its color distance from the background around
-// it. That gives dark text on white for any pair of colors (white on blue, red on
-// black, black on yellow...), in every panel of a screenshot that mixes light,
-// dark and colored areas, without guessing when to invert.
-// The local background is whichever main color covers the most of a `window`
-// px square around each 4x4 cell, because text covers less of it than its background,
-// and next to a straight edge between two areas a pixel's own side always
-// covers at least half.
+// Grayscale where each pixel is its color distance from the background around it, so text comes out dark on white
+// whatever its colors, without guessing when to invert. The background of each 4x4 cell is the main color that
+// covers most of a `window` px square around it (text always covers less of it than its background)
 static PIX* distance_from_background(const std::vector<rgb_t>& px,
                                      const std::vector<rgb_t>& colors,
                                      int                       w,
@@ -283,12 +278,9 @@ static PIX* distance_from_background(const std::vector<rgb_t>& px,
     return pix;
 }
 
-// Grayscale where each pixel is its color distance from `text`, so that color
-// is black and anything far from it white. For text that has no background
-// color of its own, like outlined text on a game scene, a meme or a gradient.
-// `bg` is the color around the text, which turns white even when it's close to
-// the text color (dark gray text on a dark striped panel).
-// Returns nullptr if `text` covers most of the image, as it's the background
+// Grayscale where each pixel is its color distance from `text`, for text with no background color of its own
+// (outlined text on a game scene or a gradient). `bg`, the color around the text, turns white even when it's close
+// to the text color. Returns nullptr if `text` covers most of the image, since it's the background then
 static PIX* distance_from_text_color(const std::vector<rgb_t>& px, const rgb_t& text, const rgb_t& bg, int w, int h)
 {
     PIX* pix = pixCreate(w, h, 8);
@@ -376,11 +368,8 @@ static int text_threshold(PIX* gray)
     return std::min(best, 255 - 24);
 }
 
-// Text drawn as outlines only, as white letters with a black border on a light
-// picture look when read through the border's color. So fill the inside of each
-// letter, which is what lies inside an odd number of outlines, so an 'O'
-// keeps its hole. The paper is walked from the edges of the image inwards,
-// one outline at a time
+// Fill the inside of letters drawn as outlines (white letters with a black border, read through the border's
+// color). The inside is what lies within an odd number of outlines, so an 'O' keeps its hole
 static PIX* fill_outlined_text(PIX* gray, int threshold)
 {
     const int w = pixGetWidth(gray), h = pixGetHeight(gray);
@@ -488,9 +477,8 @@ static text_layout_t measure_text(PIX* gray)
     std::ranges::nth_element(heights, heights.begin() + static_cast<ptrdiff_t>(heights.size() / 2));
     layout.char_height = heights[heights.size() / 2];
 
-    // The height half the glyphs' area is under. Far above the median, the
-    // blobs are mostly specks of a drawing or photo around the text, which
-    // would have it scaled up 4x for nothing
+    // The height half the glyphs' area is under. When it's far above the median, most blobs are specks of a
+    // drawing or photo, and the median would scale the text up 4x for nothing
     std::ranges::sort(sizes);
     const int64_t total = std::accumulate(
         sizes.begin(), sizes.end(), int64_t(0), [](int64_t sum, const auto& s) { return sum + s.second; });
@@ -576,8 +564,7 @@ static PIX* normalize_for_ocr(PIX* gray, const text_layout_t& layout, ocr_transf
     if (bin)
         pixDestroy(&bin);
 
-    // No binarization: Tesseract's LSTM engine does its own, and keeping the
-    // gray levels helps stroke detail, especially for CJK scripts
+    // No binarization, since Tesseract's LSTM engine does its own and the gray levels keep stroke detail (CJK most)
     return out.release();
 }
 
@@ -588,7 +575,7 @@ static tesseract::PageSegMode choose_psm(const text_layout_t& layout)
     if (g_config->Runtime.preferred_psm != 0)
         return PageSegMode(g_config->Runtime.preferred_psm);
 
-    // A word, a number or a line: the page layout analysis tends to drop text this short
+    // The page layout analysis tends to drop a single short line
     if (layout.lines == 1)
         return PSM_SINGLE_LINE;
 
@@ -642,7 +629,7 @@ Result<> OcrAPI::Configure(const char* data_path, const char* model, tesseract::
     ocr_config_t next{ .path = data_path, .model = model, .oem = oem };
 
     if (m_config && *m_config == next)
-        return Ok();  // nothing to do
+        return Ok();
 
     // Tear down old engine
     m_pool.reset();
@@ -705,7 +692,6 @@ static ocr_word_t map_box_to_source(int                    left,
                        .block      = {} };
 }
 
-// From "  hello world  \n  " to "hello world"
 static void trim(std::string& s)
 {
     auto not_ws = [](unsigned char c) { return !std::isspace(c); };
@@ -713,9 +699,8 @@ static void trim(std::string& s)
     s.erase(std::ranges::find_if(std::views::reverse(s), not_ws).base(), s.end());
 }
 
-// Read a grayscale image made from the capture with Tesseract.
-// Returns an empty result (no text, confidence 0) if nothing was recognized.
-// `monitor` can cancel it between text lines
+// Read a grayscale image made from the capture. The result is empty if nothing was recognized, and `monitor`
+// can cancel it between text lines
 static Result<ocr_result_t> recognize(tesseract::TessBaseAPI& api,
                                       PIX*                    gray,
                                       const text_layout_t&    layout,
@@ -747,7 +732,6 @@ static Result<ocr_result_t> recognize(tesseract::TessBaseAPI& api,
     api.SetImage(pix.get());
     api.SetSourceResolution(effective_dpi);
 
-    // Make OCR + confidence deterministic
     if (api.Recognize(monitor) != 0)
         return Err("tesseract::Recognize() failed");
 
@@ -848,7 +832,7 @@ struct ocr_line_t
     float                   left = 0, top = 0, right = 0, bottom = 0;
     size_t                  sure       = 0;
     int                     confidence = 0;      // mean over its words
-    bool                    has_text   = false;  // see merge_lines()
+    bool                    has_text   = false;  // a word of 2+ letters at sure_word, or of 1 at 85%
 };
 
 // Add the lines of `r` to `lines`, moved by (dx, dy). `sep` goes between
@@ -919,15 +903,10 @@ static void add_lines(std::vector<ocr_line_t>& lines,
     }
 }
 
-// One reading made of the best reading of each line that any pass found.
-// Lines are taken from the most read text down, leaving out any that covers
-// most of a word of one already taken. A line also needs a mean
-// confidence of sure_word or more and a word with 2 letters or digits read at
-// that much, or a single one read as surely as clean text (85%). Otherwise
-// scraps of the background read as symbols or single characters ("| |",
-// "3 N { <", at 60-80%) would get in.
-// They're put in the order of the lines they cover in `order`, the best whole
-// reading, as Tesseract's page layout analysis knows about columns and tables
+// One reading made of the best reading of each line any pass found. Lines are taken from the most read text down,
+// skipping any that covers most of a word already taken, and need has_text and a mean confidence of sure_word
+// (or background scraps like "| |", read at 60-80%, get in). They keep the order of `order`, the best whole
+// reading, since Tesseract's layout analysis knows about columns and tables
 static ocr_result_t merge_lines(std::vector<ocr_line_t> lines, const ocr_result_t& order)
 {
     std::ranges::stable_sort(lines, [](const ocr_line_t& a, const ocr_line_t& b) {
@@ -1004,12 +983,9 @@ struct line_box_t
     bool operator==(const line_box_t&) const = default;
 };
 
-// Boxes around the text lines of a grayscale image, from its glyphs. Unlike
-// Tesseract's page layout analysis, a big title above small captions or scraps
-// of a drawing next to a line don't join lines together.
-// Blobs of a similar height whose middles fall in the same band make a row,
-// split where a gap is wider than a few glyphs (columns). A line needs at
-// least 3 glyphs, fewer are usually scraps of the background
+// Boxes around the text lines of a grayscale image, from its glyphs. Unlike Tesseract's layout analysis, a big
+// title over small captions doesn't join lines. Glyphs of a similar height whose middles share a band make a row,
+// split at gaps wider than a few glyphs (columns), and a line needs at least 3 of them
 static std::vector<line_box_t> find_lines(PIX* gray, int threshold)
 {
     std::vector<line_box_t> lines;
@@ -1141,11 +1117,8 @@ static std::vector<line_crop_t> crop_lines(const ocr_pass_t& pass)
     return crops;
 }
 
-// Runs reads on a few Tesseract engines at once, for the passes of a busy
-// background, which don't depend on each other. The engine already loaded
-// reads on the caller's thread, in Take(). The others load the same model in
-// their own thread as the pool starts, and take reads in order as soon as
-// they're free
+// Reads the passes of a busy background on a few Tesseract engines at once. The caller's engine reads in Take(),
+// and the others load the same model on their own threads and take reads in order
 class OcrEnginePool
 {
 public:
@@ -1245,9 +1218,8 @@ public:
         return ticket.result.get();
     }
 
-    // Drop the reads not started yet and stop the others at their next text
-    // line, as their results are no longer wanted. Doesn't wait for them, as
-    // they don't use the caller's engine
+    // Drop the reads not started yet and stop the running ones at their next text line, without waiting for them
+    // (they don't use the caller's engine)
     void Cancel()
     {
         std::scoped_lock lock(m_mutex);
@@ -1372,12 +1344,8 @@ static ocr_pass_t background_pass(const std::vector<rgb_t>& px, const std::vecto
     return pass;
 }
 
-// Passes with a main color as the text color, for text on a busy or graded
-// background, which has no color of its own to measure from.
-// Text stands out from the most common color more than the other shades of
-// the background do (the stripes of a patterned panel can take the first
-// few places by count), so the main colors are tried by how far they are
-// from it, skipping the ones that cover most of the image
+// Passes with a main color as the text color, for text on a busy or graded background. The colors are tried by
+// their distance from the most common one, since text stands out from it more than the background's other shades
 static std::vector<ocr_pass_t> text_color_passes(const std::vector<rgb_t>& px,
                                                  const std::vector<rgb_t>& colors,
                                                  int                       w,
@@ -1402,10 +1370,8 @@ static std::vector<ocr_pass_t> text_color_passes(const std::vector<rgb_t>& px,
     return passes;
 }
 
-// Read text the first pass was unsure of, improving `best`. With spare
-// engines, the passes that may be needed next are read while waiting for the
-// one that decides it. Either way, only the results that reading them one by
-// one would use are taken, so the text doesn't depend on the engine count
+// Read text the first pass was unsure of, improving `best`. Spare engines read ahead the passes that may be needed
+// next, but only the results a one by one read would use are taken, so the text doesn't depend on the engine count
 static void read_busy_text(OcrEnginePool&            engines,
                            const std::vector<rgb_t>& px,
                            const std::vector<rgb_t>& colors,
@@ -1428,8 +1394,7 @@ static void read_busy_text(OcrEnginePool&            engines,
     for (const ocr_pass_t& pass : candidates)
         reads.push_back(engines.Read(pass, src_w, src_h));
 
-    // Colors read at 50% or more are text (stripes or a background shade read
-    // at ~0), kept to combine below
+    // Colors read this surely are text, kept to combine below
     constexpr int                  text_color_min = sure_word;
     std::vector<const ocr_pass_t*> text_passes;
     const ocr_pass_t*              best_pass = nullptr;
@@ -1480,11 +1445,8 @@ static void read_busy_text(OcrEnginePool&            engines,
         return f;
     };
 
-    // Parts of the text that need different passes (an outlined title over a
-    // caption), or lines the page layout analysis joins with the background.
-    // The passes that kept only the text are also read line by line, and the
-    // best reading of each line is kept. A line cut the same out of two
-    // passes is read once
+    // For text that needs different passes (an outlined title over a caption), or lines the layout analysis joins
+    // with the background, the text passes are also read line by line. A line cut the same out of two is read once
     std::vector<line_crop_t>             crops;
     std::vector<OcrEnginePool::ticket_t> line_reads;
     const auto                           read_lines_of = [&](const ocr_pass_t& pass) {

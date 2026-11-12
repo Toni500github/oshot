@@ -1400,7 +1400,7 @@ static inline void oshot_mock_set_text(oshot_mock_t* m, const char* buffer_id, c
 
 /**
  * Sets a value in the plugin's config.toml or in oshot's cache, as if the
- * person had saved it. oshot_mock_set_string(), _bool(), _int64() and
+ * user had saved it. oshot_mock_set_string(), _bool(), _int64() and
  * _double() do the same for one type.
  * @param m The mock
  * @param store OSHOT_STORE_CONFIG or OSHOT_STORE_CACHE

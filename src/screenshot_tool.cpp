@@ -389,8 +389,7 @@ Result<> ScreenshotTool::StartWindow()
         m_uncropped = m_screenshot;
     fit_to_screen(m_screenshot);
 
-    // Do not load anything about the text tools window,
-    // just the screenshot one
+    // Only the screenshot, nothing for the text tools window
     if (g_config->Runtime.instant_copy_save != SavingOp::kNone)
     {
         m_state = ToolState::Selecting;
@@ -621,9 +620,9 @@ void ScreenshotTool::RenderOverlay()
             last_rect = ImRect(pos, ImVec2(pos.x + float(settings->Size.x), pos.y + float(settings->Size.y)));
         }
 
-        // It stays where it was left, unless it would cover the new selection. In that case, like the first
-        // time, it opens on the side of the screen with more room next to the selection.
-        // Decided before Begin(), as moving it afterwards shows it in the old place for a frame
+        // It stays where it was left, unless it would cover the new selection, then it opens on the side with
+        // more room like the first time. Decided before Begin(), since moving it afterwards shows it in the old
+        // place for a frame
         constexpr float         margin    = 60.0f;
         const float             display_w = ImGui::GetIO().DisplaySize.x;
         const selection_rect_t& sel       = m_main_sel.selection;
@@ -675,8 +674,7 @@ void ScreenshotTool::RenderOverlay()
 
     HandleShortcutsInput();
 
-    // ImGui's NewFrame() already closed the menu or popup that was open on this Esc:
-    // that is all the Esc should do, not close the overlay as well
+    // ImGui's NewFrame() already closed the menu or popup open on this Esc, and that's all the Esc should do
     const bool popup_was_open =
         std::exchange(m_popup_open, ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
     if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !disable_esc && !popup_was_open)
@@ -765,7 +763,7 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     m_state = ToolState::Selecting;
 
 #ifndef DISABLE_PLUGINS
-    // Another image means a new capture as far as plugins are concerned
+    // For plugins, another image is a new capture
     EndPluginsCapture();
     StartPluginsCapture();
 #endif
@@ -913,7 +911,6 @@ capture_result_t ScreenshotTool::GetFinalImage()
 
     int width = end_x - start_x;
 
-    // Copy only the valid region
     const size_t bytes_to_copy = (width > 0) ? size_t(width) * 4 : 0;
 
     if (bytes_to_copy > 0)
@@ -1186,8 +1183,7 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
                     }
 
                     case ToolType::Pencil:
-                        // Use the points' bounds; they're scaled below, and start/end
-                        // aren't used to draw a pencil anyway
+                        // The points' bounds, since they're scaled below and start/end don't draw a pencil
                         m_anno_sel.selection = { .start = { .x = bbox.Min.x, .y = bbox.Min.y },
                                                  .end   = { .x = bbox.Max.x, .y = bbox.Max.y } };
                         break;
@@ -1206,8 +1202,8 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
             }
         }
 
-        // Clicked outside the selected annotation: deselect it, and swallow the
-        // click so it doesn't also start or move the main selection
+        // A click outside the selected annotation deselects it, and is swallowed so it doesn't also start or
+        // move the main selection
         if (!found)
         {
             m_state       = ToolState::Selected;
@@ -1228,7 +1224,7 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
     {
         HandleResizeInput(m_anno_sel);
 
-        // Read again: HandleSelectionInput() may have changed ann
+        // Read again, since HandleSelectionInput() may have changed ann
         const ToolType type  = ann->type;
         const float    sel_x = m_anno_sel.selection.get_x();
         const float    sel_y = m_anno_sel.selection.get_y();
@@ -1241,8 +1237,8 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
             case ToolType::CircleFilled:
             case ToolType::CounterBubble:
             {
-                // The selection is the padded GetAnnotationHandleBox(): remove
-                // the padding before converting it to center + radius
+                // The selection is the padded GetAnnotationHandleBox(), so remove the padding before converting
+                // it to center + radius
                 constexpr float PIXEL   = 1.0f;
                 const float     padding = ann->thickness - PIXEL;
                 const float     box_x   = sel_x + padding;
@@ -1357,7 +1353,7 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
     {
         m_input_owner = sel.main_input_owner;
 
-        // Check if we're starting to resize from a handle
+        // Resizing from a handle
         if (sel.handle_hover != HandleHovered::kNone)
         {
             // HandleResizeInput() expects start <= end, except for Line/Arrow,
@@ -1369,7 +1365,7 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
             sel.drag_start_selection = sel.selection;
             m_state                  = sel.resizing_state;
         }
-        // Check if we're clicking inside the selection to move it
+        // Moving the selection
         else if (selection_rect.Contains(mouse_pos))
         {
             if (!sel.preserve_direction)
@@ -1379,7 +1375,7 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
             sel.drag_start_selection = sel.selection;
             m_state                  = sel.resizing_state;
         }
-        // Start new selection if not an annotation one
+        // A new selection, unless it's an annotation's
         else if (!sel.is_ann)
         {
             sel.selection.start = { .x = mouse_pos.x, .y = mouse_pos.y };
@@ -1404,8 +1400,7 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
         sel.dragging_handle = HandleHovered::kNone;
         m_input_owner       = InputOwner::kNone;
 
-        // Only a click or a slip of the mouse counts as too small. A single line of text
-        // can be 10 px high, and a bigger limit used to leave the selection without its toolbar
+        // Only a click or a slip of the mouse counts as too small, since a line of text can be 10 px high
         constexpr float min_size = 3.0f;
         if (sel.is_ann || (sel.selection.get_width() >= min_size && sel.selection.get_height() >= min_size))
             m_state = sel.idle_state;
@@ -1458,9 +1453,8 @@ void ScreenshotTool::HandleResizeInput(selection_info_t& sel)
     if (sel.is_ann)
         return;
 
-    // When a handle is dragged past the opposite edge, the selection inverts.
-    // Normalize it by swapping coordinates, flipping the active handle, and
-    // resetting the drag anchor so the delta stays correct next frame.
+    // A handle dragged past the opposite edge inverts the selection, so swap the coordinates and the handle,
+    // and reset the drag anchor
     if (sel.selection.start.x > sel.selection.end.x)
     {
         std::swap(sel.selection.start.x, sel.selection.end.x);
@@ -1482,9 +1476,8 @@ void ScreenshotTool::HandleAnnotationInput()
 {
     const ImVec2& mouse_pos = ImGui::GetMousePos();
 
-    // Switched away from the Text tool while placing a text: cancel it, or the
-    // drawing code below resets its position and the text input reappears at
-    // (0, 0) the next time Text is selected
+    // Cancel a text being placed when another tool is picked, or its input reappears at (0, 0) the next time
+    // Text is selected
     if (m_current_actions.Has(CurrentAction::IsTextPlacing) && m_current_tool != ToolType::Text)
     {
         m_current_annotation = {};
@@ -1600,7 +1593,7 @@ void ScreenshotTool::HandleAnnotationInput()
                 const point_t& last = m_current_annotation.points.back();
                 float          dx   = mouse_pos.x - last.x;
                 float          dy   = mouse_pos.y - last.y;
-                if (dx * dx + dy * dy > 4.0f)  // Minimum distance squared
+                if (dx * dx + dy * dy > 4.0f)
                     m_current_annotation.points.push_back({ .x = mouse_pos.x, .y = mouse_pos.y });
             }
         }
@@ -1647,7 +1640,7 @@ void ScreenshotTool::HandleColorPickerInput()
     constexpr uint32_t shadow_color      = (0x000000B4_rgba).to_abgr();
     constexpr uint32_t white_lines_color = (0xffffffE6_rgba).to_abgr();
 
-    // Position loupe window: prefer bottom-right, flip to stay on screen
+    // Bottom-right of the cursor, flipped to stay on screen
     const ImVec2& display = ImGui::GetIO().DisplaySize;
     float         win_x   = mouse_pos.x + k_offset;
     float         win_y   = mouse_pos.y + k_offset;
@@ -1922,7 +1915,7 @@ void ScreenshotTool::RefreshOcrModels()
         return;
     }
 
-    // get_filtered_filenames() appends to the list (a rescan used to show every model twice)
+    // get_filtered_filenames() appends to the list
     m_ocr_models_list.clear();
     get_filtered_filenames(
         m_inputs.ocr_path,
@@ -1952,9 +1945,6 @@ void ScreenshotTool::UpdateHandleHoverState(selection_info_t& sel)
 {
     const ImVec2& mouse_pos = ImGui::GetMousePos();
     sel.handle_hover        = HandleHovered::kNone;
-
-    // if (m_state != ToolState::Selected && m_state != ToolState::Resizing)
-    //  return;
 
     const float sel_x = sel.selection.get_x();
     const float sel_y = sel.selection.get_y();
@@ -2078,7 +2068,7 @@ void ScreenshotTool::UpdateCursor(const selection_info_t& sel)
         const float sel_w = sel.selection.get_width();
         const float sel_h = sel.selection.get_height();
 
-        // Check if mouse is inside the selection (for moving)
+        // Inside the selection, for moving it
         ImRect       selection_rect(ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h));
         const ImVec2 mouse_pos = ImGui::GetMousePos();
 
@@ -2155,7 +2145,7 @@ ImRect ScreenshotTool::GetAnnotationBBox(const annotation_t& ann) const
         case ToolType::Rectangle:
         case ToolType::RectangleFilled:
         default:
-            // Leave as-is: start/end are already corners.
+            // Already corners
             return { ann.start.x, ann.start.y, ann.end.x, ann.end.y };
     }
 }
@@ -2497,20 +2487,17 @@ void ScreenshotTool::DrawAnnotations()
         };
 
     auto draw_counter_bubble = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
-        // Draw the circle outline
         draw_circle_or_filled(false, ann, p1, p2, t);
 
         const std::string& label = fmt::to_string(ann.count);
 
-        // Pick a font size that fits comfortably inside the circle
         const float dx     = p2.x - p1.x;
         const float dy     = p2.y - p1.y;
         const float radius = std::sqrt(dx * dx + dy * dy);
-        // Use ~70 % of the diameter so the number has breathing room
+        // ~70% of the diameter
         const float font_size = std::max(8.0f, radius * 1.4f);
         ImFont*     font      = CacheAndGetFont(m_inputs.resolved_ann_font_path, font_size);
 
-        // Measure the rendered label so we can center it
         const ImVec2 text_size =
             font ? font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, label.c_str()) : ImGui::CalcTextSize(label.c_str());
 
@@ -2645,7 +2632,6 @@ void ScreenshotTool::DrawAnnotationResizeBorder()
 
 void ScreenshotTool::DrawAnnotationToolbar()
 {
-    // Tool selection buttons
     auto draw_and_set_button = [&](ToolType tool, const char* id, ImTextureRef texture) -> bool {
         bool       clicked  = false;
         const bool is_tool  = is_annotation_tool(tool);
@@ -3222,7 +3208,6 @@ void ScreenshotTool::DrawAboutWindow()
         ImGui::Spacing();
 #endif
 
-        // More version details
         text_display = _("More Details:");
         if (ImGui::TreeNode(text_display))
         {
@@ -3815,7 +3800,7 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     ImGui::Spacing();
 
     // --- Language ---
-    // ImGui's own font is Latin-1 only: "Русский" would be "???????" in an English UI.
+    // ImGui's own font is Latin-1 only, so "Русский" would be "???????" in an English UI.
     // Fonts for every script would cost megabytes, so fall back to the English name
     auto language_name = [](const i18n::language_t& l) -> const std::string& {
         ImFont*     font = ImGui::GetFont();
@@ -3850,7 +3835,7 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
             ImGui::Separator();
             for (const i18n::language_t& l : langs)
             {
-                // The code as the ID: names can repeat, while codes can't
+                // The code as the ID, since names can repeat
                 const bool selected = !is_auto && l.code == lang;
                 if (ImGui::Selectable(fmt::format("{}##{}", language_name(l), l.code).c_str(), selected))
                     lang = l.code;
@@ -4403,7 +4388,7 @@ static void draw_theme_editor()
         if (it == cmap.end())
             continue;
 
-        // Resolve current color: override first, then live style
+        // The override, else the live style
         ImVec4 col = ImGui::GetStyle().Colors[it->second];
 
         auto oit = ov.colors.find(name);
@@ -4577,8 +4562,8 @@ void ScreenshotTool::DrawPreferencesWindow()
             tabs_width = std::max(tabs_width, ImGui::CalcTextSize(i18n::tr(item)).x);
         tabs_width += ImGui::GetStyle().WindowPadding.x * 2.0f;
 
-        // ResizeX saves the width in the ini and only uses ours the first time:
-        // a minimum keeps the tabs readable after a font or language change
+        // ResizeX saves the width in the ini and only uses ours the first time, so a minimum keeps the tabs
+        // readable after a font or language change
         ImGui::SetNextWindowSizeConstraints(ImVec2(tabs_width, 0), ImVec2(FLT_MAX, FLT_MAX));
         ImGui::BeginChild("##left_panel", ImVec2(tabs_width, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX);
         for (size_t i = 0; i < items.size(); i++)
@@ -4755,7 +4740,6 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         if (!can_download)
             ImGui::BeginDisabled();
 
-        // Only show button when not already downloading
         if (ImGui::Button(_("Download"), ImVec2(-1, 0)))
         {
             ClearError(ectx, OcrDownloadError::FailedToDownload);
@@ -6015,8 +5999,7 @@ void ScreenshotTool::DrawPluginInstallStatus()
     if (!open || !m_install_state)
         return;
 
-    // Drain the worker thread's queue into the UI-owned tree. This is the
-    // only place m_install_events gets mutated.
+    // Move the worker's events into the tree. Nothing else changes m_install_events
     {
         std::scoped_lock lock(m_install_state->events_mutex);
         while (!m_install_state->pending_events.empty())
@@ -6075,7 +6058,7 @@ void ScreenshotTool::DrawPluginInstallStatus()
             DrawEventIcon(node.kind);
             ImGui::SameLine();
             const bool has_children = !node.details.empty() || !node.output.empty();
-            // Errors open by themselves: they're what the person needs to read
+            // Errors open by themselves, since they're what the user needs to read
             if (node.kind == plugin_install_event_t::Kind::Error && has_children)
                 ImGui::SetNextItemOpen(true, ImGuiCond_Once);
             if (ImGui::TreeNodeEx("##node",
@@ -6110,8 +6093,7 @@ void ScreenshotTool::DrawPluginInstallStatus()
             ImGui::TextDisabled("%s", _("Working..."));
         }
 
-        // Pending confirmation from the worker thread, rendered as a modal
-        // inside this same window's frame.
+        // A question from the worker thread, as a modal in this window
         bool has_confirm;
         {
             std::scoped_lock lock(m_install_state->confirm_mutex);

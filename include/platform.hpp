@@ -26,7 +26,7 @@
 #ifndef _PLATFORM_H_
 #define _PLATFORM_H_
 
-// Platform macros, always defined as 0 or 1: test them with #if, not #ifdef
+// Platform macros, always defined as 0 or 1, so test them with #if, not #ifdef
 
 // Clang builtins used below, always false on other compilers
 #ifndef __clang__

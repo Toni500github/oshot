@@ -66,10 +66,8 @@ using namespace std::chrono_literals;
 static_assert(OSHOT_IMGUI_VERSION == IMGUI_VERSION_NUM,
               "Update OSHOT_IMGUI_VERSION in src/plugins/oshot_plugin.h together with imgui");
 
-// From libcimgui. oshot itself doesn't need cimgui, but calling into it makes
-// liboshot_common depend on it, so it's loaded before any plugin is. Plugins
-// then find its symbols without linking it (or without finding it on their
-// own, e.g. inside the AppImage).
+// From libcimgui. Calling it makes liboshot_common depend on cimgui, so it's loaded before any plugin, and
+// plugins find its symbols without linking it (or looking for it, e.g. inside the AppImage)
 extern "C" const char* igGetVersion(void);
 
 static std::thread::id   g_plugin_ui_thread;
@@ -81,7 +79,7 @@ std::vector<text_transformer_t> g_text_transformers;
 static constexpr auto SLOW_TRANSFORM = 200ms;
 
 // The size of oshot_plugin_t in the plugin API's first version, which every
-// plugin's descriptor has at least; fields after it are checked with OSHOT_PLUGIN_HAS
+// plugin's descriptor has at least. Fields after it are checked with OSHOT_PLUGIN_HAS
 static constexpr size_t PLUGIN_DESC_MIN_SIZE = offsetof(oshot_plugin_t, settings);
 
 fs::path get_plugins_dir()
@@ -266,7 +264,7 @@ static bool call_plugin_ui(plugin_runtime_t& rt, F&& fn)
                                 "oshot closed what it could",
                                 unbalanced_stacks(before, after)));
 
-        // Recover without asserting or showing ImGui's error tooltip every frame, it's already logged above
+        // Recover without asserting or showing ImGui's error tooltip every frame, since it's logged above
         ImGuiIO&   io      = ImGui::GetIO();
         const bool assert  = std::exchange(io.ConfigErrorRecoveryEnableAssert, false);
         const bool tooltip = std::exchange(io.ConfigErrorRecoveryEnableTooltip, false);

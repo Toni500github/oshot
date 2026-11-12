@@ -39,8 +39,8 @@ static void set_env(const char* name, const std::string& value)
 #endif
 }
 
-// Prints each test case's name before its checks, and its results after:
-// Catch2 alone prints nothing for the ones that pass
+// Prints each test case's name before its checks, and its results after,
+// since Catch2 alone prints nothing for the ones that pass
 class ProgressListener : public Catch::EventListenerBase
 {
 public:

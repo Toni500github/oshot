@@ -95,7 +95,7 @@ std::string tr_n_fmt(fmt::format_string<Args...> msgid,
 
 /**
  * Load the catalog of a language and make it the current one.
- * Embedded catalogs come from po/<code>.po; a <config dir>/locale/<code>.po file overrides
+ * Embedded catalogs come from po/<code>.po, and a <config dir>/locale/<code>.po file overrides
  * or adds one, so translators can test their work without rebuilding oshot.
  * The catalog closest to the language is picked, e.g. "it" for "it_CH", and a
  * regional one like "pt_BR" is completed by "pt" when both exist

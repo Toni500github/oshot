@@ -25,7 +25,7 @@
 
 // The oshot_host_t table every plugin gets in init(). Plugins only reach
 // oshot through these functions, with their oshot_ctx_t telling which plugin
-// is calling; nothing here is exported for them to link against.
+// is calling. Nothing here is exported for them to link against
 
 #include <algorithm>
 #include <atomic>
@@ -173,7 +173,7 @@ static bool ui_thread_check(oshot_ctx_t* ctx, const char* func)
     return false;
 }
 
-// The config lives in the plugin's own file; the cache in oshot's, under "plugins.<id>."
+// The config lives in the plugin's own file, the cache in oshot's under "plugins.<id>."
 static TomlAPI& store_of(oshot_ctx_t* ctx, oshot_store_t store, std::string& key)
 {
     plugin_runtime_t& rt = rt_of(ctx);
@@ -185,8 +185,8 @@ static TomlAPI& store_of(oshot_ctx_t* ctx, oshot_store_t store, std::string& key
     return rt.config;
 }
 
-// For lookups straight in the table, which skip TomlAPI::BuildKey(): Cache keeps
-// everything under [cache]
+// For lookups straight in the table, which skip TomlAPI::BuildKey() (Cache keeps
+// everything under [cache])
 static const toml::node* find_node(oshot_ctx_t* ctx, oshot_store_t store, const char* key)
 {
     std::string    k(key);
@@ -579,7 +579,7 @@ static void ui_end_section(oshot_ctx_t* ctx)
  * Host services
  * ------------------------------------------------------------------ */
 
-// Reports a failure as oshot_err_t describes: in *err, or logged when the plugin passed no err
+// Reports a failure as oshot_err_t describes (in *err, or logged when the plugin passed no err)
 template <typename... Args>
 static oshot_err_t fail(oshot_ctx_t*                ctx,
                         oshot_str_t*                err,
@@ -704,7 +704,7 @@ static oshot_err_t open_url(oshot_ctx_t* ctx, oshot_str_t url, oshot_str_t* err)
 }
 
 // A run_process() child. Each output buffer is written only by the thread
-// reading that pipe; the waiting thread reads them after those have ended
+// reading that pipe, and the waiting thread reads them after those end
 struct plugin_process_t
 {
     std::unique_ptr<TinyProcessLib::Process> proc;

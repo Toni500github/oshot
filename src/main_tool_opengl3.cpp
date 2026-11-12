@@ -294,7 +294,7 @@ int run_main_tool()
         const Result<bool>& saved = save_image(op, img, ext);
         if (!saved.ok())
         {
-            // The overlay stays open; create_dialog() keeps the error in front of it
+            // The overlay stays open, and create_dialog() keeps the error in front of it
             if (op == SavingOp::Clipboard)
                 error("Failed to copy the image: {}", saved.error_v());
             else

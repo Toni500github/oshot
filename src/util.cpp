@@ -211,7 +211,7 @@ ProcessLock::ProcessLock(const std::string_view name) : m_name(name)
     }
 
 #if OSHOT_WINDOWS
-    // "Local\\" is per-user session; "Global\\" is system-wide and needs privileges sometimes.
+    // "Local\\" is per user session, while "Global\\" is system-wide and sometimes needs privileges
     const std::wstring wide  = L"Local\\" + std::wstring(m_name.begin(), m_name.end());
     HANDLE             mutex = CreateMutexW(nullptr, FALSE, wide.c_str());
     if (!mutex)
@@ -410,7 +410,7 @@ Result<capture_result_t> load_image_rgba(const std::string& path)
     if (path != "-")
     {
         pixels = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
-        // stb only says "can't fopen"; fopen() left the reason in errno
+        // stb only says "can't fopen", but fopen() left the reason in errno
         if (!pixels && std::string_view(STBI_ERROR) == "can't fopen")
             return Err("{}: {}", path, strerror(errno));
     }
@@ -1343,7 +1343,7 @@ static std::vector<font_file_t> find_language_fonts(const std::string& lang)
 #  elif OSHOT_MACOS
     const fs::path dir = "/System/Library/Fonts";
 
-    // Helvetica covers Latin, Greek and Cyrillic; Arial Unicode most other scripts
+    // Helvetica covers Latin, Greek and Cyrillic, and Arial Unicode most other scripts
     std::vector<std::string_view> names = { "Helvetica.ttc" };
     if (base == "ja")
         names.emplace_back("ヒラギノ角ゴシック W3.ttc");

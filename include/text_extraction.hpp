@@ -101,9 +101,9 @@ public:
     Result<ocr_result_t> ExtractTextCapture(const capture_result_t& cap);
 
     /**
-     * Free the engines and their model; the next Configure() loads it again.
-     * Call it before the process exits: Tesseract's own static caches are
-     * destroyed before a global OcrAPI, and ending it after them aborts
+     * Free the engines and their model, so the next Configure() loads it again.
+     * Call it before the process exits, because Tesseract's static caches are
+     * destroyed before a global OcrAPI and ending it after them aborts
      **/
     void End();
 

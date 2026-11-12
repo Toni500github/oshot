@@ -260,9 +260,7 @@ capture_result_t rotate_rgba(const capture_result_t& src, int turns_cw)
 #if OSHOT_FREEDESKTOP
 Result<capture_result_t> capture_full_screen_portal();
 
-// Query the geometry of the monitor under the cursor via Xlib + XRandR.
-// Works on native X11 and on any Wayland compositor that runs XWayland.
-// Returns nullopt if X is unavailable (pure Wayland without XWayland).
+// The geometry of the monitor under the cursor from XRandR (X11 or XWayland), nullopt without an X server
 static std::optional<region_t> get_cursor_monitor_xrandr(Display* display)
 {
     const char* disp_env = std::getenv("DISPLAY");
@@ -273,7 +271,6 @@ static std::optional<region_t> get_cursor_monitor_xrandr(Display* display)
     if (!dpy)
         return std::nullopt;
 
-    // Query the cursor position so we know which monitor the user is on
     Window       root = DefaultRootWindow(dpy);
     Window       root_ret, child_ret;
     int          root_x = 0, root_y = 0, win_x = 0, win_y = 0;
@@ -325,8 +322,7 @@ static std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
 {
     std::vector<uint8_t> out(size_t(width) * height * 4);
 
-    // 32bpp packed pixels
-    // Faster method than XGetPixel() if possible
+    // 32bpp packed pixels, faster than XGetPixel()
     if (image && image->bits_per_pixel == 32 && image->data && image->bytes_per_line >= width * 4)
     {
         if ((image->red_mask == 0x00ff0000ul) && (image->green_mask == 0x0000ff00ul) &&
@@ -888,7 +884,7 @@ Result<capture_result_t> capture_full_screen_portal()
     st.subscription_id = 0;
     st.timeout_id      = 0;
 
-    // Subscribe specifically to the request object's Response signal.
+    // The request object's Response signal
     st.subscription_id = g_dbus_connection_signal_subscribe(bus,
                                                             "org.freedesktop.portal.Desktop",
                                                             "org.freedesktop.portal.Request",
@@ -902,7 +898,7 @@ Result<capture_result_t> capture_full_screen_portal()
 
     // Give up if nothing responds. The source ID is kept to remove it if on_response fires
     // first, or the timeout would fire after this stack frame is gone and crash on
-    // g_main_loop_quit with a dangling portal_state_t* (the SIGSEGV from the tray loop)
+    // g_main_loop_quit with a dangling portal_state_t*
     st.timeout_id = g_timeout_add_seconds(5, on_timeout, &st);
 
     g_main_loop_run(st.loop);

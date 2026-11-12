@@ -225,7 +225,6 @@ static bool parseargs(int argc, char* argv[], const fs::path& configFile)
     int opt = 0;
     int option_index = 0;
 
-    /* parse operation */
     optind = 1;
     while ((opt = getopt_long(argc, argv, optstring, opts, &option_index)) != -1)
     {
@@ -510,7 +509,6 @@ static int run_without_overlay()
     const std::string& joined = fmt::format("{}", fmt::join(outputs, "\n"));
     if (rt.instant_copy_save == SavingOp::Clipboard)
     {
-        // joined.pop_back();
         const Result<>& res = g_clipboard.CopyText(joined);
         if (!res.ok())
         {
@@ -650,10 +648,8 @@ static void sync_hotkey()
 #endif
 }
 
-// Open another overlay in a separate `oshot --gui` process, on top of the one
-// already showing. This process has a single overlay (one GLFW window, ImGui
-// context and g_ss_tool), and a new process also takes its screenshot with
-// the current overlay in it, e.g. to report a visual bug in oshot itself.
+// Open another overlay on top of this one in a separate `oshot --gui` process, since a process has a single
+// overlay (one GLFW window, ImGui context and g_ss_tool). Its screenshot has the current overlay in it
 static void spawn_gui_instance(const std::string& source)
 {
     // It would only find the overlay lock taken and exit
@@ -721,10 +717,9 @@ static void spawn_gui_instance(const std::string& source)
     }).detach();
 }
 
-// Start a capture from the tray (menu or global hotkey), either a fresh screenshot
-// or the `source` image. Always sets the source, otherwise an image opened once
-// would be reopened by every later capture.
-// With `click` set, we wait for the menu to go away first
+// Start a capture from the tray (menu or global hotkey) of a fresh screenshot or the `source` image, after the
+// menu fades out with `click` set. The source is always set, or an image opened once would come back in every
+// later capture
 static void capture_from_tray(const std::string& source, const TrayClick click)
 {
     if (click == TrayClick::Icon)
@@ -878,7 +873,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     return oshot_main(int(args.size()), argv.data());
 }
 #else
-// Not caught on purpose: with the tray/worker threads still running there's nothing to unwind to
+// Not caught on purpose, since with the tray and worker threads running there's nothing to unwind to
 int main(int argc, char* argv[])
 {
     return oshot_main(argc, argv);
@@ -915,11 +910,8 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     }
 
 #if OSHOT_LINUX
-    // AppRun prepends bundled libs to LD_LIBRARY_PATH so the AppImage is self-contained.
-    // Child processes (zenity, grim, etc.) inherit it and resolve against the bundled
-    // (older) libs instead of the host's, causing symbol version mismatches.
-    // AppRun saves the original value here, restore it so that spawned system binaries
-    // use the host libs.
+    // AppRun prepends the bundled libs to LD_LIBRARY_PATH, and child processes (zenity, grim...) would load
+    // them instead of the host's and fail on symbol versions. Restore the value AppRun saved
     const char* orig = std::getenv("APPIMAGE_ORIG_LD_LIBRARY_PATH");
     if (orig)
         setenv("LD_LIBRARY_PATH", orig, 1);
@@ -1030,7 +1022,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
 #ifdef __GLIBC__
     // This process stays up as the tray. After a big block is freed (a screenshot,
     // the OCR model) glibc raises its thresholds to that size and then keeps up to
-    // twice as much free memory around; a fixed threshold gives it back after each
+    // twice as much free memory around. A fixed threshold gives it back after each
     // capture (~50 MB). Costs ~10 ms on an OCR of a whole 1080p screen
     mallopt(M_MMAP_THRESHOLD, 1024 * 1024);
 #endif
@@ -1123,7 +1115,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
                         .onClicked   = [&](TrayMenu*) { request_quit(); },
                         .subMenu = {} };
 
-    // Locals are fine here, the tray only uses them while its loop below runs
+    // Locals are fine here, since the tray only uses them while its loop below runs
     tray.menu      = { &capture_item, &open_item, &quit_item };
     tray.onClicked = [] { capture_from_tray({}, TrayClick::Icon); };
 

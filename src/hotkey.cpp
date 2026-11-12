@@ -161,7 +161,7 @@ std::function<void()> s_on_pressed;
 #if OSHOT_HAS_GLOBAL_HOTKEY
 /**
  * Fail a registration. The status, shown in Preferences and in the tray's notification,
- * gets the error in the user's language; the returned error stays English for the log
+ * gets the error in the user's language, while the returned error stays English for the log
  * @param msgid The English format string, marked with N_() for scripts/update_translations.sh
  * @param args Arguments in the format
  **/

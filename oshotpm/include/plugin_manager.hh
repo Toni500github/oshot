@@ -56,8 +56,8 @@ struct operations_t
     std::vector<std::string> arguments;
 };
 
-// How PluginManager reports progress and asks questions: on the terminal in
-// oshotpm, in the install status window in the GUI
+// How PluginManager reports progress and asks questions (on the terminal in
+// oshotpm, in the install status window in the GUI)
 struct PluginCallbacks
 {
     // Raw output of git and of build steps, as it arrives. Optional.
@@ -126,7 +126,7 @@ private:
     enum class Origin : std::uint8_t
     {
         GitClone,    // a clone in oshotpm's cache
-        UserFolder,  // the person's own folder, built in place and never deleted
+        UserFolder,  // the user's own folder, built in place and never deleted
         Archive,     // an extracted prebuilt archive: nothing is built
     };
 

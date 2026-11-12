@@ -96,7 +96,7 @@ struct catalog_t
     i18n::Charset   charset = i18n::Charset::Latin1;
 };
 
-// Catalogs are never freed: tr() hands out pointers into them, which have to
+// Catalogs are never freed, since tr() hands out pointers into them that have to
 // outlive a language change and any thread still drawing at exit
 std::mutex                    g_load_mtx;
 auto*                         g_loaded  = new std::map<std::string, catalog_t*>;

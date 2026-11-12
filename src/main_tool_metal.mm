@@ -25,9 +25,7 @@
 
 #include "platform.hpp"
 #if OSHOT_METAL
-// macOS Metal backend for oshot.
-// Compiled as Objective-C++ (.mm) so it can use Metal/Cocoa APIs freely
-// while the rest of the project stays plain C++.
+// macOS Metal backend, in Objective-C++ for the Metal and Cocoa APIs
 
 #  import <Metal/Metal.h>
 #  import <QuartzCore/CAMetalLayer.h>
@@ -158,7 +156,7 @@ int run_main_tool()
         const Result<bool>& saved = save_image(op, img, ext);
         if (!saved.ok())
         {
-            // The overlay stays open; create_dialog() keeps the error in front of it
+            // The overlay stays open, and create_dialog() keeps the error in front of it
             if (op == SavingOp::Clipboard)
                 error("Failed to copy the image: {}", saved.error_v());
             else
@@ -172,7 +170,7 @@ int run_main_tool()
         return true;
     });
     g_ss_tool.SetOnImageReload([&](const capture_result_t& cap) {
-        // Release old texture automatically via ARC
+        // ARC releases the old texture
         id<MTLTexture> newTex = create_metal_texture(device, cap.data.data(), cap.w, cap.h);
 
         g_ss_tool.SetBackendTexture((__bridge void*)newTex);

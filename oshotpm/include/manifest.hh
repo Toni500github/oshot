@@ -75,9 +75,8 @@
 // Key of a prebuilt library in a manifest, e.g. "linux-x86_64"
 #define OSHOT_TARGET OSHOT_PLATFORM "-" OSHOT_ARCH
 
-// Where a repo entry came from. Git-sourced repos live under a cache dir
-// oshotpm owns and can fetch to check for updates. Local ones (a folder
-// someone pointed us at, or a prebuilt archive) have no upstream to track.
+// Where a repo entry came from. Git repos live in oshotpm's cache and can be
+// fetched for updates, while local ones (a folder or a prebuilt archive) have no upstream
 enum class RepoSource : std::uint8_t
 {
     GitRepository,
@@ -138,7 +137,7 @@ struct manifest_t
     std::string git_hash;
 
     // Packages needed to build the plugins here, for "all" and this platform.
-    // Only shown to the person, never installed.
+    // Only shown to the user, never installed.
     std::vector<std::string> dependencies;
 
     RepoSource            source = RepoSource::GitRepository;
@@ -147,10 +146,9 @@ struct manifest_t
 
 constexpr char const MANIFEST_NAME[] = "oshot-plugin.toml";  // NOLINT
 
-// Capabilities a manifest or the plugin index can declare, each with the reason the
-// plugin needs it: things a plugin does beyond oshot's API, shown before installing.
-// oshot can't enforce them, since plugins are native code. Unknown names are kept
-// and shown as they are.
+// Capabilities a manifest or the plugin index can declare (what a plugin does beyond oshot's API), each
+// with its reason, shown before installing. oshot can't enforce them, since plugins are native code, and
+// unknown names are shown as they are
 //   network     connects to the internet
 //   files       reads or writes files outside its own folder and oshot's cache
 //   processes   runs other programs

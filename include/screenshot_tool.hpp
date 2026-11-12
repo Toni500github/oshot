@@ -214,8 +214,8 @@ struct point_t
     float y{};
 };
 
-// A dragged rectangle. `start` is where the drag began, so it can be any corner:
-// the getters give the normalized rectangle
+// A dragged rectangle. `start` is where the drag began, so it can be any corner, and the getters give the
+// normalized rectangle
 struct selection_rect_t
 {
     point_t start;
@@ -272,8 +272,8 @@ struct inputs_results_t
 };
 
 #ifndef DISABLE_PLUGINS
-// One entry pushed by a PluginCallbacks::on_* call. Produced on the install
-// worker thread, only ever read/cleared on the render thread.
+// One entry pushed by a PluginCallbacks::on_* call. Made on the install worker thread, read and cleared on the
+// render thread
 struct plugin_install_event_t
 {
     // DrawEventIcon() indexes its icons by this order
@@ -459,7 +459,7 @@ public:
     // Backend setters
     // ------------------------------
     // Called by OnCleanFrame() with what to do, the active region with its annotations, and the image format.
-    // Returns false if it failed, in which case the overlay stays open so the user can try again
+    // Returns false if it failed, then the overlay stays open so the user can try again
     void SetOnComplete(std::function<bool(SavingOp, const capture_result_t&, ImageExt)> cb)
     {
         m_on_complete = std::move(cb);
@@ -507,7 +507,7 @@ public:
     // Read back the active region with its annotations on the next frame, for request_final_image()
     void RequestFinalImage() { m_final_image_requested = true; }
 
-    // Whether RequestFinalImage() can work now: an image is shown and no output is being picked
+    // Whether RequestFinalImage() can work now (an image is shown and no output is being picked)
     [[nodiscard]] bool CanReadFinalImage() const;
 
     // ------------------------------
@@ -786,8 +786,7 @@ private:
     // ------------------------------
     // Input
     // ------------------------------
-    // Returns true when the click only deselected an annotation: the main
-    // selection must then ignore it this frame
+    // Returns true when the click only deselected an annotation, so the main selection ignores it this frame
     bool HandleAnnotationSelectionInput();
 
     void HandleShortcutsInput();
@@ -808,7 +807,7 @@ private:
     // Swaps the selection's start and end so start is the top-left corner
     void NormalizeSelection(selection_info_t& sel);
 
-    // Keeps the selection on the screenshot; around a smaller image opened with -f there's nothing to capture
+    // Keeps the selection on the screenshot (around a smaller image opened with -f there's nothing to capture)
     void ClampSelectionToImage(selection_info_t& sel);
 
     // Drops the main selection, its drag state and the current tool

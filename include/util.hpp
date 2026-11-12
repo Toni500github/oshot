@@ -494,7 +494,7 @@ inline constexpr std::array<std::pair<ImageExt, const char*>, static_cast<size_t
     { { ImageExt::PNG, "PNG" }, { ImageExt::JPEG, "JPEG" }, { ImageExt::BMP, "BMP" }, { ImageExt::TGA, "TGA" } }
 };
 
-// This process owns the systray (formerly g_is_clipboard_server)
+// This process owns the systray
 extern bool g_is_systray;
 
 // Video mode size of the monitor the overlay is on
@@ -637,7 +637,7 @@ inline bool ask_user_yn(bool def, const std::string_view fmt, Args&&... args)
     if (!init_dialogs())
     {
 #if OSHOT_WINDOWS
-        // oshot.exe has no console; oshotpm.exe (and oshot run from one) does
+        // oshot.exe has no console, but oshotpm.exe (and oshot run from one) has
         if (!GetConsoleWindow())
         {
             int result = MessageBox(NULL, str.c_str(), _("Confirmation"), MB_YESNO | MB_ICONQUESTION);
@@ -685,13 +685,13 @@ inline bool ask_user_yn(bool def, const std::string_view fmt, Args&&... args)
 /**
  * Set up nvdialog the first time a dialog or notification needs it.
  * On Linux this starts GTK, which takes tens of milliseconds and several MB, so an
- * overlay that never shows a dialog or notification never starts it. Thread-safe;
+ * overlay that never shows a dialog or notification never starts it. Thread-safe, but
  * call it on the main thread where possible, since that's where GTK gets set up.
  * @return false if dialogs are unavailable (init failed, or disable_dialogs())
  **/
 bool init_dialogs() noexcept;
 
-/* Never show dialogs again, e.g. in the oshotpm CLI: messages only go to the log/terminal */
+/* Never show dialogs again, e.g. in the oshotpm CLI, so messages only go to the log or terminal */
 void disable_dialogs() noexcept;
 
 /**

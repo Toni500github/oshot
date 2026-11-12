@@ -164,7 +164,7 @@ typedef enum
 
 /**
  * Where a value is stored. Both are private to the plugin.
- * CONFIG: the plugin's config.toml, meant for settings. Saved when the person
+ * CONFIG: the plugin's config.toml, meant for settings. Saved when the user
  *         saves the Preferences window and when the plugin is unloaded.
  * CACHE:  oshot's cache file, for state that doesn't need to survive a
  *         deleted cache (last used option, window sizes, ...).
@@ -380,7 +380,7 @@ typedef struct
      * Labels and text are drawn as they are, never read as format strings.
      * A label must be unique within the plugin's section. Add "##suffix" to
      * tell apart widgets with the same text ("Copy##url"). The part after
-     * "##" isn't shown. Functions returning bool return true when the person
+     * "##" isn't shown. Functions returning bool return true when the user
      * pressed or changed the widget in this frame.
      **/
     void (*ui_text)(oshot_ctx_t* ctx, oshot_str_t text, uint32_t flags); /* OSHOT_UI_DISABLED, OSHOT_UI_WRAPPED */
@@ -492,7 +492,7 @@ typedef struct
      * @param user Passed to on_ready
      *
      * OSHOT_ERR_UNSUPPORTED while no overlay is open (in on_capture_end()),
-     * or while the person picks a monitor on Wayland.
+     * or while the user picks a monitor on Wayland.
      **/
     oshot_err_t (*request_final_image)(oshot_ctx_t* ctx,
                                        void (*on_ready)(void* user, oshot_capture_t image),
@@ -539,7 +539,7 @@ typedef struct
 
     /**
      * Shows how an action ended, in the same status box. If no overlay is
-     * open (the person closed it while the work ran), oshot sends it as a
+     * open (the user closed it while the work ran), oshot sends it as a
      * desktop notification instead. Any thread.
      *
      * @param action As for report_progress()
@@ -618,7 +618,7 @@ typedef struct
      * Draws a custom page in Preferences > Plugins, under the declarative
      * `settings`; most plugins only need those. Return true while there are
      * unsaved changes; oshot then calls on_save_preferences or
-     * on_discard_preferences when the person saves or discards them.
+     * on_discard_preferences when the user saves or discards them.
      **/
     bool (*render_preferences)(void* state);
     void (*on_save_preferences)(void* state);
@@ -632,7 +632,7 @@ typedef struct
     size_t                 n_settings;
 
     /**
-     * After the person saved this plugin's preferences (settings and
+     * After the user saved this plugin's preferences (settings and
      * render_preferences) to config.toml. Re-read the values that matter.
      **/
     void (*on_settings_saved)(void* state);
@@ -646,7 +646,7 @@ typedef struct
 
     /**
      * A capture started: a new screenshot or image is loaded, and its first
-     * frame not drawn yet. Also called when the person opens another image in
+     * frame not drawn yet. Also called when the user opens another image in
      * the overlay, after on_capture_end() for the previous one. On Wayland with
      * several outputs, the image is cropped to the chosen output after this.
      **/
@@ -671,7 +671,7 @@ typedef struct
      * Rewrites the text oshot extracted, before it's shown. After each OCR
      * (buffer_id OSHOT_TEXT_OCR) and barcode scan (OSHOT_TEXT_BARCODE), oshot
      * passes the text through every plugin's transform_text, in the order the
-     * person sets in Preferences > Plugins, each one getting what the one
+     * user sets in Preferences > Plugins, each one getting what the one
      * before returned. Then on_ocr_done() gets the result, while its words stay
      * as OCR read them. The text tools can still show the text from before.
      *

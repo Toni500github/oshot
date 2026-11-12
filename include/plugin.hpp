@@ -54,12 +54,12 @@
 class StateManager;
 struct capture_result_t;
 
-// Whether a plugin's descriptor has `field`: one built with an older
-// oshot_plugin.h is shorter and ends before the fields added since
+// Whether a plugin's descriptor has `field`, since one built with an older
+// oshot_plugin.h ends before the fields added since
 #  define OSHOT_PLUGIN_HAS(plugin, field) \
       (offsetof(oshot_plugin_t, field) + sizeof(((oshot_plugin_t*)0)->field) <= (plugin)->struct_size)
 
-// The value of a declarative setting: CHOICE settings hold the chosen string
+// The value of a declarative setting (CHOICE settings hold the chosen string)
 using setting_value_t = std::variant<bool, int64_t, double, std::string>;
 
 // Mistakes in a plugin's UI code, each logged only once per plugin
@@ -77,7 +77,7 @@ enum class UiWarning : uint32_t  // NOLINT
 // An action from register_action()
 struct plugin_action_t
 {
-    // The button's image, RGBA, icon_w * icon_h * 4 bytes; empty for none
+    // The button's image (RGBA, icon_w * icon_h * 4 bytes), empty for none
     std::vector<uint8_t> icon;
 
     std::string label;
@@ -134,11 +134,11 @@ struct plugin_processes_t
     int64_t                                              next_id = 1;
 };
 
-// A loaded plugin. Lives in g_plugins from load until oshot exits; its address
-// is the oshot_ctx_t the plugin gets, so it must never move.
+// A loaded plugin. Lives in g_plugins from load until oshot exits, and its address
+// is the oshot_ctx_t the plugin gets, so it must never move
 struct plugin_runtime_t
 {
-    // Declared first so it's destroyed last: the library is unloaded after everything else here
+    // Declared first, so the library is unloaded after everything else here
     dylib::library lib;
 
     // ~/.config/oshot/plugins/<id>: library, config.toml, plugin data
@@ -169,7 +169,7 @@ struct plugin_runtime_t
     // The ui_begin_section() calls not ended yet, and whether each one is open
     std::vector<bool> sections;
 
-    // UiWarning bits already logged; atomic because the ui_* functions can be called from any thread
+    // UiWarning bits already logged, atomic because the ui_* functions can be called from any thread
     std::atomic<uint32_t> warned = 0;
 
     // register_action()'s actions, in the order they were added. UI thread only
@@ -247,7 +247,7 @@ struct plugin_runtime_t
 
     /**
      * The same for plugin->render_preferences()
-     * @return What render_preferences() returned: true while it has unsaved changes
+     * @return What render_preferences() returned (true while it has unsaved changes)
      **/
     bool RenderPreferences();
 
