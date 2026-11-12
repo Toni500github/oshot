@@ -90,6 +90,7 @@ static void show_window_()
         glfwSetWindowMonitor(window, hidden_monitor, 0, 0, g_scr_w, g_scr_h, GLFW_DONT_CARE);
     hidden_monitor = nullptr;
     glfwFocusWindow(window);
+    g_ss_tool.KeepDrawing();  // repaint right away, the dialog's input wasn't ours
 }
 
 static id<MTLTexture> create_metal_texture(id<MTLDevice> device, const uint8_t* data, int w, int h)
@@ -310,10 +311,15 @@ int run_main_tool()
     // Render loop
     MTLRenderPassDescriptor* rpd         = [MTLRenderPassDescriptor new];
     bool                     clean_frame = false;
+    register_wake_overlay(glfwPostEmptyEvent);
     // app_quitting() covers tray Quit and signals received while capturing
     while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive() && !app_quitting())
     {
-        glfwPollEvents();
+        // An untouched overlay waits for input instead of redrawing at the refresh rate
+        if (const double timeout = g_ss_tool.GetIdleTimeout(); timeout > 0.0)
+            glfwWaitEventsTimeout(timeout);
+        else
+            glfwPollEvents();
         if (glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0)
         {
             ImGui_ImplGlfw_Sleep(10);
@@ -373,6 +379,8 @@ int run_main_tool()
             [cb commit];
         }
     }
+
+    register_wake_overlay(nullptr);
 
     // Cleanup
     ImGui_ImplMetal_Shutdown();

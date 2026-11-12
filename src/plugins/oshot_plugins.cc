@@ -148,8 +148,16 @@ static void run_on_ui_thread(oshot_ctx_t* ctx, void (*fn)(void*), void* user)
     if (!fn)
         return;
     plugin_runtime_t& rt = rt_of(ctx);
-    std::scoped_lock  lock(rt.tasks_mutex);
-    rt.tasks.emplace_back([fn, user] { fn(user); });
+    {
+        std::scoped_lock lock(rt.tasks_mutex);
+        rt.tasks.emplace_back([fn, user] { fn(user); });
+    }
+    wake_overlay();  // the tasks run at the start of the next frame
+}
+
+static void request_redraw(oshot_ctx_t*)
+{
+    wake_overlay();
 }
 
 /* ------------------------------------------------------------------
@@ -931,6 +939,7 @@ static oshot_err_t report_progress(oshot_ctx_t* ctx, int32_t action, float fract
                         .action   = action,
                         .done     = false,
                         .ok       = false });
+    wake_overlay();
     return OSHOT_OK;
 }
 
@@ -959,6 +968,7 @@ static oshot_err_t report_result(oshot_ctx_t* ctx,
                 .action   = action,
                 .done     = true,
                 .ok       = ok });
+    wake_overlay();
     return OSHOT_OK;
 }
 
@@ -1042,4 +1052,5 @@ const oshot_host_t g_oshot_host = {
     .unregister_action   = unregister_action,
     .report_progress     = report_progress,
     .report_result       = report_result,
+    .request_redraw      = request_redraw,
 };

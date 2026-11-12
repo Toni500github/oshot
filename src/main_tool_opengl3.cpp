@@ -234,6 +234,7 @@ static void show_window_()
         glfwRestoreWindow(window);
     }
     glfwFocusWindow(window);
+    g_ss_tool.KeepDrawing();  // repaint right away, the dialog's input wasn't ours
 }
 
 static void* dialog_parent_()
@@ -442,11 +443,16 @@ int run_main_tool()
 
     bool clean_frame    = false;
     bool dialogs_inited = false;
+    register_wake_overlay(glfwPostEmptyEvent);
     // app_quitting() covers tray Quit and signals received while capturing
     while (!glfwWindowShouldClose(window) && g_ss_tool.IsActive() && !app_quitting())
     {
         // Poll and handle events (inputs, window resize, etc.)
-        glfwPollEvents();
+        // An untouched overlay waits for input instead of redrawing at the refresh rate
+        if (const double timeout = g_ss_tool.GetIdleTimeout(); timeout > 0.0)
+            glfwWaitEventsTimeout(timeout);
+        else
+            glfwPollEvents();
         if (glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0)
         {
             ImGui_ImplGlfw_Sleep(10);
@@ -493,6 +499,8 @@ int run_main_tool()
             dialogs_inited = true;
         }
     }
+
+    register_wake_overlay(nullptr);
 
     // Cleanup
     ImGui_ImplOpenGL3_Shutdown();

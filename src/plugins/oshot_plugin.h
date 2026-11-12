@@ -555,6 +555,16 @@ typedef struct
                                  oshot_str_t  message,
                                  oshot_str_t  copyable,
                                  oshot_str_t* err);
+
+    /**
+     * Has the overlay draw its next frame now. Without input, oshot draws only
+     * a couple of frames a second, so a plugin whose UI changes by itself (an
+     * animation, data from a thread) calls it: every frame from render() while
+     * it animates, or from its thread when the data changes. Without an
+     * overlay it does nothing. Any thread.
+     * Check OSHOT_HOST_HAS(host, request_redraw) before using it.
+     **/
+    void (*request_redraw)(oshot_ctx_t* ctx);
 } oshot_host_t;
 
 /* ------------------------------------------------------------------

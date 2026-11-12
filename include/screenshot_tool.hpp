@@ -30,6 +30,7 @@
 #include <array>
 #include <atomic>
 #include <bitset>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
@@ -510,6 +511,22 @@ public:
     [[nodiscard]] bool CanReadFinalImage() const;
 
     // ------------------------------
+    // Idle rendering
+    // ------------------------------
+    /**
+     * How long the backend may wait for input before drawing the next frame, so an untouched
+     * overlay doesn't redraw at the refresh rate. Call it before polling the window's events
+     * @return Seconds to pass to glfwWaitEventsTimeout(), 0 to draw right away
+     **/
+    [[nodiscard]] double GetIdleTimeout();
+
+    // Draw continuously for a moment, e.g. after the window was shown again. UI thread only
+    void KeepDrawing() { m_last_activity = std::chrono::steady_clock::now(); }
+
+    // Draw the next frame without waiting for input. Any thread, see wake_overlay()
+    void RequestRedraw() { m_redraw_requested = true; }
+
+    // ------------------------------
     // Getters
     // ------------------------------
     // Top-left corner of the screenshot on screen (it's drawn centered)
@@ -676,6 +693,11 @@ private:
 
     // The ocr_path RefreshOcrModels() last scanned
     std::string m_last_scanned_ocr_path;
+
+    // The last input or KeepDrawing(), see GetIdleTimeout()
+    std::chrono::steady_clock::time_point m_last_activity;
+    ImU32                                 m_last_input_event_id = 0;
+    std::atomic<bool>                     m_redraw_requested    = false;
 
     OcrAPI                          m_ocr_api;
     ZbarAPI                         m_zbar_api;
@@ -907,6 +929,15 @@ private:
 
 // The overlay of this process
 extern ScreenshotTool g_ss_tool;
+
+/**
+ * Set how wake_overlay() wakes the backend's frame loop, or nullptr once it can't anymore
+ * @param fn glfwPostEmptyEvent() while GLFW is initialized
+ **/
+void register_wake_overlay(void (*fn)());
+
+/* Make the overlay draw its next frame now instead of waiting for input. Any thread */
+void wake_overlay();
 
 // Files dropped on the window, picked up by the path field under the cursor
 extern std::deque<std::string> g_dropped_paths;

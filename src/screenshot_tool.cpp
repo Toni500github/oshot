@@ -383,6 +383,7 @@ Result<> ScreenshotTool::Start()
 
 Result<> ScreenshotTool::StartWindow()
 {
+    KeepDrawing();
     m_uncropped = {};
     if (m_show_window.Has(SubWindow::OutputMenuSelection))
         m_uncropped = m_screenshot;
@@ -811,6 +812,52 @@ Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const 
 // ------------------------------
 // Frame read-back
 // ------------------------------
+
+// ------------------------------
+// Idle rendering
+// ------------------------------
+
+double ScreenshotTool::GetIdleTimeout()
+{
+    // ImGui numbers the input events the backend queues, so a new number means input since the last frame
+    const ImU32 event_id = ImGui::GetCurrentContext()->InputEventsNextEventId;
+    if (std::exchange(m_last_input_event_id, event_id) != event_id)
+        KeepDrawing();
+
+    // 1 s is long enough for hover effects, tooltip delays and the smooth animations to finish after input.
+    // A download changes the screen by itself
+    if (WantsCleanFrame() || m_redraw_requested.exchange(false) ||
+        std::chrono::steady_clock::now() - m_last_activity < 1s || (m_ocr_download && m_ocr_download->running))
+        return 0.0;
+#ifndef DISABLE_PLUGINS
+    if (m_install_state && m_install_state->running)
+        return 0.0;
+    for (auto& [id, rt] : g_plugins)
+    {
+        std::scoped_lock lock(rt.reports_mutex);
+        if (std::ranges::any_of(rt.reports, [](const plugin_report_t& r) { return !r.done; }))
+            return 0.0;
+    }
+#endif
+
+    // Waking up anyway shows what other threads changed (plugin results and tasks, a quit request),
+    // and blinks the cursor of a focused text field
+    return ImGui::GetIO().WantTextInput ? 0.25 : 0.5;
+}
+
+static std::atomic<void (*)()> wake_overlay_fn{ nullptr };
+
+void register_wake_overlay(void (*fn)())
+{
+    wake_overlay_fn = fn;
+}
+
+void wake_overlay()
+{
+    g_ss_tool.RequestRedraw();
+    if (void (*fn)() = wake_overlay_fn.load())
+        fn();
+}
 
 void ScreenshotTool::OnCleanFrame()
 {

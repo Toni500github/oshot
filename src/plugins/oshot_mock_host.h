@@ -1196,6 +1196,11 @@ static inline oshot_err_t oshot_mock__h_report_result(oshot_ctx_t* ctx,
     return OSHOT_OK;
 }
 
+static inline void oshot_mock__h_request_redraw(oshot_ctx_t* ctx)
+{
+    (void)ctx;  // the mock draws only when the test calls oshot_mock_render()
+}
+
 #undef OSHOT_MOCK__SELF
 
 static inline void oshot_mock__drop_pending(oshot_mock_t* m)
@@ -1331,6 +1336,7 @@ static inline oshot_mock_t* oshot_mock_new(void)
     h->unregister_action   = oshot_mock__h_unregister_action;
     h->report_progress     = oshot_mock__h_report_progress;
     h->report_result       = oshot_mock__h_report_result;
+    h->request_redraw      = oshot_mock__h_request_redraw;
     return m;
 }
 

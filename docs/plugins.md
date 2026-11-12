@@ -327,6 +327,7 @@ oshot already does these right on every system, so plugins call them instead of 
 | `copy_text`, `copy_image` | Copy to the clipboard like oshot does (xclip or wl-copy on Linux, which keep serving it after oshot exits). The image is encoded in the format set in Preferences. | UI |
 | `notify(title, body)` | A desktop notification. | UI |
 | `report_progress`, `report_result` | Progress and results of an action, shown in the overlay (see [Actions](#actions)). | any |
+| `request_redraw()` | Draw the overlay's next frame now. With no input, oshot draws only a couple of frames a second, so call it every frame from `render()` while your UI animates, or from a thread when its data changes. | any |
 | `open_url(url)` | Open a URL (`https://`, `mailto:`, `file:///`, ...) with the default application. It must start with a scheme. | UI |
 | `run_process(argv, argc, cwd, on_exit, user, &id)` | Start a program, see below. | any |
 | `kill_process(id)` | Stop a process `run_process()` started. | any |
