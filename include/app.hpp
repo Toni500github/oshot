@@ -63,7 +63,7 @@ int run_capture();
 int run_tray();
 
 // ------------------------------
-// Window backend (main_tool_opengl3.cpp or main_tool_metal.mm)
+// Window backend (main_tool_sdl3.cpp)
 // ------------------------------
 
 /**

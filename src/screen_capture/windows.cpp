@@ -46,7 +46,7 @@
 #include "util/color.hpp"
 #include "util/result.hpp"
 
-// The order util.hpp used to include these in, before INITGUID
+// Kept in this order, before INITGUID
 #define WIN32_LEAN_AND_MEAN
 #include <combaseapi.h>
 #include <knownfolders.h>

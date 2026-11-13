@@ -158,10 +158,6 @@ Press **Alt+Shift+S** anywhere to capture while oshot is in the tray. You can ch
 
 Prefer a portable copy? Download `oshot-windows-x64-<version>.zip` (or `-arm64-`), extract it anywhere and run `oshot.exe`.
 
-On Windows on ARM, oshot draws with OpenGL, which ARM graphics drivers don't provide themselves. If oshot says it can't
-create its window, install the [OpenCL and OpenGL Compatibility Pack](https://devblogs.microsoft.com/directx/announcing-the-opencl-and-opengl-compatibility-pack-for-windows-10-on-arm/)
-from the Microsoft Store.
-
 >[!NOTE]
 >The installer is not code-signed yet, so SmartScreen may warn on first run: click **More info → Run anyway**.
 
@@ -251,8 +247,8 @@ text or image after oshot closes. Install the one for your session; the `.deb` r
 On GNOME and most other desktops, screenshots go through the desktop's screenshot portal (the first capture may ask for permission). On KDE Plasma, oshot asks KWin for the screenshot directly. Plasma 6.7 and older only allow that for an oshot installed with its desktop file (distribution packages, the .deb, `make install`), so other builds use Spectacle there, if it's installed, and else the portal, which takes longer (see [KDE Plasma: the overlay is slow to appear](#kde-plasma-the-overlay-is-slow-to-appear)). Where no screenshot portal is available (e.g. some Sway/Hyprland setups), install `grim`.
 
 oshot doesn't need XWayland. Capturing, picking a monitor, copying and dialogs all talk to Wayland directly, and the
-overlay is a native Wayland window too, since SDL3 picks X11 or Wayland when oshot starts. It works on compositors
-running without XWayland, such as Hyprland with XWayland disabled.
+overlay is a native Wayland window too. It works on compositors running without XWayland, such as Hyprland with
+XWayland disabled.
 
 #### Capture shortcut
 
@@ -296,20 +292,23 @@ Requires a C++20 compiler.
 
 ### Dependencies
 
-**All platforms:** `SDL3` (3.2 or newer), `tesseract`, `leptonica`, `zbar`, `OpenGL`
+**All platforms:** `SDL3` (3.2 or newer), `tesseract`, `leptonica`, `zbar`
 
 **Linux / BSD extras:** `libx11`, `libxrandr`, `gio-2.0`, `gtk+-3.0`, `dbus-1`, `fontconfig`, `libappindicator3` / `ayatana-appindicator3`, `wayland`, `wayland-protocols`
 
-**macOS frameworks:** `Cocoa`, `Metal`, `QuartzCore`, `CoreGraphics`, `IOKit`, `Carbon`, `UserNotifications`
+**macOS frameworks:** `Cocoa`, `CoreGraphics`, `IOKit`, `Carbon`, `UserNotifications`
 
 **Windows:** `d3d11`, `dxgi`, `shcore`, `ws2_32`
 
 #### Ubuntu / Debian
 
+`libsdl3-dev` needs Ubuntu 25.04 or Debian 13. On older releases, leave it out and build SDL3 with
+`scripts/build_sdl3.sh` (it lists the headers it needs).
+
 ```bash
 sudo apt-get install -y \
   build-essential pkg-config cmake \
-  libx11-dev libxrandr-dev libgl-dev \
+  libx11-dev libxrandr-dev \
   libsdl3-dev \
   libtesseract-dev libleptonica-dev \
   libzbar-dev \
@@ -383,11 +382,6 @@ ninja
 ```
 
 ## Troubleshooting
-
-### Windows: flicker on launch / app fails to start
-
-Download [MesaForWindows.7z](https://downloads.fdossena.com/geth.php?r=mesa64-latest), extract `opengl32.dll` beside `oshot.exe`, and relaunch.
-This `opengl32.dll` is for x64 only; on Windows on ARM, install the OpenGL compatibility pack instead (see [Windows](#windows)).
 
 ### Linux: missing/mismatched runtime libraries
 
