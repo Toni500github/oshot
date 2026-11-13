@@ -436,15 +436,6 @@ target_compile_definitions(
     PRIVATE $<$<PLATFORM_ID:Windows>:_CRT_SECURE_NO_WARNINGS>
 )
 
-# ---- dylib (plugins, and the DPI awareness functions on Windows) ----
-if(WIN32 OR NOT DISABLE_PLUGINS)
-    file(GLOB DYLIB_SOURCES src/libs/dylib/*.cpp)
-    add_library(dylib STATIC ${DYLIB_SOURCES})
-    target_include_directories(dylib PUBLIC include/libs/)
-    target_link_libraries(dylib PRIVATE ${CMAKE_DL_LIBS})
-    enable_lto(dylib)
-endif()
-
 # ---- nvdialog ----
 if(WIN32)
     file(GLOB NVD_BACKEND_SOURCES src/libs/nvdialog/backend/win32/*.c)
@@ -735,7 +726,7 @@ if(NOT DISABLE_PLUGINS)
     )
     # Plugins use cimgui. Since oshot already loads it, they find it without
     # linking it (Linux/BSD/macOS) or having to locate it (AppImage)
-    target_link_libraries(oshot_common PRIVATE dylib cimgui)
+    target_link_libraries(oshot_common PRIVATE cimgui)
 endif()
 
 # =============================================================================
@@ -769,8 +760,6 @@ set_target_properties(
 
 if(WIN32)
     set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
-    # WinMain() loads the DPI awareness functions at runtime
-    target_link_libraries(${PROJECT_NAME} PRIVATE dylib)
 
     # The icon and version info, for Explorer, the taskbar and the installer,
     # and the manifest that sets the UTF-8 code page (oshotpm and the tests

@@ -43,10 +43,11 @@
 #  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>
 // shellapi.h needs windows.h first
+
 #  include <process.h>
 #  include <shellapi.h>
 
-#  include "dylib.hpp"
+#  include "util/shared_object.hpp"
 #else
 #  include <unistd.h>
 #endif
@@ -93,25 +94,30 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     // SDL_Init(), so the first screenshot would otherwise see scaled monitor sizes
     wchar_t system_dir[MAX_PATH]{};
     GetSystemDirectoryW(system_dir, MAX_PATH);
-    try
+    const std::string sys32   = wide_to_utf8(system_dir) + DIR_SEP_STR;
+    bool              dpi_set = false;
+
+    // Windows 10 1703+, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+    if (shared_object_t user32{ SDL_LoadObject((sys32 + "user32.dll").c_str()) })
     {
-        // Windows 10 1703+, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
-        dylib::library user32(fs::path(system_dir) / "user32.dll");
-        user32.get_function<BOOL(HANDLE)>("SetProcessDpiAwarenessContext")(reinterpret_cast<HANDLE>(intptr_t(-4)));
+        using fn_t = BOOL(WINAPI*)(HANDLE);
+        if (auto fn = reinterpret_cast<fn_t>(SDL_LoadFunction(user32.get(), "SetProcessDpiAwarenessContext")))
+            dpi_set = fn(reinterpret_cast<HANDLE>(intptr_t(-4)));
     }
-    catch (const std::exception&)
+
+    // Windows 8.1+, PROCESS_PER_MONITOR_DPI_AWARE
+    if (!dpi_set)
     {
-        try
+        if (shared_object_t shcore{ SDL_LoadObject((sys32 + "shcore.dll").c_str()) })
         {
-            // Windows 8.1+, PROCESS_PER_MONITOR_DPI_AWARE
-            dylib::library shcore(fs::path(system_dir) / "shcore.dll");
-            shcore.get_function<HRESULT(int)>("SetProcessDpiAwareness")(2);
-        }
-        catch (const std::exception&)
-        {
-            SetProcessDPIAware();
+            using fn_t = HRESULT(WINAPI*)(int);
+            if (auto fn = reinterpret_cast<fn_t>(SDL_LoadFunction(shcore.get(), "SetProcessDpiAwareness")))
+                dpi_set = SUCCEEDED(fn(2));
         }
     }
+
+    if (!dpi_set)
+        SetProcessDPIAware();
 
     // In a GUI-subsystem app stdout/stderr only exist when redirected (scripts
     // reading --extract-text). Otherwise write to the console oshot was

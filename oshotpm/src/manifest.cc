@@ -35,7 +35,6 @@
 
 #include "fmt/format.h"
 #include "fmt/ranges.h"
-#include "util/paths.hpp"
 #include "util/result.hpp"
 
 static constexpr auto PLATFORMS = std::to_array<std::string_view>(

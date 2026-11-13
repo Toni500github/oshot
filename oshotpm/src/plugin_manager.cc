@@ -35,7 +35,6 @@
 #include <random>
 #include <system_error>
 
-#include "dylib.hpp"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
 #include "manifest.hh"
@@ -83,8 +82,8 @@ proc_result_t run_process(const Cmd& cmd, const fs::path& cwd, const std::functi
     auto collect = [&](const char* buf, size_t n) {
         std::scoped_lock lock(mtx);
         r.output.append(buf, n);
-        if (r.output.size() > 256 * 1024)
-            r.output.erase(0, r.output.size() - 128 * 1024);
+        if (r.output.size() > size_t(256 * 1024))
+            r.output.erase(0, r.output.size() - size_t(128 * 1024));
         if (on_output)
             on_output(std::string_view(buf, n));
     };
@@ -141,7 +140,7 @@ bool is_library_file(const fs::path& path)
 #if OSHOT_MACOS
     return ext == ".dylib" || ext == ".so";
 #else
-    return ext == dylib::decorations::os_default().suffix;
+    return ext == OSHOT_LIB_SUFFIX;
 #endif
 }
 
@@ -150,7 +149,7 @@ std::string library_suffix()
 #if OSHOT_MACOS
     return ".dylib or .so";
 #else
-    return dylib::decorations::os_default().suffix;
+    return OSHOT_LIB_SUFFIX;
 #endif
 }
 
@@ -170,6 +169,7 @@ Result<fs::path> find_library_in(const fs::path& dir)
     if (libs.size() > 1)
     {
         std::vector<std::string> names;
+        names.reserve(libs.size());
         for (const fs::path& lib : libs)
             names.push_back(lib.filename().string());
         return Err("'{}' has more than one library ({}), it must only have the plugin's",
@@ -396,6 +396,7 @@ Result<fs::path> PluginManager::FindPrebuilt(const plugin_t& plugin, const fs::p
         if (it == plugin.prebuilt.end())
         {
             std::vector<std::string> targets;
+            targets.reserve(plugin.prebuilt.size());
             for (const auto& [target, _] : plugin.prebuilt)
                 targets.push_back(target);
             return Err("'{}' has no library for {} (only for {})", plugin.name, OSHOT_TARGET, fmt::join(targets, ", "));
@@ -936,7 +937,7 @@ Result<> PluginManager::UpdateAll()
         {
             // Each failed plugin was already reported
             if (!UpdateIndexPlugins(repo).ok())
-                failed.push_back("plugins from the index");
+                failed.emplace_back("plugins from the index");
             continue;
         }
 

@@ -90,6 +90,16 @@
 #  define OSHOT_TOOL_ON_MAIN_THREAD 0
 #endif
 
+#if OSHOT_FREEDESKTOP
+#  define OSHOT_LIB_SUFFIX ".so"
+#elif OSHOT_MACOS
+#  define OSHOT_LIB_SUFFIX ".dylib"
+#elif OSHOT_WINDOWS
+#  define OSHOT_LIB_SUFFIX ".dll"
+#else
+#  define OSHOT_LIB_SUFFIX ""
+#endif
+
 #if !(OSHOT_FREEDESKTOP || OSHOT_WINDOWS || OSHOT_MACOS)
 #  warning \
       "Platform currently may not be supported, only Linux, the BSDs, Windows and MacOS. Please feel free to report any compilation errors"

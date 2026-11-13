@@ -44,10 +44,6 @@ Files: include/libs/tiny-process-library/* src/libs/tiny-process-library/*
 Copyright: 2015-2020 Ole Christian Eidheim
 License: Expat
 
-Files: include/libs/dylib.hpp src/libs/dylib/*
-Copyright: 2025 Martin Olivier
-License: Expat
-
 Files: include/libs/switch_fnv1a.hpp
 Copyright: 2019 Xavier Roche
 License: Expat
