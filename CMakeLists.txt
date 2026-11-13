@@ -214,10 +214,16 @@ set(VERSION_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/version.h)
 set(VERSION_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generateVersion.sh)
 
 # It runs on every build, so a new commit or tag is picked up. The script only
-# rewrites the file when it has changed, and only src/globals.cpp includes it
+# rewrites the file when it has changed, and only src/globals.cpp includes it.
+# Through sh, since on Windows ninja runs commands with cmd /C, which opens a
+# .sh with its file association (or hangs on an "Open with" prompt) instead
+find_program(SH_EXECUTABLE sh)
+if(NOT SH_EXECUTABLE)
+    message(FATAL_ERROR "sh not found, it runs scripts/generateVersion.sh")
+endif()
 add_custom_target(
     generate_version
-    COMMAND ${VERSION_SCRIPT}
+    COMMAND ${SH_EXECUTABLE} ${VERSION_SCRIPT}
     BYPRODUCTS ${VERSION_HEADER}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Generating version header"
