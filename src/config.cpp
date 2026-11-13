@@ -113,10 +113,10 @@ void Config::LoadConfigFile(const std::string& filename)
     File.show_text_tools      = GetValue<bool>("default.show-text-tools", true);
     File.aa_icons             = GetValue<bool>("default.antialiased-icons", true);
     File.enable_vsync         = GetValue<bool>("default.vsync", true);
+    File.fullscreen           = GetValue<bool>("default.fullscreen", true);
     File.allow_multi_tray     = GetValue<bool>("default.allow-multiple-trays", false);
     File.allow_multi_overlay  = GetValue<bool>("default.allow-multiple-overlays", false);
     File.glx_vendor           = GetValue<std::string>("default.glx-vendor", "");
-    File.real_full_screen     = GetValue<bool>("default.real-full-screen", false);
     File.old_toolbar_pos      = GetValue<bool>("default.legacy-toolbar-pos", false);
     File.pref_conf_to_env     = GetValue<bool>("default.config-over-env", false);
     File.render_anns          = GetValue<bool>("default.annotations-in-text-tools", true);
@@ -231,7 +231,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.delay,
             File.color_picker,
             File.cpa_mode,
-            File.real_full_screen,
+            File.fullscreen,
             File.enable_vsync,
             File.allow_multi_tray,
             File.allow_multi_overlay,

@@ -192,11 +192,11 @@ color-picker = {}
 # 2 = Dedicated alpha bar
 color-picker-alpha-mode = {}
 
-# On some desktop environments (e.g. MATE), the compositor may cause
-# the capture window to look grainy or pixelated. Enabling this uses exclusive
-# fullscreen mode which bypasses the compositor and fixes it.
-# Downside: the window may briefly take over the display on some setups.
-real-full-screen = {}
+# Make the overlay a fullscreen window, which covers panels and taskbars and which
+# the compositor leaves alone. Turn it off only if your window manager misbehaves
+# with fullscreen windows; the overlay is then a borderless window the size of the
+# screen. Wayland and macOS always use a fullscreen window.
+fullscreen = {}
 
 # Vertical sync (VSync). When enabled, the overlay draws in step with your monitor's
 # refresh rate, which looks smoother and draws no more frames than the monitor shows.

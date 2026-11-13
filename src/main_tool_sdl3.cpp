@@ -72,14 +72,6 @@ static bool on_wayland()
     return driver && strcmp(driver, "wayland") == 0;
 }
 
-// Wayland compositors may ignore minimize requests (sway does), and macOS minimizes
-// with an animation that the dialog's modal loop never lets finish. Both left the
-// dialog behind the fullscreen overlay, so unmap the window there instead
-static bool unmap_to_hide()
-{
-    return OSHOT_MACOS || on_wayland();
-}
-
 static void minimize_window_()
 {
     if (on_overlay_thread())
@@ -92,10 +84,10 @@ static bool hide_window_()
     if (!on_overlay_thread() || (SDL_GetWindowFlags(window) & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)))
         return false;
 
-    if (unmap_to_hide())
-        SDL_HideWindow(window);
-    else
-        SDL_MinimizeWindow(window);
+    // Unmap it rather than minimizing it. SDL doesn't restore a minimized fullscreen window
+    // on Windows, Wayland compositors may ignore minimize requests (sway does), and macOS
+    // minimizes with an animation that the dialog's modal loop never lets finish
+    SDL_HideWindow(window);
     SDL_PumpEvents();  // flush
     return true;
 }
@@ -106,10 +98,7 @@ static void show_window_()
         return;
 
     SDL_Window* window = g_ss_tool.GetWindow();
-    if (unmap_to_hide())
-        SDL_ShowWindow(window);
-    else
-        SDL_RestoreWindow(window);
+    SDL_ShowWindow(window);
     SDL_RaiseWindow(window);
     g_ss_tool.KeepDrawing();  // repaint right away, the dialog's input wasn't ours
 }
@@ -287,16 +276,19 @@ int run_main_tool()
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
 
-    // On Wayland a window can't place or size itself, so a tiling compositor would tile the
-    // overlay like any other window. Fullscreen is the only way to cover the monitor there, and
-    // on macOS a plain window stays below the menu bar and the Dock. It's SDL's borderless
-    // fullscreen, which never changes the video mode
+    // Fullscreen, since a borderless window the size of the monitor doesn't cover it everywhere (xfwm4 puts it
+    // below its panel, tiling window managers tile it, Wayland can't place it, macOS keeps it below the menu bar,
+    // and MATE's compositor makes it grainy). It's SDL's borderless fullscreen, so the video mode never changes.
+    // The fullscreen option turns it off on X11 and Windows
     SDL_WindowFlags flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    if (g_config->File.real_full_screen || on_wayland() || OSHOT_MACOS)
+#if DEBUG
+    // A plain window in debug builds on X11 and Windows, where a fullscreen one on top of
+    // everything hung the debugger's session
+    if (on_wayland() || OSHOT_MACOS)
         flags |= SDL_WINDOW_FULLSCREEN;
-#if !DEBUG
-    // Don't make the window actually fullscreen if debug build
-    // this because on Windows it hanged in gdb and every time I had to restart the VM
+#else
+    if (g_config->File.fullscreen || on_wayland() || OSHOT_MACOS)
+        flags |= SDL_WINDOW_FULLSCREEN;
     flags |= SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALWAYS_ON_TOP;
 #endif
 

@@ -29,7 +29,7 @@ static void check_same(const Config::config_file_t& got, const Config::config_fi
     CHECK(got.delay == want.delay);
     CHECK(got.color_picker == want.color_picker);
     CHECK(got.cpa_mode == want.cpa_mode);
-    CHECK(got.real_full_screen == want.real_full_screen);
+    CHECK(got.fullscreen == want.fullscreen);
     CHECK(got.enable_vsync == want.enable_vsync);
     CHECK(got.glx_vendor == want.glx_vendor);
     CHECK(got.allow_out_edit == want.allow_out_edit);
@@ -86,7 +86,7 @@ TEST_CASE("Config: the generated config loads back the same", "[config]")
         f.delay                = 250;
         f.color_picker         = 1;
         f.cpa_mode             = 0;
-        f.real_full_screen     = !f.real_full_screen;
+        f.fullscreen           = !f.fullscreen;
         f.enable_vsync         = !f.enable_vsync;
         f.glx_vendor           = "mesa";
         f.allow_out_edit       = !f.allow_out_edit;

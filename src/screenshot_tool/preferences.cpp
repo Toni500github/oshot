@@ -784,13 +784,13 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
 
     // --- Checkboxes ---
 #if !OSHOT_MACOS  // always fullscreen there
-    ImGui::Checkbox(_("Exclusive fullscreen##config_real_full_screen"), &g_config->File.real_full_screen);
+    ImGui::Checkbox(_("Fullscreen window##config_fullscreen"), &g_config->File.fullscreen);
     ImGui::SameLine();
     HelpMarker(
-        _("On some desktop environments (e.g. MATE) the compositor may make "
-          "the capture window look grainy. Enabling this uses exclusive fullscreen "
-          "to bypass the compositor.\n"
-          "Downside: the window may briefly take over the display on some setups."));
+        _("Makes the overlay a fullscreen window, which covers panels and taskbars and which "
+          "the compositor leaves alone.\n"
+          "Turn it off only if your window manager misbehaves with fullscreen windows. "
+          "Wayland always uses a fullscreen window. Takes effect on the next capture."));
 #endif
 
     ImGui::Checkbox(_("Vertical sync (VSync)##config_vsync"), &g_config->File.enable_vsync);
