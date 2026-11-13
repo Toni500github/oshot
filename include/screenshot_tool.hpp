@@ -65,6 +65,8 @@ class StateManager;
 struct plugin_runtime_t;
 #endif
 
+struct SDL_Window;
+
 // Annotation tools and toolbar buttons, in toolbar order.
 // UpdateAnnsToolbarPos() expects SaveImage to be the last button
 enum class ToolType : std::uint8_t
@@ -468,20 +470,14 @@ public:
         m_on_complete = std::move(cb);
     }
 
-    // Called by OpenImage() on macOS, so the backend recreates the screenshot texture
-    void SetOnImageReload(std::function<void(const capture_result_t&)> fn) { m_on_image_reload = std::move(fn); }
-
     // Reads a region (in screenshot pixels) of the frame the backend just rendered
     void SetReadPixels(std::function<capture_result_t(const region_t&)> fn) { m_read_pixels = std::move(fn); }
 
-    // The texture of the screenshot, made by the Metal backend
-    void SetBackendTexture(void* tex) { m_texture_id._TexID = static_cast<ImTextureID>(size_t(tex)); }
+    // The overlay window, or nullptr once the backend destroys it
+    void SetWindow(SDL_Window* window) { m_window = window; }
 
-    // The texture of a toolbar icon, made by the Metal backend
-    void SetToolTexture(ToolType type, void* tex)
-    {
-        m_tool_textures[idx(type)]._TexID = static_cast<ImTextureID>(size_t(tex));
-    }
+    // The overlay window, nullptr without an overlay
+    [[nodiscard]] SDL_Window* GetWindow() const { return m_window; }
 
     // Draw the screenshot at its full resolution on a scaled output, instead of
     // shrinking it to the logical screen size. The backend must then read back
@@ -519,7 +515,7 @@ public:
     /**
      * How long the backend may wait for input before drawing the next frame, so an untouched
      * overlay doesn't redraw at the refresh rate. Call it before polling the window's events
-     * @return Seconds to pass to glfwWaitEventsTimeout(), 0 to draw right away
+     * @return Seconds to wait for an event, 0 to draw right away
      **/
     [[nodiscard]] double GetIdleTimeout();
 
@@ -555,9 +551,12 @@ public:
     // ------------------------------
     // Textures, fonts and style
     // ------------------------------
-    // Uploads RGBA pixels to a new OpenGL texture, deleting `tex` first.
-    // Returns an empty one on macOS, where the Metal backend makes them
+    // Uploads RGBA pixels to a new texture of the overlay's renderer, destroying `tex` first
     Result<ImTextureRef> CreateTexture(ImTextureID tex, std::span<const uint8_t> data, int w, int h);
+
+    // Destroys the screenshot, toolbar and plugin icon textures. The backend calls it before
+    // destroying its renderer, which owns them
+    void ReleaseTextures();
 
     // Fonts by path and size, added to the atlas the first time. Sizes under 16 share one entry.
     // Returns the default font for a file that can't be loaded
@@ -731,9 +730,9 @@ private:
     bool m_final_image_requested = false;
 
     std::function<void()>                                            m_on_cancel;
-    std::function<void(const capture_result_t&)>                     m_on_image_reload;
     std::function<bool(SavingOp, const capture_result_t&, ImageExt)> m_on_complete;
     std::function<capture_result_t(const region_t&)>                 m_read_pixels;
+    SDL_Window*                                                      m_window = nullptr;
 
 #ifndef DISABLE_PLUGINS
     // ------------------------------
@@ -934,7 +933,7 @@ extern ScreenshotTool g_ss_tool;
 
 /**
  * Set how wake_overlay() wakes the backend's frame loop, or nullptr once it can't anymore
- * @param fn glfwPostEmptyEvent() while GLFW is initialized
+ * @param fn Pushes an event to the frame loop's SDL event queue
  **/
 void register_wake_overlay(void (*fn)());
 

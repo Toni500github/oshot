@@ -363,8 +363,8 @@ static int font_suggestion_keys(ImGuiInputTextCallbackData* data)
 static void draw_preference_fonts(const bool window_just_opened)
 {
     // What stb_truetype loads
-    static constexpr auto font_filters    = std::to_array({ "*.ttf", "*.otf", "*.ttc" });
-    static constexpr int  max_suggestions = 8;
+    static constexpr std::array font_filters{ SDL_DialogFileFilter{ N_("Fonts"), "ttf;otf;ttc" } };
+    static constexpr int        max_suggestions = 8;
 
     static std::string           new_font;
     static std::vector<fs::path> resolved_font_paths;  // get_font_path() of each font, in the list's order
@@ -679,8 +679,8 @@ static void draw_preference_fonts(const bool window_just_opened)
 
 static void draw_preference_edit_config(const std::function<void()>& refresh_models_func, bool window_just_opened)
 {
-    static constexpr auto image_prev_units = std::to_array({ "off", "auto", "B", "KiB", "MiB", "KB", "MB" });
-    static constexpr auto toml_filters     = std::to_array({ "*.toml" });
+    static constexpr auto       image_prev_units = std::to_array({ "off", "auto", "B", "KiB", "MiB", "KB", "MB" });
+    static constexpr std::array toml_filters{ SDL_DialogFileFilter{ N_("TOML files"), "toml" } };
 
     static int                 image_ext_sel    = 0;
     static int                 image_preuni_sel = 0;

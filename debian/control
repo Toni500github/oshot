@@ -9,7 +9,6 @@ Build-Depends:
  libx11-dev,
  libxrandr-dev,
  libgl-dev,
- libglfw3-dev,
  libglib2.0-dev,
  libgtk-3-dev,
  libfontconfig-dev,

@@ -54,7 +54,7 @@ jobs:
             libx11 \
             libxcb \
             libpng \
-            glfw \
+            sdl3 \
             tesseract \
             tesseract-data-eng \
             tesseract-data-ita \

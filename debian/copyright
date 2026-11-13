@@ -61,10 +61,6 @@ Copyright: 2017 Serge Zaitsev
            2025-2026 Toni500
 License: Expat
 
-Files: include/libs/tinyfiledialogs.h src/libs/tinyfiledialogs/*
-Copyright: 2014-2025 Guillaume Vareille
-License: Zlib
-
 Files: include/libs/tinygettext/* src/libs/tinygettext/*
 Copyright: 2006 Ingo Ruhnke <grumbel@gmail.com>
 License: Zlib

@@ -52,10 +52,10 @@
 #include "nvdialog/nvdialog_notification.h"
 #include "platform.hpp"
 #include "screen_capture.hpp"
-#include "tinyfiledialogs.h"
 #include "util.hpp"
 #include "util/color.hpp"
 #include "util/dialogs.hpp"
+#include "util/file_dialogs.hpp"
 #include "util/paths.hpp"
 #include "util/result.hpp"
 #include "util/strings.hpp"
@@ -317,14 +317,10 @@ Result<bool> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
     const bool      hidden         = hide_window();
     const fs::path& saved_path_dir = g_cache->GetValue(CacheEntry::ImgSavePath, get_home_pictures_dir().string());
 
-    std::string filter_type = ("*." + str_tolower(g_config->File.image_out_type.first));
-    const auto  filter      = std::to_array({ filter_type.c_str() });
-    const char* save_path   = tinyfd_saveFileDialog(_("Save File"),
-                                                    (saved_path_dir / fmt.get()).string().c_str(),  // default path
-                                                    1,              // number of filter patterns
-                                                    filter.data(),  // file filters
-                                                    _("Images")     // filter description
-    );
+    const std::string                 ext_name = str_tolower(g_config->File.image_out_type.first);
+    const std::array                  filters{ SDL_DialogFileFilter{ N_("Images"), ext_name.c_str() } };
+    const std::optional<std::string>& save_path =
+        dialog::save_file(_("Save File"), (saved_path_dir / fmt.get()).string(), filters);
 
     if (hidden)
         show_window();
@@ -332,11 +328,9 @@ Result<bool> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
     if (!save_path)
         return Ok(false);
 
-    TRY(write_image_file(save_path, img, ext));
+    TRY(write_image_file(*save_path, img, ext));
     notify(_("Saved!"), _("Screenshot saved successfully"));
-
-    fs::path path(save_path);
-    g_cache->SetValue(CacheEntry::ImgSavePath, path.parent_path().string());
+    g_cache->SetValue(CacheEntry::ImgSavePath, fs::path(*save_path).parent_path().string());
 
     return Ok(true);
 }

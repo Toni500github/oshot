@@ -54,18 +54,18 @@ endmacro()
 
 add_option(DISABLE_PLUGINS "Disable plugins support" ON ON)
 add_option(
-    MACOS_OPENGL
-    "Draw the overlay with OpenGL instead of Metal on macOS, for VMs without Metal"
-    OFF
-    ON
-)
-add_option(
     BUILD_EXAMPLES
     "Build the example plugins in examples/plugins (needs to be built with plugins)"
     OFF
     OFF
 )
 add_option(BUILD_TESTS "Build the tests (tests/, run with ctest)" OFF OFF)
+add_option(
+    BUNDLE_SDL3
+    "Install the shared SDL3 next to oshot's libraries (Linux/BSD plugin builds, for packages built with scripts/build_sdl3.sh)"
+    OFF
+    OFF
+)
 
 # Arch-style default; Debian sets it empty, as the license goes into
 # /usr/share/doc/oshot/copyright there
@@ -130,19 +130,21 @@ set(OSHOT_WARNING_FLAGS -Wall -Wextra -Wpedantic -Wno-unused-parameter)
 # =============================================================================
 find_package(PkgConfig REQUIRED)
 find_package(Threads REQUIRED)
-find_package(glfw3 REQUIRED)
-find_package(OpenGL REQUIRED)
 find_package(ZLIB REQUIRED)
 
-if(TARGET glfw::glfw)
-    set(GLFW_TARGET glfw::glfw)
-elseif(TARGET glfw)
-    set(GLFW_TARGET glfw)
-elseif(TARGET glfw3)
-    set(GLFW_TARGET glfw3)
+# SDL3 (scripts/build_sdl3.sh where the system has none). Builds without
+# plugins link it statically when they can. Plugin builds need the shared
+# library, since SDL hides its internal symbols, so libimgui, liboshot_common
+# and oshot would each get their own copy of SDL's state
+find_package(SDL3 3.2 REQUIRED CONFIG)
+if(DISABLE_PLUGINS AND TARGET SDL3::SDL3-static)
+    set(SDL3_TARGET SDL3::SDL3-static)
+elseif(TARGET SDL3::SDL3-shared)
+    set(SDL3_TARGET SDL3::SDL3-shared)
 else()
-    message(FATAL_ERROR "GLFW found but no usable CMake target was exported")
+    message(FATAL_ERROR "Plugin builds need the shared SDL3, but only the static one was found")
 endif()
+message(STATUS "SDL3 ${SDL3_VERSION}: ${SDL3_TARGET}")
 
 pkg_check_modules(TESSERACT REQUIRED IMPORTED_TARGET tesseract)
 pkg_check_modules(LEPTONICA REQUIRED IMPORTED_TARGET lept)
@@ -202,9 +204,6 @@ if(UNIX AND NOT APPLE)
     )
 elseif(APPLE)
     find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
-    find_library(METAL_FRAMEWORK Metal REQUIRED)
-    find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
-    find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
 endif()
 
 # =============================================================================
@@ -329,41 +328,27 @@ add_library(toml++ STATIC src/libs/toml++/toml.cpp)
 target_include_directories(toml++ PUBLIC include/libs)
 target_compile_definitions(toml++ PUBLIC TOML_HEADER_ONLY=0)
 
-# ---- tfd (tinyfiledialogs) ----
-add_library(tfd STATIC src/libs/tinyfiledialogs/tinyfiledialogs.c)
-target_include_directories(tfd PUBLIC include/libs)
-
 # ---- imgui ----
 file(GLOB IMGUI_SOURCES src/libs/imgui/*.cpp)
-if(APPLE)
-    list(APPEND IMGUI_SOURCES src/libs/imgui/imgui_impl_metal.mm)
-endif()
 
 if(DISABLE_PLUGINS)
     add_library(imgui STATIC ${IMGUI_SOURCES})
 else()
     add_library(imgui SHARED ${IMGUI_SOURCES})
+    # The rpath finds a bundled libSDL3 (BUNDLE_SDL3) in lib/oshot
     set_target_properties(
         imgui
-        PROPERTIES VERSION 1.92.9 SOVERSION 1 WINDOWS_EXPORT_ALL_SYMBOLS ON
+        PROPERTIES
+            VERSION 1.92.9
+            SOVERSION 1
+            WINDOWS_EXPORT_ALL_SYMBOLS ON
+            INSTALL_RPATH "${_rpath_origin}"
     )
 endif()
 
 target_include_directories(imgui PUBLIC include/libs/imgui)
-target_compile_definitions(
-    imgui
-    PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLAD IMGUI_DISABLE_OBSOLETE_FUNCTIONS
-)
-target_link_libraries(imgui PUBLIC ${GLFW_TARGET})
-if(APPLE)
-    target_link_libraries(
-        imgui
-        PUBLIC
-            ${METAL_FRAMEWORK}
-            ${FOUNDATION_FRAMEWORK}
-            ${QUARTZCORE_FRAMEWORK}
-    )
-endif()
+target_compile_definitions(imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS)
+target_link_libraries(imgui PUBLIC ${SDL3_TARGET})
 
 # ---- cimgui (C-ABI plugins only) ----
 if(NOT DISABLE_PLUGINS)
@@ -535,15 +520,10 @@ target_include_directories(
 target_link_libraries(tiny-process-library PUBLIC Threads::Threads)
 
 # ---- shared by the vendored libraries ----
-set_target_properties(
-    tfd
-    nvdialog
-    PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON
-)
+set_target_properties(nvdialog PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
 enable_lto(
     fmt
     toml++
-    tfd
     imgui
     tray
     clip
@@ -586,6 +566,7 @@ set(OSHOT_COMMON_SOURCES
     src/util.cpp
     src/util/color.cpp
     src/util/dialogs.cpp
+    src/util/file_dialogs.cpp
     src/util/fonts.cpp
     src/util/image.cpp
     src/util/paths.cpp
@@ -690,13 +671,10 @@ elseif(APPLE)
     target_link_libraries(
         oshot_common
         PRIVATE
-            "-framework Metal"
-            "-framework QuartzCore"
             "-framework CoreGraphics"
             "-framework Cocoa"
             "-framework Carbon"
             "-framework IOKit"
-            "-framework OpenGL"
     )
 else()
     # GTK, since util.hpp calls gtk_events_pending()/gtk_main_iteration()
@@ -719,7 +697,6 @@ target_link_libraries(
     PUBLIC
         fmt
         toml++
-        tfd
         imgui
         tray
         clip
@@ -728,8 +705,7 @@ target_link_libraries(
         PkgConfig::TESSERACT
         PkgConfig::LEPTONICA
         PkgConfig::ZBAR
-        OpenGL::GL
-        ${GLFW_TARGET}
+        ${SDL3_TARGET}
     PRIVATE tinygettext Threads::Threads ZLIB::ZLIB
 )
 if(OpenMP_CXX_FOUND)
@@ -764,7 +740,7 @@ add_executable(
     src/main.cpp
     src/app.cpp
     src/cli.cpp
-    src/main_tool_opengl3.cpp
+    src/main_tool_sdl3.cpp
     src/libs/getopt_port/getopt.c
 )
 enable_lto(${PROJECT_NAME})
@@ -784,10 +760,6 @@ set_target_properties(
         BUILD_RPATH "${OSHOT_BUILD_RPATH}"
         INSTALL_RPATH "${OSHOT_INSTALL_RPATH}"
 )
-
-if(APPLE AND NOT MACOS_OPENGL)
-    target_sources(${PROJECT_NAME} PRIVATE src/main_tool_metal.mm)
-endif()
 
 if(WIN32)
     set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
@@ -819,11 +791,8 @@ if(WIN32)
             ${CMAKE_CURRENT_BINARY_DIR}/manifest.rc
     )
 elseif(UNIX AND NOT APPLE)
-    # main_tool_opengl3.cpp loads its configuration early
-    target_link_libraries(
-        ${PROJECT_NAME}
-        PRIVATE X11::X11 PkgConfig::FONTCONFIG
-    )
+    # main_tool_sdl3.cpp loads fontconfig's configuration early
+    target_link_libraries(${PROJECT_NAME} PRIVATE PkgConfig::FONTCONFIG)
 endif()
 
 # =============================================================================
@@ -1030,6 +999,18 @@ else()
             "${CMAKE_BINARY_DIR}/pkgconfig-install/oshot-cimgui.pc"
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
     )
+    # Under its soname, which is what oshot and its libraries load
+    if(BUNDLE_SDL3 AND UNIX AND NOT APPLE)
+        get_target_property(_sdl3_configs SDL3::SDL3-shared IMPORTED_CONFIGURATIONS)
+        list(GET _sdl3_configs 0 _sdl3_config)
+        get_target_property(_sdl3_lib SDL3::SDL3-shared IMPORTED_LOCATION_${_sdl3_config})
+        get_target_property(_sdl3_soname SDL3::SDL3-shared IMPORTED_SONAME_${_sdl3_config})
+        install(
+            FILES "${_sdl3_lib}"
+            DESTINATION ${OSHOT_INSTALL_LIBDIR}
+            RENAME "${_sdl3_soname}"
+        )
+    endif()
 endif()
 
 if(OSHOT_INSTALL_LICENSEDIR)

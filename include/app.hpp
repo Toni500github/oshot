@@ -26,9 +26,6 @@
 #ifndef _APP_HPP_
 #define _APP_HPP_
 
-// Avoid dragging glfw headers
-struct GLFWwindow;
-
 // ------------------------------
 // Captures and the tray (app.cpp)
 // ------------------------------
@@ -49,7 +46,7 @@ void request_quit();
  **/
 void on_quit_signal(int sig);
 
-/* atexit() handler. Quits the tray and terminates GLFW unless a capture is running */
+/* atexit() handler. Quits the tray and SDL unless a capture is running */
 void exit_handler_nc();
 
 /**
@@ -64,20 +61,6 @@ int run_capture();
  * @return The process exit code
  **/
 int run_tray();
-
-/**
- * GLFW error callback, shared by the window backends
- * @param i_error The GLFW error code
- * @param description The error message
- **/
-void glfw_error_callback(int i_error, const char* description);
-
-/**
- * GLFW drop callback, queues the dropped files in g_dropped_paths
- * @param count The number of paths
- * @param paths The dropped paths
- **/
-void glfw_drop_callback(GLFWwindow*, int count, const char** paths);
 
 // ------------------------------
 // Window backend (main_tool_opengl3.cpp or main_tool_metal.mm)

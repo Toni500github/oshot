@@ -45,7 +45,7 @@
           ];
 
           buildInputs = with pkgs; [
-            glfw3
+            sdl3
             tesseract
             leptonica
             zbar

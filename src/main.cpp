@@ -69,20 +69,6 @@
 #include "util.hpp"
 #include "util/image.hpp"
 #include "util/paths.hpp"
-#include "util/window.hpp"
-
-// From ImGui's GLFW example: MSVC 2015+ needs it to link a glfw3.lib built with VS2010
-#if defined(_MSC_VER) && (_MSC_VER >= 1900) && !defined(IMGUI_DISABLE_WIN32_FUNCTIONS)
-#  pragma comment(lib, "legacy_stdio_definitions")
-#endif
-
-// On a crash, restore the display mode first, then re-raise so the OS still generates a core dump
-static void on_crash_signal(int sig)
-{
-    extern_glfwTerminate();
-    signal(sig, SIG_DFL);
-    raise(sig);
-}
 
 static int oshot_main(int argc, char* argv[]);  // NOLINT
 
@@ -103,8 +89,8 @@ static std::string wide_to_utf8(const wchar_t* w)
 // A GUI-subsystem app has no console, so help/version/errors are shown as dialogs
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
-    // Per-monitor DPI awareness before the first capture: GLFW only sets it in
-    // glfwInit(), so the first screenshot would otherwise see scaled monitor sizes
+    // Per-monitor DPI awareness before the first capture: SDL only sets it in
+    // SDL_Init(), so the first screenshot would otherwise see scaled monitor sizes
     wchar_t system_dir[MAX_PATH]{};
     GetSystemDirectoryW(system_dir, MAX_PATH);
     try
@@ -214,10 +200,6 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
 
     signal(SIGINT, on_quit_signal);
     signal(SIGTERM, on_quit_signal);
-    signal(SIGABRT, on_crash_signal);
-#if !OSHOT_WINDOWS
-    signal(SIGSEGV, on_crash_signal);
-#endif
 
     auto console = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
     auto imgui   = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(500);  // keep last 500 lines
@@ -270,7 +252,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     spdlog::set_level(spdlog::level::debug);
 
 #if OSHOT_FREEDESKTOP
-    // Must run before the first GLX call (glfwInit) and before any thread is spawned,
+    // Must run before SDL loads OpenGL (GLX) and before any thread is spawned,
     // since setenv() isn't thread-safe against getenv() in other threads
     constexpr const char* GLX_ENV = "__GLX_VENDOR_LIBRARY_NAME";
     if (!g_config->File.glx_vendor.empty() &&

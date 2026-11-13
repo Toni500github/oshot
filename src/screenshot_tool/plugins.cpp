@@ -329,7 +329,7 @@ void ScreenshotTool::DrawPluginToolbarButtons(bool same_line)
             if (action.place != OSHOT_PLACE_TOOLBAR)
                 continue;
 
-            // Made on first use in each overlay. On macOS CreateTexture() makes none, so the letter is drawn
+            // Made on first use in each overlay. If it can't be, the letter is drawn
             const auto key = std::make_pair(id, action.id);
             auto       it  = m_plugin_icons.find(key);
             if (it == m_plugin_icons.end() && !action.icon.empty())
@@ -934,7 +934,7 @@ void ScreenshotTool::DrawInstallPluginsWindow()
         if (is_installing)
             ImGui::BeginDisabled();
 
-        static constexpr auto filters = std::to_array({ "*.zip", "*.tar.gz", "*.tgz", "*.tar.xz", "*.txz" });
+        static constexpr std::array filters{ SDL_DialogFileFilter{ N_("Archives"), "zip;tar.gz;tgz;tar.xz;txz" } };
         draw_input_text_file(_("Source"), "##install_source", filters, nullptr, m_install_source);
 
         const bool can_install = !is_installing && !m_install_source.empty();

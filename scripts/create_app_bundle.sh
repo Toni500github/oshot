@@ -11,6 +11,7 @@
 #   OSHOT_EXTRA_LIBS  space-separated dylibs that nothing in the bundle links but plugins do (e.g. libcimgui)
 #   OSHOT_SDK_DIR     plugin SDK (build/sdk) to copy into Contents/Resources/sdk, for oshotpm's plugin builds
 #   OSHOT_MIN_MACOS   fail if anything in the bundle needs a newer macOS than this (e.g. 15.0)
+#   OSHOT_LIB_SEARCH_DIRS  space-separated extra directories where dylibbundler looks for dylibs (e.g. SDL3's)
 
 set -euo pipefail
 set -x
@@ -79,6 +80,10 @@ main() {
     cp -f "$BINARY" "$MACOS/${APP_NAME}"
     chmod +x "$MACOS/${APP_NAME}"
     BUNDLER_ARGS=(-x "${MACOS}/${APP_NAME}")
+    SEARCH_ARGS=(-s "$LIB_SEARCH_DIR")
+    for dir in ${OSHOT_LIB_SEARCH_DIRS:-}; do
+        SEARCH_ARGS+=(-s "$dir")
+    done
     for extra in ${OSHOT_EXTRA_BINS:-}; do
         check_file "$extra"
         cp -f "$extra" "$MACOS/"
@@ -96,7 +101,7 @@ main() {
         "${BUNDLER_ARGS[@]}" \
         -d "${FRAMEWORKS}/" \
         -p @executable_path/../Frameworks/ \
-        -s "$LIB_SEARCH_DIR"
+        "${SEARCH_ARGS[@]}"
 
     # After the first pass, since -od wipes Frameworks/. Named after the install
     # name (e.g. libcimgui.1.dylib), which is what plugins reference via @rpath.
@@ -112,7 +117,7 @@ main() {
             "${LIB_ARGS[@]}" \
             -d "${FRAMEWORKS}/" \
             -p @executable_path/../Frameworks/ \
-            -s "$LIB_SEARCH_DIR"
+            "${SEARCH_ARGS[@]}"
 
         # Lets dlopen()ed plugins resolve their @rpath/<lib> dependencies.
         # Spelled like dylibbundler's -p, so it's skipped if already there

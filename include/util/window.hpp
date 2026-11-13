@@ -31,41 +31,20 @@
 #include "platform.hpp"
 
 // ------------------------------
-// Types
-// ------------------------------
-
-/**
- * Runs glfwTerminate() when the process exits, even on a crash or signal.
- * Without it, NVIDIA's driver is left in the video mode it switched to for a
- * full-resolution window, and the screen stays at 1024x768.
- **/
-struct GlfwGuard
-{
-    ~GlfwGuard();
-};
-
-inline GlfwGuard glfw_guard;
-
-// ------------------------------
 // Functions
 // ------------------------------
 
 /**
- * Register the window functions of the graphics backend (main_tool_*), so oshot_common
- * can call them without linking GLFW
+ * Register the window functions of the graphics backend (main_tool_*), so oshot_common can call them
  * @param minimize_fn Minimizes the overlay, e.g. when a link opens in the browser
  * @param hide_fn Hides the overlay while a modal dialog is open, see hide_window()
  * @param show_fn Shows the overlay again after hide_fn
  * @param dialog_parent_fn Returns the overlay's native window, see dialog_parent_window(). May be nullptr
- * @param _extern_glfwTerminate glfwTerminate()
- * @param _extern_glfwSwapInterval glfwSwapInterval()
  **/
 void register_window_callbacks(void (*minimize_fn)(),
                                bool (*hide_fn)(),
                                void (*show_fn)(),
-                               void* (*dialog_parent_fn)(),
-                               void (*_extern_glfwTerminate)(),
-                               void (*_extern_glfwSwapInterval)(int));
+                               void* (*dialog_parent_fn)());
 
 /* Minimize the overlay window, if a backend registered one */
 void minimize_window();
@@ -87,24 +66,15 @@ void show_window();
  **/
 void* dialog_parent_window();
 
-/* Call glfwTerminate(), if a backend registered it */
-void extern_glfwTerminate();
-
 #if OSHOT_MACOS
 /**
  * Handle the system's quit request (shutdown, logout) ourselves. NSApp's own
- * handler asks the app delegate, and GLFW's always cancels it (it only closes
- * its windows), which made macOS abort the shutdown. Finishing the app launch
- * in the first glfwInit() replaces the handler, so install it again after that
+ * handler calls -terminate:, which SDL only turns into an SDL_EVENT_QUIT, so
+ * macOS aborted the shutdown. Finishing the app launch in SDL_Init() replaces
+ * the handler, so install it again after that
  * @param on_quit Called on the main thread when the request arrives
  **/
 void install_quit_handler(void (*on_quit)());
 #endif
-
-/**
- * Call glfwSwapInterval(), if a backend registered it
- * @param v 1 to enable vsync, 0 to disable it
- **/
-void extern_glfwSwapInterval(int v);
 
 #endif  // _UTIL_WINDOW_HPP_

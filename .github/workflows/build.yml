@@ -244,7 +244,15 @@ jobs:
             libxrandr \
             libxinerama \
             libxcursor \
-            libxi
+            libxi \
+            libxext \
+            libxfixes \
+            libxss \
+            libxtst \
+            libdecor \
+            libglvnd \
+            mesa \
+            dbus
 
       - name: Install dependencies (AppImage)
         if: matrix.target == 'linux-appimage'
@@ -265,6 +273,14 @@ jobs:
             libxcursor-dev \
             libxi-dev \
             libxkbcommon-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxss-dev \
+            libxtst-dev \
+            libegl-dev \
+            libgl-dev \
+            libdbus-1-dev \
+            libdecor-0-dev \
             libtesseract-dev \
             libcurl4-openssl-dev \
             libpng-dev \
@@ -290,12 +306,19 @@ jobs:
             cmake \
             libx11-dev \
             libxcb1-dev \
-            libglfw3-dev \
             libxrandr-dev \
             libxinerama-dev \
             libxcursor-dev \
             libxi-dev \
             libxkbcommon-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxss-dev \
+            libxtst-dev \
+            libegl-dev \
+            libgl-dev \
+            libdbus-1-dev \
+            libdecor-0-dev \
             libtesseract-dev \
             libpng-dev \
             zlib1g-dev \
@@ -309,7 +332,6 @@ jobs:
         run: |
           brew install --formula --force-bottle \
             cmake \
-            glfw \
             leptonica \
             zbar \
             curl \
@@ -336,7 +358,7 @@ jobs:
             zbar:p
             make:p
             tesseract-ocr:p
-            glfw:p
+            sdl3:p
             libpng:p
             zlib:p
             libjpeg-turbo:p
@@ -360,11 +382,20 @@ jobs:
             echo "PKG_CONFIG_PATH=$RUNNER_TEMP/tesseract/lib/pkgconfig" >> "$GITHUB_ENV"
           fi
 
-      # Distro GLFW is X11-only on Ubuntu 22.04 (3.3) and depends on the host for the
-      # zip: link a static GLFW with X11 and Wayland, so oshot never needs XWayland
-      - name: Build GLFW with X11 and Wayland (Linux)
-        if: matrix.target == 'linux' || matrix.target == 'linux-appimage' || matrix.target == 'debian-package'
-        run: ./scripts/build_glfw.sh /usr/local
+      # No SDL3 package on Ubuntu 22.04, and Homebrew's needs a newer macOS than
+      # MACOSX_DEPLOYMENT_TARGET. The zip builds it too, so it doesn't depend on
+      # the host's. Without plugins it's linked statically, plugin builds bundle
+      # the shared one (BUNDLE_SDL3 for the zip and .deb)
+      - name: Build SDL3 (Linux, macOS)
+        if: runner.os == 'macOS' || matrix.target == 'linux' || matrix.target == 'linux-appimage' || matrix.target == 'debian-package'
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            echo "SDL3_PREFIX=$RUNNER_TEMP/sdl3" >> "$GITHUB_ENV"
+            ./scripts/build_sdl3.sh "$RUNNER_TEMP/sdl3"
+          else
+            ./scripts/build_sdl3.sh /usr/local
+          fi
+          echo "BUNDLE_SDL3=${{ matrix.plugins && '1' || '0' }}" >> "$GITHUB_ENV"
 
       - name: Build project (Linux)
         if: matrix.target == 'linux' || matrix.target == 'linux-appimage'
@@ -372,10 +403,12 @@ jobs:
           ./scripts/generateVersion.sh
           mkdir -p build
           cmake -S . -B build -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }} -DBUILD_EXAMPLES=ON \
-            -Dglfw3_DIR=/usr/local/lib/cmake/glfw3
+            -DSDL3_DIR=/usr/local/lib/cmake/SDL3
           cmake --build build
-          # The static GLFW must be the one linked in, not a system libglfw
-          if ldd build/oshot | grep libglfw; then echo "oshot links a shared libglfw" >&2; exit 1; fi
+          # Without plugins the static SDL3 must be the one linked in
+          if [ "${{ matrix.plugins }}" != true ] && ldd build/oshot | grep libSDL3; then
+            echo "oshot links a shared libSDL3" >&2; exit 1
+          fi
           # The AppImage's static libtesseract too, not Ubuntu's
           if [ -n "$TESSERACT_PREFIX" ] && ldd build/oshot | grep libtesseract; then
             echo "oshot links a shared libtesseract" >&2; exit 1
@@ -385,16 +418,15 @@ jobs:
         if: matrix.target == 'debian-package'
         env:
           DISABLE_PLUGINS: ${{ matrix.plugins && '0' || '1' }}
-          GLFW3_DIR: /usr/local/lib/cmake/glfw3
         run: |
           ./scripts/generateVersion.sh
           dpkg-buildpackage -us -uc -b
           mkdir -p package
           DEB=package/oshot-debian-package-${{ matrix.arch }}${{ matrix.plugins && '-plugins' || '' }}.deb
           mv ../oshot_*_${{ matrix.arch }}.deb "$DEB"
-          # The static GLFW must be the one linked in, not Ubuntu's X11-only libglfw3
-          if dpkg-deb -f "$DEB" Depends | grep libglfw; then
-            echo "the .deb depends on libglfw3" >&2; exit 1
+          # SDL3 is linked statically or bundled, Ubuntu 22.04 has no package of it
+          if dpkg-deb -f "$DEB" Depends | grep -i libsdl3; then
+            echo "the .deb depends on libsdl3" >&2; exit 1
           fi
           # Nor Ubuntu 22.04's libtesseract4, which newer releases don't have
           if dpkg-deb -f "$DEB" Depends | grep libtesseract; then
@@ -409,7 +441,7 @@ jobs:
           mkdir -p build
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
-            -DCMAKE_PREFIX_PATH="$TESSERACT_PREFIX;$BREW" \
+            -DCMAKE_PREFIX_PATH="$TESSERACT_PREFIX;$SDL3_PREFIX;$BREW" \
             -DPKG_CONFIG_PATH="$BREW/lib/pkgconfig:$BREW/share/pkgconfig" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" \
             -DDISABLE_PLUGINS=${{ matrix.plugins && '0' || '1' }} -DBUILD_EXAMPLES=ON
@@ -495,6 +527,8 @@ jobs:
           export OSHOT_MODELS_DIR="$PWD/models"
           # Fail if a bundled library needs a newer macOS than MACOSX_DEPLOYMENT_TARGET
           export OSHOT_MIN_MACOS="$MACOSX_DEPLOYMENT_TARGET"
+          # Plugin builds link the shared SDL3 built above
+          export OSHOT_LIB_SEARCH_DIRS="$SDL3_PREFIX/lib"
           if [ "${{ matrix.plugins }}" == "true" ]; then
             export OSHOT_EXTRA_BINS="$PWD/build/oshotpm"
             export OSHOT_EXTRA_LIBS="$PWD/build/libcimgui.dylib"
@@ -578,7 +612,7 @@ jobs:
               git \
               cmake \
               pkgconf \
-              glfw \
+              sdl3 \
               tesseract \
               zbar \
               gtk3 \

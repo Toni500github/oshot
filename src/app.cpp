@@ -25,6 +25,8 @@
 
 #include "app.hpp"
 
+#include <SDL3/SDL_init.h>
+
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -67,11 +69,11 @@
 #include "screenshot_tool.hpp"
 #include "spdlog/spdlog.h"
 #include "tiny-process-library/process.hpp"
-#include "tinyfiledialogs.h"
 #include "tray.hpp"
 #include "tray_icon_png.h"
 #include "util.hpp"
 #include "util/dialogs.hpp"
+#include "util/file_dialogs.hpp"
 #include "util/paths.hpp"
 #include "util/result.hpp"
 #include "util/window.hpp"
@@ -122,10 +124,10 @@ void exit_handler_nc()
 
     request_quit();
 
-    // Terminating GLFW under a running capture (e.g. dialog::die() from the worker
+    // Quitting SDL under a running capture (e.g. dialog::die() from the worker
     // thread) would crash it instead of exiting
     if (!capture_active.load())
-        extern_glfwTerminate();
+        SDL_Quit();
 }
 
 static int run_overlay()
@@ -167,20 +169,9 @@ int run_capture()
     return ret;
 }
 
-void glfw_error_callback(int i_error, const char* description)
-{
-    dialog::error("GLFW Error {}: {}", i_error, description);
-}
-
-void glfw_drop_callback(GLFWwindow*, int count, const char** paths)
-{
-    for (int i = 0; i < count; ++i)
-        g_dropped_paths.emplace_back(paths[i]);
-}
-
-// The tray keeps GLFW, and so the GL driver, loaded between captures, which opens the
+// The tray keeps SDL, and so the graphics driver, loaded between captures, which opens the
 // next overlay ~50 ms sooner. The driver also keeps its buffers (~25 MB of GPU memory
-// at 1080p) and 10-30 MB of RAM until GLFW is terminated, so do that after this long idle
+// at 1080p) and 10-30 MB of RAM until SDL quits, so do that after this long idle
 static constexpr std::chrono::seconds GL_IDLE_RELEASE{ 30 };
 
 static void capture_worker()
@@ -198,8 +189,8 @@ static void capture_worker()
         else if (!cv.wait_for(lk, GL_IDLE_RELEASE, has_command))
         {
             lk.unlock();
-            // On this thread, where the captures called glfwInit()
-            extern_glfwTerminate();
+            // On this thread, where the captures called SDL_Init()
+            SDL_Quit();
             gl_loaded = false;
 #ifdef __GLIBC__
             malloc_trim(0);
@@ -294,7 +285,7 @@ static void sync_hotkey()
 }
 
 // Open another overlay on top of this one in a separate `oshot --gui` process, since a process has a single
-// overlay (one GLFW window, ImGui context and g_ss_tool). Its screenshot has the current overlay in it
+// overlay (one SDL window, ImGui context and g_ss_tool). Its screenshot has the current overlay in it
 static void spawn_gui_instance(const std::string& source)
 {
     // It would only find the overlay lock taken and exit
@@ -399,7 +390,7 @@ static void capture_from_tray(const std::string& source, const TrayClick click)
     if (wait_fade)
         std::this_thread::sleep_for(TRAY_MENU_FADE);
 
-    // The GLFW event pump inside run_main_tool() also dispatches the tray's
+    // The SDL event pump inside run_main_tool() also dispatches the tray's
     // messages, so a second capture can't run in here (it would end up nested
     // inside the first one). Stack another overlay process on top instead.
     if (capture_active.load())
@@ -415,7 +406,7 @@ static void capture_from_tray(const std::string& source, const TrayClick click)
     sync_hotkey();
 
 #  if OSHOT_MACOS
-    // glfwInit() finishing the app launch replaces the reopen handler
+    // SDL_Init() finishing the app launch replaces the reopen handler
     Tray::SetReopenCallback([] { capture_from_tray(); });
 #  endif
 #else
@@ -530,24 +521,18 @@ int run_tray()
                         .hasCheckbox = false,
                         .onClicked =
                             [&](TrayMenu*) {
-                                // Patterns are case-sensitive with zenity/kdialog
-                                constexpr std::array<const char*, 8> filters = { "*.png", "*.jpeg", "*.jpg", "*.bmp",
-                                                                                 "*.PNG", "*.JPEG", "*.JPG", "*.BMP" };
+                                // Patterns are case-sensitive with zenity
+                                static constexpr std::array filters{ SDL_DialogFileFilter{
+                                    N_("Images"), "png;jpeg;jpg;bmp;PNG;JPEG;JPG;BMP" } };
 
-                                const char* open_path =
-                                    tinyfd_openFileDialog(_("Open Image"),
-                                                          "",              // default path
-                                                          filters.size(),  // number of filter patterns
-                                                          filters.data(),  // file filters
-                                                          _("Images"),     // filter description
-                                                          false            // allow multiple selections
-                                    );
+                                const std::optional<std::string>& open_path =
+                                    dialog::open_file(_("Open Image"), "", filters);
 
                                 // Canceled the dialog
                                 if (!open_path)
                                     return;
 
-                                capture_from_tray(open_path);
+                                capture_from_tray(*open_path);
                             },
                         .subMenu = {} };
 
@@ -599,8 +584,8 @@ int run_tray()
 #if !OSHOT_TOOL_ON_MAIN_THREAD
     worker.join();
 #endif
-    // Not in exit_handler_nc(): GLFW must be terminated on the main thread, with no capture running
-    extern_glfwTerminate();
+    // Not in exit_handler_nc(): SDL must quit on the main thread, with no capture running
+    SDL_Quit();
 
     return EXIT_SUCCESS;
 }
