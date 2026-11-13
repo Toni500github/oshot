@@ -450,7 +450,7 @@ int run_main_tool()
     // On X11, SDL asks every new clipboard owner for its formats, with its own window as the requestor.
     // xclip dies with BadWindow if that window is gone before it answers, and the copy goes with it.
     // The tray keeps SDL and its window, elsewhere wait for the answer before SDL_Quit()
-    if (copied && !g_is_systray && !on_wayland())
+    if (OSHOT_FREEDESKTOP && copied && !g_is_systray && !on_wayland())
     {
         const Uint64 deadline = SDL_GetTicks() + 500;
         SDL_Event    event;

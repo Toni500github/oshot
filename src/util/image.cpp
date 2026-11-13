@@ -144,15 +144,25 @@ void fit_to_screen(capture_result_t& img)
     const int   new_h = int(std::round(float(img.h) * scale));
 
     // A view of img.data, nothing is copied
-    SDL_Surface* src = SDL_CreateSurfaceFrom(img.w, img.h, SDL_PIXELFORMAT_RGBA32, img.data.data(), img.w * 4);
-    if (!src)
+    SDL_Surface* dst = SDL_CreateSurfaceFrom(img.w, img.h, SDL_PIXELFORMAT_RGBA32, img.data.data(), img.w * 4);
+    if (!dst)
     {
         spdlog::warn("Failed to resize image: {}", SDL_GetError());
         return;
     }
 
-    SDL_Surface* dst = SDL_ScaleSurface(src, new_w, new_h, SDL_SCALEMODE_LINEAR);
-    SDL_DestroySurface(src);
+    // Linear filtering only blends the 2x2 nearest pixels, so a single step skips detail past 2x
+    // (at 3x it's the same as nearest), which costs OCR words. Like SDL_GetSurfaceImage(), halve at
+    // most each step, as a 2x linear step averages every pixel. Still 4-7x faster than stb_image_resize2
+    do
+    {
+        const int    step_w = std::max(new_w, (dst->w + 1) / 2);
+        const int    step_h = std::max(new_h, (dst->h + 1) / 2);
+        SDL_Surface* next   = SDL_ScaleSurface(dst, step_w, step_h, SDL_SCALEMODE_LINEAR);
+        SDL_DestroySurface(dst);
+        dst = next;
+    } while (dst && (dst->w > new_w || dst->h > new_h));
+
     if (!dst)
     {
         spdlog::warn("Failed to resize image: {}", SDL_GetError());
