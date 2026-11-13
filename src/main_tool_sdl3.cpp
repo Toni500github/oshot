@@ -43,6 +43,9 @@
 
 #if OSHOT_FREEDESKTOP
 #  include <fontconfig/fontconfig.h>
+#elif OSHOT_MACOS
+#  include <objc/message.h>
+#  include <objc/runtime.h>
 #endif
 
 #include <cmath>
@@ -228,6 +231,20 @@ int run_main_tool()
 #if OSHOT_MACOS
     // SDL_Init() finishing the app launch replaces the quit handler
     install_quit_handler(request_quit);
+
+    // With SDL_HINT_MAC_BACKGROUND_APP, SDL leaves the activation policy alone. oshot.app gets
+    // an accessory one from LSUIElement, but a bare executable (a source build run from a
+    // terminal) starts with a prohibited one and never gets the keyboard. Make it an accessory
+    // app too, which can be activated but still has no Dock icon or menu bar
+    {
+        using send_id_t     = id (*)(id, SEL);
+        using send_policy_t = BOOL (*)(id, SEL, long);
+        const id app = reinterpret_cast<send_id_t>(objc_msgSend)(reinterpret_cast<id>(objc_getClass("NSApplication")),
+                                                                 sel_registerName("sharedApplication"));
+        constexpr long NSApplicationActivationPolicyAccessory = 1;
+        reinterpret_cast<send_policy_t>(objc_msgSend)(
+            app, sel_registerName("setActivationPolicy:"), NSApplicationActivationPolicyAccessory);
+    }
 #endif
 
     // Undoes the setup so far, then shows the error
