@@ -31,6 +31,7 @@
 #include <SDL3/SDL_dialog.h>
 
 #include <optional>
+#include <shared_mutex>
 #include <span>
 #include <string>
 
@@ -64,6 +65,14 @@ std::optional<std::string> save_file(const std::string&                    title
  * @return The chosen folder, or nothing if the dialog was canceled
  **/
 std::optional<std::string> select_folder(const std::string& title);
+
+/**
+ * Held shared while a file dialog is open. Quitting SDL under one would close the D-Bus
+ * connection the portal answers through, and the dialog would never return, so the
+ * tray's idle release (app.cpp) only quits SDL if it can lock it exclusively
+ * @return The mutex
+ **/
+std::shared_mutex& file_dialog_mutex();
 }  // namespace dialog
 
 #endif  // _UTIL_FILE_DIALOGS_HPP_

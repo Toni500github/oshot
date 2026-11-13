@@ -31,17 +31,26 @@
 #include <SDL3/SDL_timer.h>
 
 #include <atomic>
+#include <shared_mutex>
 #include <vector>
 
 #include "i18n.hpp"
-#include "spdlog/spdlog.h"
+#include "platform.hpp"
+#include "util/dialogs.hpp"
 
 namespace dialog
 {
+std::shared_mutex& file_dialog_mutex()
+{
+    static std::shared_mutex mutex;
+    return mutex;
+}
+
 struct dialog_state_t
 {
     std::atomic<bool>          done{ false };
-    std::optional<std::string> path;  // written before `done`
+    std::optional<std::string> path;   // written before `done`
+    std::string                error;  // why no dialog could be shown, written before `done`
 };
 
 // May run on another thread (Windows, zenity), or inside SDL_PumpEvents() (the portal)
@@ -49,8 +58,12 @@ static void SDLCALL on_dialog_closed(void* userdata, const char* const* files, i
 {
     auto* state = static_cast<dialog_state_t*>(userdata);
     if (!files)
-        spdlog::error("File dialog failed: {}", SDL_GetError());
-    else if (files[0])
+    {
+        // Shown by show_dialog(), on the thread that asked for the dialog
+        const char* error = SDL_GetError();
+        state->error      = error[0] != '\0' ? error : "unknown error";
+    }
+    else if (files[0] && files[0][0] != '\0')  // SDL 3.4's zenity backend reports a cancel as ""
         state->path = files[0];
     state->done = true;
 }
@@ -63,6 +76,8 @@ static std::optional<std::string> show_dialog(const SDL_FileDialogType          
     std::vector<SDL_DialogFileFilter> translated(filters.begin(), filters.end());
     for (SDL_DialogFileFilter& f : translated)
         f.name = i18n::tr(f.name);
+
+    const std::shared_lock lock(file_dialog_mutex());
 
     // SDL copies the strings, so the properties can go once the dialog is shown
     dialog_state_t         state;
@@ -83,6 +98,19 @@ static std::optional<std::string> show_dialog(const SDL_FileDialogType          
     {
         SDL_PumpEvents();
         SDL_Delay(10);
+    }
+
+    // Otherwise it would look like a cancel, and Save or Open would seem to do nothing
+    if (!state.error.empty())
+    {
+#if OSHOT_FREEDESKTOP
+        dialog::error(
+            "Couldn't show a file dialog: {}\nInstall zenity, or a desktop portal with a file chooser "
+            "(xdg-desktop-portal-gtk or xdg-desktop-portal-kde).",
+            state.error);
+#else
+        dialog::error("Couldn't show a file dialog: {}", state.error);
+#endif
     }
     return std::move(state.path);
 }
