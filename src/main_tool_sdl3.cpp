@@ -396,6 +396,10 @@ int run_main_tool()
 
         // Rendering
         ImGui::Render();
+        // The draw data is in screen units, and ImGui's SDL_Renderer backend scales only the clip
+        // rects to pixels. Let SDL scale everything instead, or a scaled output (Wayland, Retina)
+        // gets the overlay in its top-left corner
+        SDL_SetRenderScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
