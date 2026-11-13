@@ -62,7 +62,6 @@
 #  include "nvdialog/nvdialog_notification.h"
 #endif
 
-#include "clipboard.hpp"
 #include "config.hpp"
 #include "i18n.hpp"
 #include "oshot_png.h"
@@ -81,16 +80,17 @@
 using namespace Tray;
 using namespace std::chrono_literals;
 
-static std::mutex                mtx;
-static std::condition_variable   cv;
-static std::atomic<bool>         quit{ false };
+static std::mutex              mtx;
+static std::condition_variable cv;
+static std::atomic<bool>       quit{ false };
+#if !OSHOT_TOOL_ON_MAIN_THREAD
+// The next capture for capture_worker()
 static bool                      do_capture = false;
 static std::string               pending_source;   // image to open instead of capturing, empty for a screenshot
 static std::chrono::milliseconds pending_delay{};  // wait this long before capturing
-static capture_result_t          pending_image;
-static bool                      do_copy_image = false;
-static std::atomic<bool>         capture_active{ false };  // a run_main_tool() is in progress, on any thread
-static bool                      owns_tray_lock = false;   // false in the extra trays allow-multiple-trays lets start
+#endif
+static std::atomic<bool> capture_active{ false };  // a run_main_tool() is in progress, on any thread
+static bool              owns_tray_lock = false;   // false in the extra trays allow-multiple-trays lets start
 
 bool app_quitting()
 {
@@ -169,9 +169,11 @@ int run_capture()
     return ret;
 }
 
+#if !OSHOT_TOOL_ON_MAIN_THREAD  // Linux, where captures run on this worker
 // The tray keeps SDL, and so the graphics driver, loaded between captures, which opens the
 // next overlay ~50 ms sooner. The driver also keeps its buffers (~25 MB of GPU memory
-// at 1080p) and 10-30 MB of RAM until SDL quits, so do that after this long idle
+// at 1080p) and 10-30 MB of RAM until SDL quits, so do that after this long idle.
+// On X11 SDL never unloads libGL (SDL_x11opengl.c), so there the driver's code stays loaded
 static constexpr std::chrono::seconds GL_IDLE_RELEASE{ 30 };
 
 static void capture_worker()
@@ -181,7 +183,7 @@ static void capture_worker()
     {
         // wait for command
         std::unique_lock lk(mtx);
-        const auto       has_command = [] { return quit.load() || do_capture || do_copy_image; };
+        const auto       has_command = [] { return quit.load() || do_capture; };
         if (!gl_loaded)
         {
             cv.wait(lk, has_command);
@@ -189,26 +191,21 @@ static void capture_worker()
         else if (!cv.wait_for(lk, GL_IDLE_RELEASE, has_command))
         {
             lk.unlock();
+            // Not under an open file dialog (the tray's Open Image), see file_dialog_mutex().
+            // Try again after another idle period
+            const std::unique_lock dialogs(dialog::file_dialog_mutex(), std::try_to_lock);
+            if (!dialogs.owns_lock())
+                continue;
             // On this thread, where the captures called SDL_Init()
             SDL_Quit();
             gl_loaded = false;
-#ifdef __GLIBC__
+#  ifdef __GLIBC__
             malloc_trim(0);
-#endif
+#  endif
             continue;
         }
         if (quit.load())
             break;
-
-        if (do_copy_image)
-        {
-            do_copy_image        = false;
-            capture_result_t img = std::move(pending_image);
-            lk.unlock();
-            MUST_OK(g_clipboard.CopyImage(img, g_config->File.image_out_type.second),
-                    spdlog::error("{}", _r.error_v()));
-            continue;
-        }
 
         do_capture                    = false;
         g_config->Runtime.source_file = std::move(pending_source);
@@ -229,6 +226,7 @@ static void capture_worker()
         cv.notify_all();
     }
 }
+#endif
 
 // The tray menu takes a moment to fade out after the click, and a capture started
 // right away would have the menu in the screenshot
@@ -584,7 +582,7 @@ int run_tray()
 #if !OSHOT_TOOL_ON_MAIN_THREAD
     worker.join();
 #endif
-    // Not in exit_handler_nc(): SDL must quit on the main thread, with no capture running
+    // Not in exit_handler_nc(), since SDL must quit on the main thread with no capture running
     SDL_Quit();
 
     return EXIT_SUCCESS;
