@@ -11,15 +11,16 @@
 # AppImage and the .app).
 # Only video, render, dialog and tray are built: no audio, camera, joystick,
 # haptic, HIDAPI, sensor, power, GPU, Vulkan or KMSDRM (fullscreen without a
-# display server), none of which oshot uses.
-# X11, Wayland, libdecor and D-Bus are loaded at runtime, so the result runs on
+# display server), none of which oshot uses, nor libdecor, which oshot turns off
+# (SDL_HINT_VIDEO_WAYLAND_ALLOW_LIBDECOR in main_tool_sdl3.cpp).
+# X11, Wayland and D-Bus are loaded at runtime, so the result runs on
 # either session without depending on their libraries.
 #
 # usage: scripts/build_sdl3.sh [install-prefix] (default: /usr/local)
 # Needs: cmake, pkg-config and, on Linux/BSD, the X11, Wayland, EGL and D-Bus
 # headers (libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev
 # libxfixes-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols
-# libegl-dev libgl-dev libdbus-1-dev, libdecor-0-dev for Wayland decorations).
+# libegl-dev libgl-dev libdbus-1-dev).
 
 set -euo pipefail
 
@@ -54,6 +55,7 @@ cmake -S "$work/src" -B "$work/build" \
     -DSDL_GPU=OFF \
     -DSDL_VULKAN=OFF \
     -DSDL_KMSDRM=OFF \
+    -DSDL_WAYLAND_LIBDECOR=OFF \
     -DSDL_LIBURING=OFF \
     -DSDL_TEST_LIBRARY=OFF \
     -DSDL_TESTS=OFF \

@@ -220,6 +220,16 @@ int run_main_tool()
     // icon, no menu bar), and go fullscreen in place instead of in a new Space with an animation
     SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
     SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "0");
+#if OSHOT_FREEDESKTOP
+    // SDL picks XWayland when the compositor lacks wp_fifo_v1 (GNOME before 48, for one), for the sake
+    // of GPU-bound apps. Through XWayland the overlay isn't forced fullscreen, so a tiling compositor
+    // tiles it, and it's blurry on scaled outputs. An SDL_VIDEO_DRIVER variable still takes precedence
+    if (std::getenv("WAYLAND_DISPLAY"))
+        SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "wayland,x11");
+    // The overlay has no decorations, and libdecor (used where the compositor doesn't draw them,
+    // e.g. GNOME) would only slow SDL_Init() down loading its GTK plugin
+    SDL_SetHint(SDL_HINT_VIDEO_WAYLAND_ALLOW_LIBDECOR, "0");
+#endif
 
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -254,7 +264,7 @@ int run_main_tool()
     // with its first frame, so there the capture runs while the window and its renderer are
     // set up (~40 ms). On X11 the server would handle the two one after the other anyway
     std::future<Result<>> capture;
-    if (get_session_type() == SessionType::Wayland)
+    if (on_wayland())
     {
         capture = std::async(std::launch::async, [] { return g_ss_tool.Start(); });
     }

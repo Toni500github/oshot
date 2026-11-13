@@ -249,7 +249,6 @@ jobs:
             libxfixes \
             libxss \
             libxtst \
-            libdecor \
             libglvnd \
             mesa \
             dbus
@@ -280,7 +279,6 @@ jobs:
             libegl-dev \
             libgl-dev \
             libdbus-1-dev \
-            libdecor-0-dev \
             libtesseract-dev \
             libcurl4-openssl-dev \
             libpng-dev \
@@ -318,7 +316,6 @@ jobs:
             libegl-dev \
             libgl-dev \
             libdbus-1-dev \
-            libdecor-0-dev \
             libtesseract-dev \
             libpng-dev \
             zlib1g-dev \
