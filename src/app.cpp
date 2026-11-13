@@ -520,11 +520,11 @@ int run_tray()
                         .onClicked =
                             [&](TrayMenu*) {
                                 // Patterns are case-sensitive with zenity
-                                static constexpr std::array filters{ SDL_DialogFileFilter{
-                                    N_("Images"), "png;jpeg;jpg;bmp;PNG;JPEG;JPG;BMP" } };
+                                constexpr SDL_DialogFileFilter filter{ .name    = N_("Images"),
+                                                                       .pattern = "png;jpeg;jpg;bmp;PNG;JPEG;JPG;BMP" };
 
                                 const std::optional<std::string>& open_path =
-                                    dialog::open_file(_("Open Image"), "", filters);
+                                    dialog::open_file(_("Open Image"), "", filter);
 
                                 // Canceled the dialog
                                 if (!open_path)

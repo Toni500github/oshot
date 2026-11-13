@@ -314,13 +314,13 @@ Result<bool> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
     const Result<std::string>& fmt = get_config_image_out_fmt();
     TRY(fmt);
 
-    const bool      hidden         = hide_window();
-    const fs::path& saved_path_dir = g_cache->GetValue(CacheEntry::ImgSavePath, get_home_pictures_dir().string());
+    const bool        hidden         = hide_window();
+    const fs::path&   saved_path_dir = g_cache->GetValue(CacheEntry::ImgSavePath, get_home_pictures_dir().string());
+    const std::string ext_name       = str_tolower(g_config->File.image_out_type.first);
 
-    const std::string                 ext_name = str_tolower(g_config->File.image_out_type.first);
-    const std::array                  filters{ SDL_DialogFileFilter{ N_("Images"), ext_name.c_str() } };
+    const SDL_DialogFileFilter        filter = { .name = _("Images"), .pattern = ext_name.c_str() };
     const std::optional<std::string>& save_path =
-        dialog::save_file(_("Save File"), (saved_path_dir / fmt.get()).string(), filters);
+        dialog::save_file(_("Save File"), (saved_path_dir / fmt.get()).string(), filter);
 
     if (hidden)
         show_window();

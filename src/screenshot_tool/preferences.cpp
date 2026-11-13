@@ -363,8 +363,8 @@ static int font_suggestion_keys(ImGuiInputTextCallbackData* data)
 static void draw_preference_fonts(const bool window_just_opened)
 {
     // What stb_truetype loads
-    static constexpr std::array font_filters{ SDL_DialogFileFilter{ N_("Fonts"), "ttf;otf;ttc" } };
-    static constexpr int        max_suggestions = 8;
+    static constexpr SDL_DialogFileFilter font_filter{ .name = N_("Fonts"), .pattern = "ttf;otf;ttc" };
+    static constexpr int                  max_suggestions = 8;
 
     static std::string           new_font;
     static std::vector<fs::path> resolved_font_paths;  // get_font_path() of each font, in the list's order
@@ -604,7 +604,7 @@ static void draw_preference_fonts(const bool window_just_opened)
     draw_input_text_file(
         "",
         "##font_path",
-        font_filters,
+        font_filter,
         [&] { add_font(pending_font()); },
         new_font,
         ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory,
@@ -679,8 +679,8 @@ static void draw_preference_fonts(const bool window_just_opened)
 
 static void draw_preference_edit_config(const std::function<void()>& refresh_models_func, bool window_just_opened)
 {
-    static constexpr auto       image_prev_units = std::to_array({ "off", "auto", "B", "KiB", "MiB", "KB", "MB" });
-    static constexpr std::array toml_filters{ SDL_DialogFileFilter{ N_("TOML files"), "toml" } };
+    static constexpr auto image_prev_units = std::to_array({ "off", "auto", "B", "KiB", "MiB", "KB", "MB" });
+    static constexpr SDL_DialogFileFilter toml_filter{ .name = N_("TOML files"), .pattern = "toml" };
 
     static int                 image_ext_sel    = 0;
     static int                 image_preuni_sel = 0;
@@ -764,7 +764,7 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     HelpMarker(
         _("Full path to the theme file (theme.toml by default), or relative to the config directory. Supports "
           "drag-and-drop."));
-    draw_input_text_file("", "##config_theme_file_path", toml_filters, nullptr, g_config->File.theme_file_path);
+    draw_input_text_file("", "##config_theme_file_path", toml_filter, nullptr, g_config->File.theme_file_path);
     if (!fs::exists(g_config->GetThemeFilePath()))
         ImGui::TextColored((0xff7444FF_rgba), "%s", _("File doesn't exist, fallback to default hardcoded theme"));
     ImGui::Spacing();

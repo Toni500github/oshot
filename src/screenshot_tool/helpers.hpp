@@ -29,7 +29,6 @@
 // Shared by the src/screenshot_tool/*.cpp files
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -107,16 +106,15 @@ constexpr bool has_toolbar_button(ToolType t)
     return t != ToolType::kNone && t != ToolType::COUNT && t != ToolType::Logo;
 }
 
-template <size_t N>
-inline void draw_input_text_path(const char*                               label,
-                                 const char*                               input_id,
-                                 const bool                                is_file,
-                                 const std::array<SDL_DialogFileFilter, N> filters,
-                                 const std::function<void()>&              if_edited,
-                                 std::string&                              path,
-                                 ImGuiInputFlags                           flags,
-                                 ImGuiInputTextCallback                    callback  = nullptr,
-                                 void*                                     user_data = nullptr)
+inline void draw_input_text_path(const char*                  label,
+                                 const char*                  input_id,
+                                 const bool                   is_file,
+                                 const SDL_DialogFileFilter   filter,
+                                 const std::function<void()>& if_edited,
+                                 std::string&                 path,
+                                 ImGuiInputFlags              flags,
+                                 ImGuiInputTextCallback       callback  = nullptr,
+                                 void*                        user_data = nullptr)
 {
     auto handle_drop = [&]() {
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && !g_dropped_paths.empty())
@@ -151,7 +149,7 @@ inline void draw_input_text_path(const char*                               label
         }
 
         const std::optional<std::string>& dialog_path =
-            !is_file ? dialog::select_folder(_("Open folder")) : dialog::open_file(_("Open file"), start_path, filters);
+            !is_file ? dialog::select_folder(_("Open folder")) : dialog::open_file(_("Open file"), start_path, filter);
 
         if (hidden)
             show_window();
@@ -170,17 +168,16 @@ inline void draw_input_text_path(const char*                               label
     ImGui::TextUnformatted(label);
 }
 
-template <size_t N>
-inline void draw_input_text_file(const char*                               label,
-                                 const char*                               input_id,
-                                 const std::array<SDL_DialogFileFilter, N> filters,
-                                 const std::function<void()>&              if_edited,
-                                 std::string&                              path,
-                                 ImGuiInputFlags                           flags     = 0,
-                                 ImGuiInputTextCallback                    callback  = nullptr,
-                                 void*                                     user_data = nullptr)
+inline void draw_input_text_file(const char*                  label,
+                                 const char*                  input_id,
+                                 const SDL_DialogFileFilter   filter,
+                                 const std::function<void()>& if_edited,
+                                 std::string&                 path,
+                                 ImGuiInputFlags              flags     = 0,
+                                 ImGuiInputTextCallback       callback  = nullptr,
+                                 void*                        user_data = nullptr)
 {
-    draw_input_text_path<N>(label, input_id, true, filters, if_edited, path, flags, callback, user_data);
+    draw_input_text_path(label, input_id, true, filter, if_edited, path, flags, callback, user_data);
 }
 
 inline void draw_input_text_folder(const char*                  label,
@@ -189,7 +186,7 @@ inline void draw_input_text_folder(const char*                  label,
                                    std::string&                 path,
                                    ImGuiInputFlags              flags = 0)
 {
-    draw_input_text_path<0>(label, input_id, false, {}, if_edited, path, flags);
+    draw_input_text_path(label, input_id, false, {}, if_edited, path, flags);
 }
 
 inline bool create_timed_button(const std::string_view label1,

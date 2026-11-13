@@ -32,7 +32,6 @@
 
 #include <optional>
 #include <shared_mutex>
-#include <span>
 #include <string>
 
 namespace dialog
@@ -41,23 +40,23 @@ namespace dialog
  * Show an open file dialog and wait until it's closed
  * @param title The dialog's title
  * @param default_path The folder to start in when it ends with a separator, else a file in it. May be empty
- * @param filters The file types to show, e.g. { N_("Images"), "png;jpg" }. Their names get translated
+ * @param filter The file types to show, e.g. { N_("Images"), "png;jpg" }. Their names get translated
  * @return The chosen file, or nothing if the dialog was canceled
  **/
-std::optional<std::string> open_file(const std::string&                    title,
-                                     const std::string&                    default_path,
-                                     std::span<const SDL_DialogFileFilter> filters);
+std::optional<std::string> open_file(const std::string&         title,
+                                     const std::string&         default_path,
+                                     const SDL_DialogFileFilter filter);
 
 /**
  * Show a save file dialog and wait until it's closed
  * @param title The dialog's title
  * @param default_path The file name to suggest, with its folder. May be empty
- * @param filters The file types to show, e.g. { N_("Images"), "png" }. Their names get translated
+ * @param filter The file types to show, e.g. { N_("Images"), "png" }. Their names get translated
  * @return The chosen file, or nothing if the dialog was canceled
  **/
-std::optional<std::string> save_file(const std::string&                    title,
-                                     const std::string&                    default_path,
-                                     std::span<const SDL_DialogFileFilter> filters);
+std::optional<std::string> save_file(const std::string&         title,
+                                     const std::string&         default_path,
+                                     const SDL_DialogFileFilter filter);
 
 /**
  * Show a folder picker and wait until it's closed

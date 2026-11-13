@@ -32,7 +32,6 @@
 
 #include <atomic>
 #include <shared_mutex>
-#include <vector>
 
 #include "i18n.hpp"
 #include "platform.hpp"
@@ -68,14 +67,13 @@ static void SDLCALL on_dialog_closed(void* userdata, const char* const* files, i
     state->done = true;
 }
 
-static std::optional<std::string> show_dialog(const SDL_FileDialogType              type,
-                                              const std::string&                    title,
-                                              const std::string&                    default_path,
-                                              std::span<const SDL_DialogFileFilter> filters)
+static std::optional<std::string> show_dialog(const SDL_FileDialogType   type,
+                                              const std::string&         title,
+                                              const std::string&         default_path,
+                                              const SDL_DialogFileFilter filter)
 {
-    std::vector<SDL_DialogFileFilter> translated(filters.begin(), filters.end());
-    for (SDL_DialogFileFilter& f : translated)
-        f.name = i18n::tr(f.name);
+    const SDL_DialogFileFilter translated{ .name    = filter.name ? i18n::tr(filter.name) : "",
+                                           .pattern = filter.pattern };
 
     const std::shared_lock lock(file_dialog_mutex());
 
@@ -85,10 +83,11 @@ static std::optional<std::string> show_dialog(const SDL_FileDialogType          
     SDL_SetStringProperty(props, SDL_PROP_FILE_DIALOG_TITLE_STRING, title.c_str());
     if (!default_path.empty())
         SDL_SetStringProperty(props, SDL_PROP_FILE_DIALOG_LOCATION_STRING, default_path.c_str());
-    if (!translated.empty())
+    if (translated.pattern)
     {
-        SDL_SetPointerProperty(props, SDL_PROP_FILE_DIALOG_FILTERS_POINTER, translated.data());
-        SDL_SetNumberProperty(props, SDL_PROP_FILE_DIALOG_NFILTERS_NUMBER, Sint64(translated.size()));
+        SDL_SetPointerProperty(
+            props, SDL_PROP_FILE_DIALOG_FILTERS_POINTER, const_cast<SDL_DialogFileFilter*>(&translated));
+        SDL_SetNumberProperty(props, SDL_PROP_FILE_DIALOG_NFILTERS_NUMBER, 1);
     }
     SDL_ShowFileDialogWithProperties(type, on_dialog_closed, &state, props);
     SDL_DestroyProperties(props);
@@ -115,18 +114,18 @@ static std::optional<std::string> show_dialog(const SDL_FileDialogType          
     return std::move(state.path);
 }
 
-std::optional<std::string> open_file(const std::string&                    title,
-                                     const std::string&                    default_path,
-                                     std::span<const SDL_DialogFileFilter> filters)
+std::optional<std::string> open_file(const std::string&         title,
+                                     const std::string&         default_path,
+                                     const SDL_DialogFileFilter filter)
 {
-    return show_dialog(SDL_FILEDIALOG_OPENFILE, title, default_path, filters);
+    return show_dialog(SDL_FILEDIALOG_OPENFILE, title, default_path, filter);
 }
 
-std::optional<std::string> save_file(const std::string&                    title,
-                                     const std::string&                    default_path,
-                                     std::span<const SDL_DialogFileFilter> filters)
+std::optional<std::string> save_file(const std::string&         title,
+                                     const std::string&         default_path,
+                                     const SDL_DialogFileFilter filter)
 {
-    return show_dialog(SDL_FILEDIALOG_SAVEFILE, title, default_path, filters);
+    return show_dialog(SDL_FILEDIALOG_SAVEFILE, title, default_path, filter);
 }
 
 std::optional<std::string> select_folder(const std::string& title)

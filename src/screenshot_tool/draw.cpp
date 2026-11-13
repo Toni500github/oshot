@@ -487,11 +487,11 @@ void ScreenshotTool::DrawAnnotationToolbar()
                 ImGui::InputFloat("##fontsize", &m_tool_thickness[idx(m_current_tool)], 2.0f, 2.0f, "%.0f px");
                 ImGui::SameLine();
                 ImGui::TextUnformatted(_("Font Size"));
-                static constexpr std::array font_filters{ SDL_DialogFileFilter{ N_("Fonts"), "ttf;otf;ttc" } };
+                constexpr SDL_DialogFileFilter filter{ .name = N_("Fonts"), .pattern = "ttf;otf;ttc" };
                 draw_input_text_file(
                     _("Font name/path"),
                     "##font_path_ann_settings",
-                    font_filters,
+                    filter,
                     [&] { m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string(); },
                     m_inputs.ann_font);
             }
@@ -657,8 +657,8 @@ void ScreenshotTool::DrawMenuItems()
             {
                 const bool hidden = hide_window();
 
-                static constexpr std::array       filters{ SDL_DialogFileFilter{ N_("Images"), "png;jpeg;jpg;bmp" } };
-                const std::optional<std::string>& open_path = dialog::open_file(_("Open Image"), "", filters);
+                constexpr SDL_DialogFileFilter    filter{ .name = N_("Images"), .pattern = "png;jpeg;jpg;bmp" };
+                const std::optional<std::string>& open_path = dialog::open_file(_("Open Image"), "", filter);
 
                 if (hidden)
                     show_window();

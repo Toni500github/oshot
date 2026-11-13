@@ -934,8 +934,8 @@ void ScreenshotTool::DrawInstallPluginsWindow()
         if (is_installing)
             ImGui::BeginDisabled();
 
-        static constexpr std::array filters{ SDL_DialogFileFilter{ N_("Archives"), "zip;tar.gz;tgz;tar.xz;txz" } };
-        draw_input_text_file(_("Source"), "##install_source", filters, nullptr, m_install_source);
+        constexpr SDL_DialogFileFilter filter{ .name = N_("Archives"), .pattern = "zip;tar.gz;tgz;tar.xz;txz" };
+        draw_input_text_file(_("Source"), "##install_source", filter, nullptr, m_install_source);
 
         const bool can_install = !is_installing && !m_install_source.empty();
         if (!can_install)
