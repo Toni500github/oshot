@@ -148,7 +148,7 @@ int run_main_tool()
 
     g_ss_tool.SetOnCancel([&]() {
         spdlog::info("Canceled screenshot");
-        SDL_SetRenderVSync(renderer, 0);  // Disable vsync
+        SDL_SetRenderVSync(renderer, false);
         close = true;
     });
     g_ss_tool.SetReadPixels([&](const region_t& region) -> capture_result_t {
@@ -169,7 +169,7 @@ int run_main_tool()
         }
 
         // The target's format depends on the driver (ARGB8888 on most of them).
-        // RGBA32 is R, G, B, A in memory on any endianness
+        // RGBA32 is RGBA in memory on any endianness
         SDL_Surface* rgba = SDL_ConvertSurface(raw, SDL_PIXELFORMAT_RGBA32);
         SDL_DestroySurface(raw);
         if (!rgba)
@@ -204,7 +204,7 @@ int run_main_tool()
         if (!saved.get())  // the save dialog was canceled, so go back to the overlay
             return false;
 
-        SDL_SetRenderVSync(renderer, 0);  // Disable vsync
+        SDL_SetRenderVSync(renderer, false);
         close  = true;
         copied = op == SavingOp::Clipboard;
         return true;
@@ -305,7 +305,7 @@ int run_main_tool()
     renderer = SDL_CreateRenderer(window, nullptr);
     if (!renderer)
         return fail("Failed to create the overlay's renderer: {}", SDL_GetError());
-    SDL_SetRenderVSync(renderer, 1);
+    SDL_SetRenderVSync(renderer, true);
     spdlog::debug("SDL renderer: {}", SDL_GetRendererName(renderer));
 
     if (capture.valid())

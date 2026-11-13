@@ -105,19 +105,24 @@ main() {
 
     # After the first pass, since -od wipes Frameworks/. Named after the install
     # name (e.g. libcimgui.1.dylib), which is what plugins reference via @rpath.
+    # Libraries that the first pass already bundled are skipped, because a second run
+    # resolves their deps (SDL3) inside Frameworks/ and fails copying them onto themselves
     if [ -n "${OSHOT_EXTRA_LIBS:-}" ]; then
         LIB_ARGS=()
         for lib in ${OSHOT_EXTRA_LIBS}; do
             check_file "$lib"
             name="$(basename "$(otool -D "$lib" | tail -n 1)")"
+            [ -e "${FRAMEWORKS}/${name}" ] && continue
             cp -fL "$lib" "${FRAMEWORKS}/${name}"
             LIB_ARGS+=(-x "${FRAMEWORKS}/${name}")
         done
-        dylibbundler -of -b \
-            "${LIB_ARGS[@]}" \
-            -d "${FRAMEWORKS}/" \
-            -p @executable_path/../Frameworks/ \
-            "${SEARCH_ARGS[@]}"
+        if [ "${#LIB_ARGS[@]}" -gt 0 ]; then
+            dylibbundler -of -b \
+                "${LIB_ARGS[@]}" \
+                -d "${FRAMEWORKS}/" \
+                -p @executable_path/../Frameworks/ \
+                "${SEARCH_ARGS[@]}"
+        fi
 
         # Lets dlopen()ed plugins resolve their @rpath/<lib> dependencies.
         # Spelled like dylibbundler's -p, so it's skipped if already there
