@@ -142,7 +142,10 @@ if(DISABLE_PLUGINS AND TARGET SDL3::SDL3-static)
 elseif(TARGET SDL3::SDL3-shared)
     set(SDL3_TARGET SDL3::SDL3-shared)
 else()
-    message(FATAL_ERROR "Plugin builds need the shared SDL3, but only the static one was found")
+    message(
+        FATAL_ERROR
+        "Plugin builds need the shared SDL3, but only the static one was found"
+    )
 endif()
 message(STATUS "SDL3 ${SDL3_VERSION}: ${SDL3_TARGET}")
 
@@ -578,6 +581,7 @@ set(OSHOT_COMMON_SOURCES
 if(NOT DISABLE_PLUGINS)
     list(
         APPEND OSHOT_COMMON_SOURCES
+        src/libs/sha256.c
         src/plugins.cpp
         src/plugins/oshot_plugins.cc
         src/screenshot_tool/plugins.cpp
@@ -866,18 +870,25 @@ if(NOT DISABLE_PLUGINS)
     # ${pcfiledir} is <prefix>/<libdir>/pkgconfig
     if(IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
         file(
-            RELATIVE_PATH OSHOT_PC_INSTALL_PREFIX
+            RELATIVE_PATH
+            OSHOT_PC_INSTALL_PREFIX
             "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
             "${CMAKE_INSTALL_PREFIX}"
         )
     else()
         file(
-            RELATIVE_PATH OSHOT_PC_INSTALL_PREFIX
+            RELATIVE_PATH
+            OSHOT_PC_INSTALL_PREFIX
             "/prefix/${CMAKE_INSTALL_LIBDIR}/pkgconfig"
             "/prefix"
         )
     endif()
-    string(REGEX REPLACE "/$" "" OSHOT_PC_INSTALL_PREFIX "${OSHOT_PC_INSTALL_PREFIX}")
+    string(
+        REGEX REPLACE "/$"
+        ""
+        OSHOT_PC_INSTALL_PREFIX
+        "${OSHOT_PC_INSTALL_PREFIX}"
+    )
     foreach(_pc oshot-plugin oshot-cimgui)
         set(OSHOT_PC_PREFIX "../..")
         configure_file(
@@ -996,10 +1007,22 @@ else()
     )
     # Under its soname, which is what oshot and its libraries load
     if(BUNDLE_SDL3 AND UNIX AND NOT APPLE)
-        get_target_property(_sdl3_configs SDL3::SDL3-shared IMPORTED_CONFIGURATIONS)
+        get_target_property(
+            _sdl3_configs
+            SDL3::SDL3-shared
+            IMPORTED_CONFIGURATIONS
+        )
         list(GET _sdl3_configs 0 _sdl3_config)
-        get_target_property(_sdl3_lib SDL3::SDL3-shared IMPORTED_LOCATION_${_sdl3_config})
-        get_target_property(_sdl3_soname SDL3::SDL3-shared IMPORTED_SONAME_${_sdl3_config})
+        get_target_property(
+            _sdl3_lib
+            SDL3::SDL3-shared
+            IMPORTED_LOCATION_${_sdl3_config}
+        )
+        get_target_property(
+            _sdl3_soname
+            SDL3::SDL3-shared
+            IMPORTED_SONAME_${_sdl3_config}
+        )
         install(
             FILES "${_sdl3_lib}"
             DESTINATION ${OSHOT_INSTALL_LIBDIR}
