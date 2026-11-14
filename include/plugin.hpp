@@ -47,10 +47,10 @@
 #    define OSHOT_HOST
 #  endif
 #  include "../src/plugins/oshot_plugin.h"
-#  include "dylib.hpp"
 #  include "toml_api.hpp"
-#  include "util/paths.hpp"
+#  include "util.hpp"
 #  include "util/result.hpp"
+#  include "util/shared_object.hpp"
 
 class StateManager;
 struct capture_result_t;
@@ -140,7 +140,7 @@ struct plugin_processes_t
 struct plugin_runtime_t
 {
     // Declared first, so the library is unloaded after everything else here
-    dylib::library lib;
+    shared_object_t lib;
 
     // ~/.config/oshot/plugins/<id>: library, config.toml, plugin data
     fs::path dir;
@@ -192,7 +192,7 @@ struct plugin_runtime_t
     bool        config_dirty = false;
     bool        in_capture   = false;  // between CaptureStart() and CaptureEnd()
 
-    plugin_runtime_t(std::string id, fs::path dir, const oshot_plugin_t* plugin, dylib::library lib)
+    plugin_runtime_t(std::string id, fs::path dir, const oshot_plugin_t* plugin, shared_object_t lib)
         : lib(std::move(lib)), dir(std::move(dir)), plugin(plugin), id(std::move(id))
     {}
 

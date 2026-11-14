@@ -32,8 +32,9 @@
 #include "spdlog/spdlog.h"
 #include "util.hpp"
 #include "util/dialogs.hpp"
-#include "util/paths.hpp"
 #include "util/result.hpp"
+
+namespace fs = std::filesystem;
 
 Cache::Cache(const std::string& cache_dir) : m_cache_dir_path(cache_dir)
 {

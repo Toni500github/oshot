@@ -44,10 +44,6 @@ Files: include/libs/tiny-process-library/* src/libs/tiny-process-library/*
 Copyright: 2015-2020 Ole Christian Eidheim
 License: Expat
 
-Files: include/libs/dylib.hpp src/libs/dylib/*
-Copyright: 2025 Martin Olivier
-License: Expat
-
 Files: include/libs/switch_fnv1a.hpp
 Copyright: 2019 Xavier Roche
 License: Expat
@@ -60,10 +56,6 @@ Files: include/libs/tray.hpp src/libs/tray/*
 Copyright: 2017 Serge Zaitsev
            2025-2026 Toni500
 License: Expat
-
-Files: include/libs/tinyfiledialogs.h src/libs/tinyfiledialogs/*
-Copyright: 2014-2025 Guillaume Vareille
-License: Zlib
 
 Files: include/libs/tinygettext/* src/libs/tinygettext/*
 Copyright: 2006 Ingo Ruhnke <grumbel@gmail.com>

@@ -158,10 +158,6 @@ Press **Alt+Shift+S** anywhere to capture while oshot is in the tray. You can ch
 
 Prefer a portable copy? Download `oshot-windows-x64-<version>.zip` (or `-arm64-`), extract it anywhere and run `oshot.exe`.
 
-On Windows on ARM, oshot draws with OpenGL, which ARM graphics drivers don't provide themselves. If oshot says it can't
-create its window, install the [OpenCL and OpenGL Compatibility Pack](https://devblogs.microsoft.com/directx/announcing-the-opencl-and-opengl-compatibility-pack-for-windows-10-on-arm/)
-from the Microsoft Store.
-
 >[!NOTE]
 >The installer is not code-signed yet, so SmartScreen may warn on first run: click **More info → Run anyway**.
 
@@ -251,10 +247,8 @@ text or image after oshot closes. Install the one for your session; the `.deb` r
 On GNOME and most other desktops, screenshots go through the desktop's screenshot portal (the first capture may ask for permission). On KDE Plasma, oshot asks KWin for the screenshot directly. Plasma 6.7 and older only allow that for an oshot installed with its desktop file (distribution packages, the .deb, `make install`), so other builds use Spectacle there, if it's installed, and else the portal, which takes longer (see [KDE Plasma: the overlay is slow to appear](#kde-plasma-the-overlay-is-slow-to-appear)). Where no screenshot portal is available (e.g. some Sway/Hyprland setups), install `grim`.
 
 oshot doesn't need XWayland. Capturing, picking a monitor, copying and dialogs all talk to Wayland directly, and the
-release packages (AppImage, `.deb` and zip) include GLFW 3.5 built for both X11 and Wayland, so the overlay is a native
-Wayland window too. It works on compositors running without XWayland, such as Hyprland with XWayland disabled. If you
-build oshot yourself, the overlay is native on Wayland when your distribution's GLFW is 3.4 or newer with Wayland
-support (Arch's is); with an X11-only GLFW, such as Ubuntu's, it runs through XWayland.
+overlay is a native Wayland window too. It works on compositors running without XWayland, such as Hyprland with
+XWayland disabled.
 
 #### Capture shortcut
 
@@ -298,21 +292,24 @@ Requires a C++20 compiler.
 
 ### Dependencies
 
-**All platforms:** `glfw3`, `tesseract`, `leptonica`, `zbar`, `OpenGL`
+**All platforms:** `SDL3` (3.2 or newer), `tesseract`, `leptonica`, `zbar`
 
 **Linux / BSD extras:** `libx11`, `libxrandr`, `gio-2.0`, `gtk+-3.0`, `dbus-1`, `fontconfig`, `libappindicator3` / `ayatana-appindicator3`, `wayland`, `wayland-protocols`
 
-**macOS frameworks:** `Cocoa`, `Metal`, `QuartzCore`, `CoreGraphics`, `IOKit`, `Carbon`, `UserNotifications`
+**macOS frameworks:** `Cocoa`, `CoreGraphics`, `IOKit`, `Carbon`, `UserNotifications`
 
 **Windows:** `d3d11`, `dxgi`, `shcore`, `ws2_32`
 
 #### Ubuntu / Debian
 
+`libsdl3-dev` needs Ubuntu 25.04 or Debian 13. On older releases, leave it out and build SDL3 with
+`scripts/build_sdl3.sh` (it lists the headers it needs).
+
 ```bash
 sudo apt-get install -y \
   build-essential pkg-config cmake \
-  libx11-dev libxrandr-dev libgl-dev \
-  libglfw3-dev \
+  libx11-dev libxrandr-dev \
+  libsdl3-dev \
   libtesseract-dev libleptonica-dev \
   libzbar-dev \
   libgtk-3-dev libdbus-1-dev libfontconfig-dev libayatana-appindicator3-dev \
@@ -325,7 +322,7 @@ sudo apt-get install -y \
 sudo pacman -S --needed \
   base-devel cmake \
   libx11 libxrandr \
-  glfw \
+  sdl3 \
   tesseract leptonica \
   zbar \
   gtk3 libayatana-appindicator \
@@ -336,7 +333,7 @@ sudo pacman -S --needed \
 
 ```bash
 pkg install git cmake pkgconf gmake \
-  glfw tesseract zbar gtk3 libappindicator dbus \
+  sdl3 tesseract zbar gtk3 libappindicator dbus \
   libX11 libXrandr mesa-libs wayland wayland-protocols
 ```
 
@@ -345,7 +342,7 @@ Other BSDs need the same libraries from their ports. FreeBSD is built in CI; the
 #### macOS (Homebrew)
 
 ```bash
-brew install cmake glfw tesseract leptonica zbar
+brew install cmake sdl3 tesseract leptonica zbar
 ```
 
 #### Windows (MSYS2 UCRT64)
@@ -357,7 +354,7 @@ pacman -S --needed \
   mingw-w64-ucrt-x86_64-toolchain \
   mingw-w64-ucrt-x86_64-ninja \
   mingw-w64-ucrt-x86_64-cmake \
-  mingw-w64-ucrt-x86_64-glfw \
+  mingw-w64-ucrt-x86_64-sdl3 \
   mingw-w64-ucrt-x86_64-tesseract-ocr \
   mingw-w64-ucrt-x86_64-zbar
 ```
@@ -385,11 +382,6 @@ ninja
 ```
 
 ## Troubleshooting
-
-### Windows: flicker on launch / app fails to start
-
-Download [MesaForWindows.7z](https://downloads.fdossena.com/geth.php?r=mesa64-latest), extract `opengl32.dll` beside `oshot.exe`, and relaunch.
-This `opengl32.dll` is for x64 only; on Windows on ARM, install the OpenGL compatibility pack instead (see [Windows](#windows)).
 
 ### Linux: missing/mismatched runtime libraries
 

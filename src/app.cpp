@@ -25,6 +25,8 @@
 
 #include "app.hpp"
 
+#include <SDL3/SDL_init.h>
+
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -60,18 +62,17 @@
 #  include "nvdialog/nvdialog_notification.h"
 #endif
 
-#include "clipboard.hpp"
 #include "config.hpp"
 #include "i18n.hpp"
 #include "oshot_png.h"
 #include "screenshot_tool.hpp"
 #include "spdlog/spdlog.h"
 #include "tiny-process-library/process.hpp"
-#include "tinyfiledialogs.h"
 #include "tray.hpp"
 #include "tray_icon_png.h"
 #include "util.hpp"
 #include "util/dialogs.hpp"
+#include "util/file_dialogs.hpp"
 #include "util/paths.hpp"
 #include "util/result.hpp"
 #include "util/window.hpp"
@@ -79,16 +80,17 @@
 using namespace Tray;
 using namespace std::chrono_literals;
 
-static std::mutex                mtx;
-static std::condition_variable   cv;
-static std::atomic<bool>         quit{ false };
+static std::mutex              mtx;
+static std::condition_variable cv;
+static std::atomic<bool>       quit{ false };
+#if !OSHOT_TOOL_ON_MAIN_THREAD
+// The next capture for capture_worker()
 static bool                      do_capture = false;
 static std::string               pending_source;   // image to open instead of capturing, empty for a screenshot
 static std::chrono::milliseconds pending_delay{};  // wait this long before capturing
-static capture_result_t          pending_image;
-static bool                      do_copy_image = false;
-static std::atomic<bool>         capture_active{ false };  // a run_main_tool() is in progress, on any thread
-static bool                      owns_tray_lock = false;   // false in the extra trays allow-multiple-trays lets start
+#endif
+static std::atomic<bool> capture_active{ false };  // a run_main_tool() is in progress, on any thread
+static bool              owns_tray_lock = false;   // false in the extra trays allow-multiple-trays lets start
 
 bool app_quitting()
 {
@@ -122,10 +124,10 @@ void exit_handler_nc()
 
     request_quit();
 
-    // Terminating GLFW under a running capture (e.g. dialog::die() from the worker
+    // Quitting SDL under a running capture (e.g. dialog::die() from the worker
     // thread) would crash it instead of exiting
     if (!capture_active.load())
-        extern_glfwTerminate();
+        SDL_Quit();
 }
 
 static int run_overlay()
@@ -167,20 +169,11 @@ int run_capture()
     return ret;
 }
 
-void glfw_error_callback(int i_error, const char* description)
-{
-    dialog::error("GLFW Error {}: {}", i_error, description);
-}
-
-void glfw_drop_callback(GLFWwindow*, int count, const char** paths)
-{
-    for (int i = 0; i < count; ++i)
-        g_dropped_paths.emplace_back(paths[i]);
-}
-
-// The tray keeps GLFW, and so the GL driver, loaded between captures, which opens the
+#if !OSHOT_TOOL_ON_MAIN_THREAD  // Linux, where captures run on this worker
+// The tray keeps SDL, and so the graphics driver, loaded between captures, which opens the
 // next overlay ~50 ms sooner. The driver also keeps its buffers (~25 MB of GPU memory
-// at 1080p) and 10-30 MB of RAM until GLFW is terminated, so do that after this long idle
+// at 1080p) and 10-30 MB of RAM until SDL quits, so do that after this long idle.
+// On X11 SDL never unloads libGL (SDL_x11opengl.c), so there the driver's code stays loaded
 static constexpr std::chrono::seconds GL_IDLE_RELEASE{ 30 };
 
 static void capture_worker()
@@ -190,7 +183,7 @@ static void capture_worker()
     {
         // wait for command
         std::unique_lock lk(mtx);
-        const auto       has_command = [] { return quit.load() || do_capture || do_copy_image; };
+        const auto       has_command = [] { return quit.load() || do_capture; };
         if (!gl_loaded)
         {
             cv.wait(lk, has_command);
@@ -198,26 +191,21 @@ static void capture_worker()
         else if (!cv.wait_for(lk, GL_IDLE_RELEASE, has_command))
         {
             lk.unlock();
-            // On this thread, where the captures called glfwInit()
-            extern_glfwTerminate();
+            // Not under an open file dialog (the tray's Open Image), see file_dialog_mutex().
+            // Try again after another idle period
+            const std::unique_lock dialogs(dialog::file_dialog_mutex(), std::try_to_lock);
+            if (!dialogs.owns_lock())
+                continue;
+            // On this thread, where the captures called SDL_Init()
+            SDL_Quit();
             gl_loaded = false;
-#ifdef __GLIBC__
+#  ifdef __GLIBC__
             malloc_trim(0);
-#endif
+#  endif
             continue;
         }
         if (quit.load())
             break;
-
-        if (do_copy_image)
-        {
-            do_copy_image        = false;
-            capture_result_t img = std::move(pending_image);
-            lk.unlock();
-            MUST_OK(g_clipboard.CopyImage(img, g_config->File.image_out_type.second),
-                    spdlog::error("{}", _r.error_v()));
-            continue;
-        }
 
         do_capture                    = false;
         g_config->Runtime.source_file = std::move(pending_source);
@@ -238,6 +226,7 @@ static void capture_worker()
         cv.notify_all();
     }
 }
+#endif
 
 // The tray menu takes a moment to fade out after the click, and a capture started
 // right away would have the menu in the screenshot
@@ -294,7 +283,7 @@ static void sync_hotkey()
 }
 
 // Open another overlay on top of this one in a separate `oshot --gui` process, since a process has a single
-// overlay (one GLFW window, ImGui context and g_ss_tool). Its screenshot has the current overlay in it
+// overlay (one SDL window, ImGui context and g_ss_tool). Its screenshot has the current overlay in it
 static void spawn_gui_instance(const std::string& source)
 {
     // It would only find the overlay lock taken and exit
@@ -399,7 +388,7 @@ static void capture_from_tray(const std::string& source, const TrayClick click)
     if (wait_fade)
         std::this_thread::sleep_for(TRAY_MENU_FADE);
 
-    // The GLFW event pump inside run_main_tool() also dispatches the tray's
+    // The SDL event pump inside run_main_tool() also dispatches the tray's
     // messages, so a second capture can't run in here (it would end up nested
     // inside the first one). Stack another overlay process on top instead.
     if (capture_active.load())
@@ -415,7 +404,7 @@ static void capture_from_tray(const std::string& source, const TrayClick click)
     sync_hotkey();
 
 #  if OSHOT_MACOS
-    // glfwInit() finishing the app launch replaces the reopen handler
+    // SDL_Init() finishing the app launch replaces the reopen handler
     Tray::SetReopenCallback([] { capture_from_tray(); });
 #  endif
 #else
@@ -530,24 +519,18 @@ int run_tray()
                         .hasCheckbox = false,
                         .onClicked =
                             [&](TrayMenu*) {
-                                // Patterns are case-sensitive with zenity/kdialog
-                                constexpr std::array<const char*, 8> filters = { "*.png", "*.jpeg", "*.jpg", "*.bmp",
-                                                                                 "*.PNG", "*.JPEG", "*.JPG", "*.BMP" };
+                                // Patterns are case-sensitive with zenity
+                                constexpr SDL_DialogFileFilter filter{ .name    = N_("Images"),
+                                                                       .pattern = "png;jpeg;jpg;bmp;PNG;JPEG;JPG;BMP" };
 
-                                const char* open_path =
-                                    tinyfd_openFileDialog(_("Open Image"),
-                                                          "",              // default path
-                                                          filters.size(),  // number of filter patterns
-                                                          filters.data(),  // file filters
-                                                          _("Images"),     // filter description
-                                                          false            // allow multiple selections
-                                    );
+                                const std::optional<std::string>& open_path =
+                                    dialog::open_file(_("Open Image"), "", filter);
 
                                 // Canceled the dialog
                                 if (!open_path)
                                     return;
 
-                                capture_from_tray(open_path);
+                                capture_from_tray(*open_path);
                             },
                         .subMenu = {} };
 
@@ -599,8 +582,8 @@ int run_tray()
 #if !OSHOT_TOOL_ON_MAIN_THREAD
     worker.join();
 #endif
-    // Not in exit_handler_nc(): GLFW must be terminated on the main thread, with no capture running
-    extern_glfwTerminate();
+    // Not in exit_handler_nc(), since SDL must quit on the main thread with no capture running
+    SDL_Quit();
 
     return EXIT_SUCCESS;
 }

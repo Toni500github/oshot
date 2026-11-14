@@ -25,10 +25,10 @@
 
 #include "util/image.hpp"
 
+#include <SDL3/SDL_surface.h>
 #include <zlib.h>
 
 #include <algorithm>
-#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cmath>
@@ -52,10 +52,10 @@
 #include "nvdialog/nvdialog_notification.h"
 #include "platform.hpp"
 #include "screen_capture.hpp"
-#include "tinyfiledialogs.h"
 #include "util.hpp"
 #include "util/color.hpp"
 #include "util/dialogs.hpp"
+#include "util/file_dialogs.hpp"
 #include "util/paths.hpp"
 #include "util/result.hpp"
 #include "util/strings.hpp"
@@ -84,10 +84,8 @@ static unsigned char* zlib_compress(unsigned char* data, int data_len, int* out_
 #define STBI_WRITE_NO_STDIO
 #define STBIW_ZLIB_COMPRESS zlib_compress
 #define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image.h"
-#include "stb_image_resize2.h"
 #include "stb_image_write.h"
 
 // Level 4 is zlib's first lazy-matching level. On screenshots it gets within 4% of level 6's size,
@@ -118,15 +116,17 @@ std::vector<uint8_t> encode_to_image(const capture_result_t& cap, ImageExt ext)
     switch (ext)
     {
         case ImageExt::PNG:
-            stbi_write_png_to_func(callback, &out, cap.w, cap.h, STBIR_RGBA, cap.data.data(), cap.w * 4);
+            stbi_write_png_to_func(callback, &out, cap.w, cap.h, STBI_rgb_alpha, cap.data.data(), cap.w * 4);
             break;
-
         case ImageExt::JPEG:
-            stbi_write_jpg_to_func(callback, &out, cap.w, cap.h, STBIR_RGBA, cap.data.data(), 90);
+            stbi_write_jpg_to_func(callback, &out, cap.w, cap.h, STBI_rgb_alpha, cap.data.data(), 90);
             break;
-
-        case ImageExt::BMP: stbi_write_bmp_to_func(callback, &out, cap.w, cap.h, STBIR_RGBA, cap.data.data()); break;
-        case ImageExt::TGA: stbi_write_tga_to_func(callback, &out, cap.w, cap.h, STBIR_RGBA, cap.data.data()); break;
+        case ImageExt::BMP:
+            stbi_write_bmp_to_func(callback, &out, cap.w, cap.h, STBI_rgb_alpha, cap.data.data());
+            break;
+        case ImageExt::TGA:
+            stbi_write_tga_to_func(callback, &out, cap.w, cap.h, STBI_rgb_alpha, cap.data.data());
+            break;
 
         default: break;
     }
@@ -139,19 +139,43 @@ void fit_to_screen(capture_result_t& img)
     if (img.w <= g_scr_w && img.h <= g_scr_h)
         return;
 
-    float scale = std::min(float(g_scr_w) / float(img.w), float(g_scr_h) / float(img.h));
+    const float scale = std::min(float(g_scr_w) / float(img.w), float(g_scr_h) / float(img.h));
+    const int   new_w = int(std::round(float(img.w) * scale));
+    const int   new_h = int(std::round(float(img.h) * scale));
 
-    int new_w = int(std::round(float(img.w) * scale));
-    int new_h = int(std::round(float(img.h) * scale));
-
-    std::vector<uint8_t> resized(size_t(new_w) * new_h * 4);
-
-    bool ok = stbir_resize_uint8_linear(img.data.data(), img.w, img.h, 0, resized.data(), new_w, new_h, 0, STBIR_RGBA);
-    if (!ok)
+    // A view of img.data, nothing is copied
+    SDL_Surface* dst = SDL_CreateSurfaceFrom(img.w, img.h, SDL_PIXELFORMAT_RGBA32, img.data.data(), img.w * 4);
+    if (!dst)
     {
-        spdlog::warn("Failed to resize image: {}", STBI_ERROR);
+        spdlog::warn("Failed to resize image: {}", SDL_GetError());
         return;
     }
+
+    // Linear filtering only blends the 2x2 nearest pixels, so a single step skips detail past 2x
+    // (at 3x it's the same as nearest), which costs OCR words. Like SDL_GetSurfaceImage(), halve at
+    // most each step, as a 2x linear step averages every pixel. Still 4-7x faster than stb_image_resize2
+    do
+    {
+        const int    step_w = std::max(new_w, (dst->w + 1) / 2);
+        const int    step_h = std::max(new_h, (dst->h + 1) / 2);
+        SDL_Surface* next   = SDL_ScaleSurface(dst, step_w, step_h, SDL_SCALEMODE_LINEAR);
+        SDL_DestroySurface(dst);
+        dst = next;
+    } while (dst && (dst->w > new_w || dst->h > new_h));
+
+    if (!dst)
+    {
+        spdlog::warn("Failed to resize image: {}", SDL_GetError());
+        return;
+    }
+
+    // ScaleSurface keeps the format, but the rows may be padded (pitch)
+    std::vector<uint8_t> resized(size_t(new_w) * new_h * 4);
+    for (int y = 0; y < new_h; ++y)
+        std::memcpy(resized.data() + (size_t(y) * new_w * 4),
+                    static_cast<const uint8_t*>(dst->pixels) + (size_t(y) * dst->pitch),
+                    size_t(new_w) * 4);
+    SDL_DestroySurface(dst);
 
     img.data = std::move(resized);
     img.w    = new_w;
@@ -314,17 +338,13 @@ Result<bool> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
     const Result<std::string>& fmt = get_config_image_out_fmt();
     TRY(fmt);
 
-    const bool      hidden         = hide_window();
-    const fs::path& saved_path_dir = g_cache->GetValue(CacheEntry::ImgSavePath, get_home_pictures_dir().string());
+    const bool        hidden         = hide_window();
+    const fs::path&   saved_path_dir = g_cache->GetValue(CacheEntry::ImgSavePath, get_home_pictures_dir().string());
+    const std::string ext_name       = str_tolower(g_config->File.image_out_type.first);
 
-    std::string filter_type = ("*." + str_tolower(g_config->File.image_out_type.first));
-    const auto  filter      = std::to_array({ filter_type.c_str() });
-    const char* save_path   = tinyfd_saveFileDialog(_("Save File"),
-                                                    (saved_path_dir / fmt.get()).string().c_str(),  // default path
-                                                    1,              // number of filter patterns
-                                                    filter.data(),  // file filters
-                                                    _("Images")     // filter description
-    );
+    const SDL_DialogFileFilter        filter = { .name = _("Images"), .pattern = ext_name.c_str() };
+    const std::optional<std::string>& save_path =
+        dialog::save_file(_("Save File"), (saved_path_dir / fmt.get()).string(), filter);
 
     if (hidden)
         show_window();
@@ -332,11 +352,9 @@ Result<bool> save_image(SavingOp op, const capture_result_t& img, ImageExt ext)
     if (!save_path)
         return Ok(false);
 
-    TRY(write_image_file(save_path, img, ext));
+    TRY(write_image_file(*save_path, img, ext));
     notify(_("Saved!"), _("Screenshot saved successfully"));
-
-    fs::path path(save_path);
-    g_cache->SetValue(CacheEntry::ImgSavePath, path.parent_path().string());
+    g_cache->SetValue(CacheEntry::ImgSavePath, fs::path(*save_path).parent_path().string());
 
     return Ok(true);
 }

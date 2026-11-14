@@ -101,7 +101,7 @@ static void help(const std::string_view error = {})
 
 // What getopt_long() just rejected. After a missing argument optind is past the
 // last argument (POSIX), so it can't index argv
-static std::string bad_option_error(const int argc, char* argv[])
+static std::string bad_option_error(const int argc, char* argv[])  // NOLINT
 {
     const std::string opt =
         optopt != 0 ? fmt::format("-{}", char(optopt)) : std::string(argv[std::min(optind, argc) - 1]);

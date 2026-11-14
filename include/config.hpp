@@ -66,8 +66,8 @@ public:
         // allow-text-edit: the OCR/barcode output can be edited
         bool allow_out_edit = false;
 
-        // Exclusive fullscreen, for compositors that make the overlay look grainy
-        bool real_full_screen = false;
+        // fullscreen: make the overlay a fullscreen window (always on Wayland and macOS)
+        bool fullscreen = true;
 
         // glx-vendor (X11 only): value for __GLX_VENDOR_LIBRARY_NAME, empty = don't touch it.
         // "mesa" keeps GLX off the NVIDIA library, which wakes a sleeping hybrid-laptop dGPU

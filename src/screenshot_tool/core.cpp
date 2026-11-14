@@ -23,6 +23,8 @@
  *
  */
 
+#include <SDL3/SDL_render.h>
+
 #include <algorithm>
 #include <array>
 #include <cfloat>
@@ -46,7 +48,6 @@
 #include "config.hpp"
 #include "i18n.hpp"
 #include "imgui/imgui.h"
-#include "imgui/imgui_impl_opengl3_loader.h"
 #include "imgui/imgui_internal.h"
 #include "platform.hpp"
 #include "screen_capture.hpp"
@@ -61,7 +62,6 @@
 #include "util/image.hpp"
 #include "util/paths.hpp"
 #include "util/result.hpp"
-#include "util/window.hpp"
 #ifndef DISABLE_PLUGINS
 #  include "plugin.hpp"
 #endif
@@ -135,14 +135,11 @@ Result<> ScreenshotTool::StartWindow()
     if (g_config->Runtime.instant_copy_save != SavingOp::kNone)
     {
         m_state = ToolState::Selecting;
-#if OSHOT_METAL
-        m_texture_id = ImTextureRef{};  // will be set by backend
-#else
+
         const Result<ImTextureRef>& res = CreateTexture(0, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
-        TRY_MSG(res, "Failed to create openGL texture: {}");
+        TRY_MSG(res, "Failed to create the screenshot's texture: {}");
 
         m_texture_id = res.get();
-#endif
         return Ok();
     }
 
@@ -171,11 +168,8 @@ Result<> ScreenshotTool::StartWindow()
 
     SyncRuntimeFromConfig();
 
-#if OSHOT_METAL
-    m_texture_id = ImTextureRef{};  // will be set by backend
-#else
     const Result<ImTextureRef>& res = CreateTexture(0, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
-    TRY_MSG(res, "Failed to create openGL texture: {}");
+    TRY_MSG(res, "Failed to create the screenshot's texture: {}");
 
     m_texture_id = res.get();
 
@@ -197,7 +191,6 @@ Result<> ScreenshotTool::StartWindow()
     m_tool_textures[idx(ToolType::SaveImage)] = CreateTexture(0, TOOL_ICON(aa, ICON_SAVE)).get();
     m_tool_textures[idx(ToolType::Line)]      = CreateTexture(0, TOOL_ICON(aa, ICON_LINE)).get();
     m_tool_textures[idx(ToolType::Logo)]      = CreateTexture(0, OSHOT_LOGO_RGBA, OSHOT_LOGO_W, OSHOT_LOGO_H).get();
-#endif
 
 #ifndef DISABLE_PLUGINS
     // No-ops for PluginManager calls before the first StartPluginTask(), since an empty std::function throws
@@ -427,27 +420,7 @@ void ScreenshotTool::Cancel()
 {
     m_state = ToolState::Idle;
 
-    auto delete_texture = [](ImTextureRef& tex) {
-#if OSHOT_METAL
-        tex = ImTextureRef{};
-#else
-        if (tex._TexID)
-        {
-            auto texture = GLuint(intptr_t(tex._TexID));
-            glDeleteTextures(1, &texture);
-            tex = ImTextureRef{};
-        }
-#endif
-    };
-
-    delete_texture(m_texture_id);
-    for (auto& tex : m_tool_textures)
-        delete_texture(tex);
-#ifndef DISABLE_PLUGINS
-    for (auto& [key, tex] : m_plugin_icons)
-        delete_texture(tex);
-    m_plugin_icons.clear();
-#endif
+    ReleaseTextures();
 
     // Only our references, the fonts themselves stay in ImGui's atlas
     m_font_cache.clear();
@@ -484,22 +457,15 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     m_screenshot = std::move(cap.get());
     fit_to_screen(m_screenshot);
 
-#if OSHOT_METAL
-    // Tell backend to recreate Metal texture
-    if (m_on_image_reload)
-        m_on_image_reload(m_screenshot);
-#else
-
     // Recreate texture (CreateTexture() already deletes the old ones)
     const Result<ImTextureRef>& r =
         CreateTexture(m_texture_id._TexID, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
     MUST_OK(r, {
-        dialog::error("Failed to create openGL texture: {}", r.error_v());
+        dialog::error("Failed to create the image's texture: {}", r.error_v());
         return false;
     });
 
     m_texture_id = r.get();
-#endif
 
     ResetSelection();
     m_state = ToolState::Selecting;
@@ -705,31 +671,50 @@ region_t ScreenshotTool::GetActiveRegion() const
 
 Result<ImTextureRef> ScreenshotTool::CreateTexture(ImTextureID tex, std::span<const uint8_t> data, int w, int h)
 {
-#if OSHOT_METAL
-    // Metal backend handles textures separately
-    return Ok(ImTextureRef{});
-#else
     if (tex)
+        SDL_DestroyTexture(reinterpret_cast<SDL_Texture*>(intptr_t(tex)));
+
+    SDL_Renderer* renderer = SDL_GetRenderer(m_window);
+    if (!renderer)
+        return Err("the overlay has no renderer");
+
+    // fit_to_screen() keeps the screenshot within one display, so only a huge display or a weak GPU hits this
+    const Sint64 max_size =
+        SDL_GetNumberProperty(SDL_GetRendererProperties(renderer), SDL_PROP_RENDERER_MAX_TEXTURE_SIZE_NUMBER, 0);
+    if (max_size > 0 && (w > max_size || h > max_size))
+        return Err("the image is {}x{}, but the renderer takes at most {}x{}", w, h, max_size, max_size);
+
+    SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, w, h);
+    if (!texture)
+        return Err("{}", SDL_GetError());
+    SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+    if (!SDL_UpdateTexture(texture, nullptr, data.data(), w * 4))
     {
-        const auto old_texture = static_cast<GLuint>(tex);
-        glDeleteTextures(1, &old_texture);
+        const std::string error = SDL_GetError();
+        SDL_DestroyTexture(texture);
+        return Err("{}", error);
     }
 
-    GLuint texture;
-    glGenTextures(1, &texture);
-
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data.data());
-
     ImTextureRef ref;
-    ref._TexID = static_cast<ImTextureID>(texture);
-
+    ref._TexID = ImTextureID(intptr_t(texture));
     return Ok(ref);
+}
+
+void ScreenshotTool::ReleaseTextures()
+{
+    const auto destroy = [](ImTextureRef& tex) {
+        if (tex._TexID)
+            SDL_DestroyTexture(reinterpret_cast<SDL_Texture*>(intptr_t(tex._TexID)));
+        tex = ImTextureRef{};
+    };
+
+    destroy(m_texture_id);
+    for (auto& tex : m_tool_textures)
+        destroy(tex);
+#ifndef DISABLE_PLUGINS
+    for (auto& [key, tex] : m_plugin_icons)
+        destroy(tex);
+    m_plugin_icons.clear();
 #endif
 }
 
@@ -976,7 +961,7 @@ void ScreenshotTool::SyncRuntimeFromConfig()
     m_inputs.ann_font               = g_config->File.fonts.empty() ? "" : g_config->File.fonts[0];
     m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string();
 
-    extern_glfwSwapInterval(int(g_config->File.enable_vsync));
+    SDL_SetRenderVSync(SDL_GetRenderer(m_window), int(g_config->File.enable_vsync));
 }
 
 void ScreenshotTool::RefreshOcrModels()

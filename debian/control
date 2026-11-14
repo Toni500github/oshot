@@ -8,8 +8,6 @@ Build-Depends:
  pkg-config,
  libx11-dev,
  libxrandr-dev,
- libgl-dev,
- libglfw3-dev,
  libglib2.0-dev,
  libgtk-3-dev,
  libfontconfig-dev,
@@ -35,11 +33,11 @@ Recommends:
  grim,
  wl-clipboard,
  xclip,
- zenity | kdialog,
+ zenity,
  curl,
  git,
  xdg-desktop-portal,
- libdecor-0-plugin-1-cairo | libdecor-0-plugin-1-gtk
+ xdg-desktop-portal-gtk | xdg-desktop-portal-kde
 Suggests:
  tesseract-ocr-all
 Description: Screenshot tool for extracting text and QR codes on the fly

@@ -49,7 +49,6 @@
 #  include <variant>
 #  include <vector>
 
-#  include "dylib.hpp"
 #  include "fmt/format.h"
 #  include "imgui.h"
 #  include "imgui_internal.h"
@@ -406,23 +405,21 @@ Result<> validate_plugin_descriptor(const oshot_plugin_t* plugin)
 }
 
 // The library and its validated descriptor
-static Result<std::pair<dylib::library, const oshot_plugin_t*>> open_plugin(const fs::path& path)
+static Result<std::pair<shared_object_t, const oshot_plugin_t*>> open_plugin(const fs::path& path)
 {
-    try
-    {
-        dylib::library        lib(path);
-        const oshot_plugin_t* plugin = lib.get_function<const oshot_plugin_t*()>("oshot_plugin_entry")();
-        TRY(validate_plugin_descriptor(plugin));
-        return Ok(std::make_pair(std::move(lib), plugin));
-    }
-    catch (const dylib::load_error& e)
-    {
-        return Err("can't load it: {}", e.what());
-    }
-    catch (const dylib::symbol_error&)
-    {
+    using entry_fn_t = const oshot_plugin_t* (*)();
+
+    shared_object_t lib(SDL_LoadObject(path.string().c_str()));
+    if (!lib)
+        return Err("can't load it: {}", SDL_GetError());
+
+    auto entry = reinterpret_cast<entry_fn_t>(SDL_LoadFunction(lib.get(), "oshot_plugin_entry"));
+    if (!entry)
         return Err("it doesn't export oshot_plugin_entry()");
-    }
+
+    const oshot_plugin_t* plugin = entry();
+    TRY(validate_plugin_descriptor(plugin));
+    return Ok(std::make_pair(std::move(lib), plugin));
 }
 
 Result<plugin_info_t> inspect_plugin_library(const fs::path& path)

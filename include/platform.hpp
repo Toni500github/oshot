@@ -48,14 +48,6 @@
 #  define OSHOT_MACOS 0
 #endif
 
-// macOS draws the overlay with Metal, unless built with MACOS_OPENGL
-// (for VMs without a Metal device)
-#if OSHOT_MACOS && !defined(MACOS_OPENGL)
-#  define OSHOT_METAL 1
-#else
-#  define OSHOT_METAL 0
-#endif
-
 #if (defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__) || defined(__CYGWIN__) || \
      defined(__MINGW32__) || defined(__MINGW64__))
 #  define OSHOT_WINDOWS 1
@@ -96,6 +88,16 @@
 #  define OSHOT_TOOL_ON_MAIN_THREAD 1
 #else
 #  define OSHOT_TOOL_ON_MAIN_THREAD 0
+#endif
+
+#if OSHOT_FREEDESKTOP
+#  define OSHOT_LIB_SUFFIX ".so"
+#elif OSHOT_MACOS
+#  define OSHOT_LIB_SUFFIX ".dylib"
+#elif OSHOT_WINDOWS
+#  define OSHOT_LIB_SUFFIX ".dll"
+#else
+#  define OSHOT_LIB_SUFFIX ""
 #endif
 
 #if !(OSHOT_FREEDESKTOP || OSHOT_WINDOWS || OSHOT_MACOS)

@@ -36,32 +36,18 @@
 // Defined and registered in src/main_tool_* source files
 namespace main_tool
 {
-void (*minimize_fn)()                 = nullptr;
-bool (*hide_fn)()                     = nullptr;
-void (*show_fn)()                     = nullptr;
-void* (*dialog_parent_fn)()           = nullptr;
-void (*_extern_glfwTerminate)()       = nullptr;
-void (*_extern_glfwSwapInterval)(int) = nullptr;
+void (*minimize_fn)()       = nullptr;
+bool (*hide_fn)()           = nullptr;
+void (*show_fn)()           = nullptr;
+void* (*dialog_parent_fn)() = nullptr;
 }  // namespace main_tool
 
-GlfwGuard::~GlfwGuard()
+void register_window_callbacks(void (*minimize_fn)(), bool (*hide_fn)(), void (*show_fn)(), void* (*dialog_parent_fn)())
 {
-    extern_glfwTerminate();
-}
-
-void register_window_callbacks(void (*minimize_fn)(),
-                               bool (*hide_fn)(),
-                               void (*show_fn)(),
-                               void* (*dialog_parent_fn)(),
-                               void (*_extern_glfwTerminate)(),
-                               void (*_extern_glfwSwapInterval)(int))
-{
-    main_tool::minimize_fn              = minimize_fn;
-    main_tool::hide_fn                  = hide_fn;
-    main_tool::show_fn                  = show_fn;
-    main_tool::dialog_parent_fn         = dialog_parent_fn;
-    main_tool::_extern_glfwTerminate    = _extern_glfwTerminate;
-    main_tool::_extern_glfwSwapInterval = _extern_glfwSwapInterval;
+    main_tool::minimize_fn      = minimize_fn;
+    main_tool::hide_fn          = hide_fn;
+    main_tool::show_fn          = show_fn;
+    main_tool::dialog_parent_fn = dialog_parent_fn;
 }
 
 void minimize_window()
@@ -81,16 +67,6 @@ void show_window()
 void* dialog_parent_window()
 {
     return main_tool::dialog_parent_fn ? main_tool::dialog_parent_fn() : nullptr;
-}
-void extern_glfwTerminate()
-{
-    if (main_tool::_extern_glfwTerminate)
-        main_tool::_extern_glfwTerminate();
-}
-void extern_glfwSwapInterval(int v)
-{
-    if (main_tool::_extern_glfwSwapInterval)
-        main_tool::_extern_glfwSwapInterval(v);
 }
 
 #if OSHOT_MACOS

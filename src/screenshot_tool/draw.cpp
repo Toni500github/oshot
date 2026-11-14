@@ -23,6 +23,7 @@
  *
  */
 
+#include <SDL3/SDL_render.h>
 #include <tesseract/publictypes.h>
 
 #include <algorithm>
@@ -52,9 +53,9 @@
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "text_extraction.hpp"
-#include "tinyfiledialogs.h"
 #include "util.hpp"
 #include "util/color.hpp"
+#include "util/file_dialogs.hpp"
 #include "util/fonts.hpp"
 #include "util/image.hpp"
 #include "util/result.hpp"
@@ -486,11 +487,11 @@ void ScreenshotTool::DrawAnnotationToolbar()
                 ImGui::InputFloat("##fontsize", &m_tool_thickness[idx(m_current_tool)], 2.0f, 2.0f, "%.0f px");
                 ImGui::SameLine();
                 ImGui::TextUnformatted(_("Font Size"));
-                static constexpr auto font_filters = std::to_array({ "*.ttf", "*.otf", "*.ttc" });
+                constexpr SDL_DialogFileFilter filter{ .name = N_("Fonts"), .pattern = "ttf;otf;ttc" };
                 draw_input_text_file(
                     _("Font name/path"),
                     "##font_path_ann_settings",
-                    font_filters,
+                    filter,
                     [&] { m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string(); },
                     m_inputs.ann_font);
             }
@@ -656,20 +657,14 @@ void ScreenshotTool::DrawMenuItems()
             {
                 const bool hidden = hide_window();
 
-                constexpr auto filter    = std::to_array({ "*.png", "*.jpeg", "*.jpg", "*.bmp" });
-                const char*    open_path = tinyfd_openFileDialog(_("Open Image"),
-                                                                 "",             // default path
-                                                                 filter.size(),  // number of filter patterns
-                                                                 filter.data(),  // file filters
-                                                                 _("Images"),    // filter description
-                                                                 false           // allow multiple selections
-                );
+                constexpr SDL_DialogFileFilter    filter{ .name = N_("Images"), .pattern = "png;jpeg;jpg;bmp" };
+                const std::optional<std::string>& open_path = dialog::open_file(_("Open Image"), "", filter);
 
                 if (hidden)
                     show_window();
 
                 if (open_path)
-                    OpenImage(open_path);
+                    OpenImage(*open_path);
             }
 
             ImGui::Separator();
@@ -705,7 +700,7 @@ void ScreenshotTool::DrawMenuItems()
             ImGui::MenuItem(_("View Handles"), "CTRL+G", &g_config->Runtime.enable_handles);
             ImGui::MenuItem(_("Anns. in image scans"), "", &g_config->File.render_anns);
             if (ImGui::MenuItem(_("Enable vsync"), "", &g_config->File.enable_vsync))
-                extern_glfwSwapInterval(int(g_config->File.enable_vsync));
+                SDL_SetRenderVSync(SDL_GetRenderer(m_window), int(g_config->File.enable_vsync));
             if (ImGui::MenuItem(_("Allow text edit"), "CTRL+E", &g_config->File.allow_out_edit))
                 ImGui::ClearActiveID();
 

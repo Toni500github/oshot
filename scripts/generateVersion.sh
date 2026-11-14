@@ -42,7 +42,7 @@ sed -e "s#@HASH@#$HASH#" \
     -e "s#@COMMITS@#$COMMITS#" \
     ./include/version.h.in > "$TMP"
 
-if [ ! -f "$OUT" ] || ! cmp -s "$TMP" "$OUT"; then
+if [ ! -f "$OUT" ] || [ "$(cat "$TMP")" != "$(cat "$OUT")" ]; then
     mv "$TMP" "$OUT"
 else
     rm "$TMP"

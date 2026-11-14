@@ -43,10 +43,11 @@
 #  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>
 // shellapi.h needs windows.h first
+
 #  include <process.h>
 #  include <shellapi.h>
 
-#  include "dylib.hpp"
+#  include "util/shared_object.hpp"
 #else
 #  include <unistd.h>
 #endif
@@ -69,20 +70,6 @@
 #include "util.hpp"
 #include "util/image.hpp"
 #include "util/paths.hpp"
-#include "util/window.hpp"
-
-// From ImGui's GLFW example: MSVC 2015+ needs it to link a glfw3.lib built with VS2010
-#if defined(_MSC_VER) && (_MSC_VER >= 1900) && !defined(IMGUI_DISABLE_WIN32_FUNCTIONS)
-#  pragma comment(lib, "legacy_stdio_definitions")
-#endif
-
-// On a crash, restore the display mode first, then re-raise so the OS still generates a core dump
-static void on_crash_signal(int sig)
-{
-    extern_glfwTerminate();
-    signal(sig, SIG_DFL);
-    raise(sig);
-}
 
 static int oshot_main(int argc, char* argv[]);  // NOLINT
 
@@ -103,29 +90,34 @@ static std::string wide_to_utf8(const wchar_t* w)
 // A GUI-subsystem app has no console, so help/version/errors are shown as dialogs
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
-    // Per-monitor DPI awareness before the first capture: GLFW only sets it in
-    // glfwInit(), so the first screenshot would otherwise see scaled monitor sizes
+    // Per-monitor DPI awareness before the first capture: SDL only sets it in
+    // SDL_Init(), so the first screenshot would otherwise see scaled monitor sizes
     wchar_t system_dir[MAX_PATH]{};
     GetSystemDirectoryW(system_dir, MAX_PATH);
-    try
+    const std::string sys32   = wide_to_utf8(system_dir) + DIR_SEP_STR;
+    bool              dpi_set = false;
+
+    // Windows 10 1703+, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+    if (shared_object_t user32{ SDL_LoadObject((sys32 + "user32.dll").c_str()) })
     {
-        // Windows 10 1703+, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
-        dylib::library user32(fs::path(system_dir) / "user32.dll");
-        user32.get_function<BOOL(HANDLE)>("SetProcessDpiAwarenessContext")(reinterpret_cast<HANDLE>(intptr_t(-4)));
+        using fn_t = BOOL(WINAPI*)(HANDLE);
+        if (auto fn = reinterpret_cast<fn_t>(SDL_LoadFunction(user32.get(), "SetProcessDpiAwarenessContext")))
+            dpi_set = fn(reinterpret_cast<HANDLE>(intptr_t(-4)));
     }
-    catch (const std::exception&)
+
+    // Windows 8.1+, PROCESS_PER_MONITOR_DPI_AWARE
+    if (!dpi_set)
     {
-        try
+        if (shared_object_t shcore{ SDL_LoadObject((sys32 + "shcore.dll").c_str()) })
         {
-            // Windows 8.1+, PROCESS_PER_MONITOR_DPI_AWARE
-            dylib::library shcore(fs::path(system_dir) / "shcore.dll");
-            shcore.get_function<HRESULT(int)>("SetProcessDpiAwareness")(2);
-        }
-        catch (const std::exception&)
-        {
-            SetProcessDPIAware();
+            using fn_t = HRESULT(WINAPI*)(int);
+            if (auto fn = reinterpret_cast<fn_t>(SDL_LoadFunction(shcore.get(), "SetProcessDpiAwareness")))
+                dpi_set = SUCCEEDED(fn(2));
         }
     }
+
+    if (!dpi_set)
+        SetProcessDPIAware();
 
     // In a GUI-subsystem app stdout/stderr only exist when redirected (scripts
     // reading --extract-text). Otherwise write to the console oshot was
@@ -214,10 +206,6 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
 
     signal(SIGINT, on_quit_signal);
     signal(SIGTERM, on_quit_signal);
-    signal(SIGABRT, on_crash_signal);
-#if !OSHOT_WINDOWS
-    signal(SIGSEGV, on_crash_signal);
-#endif
 
     auto console = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
     auto imgui   = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(500);  // keep last 500 lines
@@ -270,7 +258,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     spdlog::set_level(spdlog::level::debug);
 
 #if OSHOT_FREEDESKTOP
-    // Must run before the first GLX call (glfwInit) and before any thread is spawned,
+    // Must run before SDL loads OpenGL (GLX) and before any thread is spawned,
     // since setenv() isn't thread-safe against getenv() in other threads
     constexpr const char* GLX_ENV = "__GLX_VENDOR_LIBRARY_NAME";
     if (!g_config->File.glx_vendor.empty() &&
