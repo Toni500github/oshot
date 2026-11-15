@@ -61,6 +61,14 @@
 #  define OSHOT_BSD 0
 #endif
 
+#if OSHOT_WINDOWS
+#  define OSHOT_LIB_SUFFIX ".dll"
+#elif OSHOT_MACOS
+#  define OSHOT_LIB_SUFFIX ".dylib"
+#else
+#  define OSHOT_LIB_SUFFIX ".so"
+#endif
+
 // X11/Wayland desktops following the freedesktop.org conventions (Linux and the BSDs).
 // Use OSHOT_LINUX only for what is really Linux-specific, such as AppImages.
 #if (OSHOT_LINUX || OSHOT_BSD)
@@ -88,16 +96,6 @@
 #  define OSHOT_TOOL_ON_MAIN_THREAD 1
 #else
 #  define OSHOT_TOOL_ON_MAIN_THREAD 0
-#endif
-
-#if OSHOT_FREEDESKTOP
-#  define OSHOT_LIB_SUFFIX ".so"
-#elif OSHOT_MACOS
-#  define OSHOT_LIB_SUFFIX ".dylib"
-#elif OSHOT_WINDOWS
-#  define OSHOT_LIB_SUFFIX ".dll"
-#else
-#  define OSHOT_LIB_SUFFIX ""
 #endif
 
 #if !(OSHOT_FREEDESKTOP || OSHOT_WINDOWS || OSHOT_MACOS)
