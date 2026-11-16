@@ -180,18 +180,16 @@ void Config::LoadThemeFile(const std::string& filename)
 
     theme_overrides_t& ov = theme_overrides;
     if (const toml::table* colors = m_theme.GetTbl().at_path("theme.colors").as_table())
-    {
         colors->for_each(
             [&](const toml::key& k, const toml::value<std::string>& v) { ov.colors[std::string(k.str())] = v.get(); });
-    }
 
-    ov.smooth_animations = m_theme.GetValue<bool>("smooth-animations", false);
-    ov.window_rounding   = m_theme.GetValue<float>("window-rounding", -1.f);
-    ov.frame_rounding    = m_theme.GetValue<float>("frame-rounding", -1.f);
-    ov.grab_rounding     = m_theme.GetValue<float>("grab-rounding", -1.f);
-    ov.tab_rounding      = m_theme.GetValue<float>("tab-rounding", -1.f);
-    ov.window_border     = m_theme.GetValue<float>("window-border", -1.f);
-    ov.frame_border      = m_theme.GetValue<float>("frame-border", -1.f);
+    ov.smooth_animations = m_theme.GetValue<bool>("theme.smooth-animations", false);
+    ov.window_rounding   = m_theme.GetValue<float>("theme.style.window-rounding", -1.f);
+    ov.frame_rounding    = m_theme.GetValue<float>("theme.style.frame-rounding", -1.f);
+    ov.grab_rounding     = m_theme.GetValue<float>("theme.style.grab-rounding", -1.f);
+    ov.tab_rounding      = m_theme.GetValue<float>("theme.style.tab-rounding", -1.f);
+    ov.window_border     = m_theme.GetValue<float>("theme.style.window-border", -1.f);
+    ov.frame_border      = m_theme.GetValue<float>("theme.style.frame-border", -1.f);
 }
 
 // fmt::output_file() throws if the file can't be created (missing folder, no permission)
