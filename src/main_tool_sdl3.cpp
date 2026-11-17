@@ -368,8 +368,17 @@ int run_main_tool()
     use_display(first_display, on_wayland());
     bool placed = !on_wayland();
 
-    SDL_ShowWindow(window);
-    SDL_RaiseWindow(window);
+    // macOS shows the window black until the first frame is presented, so show it after that one
+    bool shown = !OSHOT_MACOS;
+    if (shown)
+    {
+        SDL_ShowWindow(window);
+        SDL_RaiseWindow(window);
+    }
+    else
+    {
+        SDL_SetRenderVSync(renderer, false);  // a hidden window never gets the vblank
+    }
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -478,6 +487,12 @@ int run_main_tool()
         }
 
         SDL_RenderPresent(renderer);
+        if (!std::exchange(shown, true))
+        {
+            SDL_ShowWindow(window);
+            SDL_RaiseWindow(window);
+            SDL_SetRenderVSync(renderer, true);
+        }
     }
 
     register_wake_overlay(nullptr);
