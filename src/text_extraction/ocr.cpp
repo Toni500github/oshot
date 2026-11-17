@@ -57,12 +57,10 @@
 #include "screen_capture.hpp"
 #include "spdlog/spdlog.h"
 #include "text_extraction.hpp"
+#include "util.hpp"
 #include "util/result.hpp"
 #include "util/strings.hpp"
 
-#if defined(__GLIBC__)
-#  include <malloc.h>
-#endif
 #ifdef _OPENMP
 #  include <omp.h>
 #endif
@@ -674,10 +672,8 @@ public:
                 std::unique_lock       loading(m_loading);
                 if (m_stop || !init_engine(api, data_path.c_str(), model.c_str(), oem))
                     return;
-#if defined(__GLIBC__)
                 // That memory stays in this thread's arena otherwise
-                malloc_trim(0);
-#endif
+                glibc_malloc_trim();
                 loading.unlock();
                 Run(api);
             });

@@ -162,7 +162,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         ImGui::TextDisabled("%s", _("GitHub repository containing Tesseract '.traineddata' models"));
         ImGui::SetNextItemWidth(-1);
         if (ImGui::InputText("##ocr_download_repo", &m_inputs.ocr_download_repo))
-            ClearError(ectx, OcrDownloadError::FailedToDownload);
+            ectx.Clear(OcrDownloadError::FailedToDownload);
 
         ImGui::Spacing();
 
@@ -170,7 +170,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         ImGui::TextDisabled("%s", _("Language code (e.g eng, fra, deu, chi_sim)"));
         ImGui::SetNextItemWidth(-1);
         if (ImGui::InputText("##ocr_model_to_download", &model_to_get))
-            ClearError(ectx, OcrDownloadError::FailedToDownload);
+            ectx.Clear(OcrDownloadError::FailedToDownload);
 
         ImGui::Spacing();
 
@@ -181,11 +181,11 @@ void ScreenshotTool::DrawDownloadOCRWindow()
             "##ocr_download_path",
             [&] {
                 if (!fs::exists(m_inputs.ocr_model_downloaded_path))
-                    SetError(ectx, OcrDownloadError::InvalidPath, _("No such directory or path"));
+                    ectx.Set(OcrDownloadError::InvalidPath, _("No such directory or path"));
                 else if (!fs::is_directory(m_inputs.ocr_model_downloaded_path))
-                    SetError(ectx, OcrDownloadError::InvalidPath, _("Not a directory"));
+                    ectx.Set(OcrDownloadError::InvalidPath, _("Not a directory"));
                 else
-                    ClearError(ectx, OcrDownloadError::InvalidPath);
+                    ectx.Clear(OcrDownloadError::InvalidPath);
             },
             m_inputs.ocr_model_downloaded_path);
         ShowIfError(ectx, OcrDownloadError::InvalidPath);
@@ -210,14 +210,14 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         const bool fields_filled =
             !m_inputs.ocr_download_repo.empty() && !model_to_get.empty() && !m_inputs.ocr_model_downloaded_path.empty();
         // A failed download can be retried as it is, e.g. after a network error
-        const bool can_download = !m_ocr_download && fields_filled && !HasError(ectx, OcrDownloadError::InvalidPath);
+        const bool can_download = !m_ocr_download && fields_filled && !ectx.Has(OcrDownloadError::InvalidPath);
 
         if (!can_download)
             ImGui::BeginDisabled();
 
         if (ImGui::Button(_("Download"), ImVec2(-1, 0)))
         {
-            ClearError(ectx, OcrDownloadError::FailedToDownload);
+            ectx.Clear(OcrDownloadError::FailedToDownload);
             has_downloaded = false;
             refit          = true;
             std::vector<std::string> cmd{ "curl",
@@ -328,8 +328,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
                         std::scoped_lock g(m_ocr_download->err_mutex);
                         err = std::move(m_ocr_download->err);
                     }
-                    SetError(ectx,
-                             OcrDownloadError::FailedToDownload,
+                    ectx.Set(OcrDownloadError::FailedToDownload,
                              i18n::tr_fmt("Failed to download '{}' to '{}':\n{}",
                                           model_to_get,
                                           m_inputs.ocr_model_downloaded_path,
@@ -337,7 +336,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
                 }
                 else
                 {
-                    ClearError(ectx, OcrDownloadError::FailedToDownload);
+                    ectx.Clear(OcrDownloadError::FailedToDownload);
                     has_downloaded = true;
                     // Rescan, so the new model is in the Model list
                     m_last_scanned_ocr_path.clear();
@@ -350,7 +349,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
 
         ImGui::Spacing();
         ShowIfError(ectx, OcrDownloadError::FailedToDownload);
-        if (has_downloaded && !HasError(ectx, OcrDownloadError::FailedToDownload))
+        if (has_downloaded && !ectx.Has(OcrDownloadError::FailedToDownload))
         {
             ImGui::TextColored((0x33D933FF_rgba), "%s", _("Downloaded successfully!"));
 

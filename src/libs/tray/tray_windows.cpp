@@ -253,6 +253,8 @@ void Tray::SetQuitSignalCallback(std::function<void()> cb)
 
 void Tray::SetReopenCallback(std::function<void()>) {}
 
+void Tray::Pump() {}
+
 bool Tray::PanelIsDark()
 {
 	// The taskbar and Start follow it since Windows 10 1903, older versions have no such value

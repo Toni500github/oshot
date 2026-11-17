@@ -154,7 +154,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     return oshot_main(int(args.size()), argv.data());
 }
 #else
-// Not caught on purpose, since with the tray and worker threads running there's nothing to unwind to
+// Not caught on purpose, since with the tray running there's nothing to unwind to
 int main(int argc, char* argv[])
 {
     return oshot_main(argc, argv);

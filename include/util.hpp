@@ -118,6 +118,15 @@ extern std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_imgui_log_sink;
 extern const std::string version_infos;
 
 // ------------------------------
+// Functions
+// ------------------------------
+
+/**
+ * Give the heap's free pages back to the system. Only glibc keeps them, elsewhere it does nothing
+ **/
+void glibc_malloc_trim();
+
+// ------------------------------
 // Template functions
 // ------------------------------
 

@@ -35,10 +35,10 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <future>
 #include <iterator>
 #include <memory>
 #include <string_view>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -249,10 +249,9 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
         fmt::format_to(std::back_inserter(str), "{:.0f}x{:.0f}+{:.0f}+{:.0f}", sel_w, sel_h, sel_x, sel_y);
         if (g_config->File.image_out_size_fmt != "off")
         {
-            static std::atomic<size_t> estimated_size{ 0 };
-            static std::atomic<bool>   size_computing{ false };
-            static selection_rect_t    tracked_selection{};    // last geometry observed, any source
-            static selection_rect_t    committed_selection{};  // geometry estimated_size currently reflects
+            static size_t           estimated_size = 0;
+            static selection_rect_t tracked_selection{};    // last geometry observed, any source
+            static selection_rect_t committed_selection{};  // geometry estimated_size currently reflects
             static std::chrono::steady_clock::time_point last_change_ts{};
 
             auto same_geo = [](const selection_rect_t& a, const selection_rect_t& b) {
@@ -266,25 +265,24 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
                 last_change_ts    = std::chrono::steady_clock::now();
             }
 
-            if (!size_computing && !same_geo(tracked_selection, committed_selection) &&
+            if (m_size_estimate.valid() && m_size_estimate.wait_for(0s) == std::future_status::ready)
+                estimated_size = m_size_estimate.get();
+
+            if (!m_size_estimate.valid() && !same_geo(tracked_selection, committed_selection) &&
                 std::chrono::steady_clock::now() - last_change_ts > 150ms)
             {
                 committed_selection = tracked_selection;
-                size_computing      = true;
 
                 capture_result_t snapshot = GetFinalImage();  // render thread only, cheap crop
                 ImageExt         ext      = g_config->File.image_out_type.second;
 
-                std::thread([snapshot = std::move(snapshot), ext]() mutable {
-                    std::vector<uint8_t> img = encode_to_image(snapshot, ext);
-                    estimated_size.store(img.size(), std::memory_order_relaxed);
-                    size_computing.store(false, std::memory_order_relaxed);
-                }).detach();
+                m_size_estimate = std::async(std::launch::async, [snapshot = std::move(snapshot), ext] {
+                    return encode_to_image(snapshot, ext).size();
+                });
             }
-            byte_units_t byte_units =
-                (g_config->File.image_out_size_fmt == "auto")
-                    ? auto_divide_bytes(double(estimated_size.load()), ByteUnit::Kibibyte)
-                    : divide_bytes(double(estimated_size.load()), g_config->File.image_out_size_fmt);
+            byte_units_t byte_units = (g_config->File.image_out_size_fmt == "auto")
+                                          ? auto_divide_bytes(double(estimated_size), ByteUnit::Kibibyte)
+                                          : divide_bytes(double(estimated_size), g_config->File.image_out_size_fmt);
 
             fmt::format_to(std::back_inserter(str),
                            "\n{}: {:.2f}{}",
@@ -343,21 +341,20 @@ void ScreenshotTool::CreateCopyTextButton(const std::string&     text_copy,
         const Result<>& res = g_clipboard.CopyText(text_copy);
         if (res.ok())
         {
-            ClearError(ectx, GeneralError::FailedToCopyText);
+            ectx.Clear(GeneralError::FailedToCopyText);
             armed = true;
         }
         else
         {
-            SetError(ectx, GeneralError::FailedToCopyText, res.error_v());
+            ectx.Set(GeneralError::FailedToCopyText, res.error_v());
         }
     }
     storage->SetBool(key, armed);
 
-    if (show_error && HasError(ectx, GeneralError::FailedToCopyText))
+    if (show_error && ectx.Has(GeneralError::FailedToCopyText))
     {
         ImGui::SameLine();
-        ImGui::TextColored(
-            Colors::RED, _("Failed to copy text: %s"), GetError(ectx, GeneralError::FailedToCopyText).c_str());
+        ImGui::TextColored(Colors::RED, _("Failed to copy text: %s"), ectx.Get(GeneralError::FailedToCopyText).c_str());
     }
 }
 
@@ -560,7 +557,7 @@ void ScreenshotTool::DrawAnnotationResizeBorder()
 
 void ScreenshotTool::DrawAnnotationToolbar()
 {
-    auto draw_and_set_button = [&](ToolType tool, const char* id, ImTextureRef texture) -> bool {
+    auto draw_and_set_button = [&](ToolType tool) -> bool {
         bool       clicked  = false;
         const bool is_tool  = is_annotation_tool(tool);
         const bool selected = is_tool && (m_current_tool == tool);
@@ -568,7 +565,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
         if (selected)
             ImGui::PushStyleColor(ImGuiCol_Button, (0x6699FFFF_rgba));
 
-        if (ImGui::ImageButton(id, texture.GetTexID(), TOOL_BUTTON_SIZE2))
+        if (ImGui::ImageButton("##btn", m_tool_textures[idx(tool)].GetTexID(), TOOL_BUTTON_SIZE2))
         {
             if (is_tool)
                 m_current_tool = selected ? ToolType::kNone : tool;
@@ -652,17 +649,17 @@ void ScreenshotTool::DrawAnnotationToolbar()
 
             case ToolType::ToggleTextTools:
                 if (!m_show_window.Has(SubWindow::MainTextTools))
-                    if (draw_and_set_button(tool, "##btn", m_tool_textures[idx(tool)]))
+                    if (draw_and_set_button(tool))
                         m_show_window.Set(SubWindow::MainTextTools);
                 break;
 
             case ToolType::CopyImage:
             case ToolType::SaveImage:
-                if (draw_and_set_button(tool, "##btn", m_tool_textures[idx(tool)]))
+                if (draw_and_set_button(tool))
                     RequestComplete(tool == ToolType::SaveImage ? SavingOp::File : SavingOp::Clipboard);
                 break;
 
-            default: draw_and_set_button(tool, "##btn", m_tool_textures[idx(tool)]);
+            default: draw_and_set_button(tool);
         }
         ImGui::PopID();
 
@@ -911,11 +908,10 @@ void ScreenshotTool::DrawOutputButtons(const std::string& text,
     ImGui::PopStyleColor(4);
     ImGui::EndDisabled();
 
-    if (HasError(m_general_errors, GeneralError::FailedToCopyText))
+    if (m_general_errors.Has(GeneralError::FailedToCopyText))
     {
         ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
-        ImGui::TextWrapped(_("Failed to copy text: %s"),
-                           GetError(m_general_errors, GeneralError::FailedToCopyText).c_str());
+        ImGui::TextWrapped(_("Failed to copy text: %s"), m_general_errors.Get(GeneralError::FailedToCopyText).c_str());
         ImGui::PopStyleColor();
     }
 }
@@ -924,9 +920,9 @@ void ScreenshotTool::DrawOcrTools()
 {
     ErrorContext<OcrError>& ectx = m_ocr_errors;
 
-    const bool need_to_scan  = HasError(ectx, OcrError::NeedToScanDir);
-    const bool invalid_path  = HasError(ectx, OcrError::InvalidPath);
-    const bool invalid_model = HasError(ectx, OcrError::InvalidModel);
+    const bool need_to_scan  = ectx.Has(OcrError::NeedToScanDir);
+    const bool invalid_path  = ectx.Has(OcrError::InvalidPath);
+    const bool invalid_model = ectx.Has(OcrError::InvalidModel);
     const bool models_ok     = !invalid_path && !need_to_scan;
 
     ImGui::PushID("OcrTools");
@@ -953,7 +949,7 @@ void ScreenshotTool::DrawOcrTools()
             ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
         ImGui::PushItemWidth(need_to_scan ? -(button_width({ load_label }) + ImGui::GetStyle().ItemSpacing.x)
                                           : -FLT_MIN);
-        draw_input_text_folder("", "##ocr_path", [&] { SetError(ectx, OcrError::NeedToScanDir); }, m_inputs.ocr_path);
+        draw_input_text_folder("", "##ocr_path", [&] { ectx.Set(OcrError::NeedToScanDir); }, m_inputs.ocr_path);
         ImGui::PopItemWidth();
         if (invalid_path || need_to_scan)
             ImGui::PopStyleColor();
@@ -998,7 +994,7 @@ void ScreenshotTool::DrawOcrTools()
                     if (filter.PassFilter(model.c_str()) && ImGui::Selectable(model.c_str(), model == ocr_model))
                     {
                         ocr_model = model;
-                        ClearError(ectx, OcrError::InvalidModel);
+                        ectx.Clear(OcrError::InvalidModel);
                     }
                 }
                 ImGui::EndCombo();

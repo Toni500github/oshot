@@ -19,27 +19,42 @@ static bool loop_result = true;
 static std::function<void()> quitSignalCallback;
 static std::function<void()> iconClickCallback;
 static std::function<void()> themeChangeCallback;
+static std::function<void()> timeoutCallback;
+static guint timeoutSource = 0;
 
 using namespace Tray;
 
-static void _tray_menu_cb(GtkMenuItem *item, gpointer data)
+// The click callbacks run from an idle source, so AppIndicator first answers the host's D-Bus call,
+// which would otherwise wait on a callback that runs for a whole capture
+static gboolean _tray_menu_idle(gpointer data)
 {
 	TrayMenu *clickedMenuItem = (TrayMenu *)data;
 	if (clickedMenuItem != nullptr && clickedMenuItem->onClicked != nullptr)
 		clickedMenuItem->onClicked(clickedMenuItem);
+	return G_SOURCE_REMOVE;
+}
+
+static gboolean _tray_icon_click_idle(gpointer)
+{
+	if (iconClickCallback)
+		iconClickCallback();
+	return G_SOURCE_REMOVE;
+}
+
+static void _tray_menu_cb(GtkMenuItem *, gpointer data)
+{
+	g_idle_add(_tray_menu_idle, data);
 }
 
 // SNI Activate(), sent by the host on a primary click
 static void _tray_activate_cb(AppIndicator *, gint, gint, gpointer)
 {
-	if (iconClickCallback)
-		iconClickCallback();
+	g_idle_add(_tray_icon_click_idle, NULL);
 }
 
 static void _tray_status_icon_activate_cb(GtkStatusIcon *, gpointer)
 {
-	if (iconClickCallback)
-		iconClickCallback();
+	g_idle_add(_tray_icon_click_idle, NULL);
 }
 
 // Without a StatusNotifier host (XEmbed trays: dwm, i3bar, stalonetray, ...)
@@ -178,6 +193,31 @@ void Tray::SetQuitSignalCallback(std::function<void()> cb)
 }
 
 void Tray::SetReopenCallback(std::function<void()>) {}
+
+void Tray::Pump()
+{
+	if (indicator == NULL)
+		return;
+	while (gtk_events_pending())
+		gtk_main_iteration_do(FALSE);
+}
+
+static gboolean _tray_on_timeout(gpointer)
+{
+	timeoutSource = 0;
+	// The callback may set the next timeout
+	std::function<void()> cb = std::move(timeoutCallback);
+	cb();
+	return G_SOURCE_REMOVE;
+}
+
+void Tray::SetTimeout(unsigned seconds, std::function<void()> cb)
+{
+	if (timeoutSource != 0)
+		g_source_remove(timeoutSource);
+	timeoutCallback = std::move(cb);
+	timeoutSource = g_timeout_add_seconds(seconds, _tray_on_timeout, NULL);
+}
 
 #define PORTAL_BUS_NAME "org.freedesktop.portal.Desktop"
 #define PORTAL_OBJECT_PATH "/org/freedesktop/portal/desktop"

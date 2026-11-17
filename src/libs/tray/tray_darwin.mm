@@ -218,3 +218,5 @@ bool Tray::PanelIsDark()
 }
 
 void Tray::SetThemeChangeCallback(std::function<void()>) {}
+
+void Tray::Pump() {}

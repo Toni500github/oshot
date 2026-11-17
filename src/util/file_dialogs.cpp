@@ -31,7 +31,6 @@
 #include <SDL3/SDL_timer.h>
 
 #include <atomic>
-#include <shared_mutex>
 
 #include "i18n.hpp"
 #include "platform.hpp"
@@ -39,12 +38,6 @@
 
 namespace dialog
 {
-std::shared_mutex& file_dialog_mutex()
-{
-    static std::shared_mutex mutex;
-    return mutex;
-}
-
 struct dialog_state_t
 {
     std::atomic<bool>          done{ false };
@@ -74,8 +67,6 @@ static std::optional<std::string> show_dialog(const SDL_FileDialogType   type,
 {
     const SDL_DialogFileFilter translated{ .name    = filter.name ? i18n::tr(filter.name) : "",
                                            .pattern = filter.pattern };
-
-    const std::shared_lock lock(file_dialog_mutex());
 
     // SDL copies the strings, so the properties can go once the dialog is shown
     dialog_state_t         state;

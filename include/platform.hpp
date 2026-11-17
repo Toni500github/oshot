@@ -88,16 +88,6 @@
 #  define OSHOT_HAS_GLOBAL_HOTKEY 0
 #endif
 
-/**
- * Whether captures run inline on the tray (main) thread instead of the capture worker thread.
- * AppKit only allows UI on the main thread.
- **/
-#if (OSHOT_WINDOWS || OSHOT_MACOS)
-#  define OSHOT_TOOL_ON_MAIN_THREAD 1
-#else
-#  define OSHOT_TOOL_ON_MAIN_THREAD 0
-#endif
-
 #if !(OSHOT_FREEDESKTOP || OSHOT_WINDOWS || OSHOT_MACOS)
 #  warning \
       "Platform currently may not be supported, only Linux, the BSDs, Windows and MacOS. Please feel free to report any compilation errors"

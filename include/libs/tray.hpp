@@ -45,7 +45,7 @@ namespace Tray
 		void Exit();
 	};
 
-	static TrayMaker trayMaker;
+	inline TrayMaker trayMaker;
 
 	// oshot additions:
 
@@ -76,6 +76,13 @@ namespace Tray
 	// Run `cb` on the tray thread when PanelIsDark() may have changed.
 	// Windows and Linux/BSD only. Call after Initialize(), on the tray thread.
 	void SetThemeChangeCallback(std::function<void()> cb);
+
+	// Linux/BSD only: run the tray's pending events without blocking, from loops that run
+	// inside a tray callback. SDL's event pump already does it on Windows and macOS.
+	void Pump();
+
+	// Linux/BSD only: run `cb` on the tray thread after `seconds`, replacing the previous one.
+	void SetTimeout(unsigned seconds, std::function<void()> cb);
 }
 
 

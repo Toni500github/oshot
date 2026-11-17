@@ -33,6 +33,7 @@
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "spdlog/spdlog.h"
+#include "tray.hpp"
 #include "util.hpp"
 #include "util/dialogs.hpp"
 #include "util/fonts.hpp"
@@ -316,10 +317,7 @@ int run_main_tool()
             return fail("Failed to start capture: {}", started.error_v());
     }
 
-    // The screenshot is drawn at full resolution where a screen unit has more than one pixel
-    // (scaled Wayland outputs, Retina), and fit_to_screen() shrinks images to the display's pixels
     g_ss_tool.SetWindow(window);
-    g_ss_tool.SetFullResolutionImage(true);
     const auto use_display = [](const SDL_DisplayID id, const bool keep_desktop) {
         if (const SDL_DisplayMode* m = SDL_GetDesktopDisplayMode(id))
         {
@@ -402,6 +400,8 @@ int run_main_tool()
                 use_display(first_display, false);
             }
         }
+        // SDL's event pump only dispatches the tray's events on Windows and macOS
+        Tray::Pump();
         if (close)
             break;
         if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)

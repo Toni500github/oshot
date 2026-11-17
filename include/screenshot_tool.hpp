@@ -36,6 +36,7 @@
 #include <cstdlib>
 #include <deque>
 #include <functional>
+#include <future>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -401,7 +402,7 @@ class ScreenshotTool
 {
 public:
 #ifndef DISABLE_PLUGINS
-    ScreenshotTool(StateManager&& state) : m_plugin_manager(std::move(state), m_plugin_cb, /*is_cli=*/false) {}
+    ScreenshotTool(StateManager&& state) : m_plugin_manager(std::move(state), {}, /*is_cli=*/false) {}
     ~ScreenshotTool()
     {
         if (m_install_thread.joinable())
@@ -410,33 +411,6 @@ public:
             m_index_thread.join();
     }
 #endif
-
-    // ------------------------------
-    // Errors
-    // ------------------------------
-    template <typename Enum>
-    void SetError(ErrorContext<Enum>& ctx, Enum e, const std::string_view err = "")
-    {
-        ctx.Set(e, err);
-    }
-
-    template <typename Enum>
-    const std::string& GetError(const ErrorContext<Enum>& ctx, Enum e) const
-    {
-        return ctx.Get(e);
-    }
-
-    template <typename Enum>
-    void ClearError(ErrorContext<Enum>& ctx, Enum e)
-    {
-        ctx.Clear(e);
-    }
-
-    template <typename Enum>
-    bool HasError(const ErrorContext<Enum>& ctx, Enum e) const
-    {
-        return ctx.Has(e);
-    }
 
     // ------------------------------
     // Lifecycle
@@ -488,10 +462,6 @@ public:
     // The overlay window, nullptr without an overlay
     [[nodiscard]] SDL_Window* GetWindow() const { return m_window; }
 
-    // Draw the screenshot at full resolution on a scaled output, instead of the logical
-    // screen size. The backend then reads back framebuffer pixels at GetImageScale()
-    void SetFullResolutionImage(bool enable) { m_full_res_image = enable; }
-
     void SetOnCancel(const std::function<void()>& cb) { m_on_cancel = cb; }
 
     // ------------------------------
@@ -539,8 +509,7 @@ public:
     // Top-left corner of the screenshot on screen (it's drawn centered)
     [[nodiscard]] const point_t GetImageOrigin() const { return { .x = m_image_origin.x, .y = m_image_origin.y }; }
 
-    // Screenshot pixels per screen unit. It's above 1 on a scaled (HiDPI) output when
-    // the backend renders at full resolution, see SetFullResolutionImage()
+    // Screenshot pixels per screen unit, above 1 on a scaled (HiDPI) output
     [[nodiscard]] float GetImageScale() const { return m_image_scale; }
 
     // A copy of the active region of the screenshot, without annotations
@@ -554,7 +523,6 @@ public:
 
     [[nodiscard]] bool IsActive() const { return m_state != ToolState::Idle; }
     [[nodiscard]] bool IsCompleted() const { return m_completed_op != SavingOp::kNone; }
-    capture_result_t&  GetRawScreenshot() { return m_screenshot; }
 
     // ------------------------------
     // Textures, fonts and style
@@ -628,20 +596,6 @@ private:
         {}
     };
 
-    struct font_cache_t
-    {
-        std::string font_path;
-        ImFont*     font   = nullptr;
-        bool        loaded = false;
-    };
-
-    struct handle_info_t
-    {
-        HandleHovered type;
-        ImVec2        pos;
-        ImRect        rect;
-    };
-
     // ------------------------------
     // Screenshot
     // ------------------------------
@@ -655,9 +609,7 @@ private:
 
     capture_result_t m_screenshot;
     ImTextureRef     m_texture_id;
-    SessionType      m_session;
-    float            m_image_scale    = 1.0f;
-    bool             m_full_res_image = false;
+    float            m_image_scale = 1.0f;
 
     // ------------------------------
     // Selection
@@ -721,6 +673,7 @@ private:
     float                           m_code_rows_width = 0.0f;
     ImGuiTextFilter                 m_code_filter;
     std::shared_ptr<ocr_download_t> m_ocr_download;
+    std::future<size_t>             m_size_estimate;  // encoded size of the selection, for its label
     std::vector<std::string>        m_ocr_models_list;
     ErrorContext<OcrError>          m_ocr_errors;
     ErrorContext<BarcodeError>      m_barcode_errors;
@@ -731,7 +684,7 @@ private:
     // Windows and fonts
     // ------------------------------
     GeneralContext<SubWindow>                             m_show_window;
-    std::map<std::pair<std::string, float>, font_cache_t> m_font_cache;
+    std::map<std::pair<std::string, float>, ImFont*>      m_font_cache;
 
     // A menu or popup was open at the end of the last frame, see RenderOverlay()
     bool m_popup_open = false;
@@ -754,10 +707,7 @@ private:
     // ------------------------------
     // Plugins
     // ------------------------------
-    // m_plugin_cb must be declared (and therefore constructed) before
-    // m_plugin_manager, which the constructor initializes with a copy of it
-    PluginCallbacks m_plugin_cb;
-    PluginManager   m_plugin_manager;
+    PluginManager m_plugin_manager;
 
     // The install window's source field
     std::string m_install_source;

@@ -47,6 +47,16 @@
 #  include <fcntl.h>
 #  include <unistd.h>
 #endif
+#ifdef __GLIBC__
+#  include <malloc.h>
+#endif
+
+void glibc_malloc_trim()
+{
+#ifdef __GLIBC__
+    malloc_trim(0);
+#endif
+}
 
 CdGuard::CdGuard(const fs::path& p) : saved(fs::current_path())
 {

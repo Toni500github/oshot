@@ -78,16 +78,13 @@ static HandleHovered flip_handle_y(HandleHovered handle)
 
 static bool ui_blocks_selection()
 {
-    static ImGuiWindow* overlay_window = nullptr;
-
     ImGuiContext* ctx = ImGui::GetCurrentContext();
     if (!ctx)
         return false;
 
-    if (!overlay_window)
-        overlay_window = ImGui::FindWindowByName("Screenshot Tool");
-
-    ImGuiWindow* hovered = ctx->HoveredWindow;
+    // Looked up every time, since every capture makes a new ImGui context
+    const ImGuiWindow* overlay_window = ImGui::FindWindowByName("Screenshot Tool");
+    const ImGuiWindow* hovered        = ctx->HoveredWindow;
     if (!hovered || !overlay_window)
         return false;
 

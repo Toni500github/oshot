@@ -76,7 +76,6 @@ using namespace std::chrono_literals;
 Result<> ScreenshotTool::Start()
 {
     Result<capture_result_t> result{ Err() };
-    m_session = get_session_type();
 
     // g_ss_tool outlives a capture, since the tray runs every one of them with it
     ResetSelection();
@@ -101,7 +100,7 @@ Result<> ScreenshotTool::Start()
         if (g_config->File.delay > 0)
             std::this_thread::sleep_for(std::chrono::milliseconds(g_config->File.delay));
 
-        result = capture_full_screen(m_session);
+        result = capture_full_screen(get_session_type());
         TRY_MSG(result, "Failed to capture screenshot: {}");
     }
 
@@ -118,15 +117,14 @@ Result<> ScreenshotTool::StartWindow()
     KeepDrawing();
     fit_to_screen(m_screenshot);
 
+    const Result<ImTextureRef>& res = CreateTexture(0, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
+    TRY_MSG(res, "Failed to create the screenshot's texture: {}");
+    m_texture_id = res.get();
+
     // Only the screenshot, nothing for the text tools window
     if (g_config->Runtime.instant_copy_save != SavingOp::kNone)
     {
         m_state = ToolState::Selecting;
-
-        const Result<ImTextureRef>& res = CreateTexture(0, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
-        TRY_MSG(res, "Failed to create the screenshot's texture: {}");
-
-        m_texture_id = res.get();
         return Ok();
     }
 
@@ -161,11 +159,6 @@ Result<> ScreenshotTool::StartWindow()
 
     SyncRuntimeFromConfig();
 
-    const Result<ImTextureRef>& res = CreateTexture(0, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
-    TRY_MSG(res, "Failed to create the screenshot's texture: {}");
-
-    m_texture_id = res.get();
-
     // The screenshot texture worked, so assume these do too
     const bool aa = g_config->File.aa_icons;
 
@@ -199,9 +192,9 @@ Result<> ScreenshotTool::StartWindow()
 #endif
 
     if (!fs::exists(m_inputs.ocr_model_downloaded_path))
-        SetError(m_download_errors, OcrDownloadError::InvalidPath, _("No such directory or path"));
+        m_download_errors.Set(OcrDownloadError::InvalidPath, _("No such directory or path"));
     else if (!fs::is_directory(m_inputs.ocr_model_downloaded_path))
-        SetError(m_download_errors, OcrDownloadError::InvalidPath, _("Not a directory"));
+        m_download_errors.Set(OcrDownloadError::InvalidPath, _("Not a directory"));
 
 #ifndef DISABLE_PLUGINS
     StartPluginsCapture();
@@ -265,8 +258,7 @@ void ScreenshotTool::RenderOverlay()
         ImGui::End();
     }
 
-    if (m_state == ToolState::Selecting || m_state == ToolState::Selected || m_state == ToolState::Resizing ||
-        m_state == ToolState::AnnResizing)
+    if (IsActive())
     {
         if (m_main_sel.selection.get_x() > 30 && m_main_sel.selection.get_y() > 30)
         {
@@ -437,6 +429,7 @@ void ScreenshotTool::EndCapture()
     m_annotations               = {};
     m_current_annotation        = {};
     m_current_annotation_resize = nullptr;
+    m_size_estimate             = {};  // waits for the encoder, which holds a copy of the selection
 
     // The model is tens of MB, and the next capture's first OCR reloads it quickly
     m_ocr_api.End();
@@ -539,10 +532,6 @@ void ScreenshotTool::ResetSelection()
 }
 
 // ------------------------------
-// Frame read-back
-// ------------------------------
-
-// ------------------------------
 // Idle rendering
 // ------------------------------
 
@@ -587,6 +576,10 @@ void wake_overlay()
     if (void (*fn)() = wake_overlay_fn.load())
         fn();
 }
+
+// ------------------------------
+// Frame read-back
+// ------------------------------
 
 void ScreenshotTool::OnCleanFrame()
 {
@@ -660,7 +653,7 @@ capture_result_t ScreenshotTool::GetFinalImage()
 
 bool ScreenshotTool::CanReadFinalImage() const
 {
-    return m_state != ToolState::Idle && !m_screenshot.data.empty();
+    return IsActive() && !m_screenshot.data.empty();
 }
 
 region_t ScreenshotTool::GetActiveRegion() const
@@ -758,9 +751,7 @@ ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const floa
         font = ImGui::GetDefaultFont();
     }
 
-    const float safe_size = std::max(font_size, 16.0f);
-    std::pair   key(font_path, safe_size);
-    m_font_cache[key] = { .font_path = font_path, .font = font, .loaded = true };
+    m_font_cache[{ font_path, std::max(font_size, 16.0f) }] = font;
     ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
 
     return font;
@@ -771,13 +762,8 @@ ImFont* ScreenshotTool::GetCachedFont(const std::string& font_path, const float 
     if (font_path.empty())
         return ImGui::GetDefaultFont();
 
-    const float safe_size = std::max(font_size, 16.0f);
-    std::pair   key(font_path, safe_size);
-    auto        it = m_font_cache.find(key);
-    if (it != m_font_cache.end())
-        return it->second.font;
-
-    return nullptr;
+    const auto it = m_font_cache.find({ font_path, std::max(font_size, 16.0f) });
+    return it != m_font_cache.end() ? it->second : nullptr;
 }
 
 void ScreenshotTool::StyleDefaultColor()
@@ -852,30 +838,13 @@ static size_t fit_count(float length, float btn, float spacing)
     return static_cast<size_t>((length + spacing) / (btn + spacing));
 }
 
-static bool get_filtered_filenames(const std::string&                                 dir,
-                                   std::vector<std::string>&                          list,
-                                   const std::function<bool(const fs::path&)>&        filter,
-                                   const std::function<std::string(const fs::path&)>& value_push)
-{
-    if (!fs::exists(dir))
-        return false;
-
-    for (const auto& entry : fs::recursive_directory_iterator(
-             dir, fs::directory_options::follow_directory_symlink | fs::directory_options::skip_permission_denied))
-    {
-        if (filter(entry.path()))
-            list.emplace_back(value_push(entry.path()));
-    }
-
-    return true;
-}
-
 void ScreenshotTool::UpdateWindowBg()
 {
     // Calculate where the screenshot will be drawn (centered)
     // clang-format off
     auto* vp = ImGui::GetMainViewport();
-    m_image_scale = m_full_res_image ? std::max(1.0f, ImGui::GetIO().DisplayFramebufferScale.x) : 1.0f;
+    // Drawn at full resolution where a screen unit has more than one pixel (scaled Wayland outputs, Retina)
+    m_image_scale = std::max(1.0f, ImGui::GetIO().DisplayFramebufferScale.x);
     ImVec2 image_size(
         float(m_screenshot.w) / m_image_scale,
         float(m_screenshot.h) / m_image_scale
@@ -991,33 +960,35 @@ void ScreenshotTool::RefreshOcrModels()
 
     if (m_inputs.ocr_path == m_last_scanned_ocr_path)
     {
-        ClearError(ectx, OcrError::NeedToScanDir);
+        ectx.Clear(OcrError::NeedToScanDir);
         return;
     }
 
-    // get_filtered_filenames() appends to the list
     m_ocr_models_list.clear();
-    get_filtered_filenames(
-        m_inputs.ocr_path,
-        m_ocr_models_list,
-        [](const fs::path& entry) { return entry.extension().string() == ".traineddata"; },
-        [](const fs::path& entry) { return entry.stem().string(); });
+    if (fs::exists(m_inputs.ocr_path))
+    {
+        for (const auto& entry : fs::recursive_directory_iterator(
+                 m_inputs.ocr_path,
+                 fs::directory_options::follow_directory_symlink | fs::directory_options::skip_permission_denied))
+            if (entry.path().extension() == ".traineddata")
+                m_ocr_models_list.push_back(entry.path().stem().string());
+    }
     std::ranges::sort(m_ocr_models_list);
 
     m_last_scanned_ocr_path = m_inputs.ocr_path;
-    ClearError(ectx, OcrError::NeedToScanDir);
+    ectx.Clear(OcrError::NeedToScanDir);
 
     if (m_ocr_models_list.empty())
     {
-        SetError(ectx, OcrError::InvalidPath, _("Doesn't exist or is empty"));
+        ectx.Set(OcrError::InvalidPath, _("Doesn't exist or is empty"));
     }
     else
     {
-        ClearError(ectx, OcrError::InvalidPath);
+        ectx.Clear(OcrError::InvalidPath);
         if (std::ranges::find(m_ocr_models_list, m_inputs.ocr_model) == m_ocr_models_list.end())
-            SetError(ectx, OcrError::InvalidModel);
+            ectx.Set(OcrError::InvalidModel);
         else
-            ClearError(ectx, OcrError::InvalidModel);
+            ectx.Clear(OcrError::InvalidModel);
     }
 }
 
@@ -1032,55 +1003,22 @@ void ScreenshotTool::UpdateHandleHoverState(selection_info_t& sel)
     const float sel_h = sel.selection.get_height();
     const float hover = 15.0f;
 
-    // clang-format off
-    const std::array<handle_info_t, 8> handles = {
-        { { .type = HandleHovered::TopLeft,
-            .pos  = ImVec2(sel_x, sel_y),
-            .rect = ImRect(ImVec2(sel_x - hover, sel_y - hover),
-                           ImVec2(sel_x + hover, sel_y + hover)) },
+    const std::array<std::pair<HandleHovered, ImVec2>, 8> handles = { {
+        { HandleHovered::TopLeft, ImVec2(sel_x, sel_y) },
+        { HandleHovered::TopRight, ImVec2(sel_x + sel_w, sel_y) },
+        { HandleHovered::BottomLeft, ImVec2(sel_x, sel_y + sel_h) },
+        { HandleHovered::BottomRight, ImVec2(sel_x + sel_w, sel_y + sel_h) },
+        { HandleHovered::Top, ImVec2(sel_x + sel_w / 2, sel_y) },
+        { HandleHovered::Bottom, ImVec2(sel_x + sel_w / 2, sel_y + sel_h) },
+        { HandleHovered::Left, ImVec2(sel_x, sel_y + sel_h / 2) },
+        { HandleHovered::Right, ImVec2(sel_x + sel_w, sel_y + sel_h / 2) },
+    } };
 
-          { .type = HandleHovered::TopRight,
-            .pos  = ImVec2(sel_x + sel_w, sel_y),
-            .rect = ImRect(ImVec2(sel_x + sel_w - hover, sel_y - hover),
-                           ImVec2(sel_x + sel_w + hover, sel_y + hover)) },
-
-          { .type = HandleHovered::BottomLeft,
-            .pos  = ImVec2(sel_x, sel_y + sel_h),
-            .rect = ImRect(ImVec2(sel_x - hover, sel_y + sel_h - hover),
-                           ImVec2(sel_x + hover, sel_y + sel_h + hover)) },
-
-          { .type = HandleHovered::BottomRight,
-            .pos  = ImVec2(sel_x + sel_w, sel_y + sel_h),
-            .rect = ImRect(ImVec2(sel_x + sel_w - hover, sel_y + sel_h - hover),
-                           ImVec2(sel_x + sel_w + hover, sel_y + sel_h + hover)) },
-
-          { .type = HandleHovered::Top,
-            .pos  = ImVec2(sel_x + sel_w / 2, sel_y),
-            .rect = ImRect(ImVec2(sel_x + sel_w / 2 - hover, sel_y - hover),
-                           ImVec2(sel_x + sel_w / 2 + hover, sel_y + hover)) },
-
-          { .type = HandleHovered::Bottom,
-            .pos  = ImVec2(sel_x + sel_w / 2, sel_y + sel_h),
-            .rect = ImRect(ImVec2(sel_x + sel_w / 2 - hover, sel_y + sel_h - hover),
-                           ImVec2(sel_x + sel_w / 2 + hover, sel_y + sel_h + hover)) },
-
-          { .type = HandleHovered::Left,
-            .pos  = ImVec2(sel_x, sel_y + sel_h / 2),
-            .rect = ImRect(ImVec2(sel_x - hover, sel_y + sel_h / 2 - hover),
-                           ImVec2(sel_x + hover, sel_y + sel_h / 2 + hover)) },
-
-          { .type = HandleHovered::Right,
-            .pos  = ImVec2(sel_x + sel_w, sel_y + sel_h / 2),
-            .rect = ImRect(ImVec2(sel_x + sel_w - hover, sel_y + sel_h / 2 - hover),
-                           ImVec2(sel_x + sel_w + hover, sel_y + sel_h / 2 + hover)) } }
-    };
-    // clang-format on
-
-    for (const handle_info_t& handle : handles)
+    for (const auto& [type, pos] : handles)
     {
-        if (handle.rect.Contains(mouse_pos))
+        if (ImRect(pos.x - hover, pos.y - hover, pos.x + hover, pos.y + hover).Contains(mouse_pos))
         {
-            sel.handle_hover = handle.type;
+            sel.handle_hover = type;
             break;
         }
     }
@@ -1269,7 +1207,7 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
     const Result<>& configure_res = m_ocr_api.Configure(m_inputs.ocr_path.c_str(), m_inputs.ocr_model.c_str());
     if (!configure_res.ok())
     {
-        SetError(ectx, OcrError::FailedToOCR, configure_res.error_v());
+        ectx.Set(OcrError::FailedToOCR, configure_res.error_v());
 #ifndef DISABLE_PLUGINS
         NotifyPluginsOfOcr(nullptr);
 #endif
@@ -1283,14 +1221,14 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
         // Don't leave the previous selection's text under the error, where Copy Text would still copy it
         m_inputs.ocr_results = {};
         m_inputs.ocr_original.clear();
-        SetError(ectx, OcrError::FailedToOCR, result.error_v());
+        ectx.Set(OcrError::FailedToOCR, result.error_v());
 #ifndef DISABLE_PLUGINS
         NotifyPluginsOfOcr(nullptr);
 #endif
         return;
     }
 
-    ClearError(ectx, OcrError::FailedToOCR);
+    ectx.Clear(OcrError::FailedToOCR);
     m_inputs.ocr_seconds = std::chrono::duration<float>(std::chrono::steady_clock::now() - start).count();
     m_inputs.ocr_results = std::move(result.get());
 #ifndef DISABLE_PLUGINS
@@ -1314,7 +1252,7 @@ void ScreenshotTool::RunBarcodeScan(const capture_result_t& img)
         m_selected_code = -1;
         m_inputs.barcode_text.clear();
         m_inputs.barcode_original.clear();
-        SetError(ectx, BarcodeError::FailedToScan, scan.error_v());
+        ectx.Set(BarcodeError::FailedToScan, scan.error_v());
 #ifndef DISABLE_PLUGINS
         for (auto& [id, rt] : g_plugins)
             if (OSHOT_PLUGIN_HAS(rt.plugin, on_barcodes_done) && rt.plugin->on_barcodes_done)
@@ -1323,7 +1261,7 @@ void ScreenshotTool::RunBarcodeScan(const capture_result_t& img)
         return;
     }
 
-    ClearError(ectx, BarcodeError::FailedToScan);
+    ectx.Clear(BarcodeError::FailedToScan);
     m_inputs.barcode_scan_result = std::move(scan.get());
     m_inputs.barcode_scanned     = true;
     m_selected_code              = -1;

@@ -29,13 +29,11 @@
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -54,9 +52,7 @@
 #  include <windows.h>
 #endif
 
-#if OSHOT_TOOL_ON_MAIN_THREAD
-#  include <ranges>
-
+#if OSHOT_HAS_GLOBAL_HOTKEY
 #  include "hotkey.hpp"
 #  include "nvdialog/nvdialog_notification.h"
 #endif
@@ -79,16 +75,8 @@
 using namespace Tray;
 using namespace std::chrono_literals;
 
-static std::mutex              mtx;
-static std::condition_variable cv;
-static std::atomic<bool>       quit{ false };
-#if !OSHOT_TOOL_ON_MAIN_THREAD
-// The next capture for capture_worker()
-static bool                      do_capture = false;
-static std::string               pending_source;   // image to open instead of capturing, empty for a screenshot
-static std::chrono::milliseconds pending_delay{};  // wait this long before capturing
-#endif
-static std::atomic<bool> capture_active{ false };  // a run_main_tool() is in progress, on any thread
+static std::atomic<bool> quit{ false };
+static std::atomic<bool> capture_active{ false };  // a run_main_tool() is in progress
 static bool              owns_tray_lock = false;   // false in the extra trays allow-multiple-trays lets start
 
 bool app_quitting()
@@ -107,11 +95,7 @@ void on_quit_signal(int)
 // A capture in progress sees app_quitting() and closes itself.
 void request_quit()
 {
-    {
-        std::scoped_lock lk(mtx);
-        quit.store(true);
-    }
-    cv.notify_all();
+    quit.store(true);
     trayMaker.Exit();
 }
 
@@ -123,8 +107,7 @@ void exit_handler_nc()
 
     request_quit();
 
-    // Quitting SDL under a running capture (e.g. dialog::die() from the worker
-    // thread) would crash it instead of exiting
+    // Quitting SDL under a running capture (e.g. dialog::die() in it) would crash instead of exiting
     if (!capture_active.load())
         SDL_Quit();
 }
@@ -146,85 +129,38 @@ static int run_overlay()
     return run_main_tool();
 }
 
-// Called after every capture. The tray process sits waiting for the next one and would
-// otherwise keep the last screenshot and the OCR model until then
-static void release_capture_memory()
-{
-    g_ss_tool.EndCapture();
-#ifdef __GLIBC__
-    // Hand back the free pages glibc keeps in the capture_worker arena, where the overlay allocated
-    malloc_trim(0);
+#if OSHOT_FREEDESKTOP
+// Keeping SDL loaded between captures opens the next overlay sooner, but the driver keeps
+// its GPU buffers and tens of MB of RAM until SDL quits
+static constexpr std::chrono::seconds GL_IDLE_RELEASE{ 30 };
 #endif
-}
 
 int run_capture()
 {
     capture_active.store(true);
     const int ret = run_overlay();
-    release_capture_memory();
+
+    // The tray process sits waiting for the next capture and would otherwise
+    // keep the last screenshot and the OCR model until then
+    g_ss_tool.EndCapture();
+    glibc_malloc_trim();
     capture_active.store(false);
+
+#if OSHOT_FREEDESKTOP
+    // Elsewhere run_main_tool() quits SDL itself
+    if (g_is_systray)
+    {
+        Tray::SetTimeout(GL_IDLE_RELEASE.count(), [] {
+            // The next capture sets it again when it ends
+            if (capture_active.load())
+                return;
+            SDL_Quit();
+            glibc_malloc_trim();
+        });
+    }
+#endif
     return ret;
 }
-
-#if !OSHOT_TOOL_ON_MAIN_THREAD  // Linux, where captures run on this worker
-// Keeping SDL loaded between captures opens the next overlay sooner, but the driver keeps
-// its GPU buffers and tens of MB of RAM until SDL quits
-static constexpr std::chrono::seconds GL_IDLE_RELEASE{ 30 };
-
-static void capture_worker()
-{
-    bool gl_loaded = false;
-    while (!quit.load())
-    {
-        // wait for command
-        std::unique_lock lk(mtx);
-        const auto       has_command = [] { return quit.load() || do_capture; };
-        if (!gl_loaded)
-        {
-            cv.wait(lk, has_command);
-        }
-        else if (!cv.wait_for(lk, GL_IDLE_RELEASE, has_command))
-        {
-            lk.unlock();
-            // Not under an open file dialog (see file_dialog_mutex()), else retry after another idle period
-            const std::unique_lock dialogs(dialog::file_dialog_mutex(), std::try_to_lock);
-            if (!dialogs.owns_lock())
-                continue;
-            // On this thread, where the captures called SDL_Init()
-            SDL_Quit();
-            gl_loaded = false;
-#  ifdef __GLIBC__
-            malloc_trim(0);
-#  endif
-            continue;
-        }
-        if (quit.load())
-            break;
-
-        do_capture                    = false;
-        g_config->Runtime.source_file = std::move(pending_source);
-        pending_source.clear();
-        const auto delay = std::exchange(pending_delay, {});
-
-        // Set under the lock so capture_from_tray() can't queue another one in between
-        capture_active.store(true);
-        lk.unlock();
-        std::this_thread::sleep_for(delay);
-        run_overlay();
-        release_capture_memory();
-        gl_loaded = true;
-
-        lk.lock();
-        capture_active.store(false);
-        lk.unlock();
-        cv.notify_all();
-    }
-}
-#endif
-
-// The tray menu takes a moment to fade out after the click, and a capture started
-// right away would have the menu in the screenshot
-static constexpr std::chrono::milliseconds TRAY_MENU_FADE{ 300 };
 
 // What in the tray started a capture
 enum class TrayClick : std::uint8_t
@@ -360,12 +296,10 @@ static void capture_from_tray(const std::string& source, const TrayClick click)
         last_click = now;
     }
 
-#if OSHOT_TOOL_ON_MAIN_THREAD
     if (app_quitting())
         return;
 
-    bool wait_fade = click == TrayClick::Menu;
-#  if OSHOT_WINDOWS
+#if OSHOT_WINDOWS
     // The overflow flyout stays open over the capture, so send it an Esc. Hiding it directly leaves
     // Explorer thinking it's open, and the next click on its arrow does nothing
     HWND overflow = FindWindowW(L"NotifyIconOverflowWindow", nullptr);
@@ -373,15 +307,11 @@ static void capture_from_tray(const std::string& source, const TrayClick click)
     {
         PostMessageW(overflow, WM_KEYDOWN, VK_ESCAPE, 0x00010001);
         PostMessageW(overflow, WM_KEYUP, VK_ESCAPE, 0xC0010001);
-        wait_fade = true;
     }
-#  endif
+#endif
 
-    if (wait_fade)
-        std::this_thread::sleep_for(TRAY_MENU_FADE);
-
-    // The SDL event pump in run_main_tool() also dispatches tray messages, so a capture here would
-    // nest inside the running one. Stack another overlay process on top instead
+    // run_main_tool() also dispatches tray events, so a capture here would nest
+    // inside the running one. Stack another overlay process on top instead
     if (capture_active.load())
     {
         spawn_gui_instance(source);
@@ -394,27 +324,9 @@ static void capture_from_tray(const std::string& source, const TrayClick click)
     // The hotkey may have been changed from Preferences
     sync_hotkey();
 
-#  if OSHOT_MACOS
+#if OSHOT_MACOS
     // SDL_Init() finishing the app launch replaces the reopen handler
     Tray::SetReopenCallback([] { capture_from_tray(); });
-#  endif
-#else
-    {
-        std::scoped_lock lk(mtx);
-        // Already queued, about to start
-        if (do_capture || quit.load())
-            return;
-
-        if (!capture_active.load())
-        {
-            pending_source = source;
-            pending_delay  = click == TrayClick::Menu ? TRAY_MENU_FADE : std::chrono::milliseconds{};
-            do_capture     = true;
-            cv.notify_all();
-            return;
-        }
-    }
-    spawn_gui_instance(source);
 #endif
 }
 
@@ -448,19 +360,11 @@ int run_tray()
     mallopt(M_MMAP_THRESHOLD, 1024 * 1024);
 #endif
 
-#if OSHOT_TOOL_ON_MAIN_THREAD
-    // AppKit (macOS) needs the UI on the main thread, so the first capture runs
+    // Captures run on the main thread (AppKit needs it on macOS), the first one
     // before the tray exists and later ones from the tray loop itself
     if (!g_config->Runtime.only_launch_tray)
         run_capture();
-#else
-    // Every capture runs on this one worker thread, so they can never overlap
-    std::thread worker(capture_worker);
-    if (!g_config->Runtime.only_launch_tray)
-        capture_from_tray(g_config->Runtime.source_file);
-#endif
 
-    // Set up dialogs on the main thread, where the tray runs, before the worker's overlay does
     dialog::init();
 
     // The white icon on a dark panel. Anywhere else, or when that can't be told,
@@ -555,18 +459,11 @@ int run_tray()
     }
     else
     {
-        // e.g. there's no StatusNotifier host. Still finish the capture the user asked for
-        dialog::warn("Systray initialization failed, exiting after the current capture");
-#if !OSHOT_TOOL_ON_MAIN_THREAD
-        std::unique_lock lk(mtx);
-        cv.wait(lk, [] { return quit.load() || (!do_capture && !capture_active.load()); });
-#endif
+        // e.g. there's no StatusNotifier host. The capture the user asked for is done already
+        dialog::warn("Systray initialization failed, exiting");
     }
 
     request_quit();
-#if !OSHOT_TOOL_ON_MAIN_THREAD
-    worker.join();
-#endif
     // Not in exit_handler_nc(), since SDL must quit on the main thread with no capture running
     SDL_Quit();
 

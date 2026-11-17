@@ -130,7 +130,6 @@ struct portal_state_t
 {
     GMainLoop* loop;
     guint      subscription_id;
-    guint      timeout_id;  // tracked so we can cancel it before the stack frame is gone
 
     std::string      png_path;
     std::string      error_msg;
@@ -141,7 +140,6 @@ static gboolean on_timeout(gpointer user_data)
 {
     auto* st       = reinterpret_cast<portal_state_t*>(user_data);
     st->error_msg  = "Timed out waiting for portal response (is xdg-desktop-portal running?)";
-    st->timeout_id = 0;  // GLib will remove the source; mark it gone so cleanup skips it
     g_main_loop_quit(st->loop);
     return G_SOURCE_REMOVE;
 }
@@ -255,9 +253,11 @@ Result<capture_result_t> capture_full_screen_portal()
         return Err("Portal returned an empty request handle");
     }
 
-    st.loop            = g_main_loop_new(nullptr, FALSE);
-    st.subscription_id = 0;
-    st.timeout_id      = 0;
+    // A context of its own, since the tray's thread may own the default one while waiting on this capture.
+    // The subscription delivers to the thread-default context
+    GMainContext* ctx = g_main_context_new();
+    g_main_context_push_thread_default(ctx);
+    st.loop = g_main_loop_new(ctx, FALSE);
 
     // The request object's Response signal
     st.subscription_id = g_dbus_connection_signal_subscribe(bus,
@@ -271,21 +271,23 @@ Result<capture_result_t> capture_full_screen_portal()
                                                             &st,
                                                             nullptr);
 
-    // Give up if nothing responds. The source ID is kept so a response can remove it, or the timeout would
-    // fire after this stack frame is gone
-    st.timeout_id = g_timeout_add_seconds(5, on_timeout, &st);
+    // Give up if nothing responds
+    GSource* timeout = g_timeout_source_new_seconds(5);
+    g_source_set_callback(timeout, on_timeout, &st, nullptr);
+    g_source_attach(timeout, ctx);
 
     g_main_loop_run(st.loop);
 
-    // Remove whichever of the timeout and the subscription didn't fire, before st goes
-    // out of scope. on_timeout and on_response zero their own ID
-    if (st.timeout_id)
-        g_source_remove(st.timeout_id);
+    // Before st goes out of scope. on_response zeroes the subscription ID
+    g_source_destroy(timeout);
+    g_source_unref(timeout);
     if (st.subscription_id)
         g_dbus_connection_signal_unsubscribe(bus, st.subscription_id);
 
     g_variant_unref(reply);
     g_main_loop_unref(st.loop);
+    g_main_context_pop_thread_default(ctx);
+    g_main_context_unref(ctx);
     g_object_unref(bus);
 
     if (st.png_path.empty())

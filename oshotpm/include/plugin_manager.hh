@@ -88,8 +88,8 @@ public:
      * @param is_cli oshotpm: warnings are printed before a short prompt, instead of
      *               all going in the confirmation like in the GUI
      **/
-    PluginManager(StateManager&& state_manager, PluginCallbacks& callbacks, bool is_cli)
-        : m_is_cli(is_cli), m_state_manager(std::move(state_manager)), m_callbacks(callbacks)
+    PluginManager(StateManager&& state_manager, PluginCallbacks callbacks, bool is_cli)
+        : m_is_cli(is_cli), m_state_manager(std::move(state_manager)), m_callbacks(std::move(callbacks))
     {}
 
     // `source` is a plugin ID from the plugin index, a git URL, a local folder
