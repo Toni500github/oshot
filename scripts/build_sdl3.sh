@@ -27,6 +27,9 @@ if [ "$(git -C "$work/src" rev-parse HEAD)" != "$SDL_COMMIT" ]; then
     exit 1
 fi
 
+# Wayland: ask for fullscreen before the first commit (see the patch), or KWin can map a normal window first
+git -C "$work/src" apply "$(cd "$(dirname "$0")" && pwd)/sdl3-wayland-fullscreen.patch"
+
 cmake -S "$work/src" -B "$work/build" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="$prefix" \

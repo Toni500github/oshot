@@ -1,0 +1,15 @@
+--- a/src/video/wayland/SDL_waylandwindow.c
++++ b/src/video/wayland/SDL_waylandwindow.c
+@@ -2035,6 +2035,12 @@
+             xdg_toplevel_set_app_id(data->shell_surface.xdg.toplevel.xdg_toplevel, data->app_id);
+             xdg_toplevel_add_listener(data->shell_surface.xdg.toplevel.xdg_toplevel, &toplevel_listener_xdg, data);
+ 
++            // Request fullscreen before the initial commit, so the first configure carries it. Otherwise
++            // some compositors map the first buffer as a normal window before they answer the request
++            if (window->pending_flags & SDL_WINDOW_FULLSCREEN) {
++                xdg_toplevel_set_fullscreen(data->shell_surface.xdg.toplevel.xdg_toplevel, NULL);
++            }
++
+             // Create the window decorations
+             if (c->decoration_manager) {
+                 data->server_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(c->decoration_manager, data->shell_surface.xdg.toplevel.xdg_toplevel);

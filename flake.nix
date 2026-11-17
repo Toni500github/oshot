@@ -44,7 +44,7 @@
           ];
 
           buildInputs = with pkgs; [
-            sdl3
+            (sdl3.overrideAttrs (old: { patches = (old.patches or [ ]) ++ [ ./scripts/sdl3-wayland-fullscreen.patch ]; }))
             tesseract
             leptonica
             zbar
