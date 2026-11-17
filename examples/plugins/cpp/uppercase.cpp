@@ -1,12 +1,6 @@
-/* Example oshot plugin in C++: uppercases the OCR output. It's the C example
- * (../c/uppercase.c) written the C++ way: a class for the plugin's state,
- * RAII for the strings oshot returns, and static noexcept functions as the
- * C callbacks.
- *
- * - render():      a button that uppercases the text, and the selection's size
- * - on_ocr_done(): optionally uppercases new text right away
- * - settings:      that option and a prefix, which oshot draws in Preferences > Plugins
- *                  and saves in the plugin's config.toml
+/* Example oshot plugin in C++, the C example (../c/uppercase.c) written the C++ way:
+ * a class for the state, RAII for the strings oshot returns, and static noexcept
+ * functions as the C callbacks.
  *
  * It draws only with the host's ui_* functions (imgui_version = OSHOT_NO_IMGUI).
  *
@@ -28,7 +22,7 @@
 namespace
 {
 
-/* A string oshot returned: freed with host->str_free when it goes out of scope */
+/* Freed with host->str_free when it goes out of scope */
 class HostString
 {
 public:
@@ -79,7 +73,7 @@ public:
         log(OSHOT_LOG_INFO, "uppercase plugin (C++) loaded");
     }
 
-    /* Reads the settings with the same keys and fallbacks as `settings` */
+    /* Same keys and fallbacks as `settings` */
     void read_settings()
     {
         m_auto_uppercase = m_host->get_bool(m_ctx, OSHOT_STORE_CONFIG, "auto-uppercase", false);
@@ -93,7 +87,7 @@ public:
             if (const std::optional<std::string> text = get_text(OSHOT_TEXT_OCR))
                 uppercase_text(*text);
 
-            /* get_capture() copies the whole image: only on demand, never every frame */
+            /* get_capture() copies the whole image, so only on demand */
             oshot_capture_t cap = m_host->get_capture(m_ctx);
             m_cap_w             = cap.w;
             m_cap_h             = cap.h;
@@ -133,7 +127,7 @@ private:
         return std::string(HostString(m_host, text).view());
     }
 
-    /* Replaces oshot's OCR output with prefix + UPPERCASE(text) */
+    /* Replaces oshot's OCR output with prefix + uppercased text */
     void uppercase_text(std::string_view text)
     {
         std::string out = m_prefix;
@@ -145,8 +139,7 @@ private:
     }
 };
 
-/* The C callbacks. Exceptions must not cross into oshot: these are noexcept,
- * so one escaping terminates oshot right here instead of corrupting it. */
+/* noexcept, so an exception escaping into oshot terminates it here instead of corrupting it */
 
 UppercasePlugin* self(void* state)
 {
@@ -155,7 +148,7 @@ UppercasePlugin* self(void* state)
 
 bool plugin_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state) noexcept
 {
-    /* The ui_* functions came after the first plugin API: check the last one */
+    /* The ui_* functions came after the first plugin API, so check for the last one */
     if (!OSHOT_HOST_HAS(host, ui_end_section))
     {
         host->log(ctx, OSHOT_LOG_ERROR, borrow("this oshot is too old for this plugin: update it"));

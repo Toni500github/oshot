@@ -152,9 +152,7 @@ static void release_capture_memory()
 {
     g_ss_tool.EndCapture();
 #ifdef __GLIBC__
-    // glibc keeps freed memory for reuse, mostly in the capture_worker thread's
-    // arena where the overlay allocated it, so hand the free pages in there back.
-    // The arena's free top only shrinks with the fixed threshold set in oshot_main()
+    // Hand back the free pages glibc keeps in the capture_worker arena, where the overlay allocated
     malloc_trim(0);
 #endif
 }
@@ -169,10 +167,8 @@ int run_capture()
 }
 
 #if !OSHOT_TOOL_ON_MAIN_THREAD  // Linux, where captures run on this worker
-// The tray keeps SDL, and so the graphics driver, loaded between captures, which opens the
-// next overlay ~50 ms sooner. The driver also keeps its buffers (~25 MB of GPU memory
-// at 1080p) and 10-30 MB of RAM until SDL quits, so do that after this long idle.
-// On X11 SDL never unloads libGL (SDL_x11opengl.c), so there the driver's code stays loaded
+// Keeping SDL loaded between captures opens the next overlay sooner, but the driver keeps
+// its GPU buffers and tens of MB of RAM until SDL quits
 static constexpr std::chrono::seconds GL_IDLE_RELEASE{ 30 };
 
 static void capture_worker()
@@ -190,8 +186,7 @@ static void capture_worker()
         else if (!cv.wait_for(lk, GL_IDLE_RELEASE, has_command))
         {
             lk.unlock();
-            // Not under an open file dialog (the tray's Open Image), see file_dialog_mutex().
-            // Try again after another idle period
+            // Not under an open file dialog (see file_dialog_mutex()), else retry after another idle period
             const std::unique_lock dialogs(dialog::file_dialog_mutex(), std::try_to_lock);
             if (!dialogs.owns_lock())
                 continue;
@@ -350,9 +345,8 @@ static void spawn_gui_instance(const std::string& source)
     }).detach();
 }
 
-// Start a capture from the tray (menu or global hotkey) of a fresh screenshot or the `source` image, after the
-// menu fades out with `click` set. The source is always set, or an image opened once would come back in every
-// later capture
+// Start a capture from the tray of a fresh screenshot or the `source` image. The source is always
+// set, or an image opened once would come back in every later capture
 static void capture_from_tray(const std::string& source, const TrayClick click)
 {
     if (click == TrayClick::Icon)
@@ -372,9 +366,8 @@ static void capture_from_tray(const std::string& source, const TrayClick click)
 
     bool wait_fade = click == TrayClick::Menu;
 #  if OSHOT_WINDOWS
-    // The overflow flyout, if the icon is in it, stays open over the capture.
-    // Send it an Esc like the user would. Hiding it directly leaves Explorer
-    // thinking it's open, and then the next click on its arrow does nothing
+    // The overflow flyout stays open over the capture, so send it an Esc. Hiding it directly leaves
+    // Explorer thinking it's open, and the next click on its arrow does nothing
     HWND overflow = FindWindowW(L"NotifyIconOverflowWindow", nullptr);
     if (click != TrayClick::None && overflow && IsWindowVisible(overflow))
     {
@@ -387,9 +380,8 @@ static void capture_from_tray(const std::string& source, const TrayClick click)
     if (wait_fade)
         std::this_thread::sleep_for(TRAY_MENU_FADE);
 
-    // The SDL event pump inside run_main_tool() also dispatches the tray's
-    // messages, so a second capture can't run in here (it would end up nested
-    // inside the first one). Stack another overlay process on top instead.
+    // The SDL event pump in run_main_tool() also dispatches tray messages, so a capture here would
+    // nest inside the running one. Stack another overlay process on top instead
     if (capture_active.load())
     {
         spawn_gui_instance(source);
@@ -451,10 +443,8 @@ int run_tray()
     }
 
 #ifdef __GLIBC__
-    // This process stays up as the tray. After a big block is freed (a screenshot,
-    // the OCR model) glibc raises its thresholds to that size and then keeps up to
-    // twice as much free memory around. A fixed threshold gives it back after each
-    // capture (~50 MB). Costs ~10 ms on an OCR of a whole 1080p screen
+    // This process stays up as the tray, and after a big free glibc raises its thresholds and keeps
+    // that much memory around. A fixed threshold gives it back after each capture
     mallopt(M_MMAP_THRESHOLD, 1024 * 1024);
 #endif
 
@@ -470,9 +460,7 @@ int run_tray()
         capture_from_tray(g_config->Runtime.source_file);
 #endif
 
-    // Set up dialogs here on the main thread, where the tray runs.
-    // The worker only reaches dialog::init() once its overlay is on
-    // screen, so this call gets there first and the worker's is a no-op.
+    // Set up dialogs on the main thread, where the tray runs, before the worker's overlay does
     dialog::init();
 
     // The white icon on a dark panel. Anywhere else, or when that can't be told,
@@ -525,7 +513,6 @@ int run_tray()
                                 const std::optional<std::string>& open_path =
                                     dialog::open_file(_("Open Image"), "", filter);
 
-                                // Canceled the dialog
                                 if (!open_path)
                                     return;
 
@@ -576,7 +563,6 @@ int run_tray()
 #endif
     }
 
-    // The tray loop has exited
     request_quit();
 #if !OSHOT_TOOL_ON_MAIN_THREAD
     worker.join();

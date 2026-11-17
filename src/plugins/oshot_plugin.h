@@ -492,7 +492,7 @@ typedef struct
      * @param user Passed to on_ready
      *
      * OSHOT_ERR_UNSUPPORTED while no overlay is open (in on_capture_end()),
-     * or while the user picks a monitor on Wayland.
+     * or before anything is selected.
      **/
     oshot_err_t (*request_final_image)(oshot_ctx_t* ctx,
                                        void (*on_ready)(void* user, oshot_capture_t image),
@@ -648,7 +648,7 @@ typedef struct
      * A capture started: a new screenshot or image is loaded, and its first
      * frame not drawn yet. Also called when the user opens another image in
      * the overlay, after on_capture_end() for the previous one. On Wayland with
-     * several outputs, the image is cropped to the chosen output after this.
+     * several outputs, the image may be cropped to the overlay's output after this.
      **/
     void (*on_capture_start)(void* state);
 

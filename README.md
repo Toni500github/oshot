@@ -246,7 +246,7 @@ text or image after oshot closes. Install the one for your session; the `.deb` r
 
 On GNOME and most other desktops, screenshots go through the desktop's screenshot portal (the first capture may ask for permission). On KDE Plasma, oshot asks KWin for the screenshot directly. Plasma 6.7 and older only allow that for an oshot installed with its desktop file (distribution packages, the .deb, `make install`), so other builds use Spectacle there, if it's installed, and else the portal, which takes longer (see [KDE Plasma: the overlay is slow to appear](#kde-plasma-the-overlay-is-slow-to-appear)). Where no screenshot portal is available (e.g. some Sway/Hyprland setups), install `grim`.
 
-oshot doesn't need XWayland. Capturing, picking a monitor, copying and dialogs all talk to Wayland directly, and the
+oshot doesn't need XWayland. Capturing, copying and dialogs all talk to Wayland directly, and the
 overlay is a native Wayland window too. It works on compositors running without XWayland, such as Hyprland with
 XWayland disabled.
 

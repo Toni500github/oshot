@@ -1,10 +1,8 @@
-/* Example oshot plugin: a text transformer that keeps only the links and email addresses.
+/* Example oshot plugin with a text transformer that keeps only the links and email addresses.
  *
- * - transform_text(): replaces the OCR or barcode text with the web links
- *                     ("https://...", "www....") and email addresses in it, one per
- *                     line and without duplicates. A text with none passes through
- *                     unchanged (it returns false), so a scan of plain text still
- *                     shows that text
+ * - transform_text(): replaces the OCR or barcode text with the links and email
+ *                     addresses in it, one per line, without duplicates. A text with
+ *                     none passes through unchanged (it returns false)
  *
  * The setting picks links, emails or both. The text tools' "Original" toggle shows
  * the whole text again.
@@ -115,7 +113,7 @@ static bool email_domain_char(char c)
     return isalnum((unsigned char)c) || c == '.' || c == '-';
 }
 
-/* Trailing punctuation belongs to the sentence, not to the link: "see https://x.org." */
+/* Trailing punctuation belongs to the sentence: "see https://x.org." */
 static size_t trim_end(const char* p, size_t begin, size_t end)
 {
     while (end > begin && strchr(".,;:!?)]}", p[end - 1]))
@@ -132,7 +130,6 @@ static bool plugin_transform_text(void* state, const char* buffer_id, oshot_str_
 
     for (size_t i = 0; i < in.len; ++i)
     {
-        /* A link starts a word */
         const bool word_start = i == 0 || !url_char(p[i - 1]) || strchr("([{", p[i - 1]);
         if (word_start && (starts_with(p + i, in.len - i, "https://") || starts_with(p + i, in.len - i, "http://") ||
                            starts_with(p + i, in.len - i, "www.")))

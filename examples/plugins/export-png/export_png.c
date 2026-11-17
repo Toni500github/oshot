@@ -1,17 +1,14 @@
-/* Example oshot plugin: an export action that saves the annotated selection as a PNG.
+/* Example oshot plugin with an export action that saves the annotated selection as a PNG.
  *
- * - register_action():     a toolbar button with its own icon, and the same action in
- *                          the text tools' Plugins menu
- * - request_final_image(): the selection with the annotations drawn on it, as Save
- *                          would write it. It arrives in on_ready() a frame later,
- *                          and belongs to the plugin until capture_free()
- * - a worker thread:       encodes and writes the PNG into the plugin's own folder,
- *                          <data dir>/exports, so the overlay doesn't freeze on a big
- *                          selection. The encoder is a plain one without compression,
- *                          to keep the example free of libraries
- * - report_progress(), report_result(): shown in the overlay's corner; the result
- *                          offers the file's path to copy. If the overlay was closed
- *                          meanwhile, oshot sends the result as a notification
+ * - register_action():     a toolbar button with its own icon, also in the Plugins menu
+ * - request_final_image(): the selection with its annotations, as Save would write it.
+ *                          it arrives in on_ready() a frame later, and belongs to the
+ *                          plugin until capture_free()
+ * - a worker thread:       writes the PNG into <data dir>/exports, so the overlay
+ *                          doesn't freeze on a big selection (uncompressed, to need
+ *                          no library)
+ * - report_progress(), report_result(): shown in the overlay's corner, or as a
+ *                          notification if the overlay was closed meanwhile
  *
  * It only writes inside its own folder, so its manifest declares no capability.
  *
@@ -47,9 +44,9 @@ typedef struct
     int32_t             toolbar_action;
     int32_t             menu_action;
 
-    /* The running export. Only the UI thread starts and joins it */
+    /* Only the UI thread starts and joins it */
     bool            busy;
-    int32_t         action; /* the one that started it, for its reports */
+    int32_t         action; /* for its reports */
     oshot_capture_t image;
     char            path[1024];
     FILE*           f;
@@ -280,7 +277,7 @@ static bool plugin_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state
 
 static void plugin_destroy(void* state)
 {
-    /* An export still running gets to finish, it's the person's image */
+    /* An export still running gets to finish, it's the user's image */
     join_export(state);
     free(state);
 }

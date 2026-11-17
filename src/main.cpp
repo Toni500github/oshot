@@ -119,10 +119,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     if (!dpi_set)
         SetProcessDPIAware();
 
-    // In a GUI-subsystem app stdout/stderr only exist when redirected (scripts
-    // reading --extract-text). Otherwise write to the console oshot was
-    // started from, if any, or to NUL, because writing to a missing stream
-    // fails and fmt::print() throws
+    // stdout/stderr only exist when redirected, so otherwise write to the console oshot was started
+    // from, or to NUL, since fmt::print() throws on a missing stream
     const auto has_stream = [](DWORD id) {
         HANDLE h = GetStdHandle(id);
         return h != nullptr && h != INVALID_HANDLE_VALUE;
@@ -165,9 +163,8 @@ int main(int argc, char* argv[])
 
 static int oshot_main(int argc, char* argv[])  // NOLINT
 {
-    // Runs on every return, after the captures. Left to the global destructors, g_ss_tool would
-    // go after Tesseract's static caches (FreeBSD aborted on exit after an OCR, Linux printed
-    // "LEAK!" warnings), and g_plugins after spdlog's registry, which a plugin's destroy() may still log to
+    // Runs on every return. Left to the global destructors, g_ss_tool would go after Tesseract's static
+    // caches, and g_plugins after spdlog's registry, which a plugin's destroy() may still log to
     struct ExitCleanup
     {
         ~ExitCleanup()

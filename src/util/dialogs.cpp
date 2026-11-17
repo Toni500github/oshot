@@ -81,9 +81,8 @@ void create(const char* title, const NvdDialogType type, const std::string& str)
     if (!init())
         return;
 
-    // The overlay is always on top, so the dialog would open behind it.
-    // On Windows, hiding it hands the foreground to another window, which then
-    // stays in front of the dialog. Let the overlay own the dialog instead
+    // The overlay is always on top, and hiding it on Windows hands the foreground to a window that
+    // then stays in front of the dialog, so let the overlay own the dialog instead
 #if OSHOT_WINDOWS
     nvd_set_parent(dialog_parent_window());
 #else

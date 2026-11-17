@@ -1,9 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 
-# Release builds default to -O2 rather than CMake's -O3. OCR time goes to
-# Tesseract, so -O3 read the test set no faster and only made the binaries 9%
-# bigger. They're cached before project(), so a CMAKE_<LANG>_FLAGS_RELEASE
-# given on the command line still wins
+# Release builds default to -O2 rather than CMake's -O3, since OCR time goes to Tesseract.
+# They're cached before project(), so a CMAKE_<LANG>_FLAGS_RELEASE on the command line still wins
 foreach(_lang C CXX OBJC OBJCXX)
     set(CMAKE_${_lang}_FLAGS_RELEASE
         "-O2 -DNDEBUG"
@@ -79,11 +77,8 @@ set(OSHOT_INSTALL_LICENSEDIR
 # Toolchain
 # =============================================================================
 
-# Enables LTO in Release builds for each target given.
-# Never on Windows, where one link mixing LTO and non-LTO objects (oshot_common
-# needs -Wl,--export-all-symbols, or is an OBJECT library merged into
-# oshot.exe) hits GCC/MinGW bugs folding weak COMDAT symbols, like spdlog's
-# thread_local statics and template instantiations.
+# Enables LTO in Release builds for each target given. Never on Windows, where a link mixing LTO and
+# non-LTO objects hits GCC/MinGW bugs folding weak COMDAT symbols, like spdlog's thread_local statics
 function(enable_lto)
     if(WIN32)
         return()
@@ -155,8 +150,8 @@ pkg_check_modules(ZBAR REQUIRED IMPORTED_TARGET zbar)
 # Where Tesseract is installed, one of the places to look for its models
 pkg_get_variable(TESSERACT_DATADIR tesseract datadir)
 
-# Homebrew's lept.pc points Cflags at .../include/leptonica (its own
-# convention is `#include <allheaders.h>`), while we include
+# Homebrew's lept.pc points Cflags at .../include/leptonica (its own convention is
+# `#include <allheaders.h>`), while we include
 # <leptonica/allheaders.h>, which needs the parent directory too
 message(STATUS "LEPTONICA_INCLUDE_DIRS before: ${LEPTONICA_INCLUDE_DIRS}")
 foreach(_lept_dir ${LEPTONICA_INCLUDE_DIRS})
@@ -175,11 +170,8 @@ endif()
 
 if(UNIX AND NOT APPLE)
     find_package(X11 REQUIRED)
-    # The imported targets carry the full library paths. On the BSDs these
-    # live in /usr/local/lib, which the linker doesn't search by default.
-    # Ayatana comes first, because from 0.6 on it has the "activate" signal.
-    # Without it, a left click on the tray icon in StatusNotifier hosts can
-    # only open the menu
+    # The imported targets carry the full library paths, which the BSDs need (/usr/local/lib).
+    # Ayatana comes first, since from 0.6 on its "activate" signal lets a left click do more than open the menu
     pkg_check_modules(APPINDICATOR IMPORTED_TARGET ayatana-appindicator3-0.1)
     if(NOT APPINDICATOR_FOUND)
         pkg_check_modules(
@@ -192,8 +184,7 @@ if(UNIX AND NOT APPLE)
     pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0)
     pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
     pkg_check_modules(DBUS REQUIRED IMPORTED_TARGET dbus-1)
-    # For a UI font covering the language's script
-    # (util.cpp, find_language_fonts())
+    # For a UI font covering the language's script (find_language_fonts() in util/fonts.cpp)
     pkg_check_modules(FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
     pkg_check_modules(WAYLAND REQUIRED IMPORTED_TARGET wayland-client)
 elseif(APPLE)
@@ -207,10 +198,8 @@ endif()
 set(VERSION_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/version.h)
 set(VERSION_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generateVersion.sh)
 
-# It runs on every build, so a new commit or tag is picked up. The script only
-# rewrites the file when it has changed, and only src/globals.cpp includes it.
-# Through sh, since on Windows ninja runs commands with cmd /C, which opens a
-# .sh with its file association (or hangs on an "Open with" prompt) instead
+# It runs on every build, so a new commit or tag is picked up, and the script only rewrites the file when
+# it changed. Through sh, since ninja on Windows runs commands with cmd /C, which opens a .sh with its file association
 find_program(SH_EXECUTABLE sh)
 if(NOT SH_EXECUTABLE)
     message(FATAL_ERROR "sh not found, it runs scripts/generateVersion.sh")
@@ -381,10 +370,8 @@ file(GLOB TINYGETTEXT_SOURCES src/libs/tinygettext/*.cpp)
 add_library(tinygettext STATIC ${TINYGETTEXT_SOURCES})
 set_target_properties(tinygettext PROPERTIES CXX_STANDARD 17)
 target_include_directories(tinygettext PUBLIC include/libs)
-# The .po files are UTF-8 (as xgettext, msgmerge and Weblate write them), and
-# the strings go to ImGui as UTF-8. There's no charset conversion, so there's
-# no iconv to ship on Windows/macOS. PUBLIC, because it changes a type in
-# iconv.hpp, which i18n.cpp includes through po_parser.hpp
+# The .po files and ImGui are both UTF-8, so there's no charset conversion and no iconv to ship. PUBLIC,
+# because it changes a type in iconv.hpp, which i18n.cpp includes through po_parser.hpp
 target_compile_definitions(
     tinygettext
     PUBLIC TINYGETTEXT_UTF8_ONLY
@@ -487,12 +474,8 @@ enable_lto(
 # =============================================================================
 # oshot_common, everything but main()
 # =============================================================================
-# With plugins it's a SHARED library, since oshot, oshotpm and the libraries
-# they load must share one copy of the globals in globals.cpp (g_ss_tool,
-# g_config, g_cache, ...), and an OBJECT library would copy them into each
-# of its users, making the copies drift apart and get destroyed twice.
-# Without plugins, oshot is its only user, so the simpler OBJECT library is
-# enough.
+# With plugins it's a SHARED library, since oshot, oshotpm and the libraries they load must share one copy
+# of the globals in globals.cpp. Without plugins oshot is its only user, so an OBJECT library is enough
 if(NOT DISABLE_PLUGINS)
     set(OSHOT_COMMON_LIB_TYPE SHARED)
 else()
@@ -544,9 +527,8 @@ if(NOT DISABLE_PLUGINS)
     )
 endif()
 
-# spdlog's implementation is compiled once, here, instead of in every file
-# that includes it (header-only, it cost each of them ~6 s at -O3). Being in
-# oshot_common also gives oshot, oshotpm and liboshot_common one registry
+# spdlog's implementation is compiled once, here, instead of in every file that includes it, and being in
+# oshot_common gives oshot, oshotpm and liboshot_common one registry
 set(SPDLOG_SOURCES
     src/libs/spdlog/async.cpp
     src/libs/spdlog/color_sinks.cpp
@@ -628,7 +610,7 @@ elseif(APPLE)
             "-framework IOKit"
     )
 else()
-    # GTK, since util.hpp calls gtk_events_pending()/gtk_main_iteration()
+    # GTK, since util/dialogs.cpp calls gtk_events_pending()/gtk_main_iteration()
     target_link_libraries(
         oshot_common
         PRIVATE

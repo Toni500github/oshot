@@ -46,7 +46,7 @@
 #include "version.h"
 
 // Definitions of the extern globals.
-// These have to be globals and only a failed allocation could throw here
+// Only a failed allocation could throw here
 // NOLINTBEGIN(bugprone-throwing-static-initialization)
 std::deque<std::string> g_dropped_paths;
 std::unique_ptr<Config> g_config;

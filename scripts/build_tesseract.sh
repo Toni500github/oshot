@@ -1,16 +1,8 @@
 #!/usr/bin/env bash
-# Build Tesseract from source as a static library, for the macOS, AppImage and
-# .deb packages.
-#
-# Homebrew's tesseract bottles are built for a newer macOS than the one the
-# packages target (the arm64_sequoia bottle needs macOS 15.7.5), and there is
-# no Intel macOS bottle at all. Built here, it follows MACOSX_DEPLOYMENT_TARGET
-# like oshot itself, and linking it statically leaves one less dylib to bundle.
-# Ubuntu 22.04, which the Linux packages are built on, has Tesseract 4.1.1,
-# slower than 5 and a libtesseract4 that newer Debian and Ubuntu releases don't
-# ship, so the .deb couldn't be installed there.
-# Only libtesseract is built: no training tools, ScrollView, TIFF, libarchive or
-# curl, none of which oshot uses.
+# Build Tesseract from source as a static library, for the macOS, AppImage and .deb packages.
+# Homebrew's bottles need a newer macOS than the packages target and there's none for Intel, and
+# Ubuntu 22.04's 4.1.1 is slower and makes the .deb depend on libtesseract4, which newer releases lack.
+# Only libtesseract is built.
 #
 # usage: scripts/build_tesseract.sh [install-prefix] (default: /usr/local)
 # Needs: cmake, pkg-config and leptonica

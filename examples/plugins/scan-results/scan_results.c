@@ -1,18 +1,12 @@
-/* Example oshot plugin: lists what the scans found, with oshot's host services.
+/* Example oshot plugin that lists what the scans found, using oshot's host services.
  *
- * - on_barcodes_done(): every QR code and barcode with its position, with buttons
- *                       to open or copy its data, or copy its image (get_capture()
- *                       cropped to its box, with copy_image()), and a notification
- *                       when some are found
+ * - on_barcodes_done(): every code with its position, with buttons to open or copy
+ *                       its data or copy its image, and a notification when some are found
  * - on_ocr_done():      the words Tesseract wasn't sure about, with their boxes
- * - on_capture_start(), on_capture_end(), on_selection_changed(): per-capture state;
- *                       the boxes belong to the selection that was scanned, so a new
- *                       selection clears them
- * - run_process():      runs `uname -a` (`cmd /c ver` on Windows) and shows its
- *                       output, or a long `sleep` to try kill_process()
- *
- * Host functions that can fail return an oshot_err_t and take an err out-parameter,
- * which report() shows under the plugin's section.
+ * - on_capture_start(), on_capture_end(), on_selection_changed(): per-capture state,
+ *                       since the boxes belong to the selection that was scanned
+ * - run_process():      runs `uname -a` (`cmd /c ver` on Windows) and shows its output,
+ *                       or a long `sleep` to try kill_process()
  *
  * Build it with the CMakeLists.txt next to it, or install the folder with
  * `oshotpm install <this folder>`. See docs/plugins.md. Public domain (Unlicense).
@@ -114,7 +108,7 @@ static void log_msg(state_t* s, oshot_log_level_t level, const char* msg)
     s->host->log(s->ctx, level, oshot_str_borrow(msg));
 }
 
-/* Shows what a host call returned: its error message, or `ok` */
+/* Shows a host call's error message, or `ok` */
 static void report(state_t* s, oshot_err_t code, oshot_str_t* err, const char* ok)
 {
     if (code == OSHOT_OK)
@@ -140,7 +134,7 @@ static void clear_capture(state_t* s)
 
 static bool plugin_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state)
 {
-    /* The host services came after the widgets: check the last one */
+    /* The host services came after the widgets, so check for the last one */
     if (!OSHOT_HOST_HAS(host, kill_process))
     {
         host->log(ctx, OSHOT_LOG_ERROR, oshot_str("this oshot is too old for this plugin: update it"));
@@ -206,7 +200,7 @@ static void copy_box(state_t* s, const item_t* it)
         return;
     }
 
-    /* The box is in the pixels of the image get_capture() returns for the same selection */
+    /* The box is in the pixels of get_capture()'s image for the same selection */
     const float margin = it->w > it->h ? it->w / 10 + 4 : it->h / 10 + 4;
     int32_t     x0 = (int32_t)(it->x - margin), y0 = (int32_t)(it->y - margin);
     int32_t     x1 = (int32_t)(it->x + it->w + margin), y1 = (int32_t)(it->y + it->h + margin);
@@ -404,7 +398,7 @@ static void plugin_on_capture_start(void* state)
 
 static void plugin_on_capture_end(void* state)
 {
-    /* The tray keeps the plugin loaded: nothing of this capture may show up in the next */
+    /* The tray keeps the plugin loaded, so nothing of this capture may leak into the next */
     state_t* s = state;
     clear_capture(s);
     log_msg(s, OSHOT_LOG_INFO, "capture ended");

@@ -50,9 +50,8 @@ void register_window_callbacks(void (*minimize_fn)(),
 void minimize_window();
 
 /**
- * Hide the overlay window while a modal dialog (file picker, message box) is open.
- * It's always on top, so the dialog would open behind it, and its frame loop is
- * blocked until the dialog closes. Does nothing off the overlay's thread
+ * Hide the always-on-top overlay while a modal dialog is open, or the dialog opens behind it.
+ * Does nothing off the overlay's thread
  * @return true if the overlay was on screen and is now hidden: call show_window() after the dialog
  **/
 bool hide_window();
@@ -68,10 +67,8 @@ void* dialog_parent_window();
 
 #if OSHOT_MACOS
 /**
- * Handle the system's quit request (shutdown, logout) ourselves. NSApp's own
- * handler calls -terminate:, which SDL only turns into an SDL_EVENT_QUIT, so
- * macOS aborted the shutdown. Finishing the app launch in SDL_Init() replaces
- * the handler, so install it again after that
+ * Handle the system's quit request (shutdown, logout) ourselves, since SDL turns NSApp's into an
+ * SDL_EVENT_QUIT and macOS aborts the shutdown. SDL_Init() replaces it, so install it after that
  * @param on_quit Called on the main thread when the request arrives
  **/
 void install_quit_handler(void (*on_quit)());

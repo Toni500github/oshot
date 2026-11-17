@@ -416,9 +416,8 @@ Result<fs::path> PluginManager::FindPrebuilt(const plugin_t& plugin, const fs::p
     return find_library_in(lib_dir);
 }
 
-// Copies the library into the plugin's directory and returns its file name.
-// Copied, not moved, since the source may be the user's own folder or an
-// archive, and the plugins dir can be on another filesystem than the cache.
+// Copied, not moved, since the source may be the user's own folder or an archive,
+// and the plugins dir can be on another filesystem
 Result<std::string> PluginManager::CopyLibrary(const std::string& id, const fs::path& library)
 {
     const fs::path  dir  = m_plugins_path / id;
@@ -902,8 +901,8 @@ Result<> PluginManager::UpdateRepo(const manifest_t& repo)
         return Ok();
     }
 
-    // oshotpm owns this clone, so drop anything a previous build changed or left in it. Its build folders
-    // can't be reused anyway, since the first build ran in a temporary folder and CMake caches refuse to move
+    // oshotpm owns this clone, so drop anything a previous build left in it. Its build folders
+    // can't be reused anyway, since CMake caches refuse to move
     TRY(Git({ "reset", "--hard", "--quiet", "@{u}" }, dir));
     TRY(Git({ "clean", "-ffdxq" }, dir));
     TRY(Git({ "submodule", "update", "--init", "--recursive" }, dir));

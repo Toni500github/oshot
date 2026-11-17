@@ -1,11 +1,9 @@
-/* Example oshot plugin that draws with cimgui: a histogram of the line lengths
- * in the OCR output, which the host's ui_* functions can't draw.
+/* Example oshot plugin that draws a histogram of the OCR output's line lengths with
+ * cimgui, which the host's ui_* functions can't draw.
  *
- * A plugin that calls cimgui sets imgui_version = OSHOT_IMGUI_VERSION, and then
- * only loads in an oshot built with that exact Dear ImGui. oshot changes ImGui
- * only in minor releases (x.y.0), so such a plugin needs a rebuild for each
- * one. Prefer the ui_* functions (see ../c) for anything they can draw; they
- * can be mixed with cimgui calls in the same render().
+ * A plugin that calls cimgui sets imgui_version = OSHOT_IMGUI_VERSION and only loads
+ * in an oshot built with that exact Dear ImGui, so it needs a rebuild for each oshot
+ * minor release. Prefer the ui_* functions (see ../c) for anything they can draw.
  *
  * Build it with the CMakeLists.txt next to it, or install the folder with
  * `oshotpm install <this folder>`. See docs/plugins.md. Public domain (Unlicense).
@@ -62,7 +60,7 @@ static void plugin_on_ocr_done(void* state, const oshot_ocr_result_t* result)
     {
         if (i < result->text.len && result->text.p[i] != '\n')
         {
-            /* UTF-8: count characters, not continuation bytes */
+            /* Count characters, not UTF-8 continuation bytes */
             if (((unsigned char)result->text.p[i] & 0xC0) != 0x80)
                 ++len;
             continue;

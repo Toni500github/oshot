@@ -438,7 +438,7 @@ void ScreenshotTool::EndCapture()
     m_current_annotation        = {};
     m_current_annotation_resize = nullptr;
 
-    // ~20 MB for a model. Loading it again takes about 0.1 s, on the next capture's first OCR
+    // The model is tens of MB, and the next capture's first OCR reloads it quickly
     m_ocr_api.End();
 }
 
@@ -1185,9 +1185,8 @@ ImRect ScreenshotTool::GetAnnotationBBox(const annotation_t& ann) const
         case ToolType::Line:
         case ToolType::Arrow:
         {
-            // start/end are directional endpoints, not corners, so normalize
-            // them, and pad by half the stroke so thin/axis-aligned segments
-            // stay clickable.
+            // Directional endpoints, not corners, so normalize them and pad by half the stroke
+            // so thin or axis-aligned segments stay clickable
             const float half_t = std::max(ann.thickness, 4.0f) * 0.5f;
             return { std::min(ann.start.x, ann.end.x) - half_t,
                      std::min(ann.start.y, ann.end.y) - half_t,

@@ -87,11 +87,10 @@ static bool hide_window_()
     if (!on_overlay_thread() || (SDL_GetWindowFlags(window) & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)))
         return false;
 
-    // Unmap it rather than minimizing it. SDL doesn't restore a minimized fullscreen window
-    // on Windows, Wayland compositors may ignore minimize requests (sway does), and macOS
-    // minimizes with an animation that the dialog's modal loop never lets finish
+    // Unmap it rather than minimize it, since SDL doesn't restore a minimized fullscreen window on Windows,
+    // sway ignores minimize requests, and macOS's minimize animation never finishes under the modal loop
     SDL_HideWindow(window);
-    SDL_PumpEvents();  // flush
+    SDL_PumpEvents();
     return true;
 }
 
@@ -201,9 +200,8 @@ int run_main_tool()
     SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
     SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "0");
 #if OSHOT_FREEDESKTOP
-    // SDL picks XWayland when the compositor lacks wp_fifo_v1 (GNOME before 48, for one), for the sake
-    // of GPU-bound apps. Through XWayland the overlay isn't forced fullscreen, so a tiling compositor
-    // tiles it, and it's blurry on scaled outputs. An SDL_VIDEO_DRIVER variable still takes precedence
+    // SDL picks XWayland when the compositor lacks wp_fifo_v1 (GNOME before 48), where the overlay isn't
+    // forced fullscreen and is blurry on scaled outputs. SDL_VIDEO_DRIVER still takes precedence
     if (std::getenv("WAYLAND_DISPLAY"))
         SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "wayland,x11");
     // The overlay has no decorations, and libdecor (used where the compositor doesn't draw them,
@@ -220,10 +218,8 @@ int run_main_tool()
     // SDL_Init() finishing the app launch replaces the quit handler
     install_quit_handler(request_quit);
 
-    // With SDL_HINT_MAC_BACKGROUND_APP, SDL leaves the activation policy alone. oshot.app gets
-    // an accessory one from LSUIElement, but a bare executable (a source build run from a
-    // terminal) starts with a prohibited one and never gets the keyboard. Make it an accessory
-    // app too, which can be activated but still has no Dock icon or menu bar
+    // A bare executable (not oshot.app with its LSUIElement) starts with a prohibited activation policy
+    // and never gets the keyboard, so make it an accessory app (no Dock icon or menu bar)
     {
         using send_id_t     = id (*)(id, SEL);
         using send_policy_t = BOOL (*)(id, SEL, long);
@@ -249,14 +245,12 @@ int run_main_tool()
     };
 
 #if OSHOT_FREEDESKTOP
-    // build_font_atlas() looks up the system font with fontconfig, whose configuration
-    // takes ~8 ms to load, so load it while the window is set up
+    // fontconfig's configuration is slow to load, so load it while the window is set up
     std::future<void> fontconfig = std::async(std::launch::async, [] { FcInit(); });
 #endif
 
-    // The screenshot has to be taken before the window shows up. Wayland shows a window only
-    // with its first frame, so there the capture runs while the window and its renderer are
-    // set up (~40 ms). On X11 the server would handle the two one after the other anyway
+    // The screenshot has to be taken before the window shows up. Wayland shows a window only with its
+    // first frame, so there the capture runs while the window and its renderer are set up
     std::future<Result<>> capture;
     if (on_wayland())
     {
@@ -274,15 +268,12 @@ int run_main_tool()
     if (!SDL_GetDisplayBounds(get_display_at_cursor(), &bounds))
         return fail("Failed to get the display's size: {}", SDL_GetError());
 
-    // ImGui draws without depth or stencil tests. SDL asks OpenGL for a depth buffer as
-    // big as the screen by default (4 MB at 1080p, in RAM with software GL)
+    // ImGui needs no depth or stencil buffer, and SDL's default depth buffer is as big as the screen
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
 
-    // Fullscreen, since a borderless window the size of the monitor doesn't cover it everywhere (xfwm4 puts it
-    // below its panel, tiling window managers tile it, Wayland can't place it, macOS keeps it below the menu bar,
-    // and MATE's compositor makes it grainy). It's SDL's borderless fullscreen, so the video mode never changes.
-    // The fullscreen option turns it off on X11 and Windows
+    // SDL's borderless fullscreen (no video mode change), since a monitor-sized borderless window lands below
+    // xfwm4's panel, gets tiled, or can't be placed on Wayland. The fullscreen option turns it off on X11 and Windows
     SDL_WindowFlags flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #if DEBUG
     // A plain window in debug builds on X11 and Windows, where a fullscreen one on top of
@@ -428,9 +419,8 @@ int run_main_tool()
 
         // Rendering
         ImGui::Render();
-        // The draw data is in screen units, and ImGui's SDL_Renderer backend scales only the clip
-        // rects to pixels. Let SDL scale everything instead, or a scaled output (Wayland, Retina)
-        // gets the overlay in its top-left corner
+        // ImGui's SDL_Renderer backend scales only the clip rects, so let SDL scale everything, or a scaled
+        // output gets the overlay in its top-left corner
         SDL_SetRenderScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
@@ -460,9 +450,8 @@ int run_main_tool()
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
 
-    // On X11, SDL asks every new clipboard owner for its formats, with its own window as the requestor.
-    // xclip dies with BadWindow if that window is gone before it answers, and the copy goes with it.
-    // The tray keeps SDL and its window, elsewhere wait for the answer before SDL_Quit()
+    // On X11 xclip dies with BadWindow if SDL's window is gone before it answers SDL's format request, and
+    // the copy goes with it. The tray keeps the window, elsewhere wait for the answer before SDL_Quit()
     if (OSHOT_FREEDESKTOP && copied && !g_is_systray && !on_wayland())
     {
         const Uint64 deadline = SDL_GetTicks() + 500;

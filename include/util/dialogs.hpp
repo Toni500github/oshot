@@ -62,10 +62,8 @@ namespace dialog
 // ------------------------------
 
 /**
- * Set up nvdialog the first time a dialog or notification needs it.
- * On Linux this starts GTK, which takes tens of milliseconds and several MB, so an
- * overlay that never shows a dialog or notification never starts it. Thread-safe, but
- * call it on the main thread where possible, since that's where GTK gets set up.
+ * Set up nvdialog the first time a dialog or notification needs it. On Linux this starts
+ * GTK (tens of ms, several MB), so it's lazy. Thread-safe, but prefer the main thread
  * @return false if dialogs are unavailable (init failed, or disable())
  **/
 bool init() noexcept;

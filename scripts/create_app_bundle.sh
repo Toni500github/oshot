@@ -139,10 +139,8 @@ main() {
         done
     fi
 
-    # dylibbundler rewrites each LC_RPATH of a binary to the same -p path, so
-    # one built with several rpaths (oshot, oshotpm, liboshot_common, libcimgui
-    # in the plugin build) ends up listing it several times. dyld refuses to
-    # load those: "duplicate LC_RPATH '@executable_path/../Frameworks/'".
+    # dylibbundler rewrites each LC_RPATH to the same -p path, so a binary built with several rpaths
+    # lists it several times, which dyld refuses to load
     rpaths_of() {
         otool -l "$1" | awk '$1 == "cmd" && $2 == "LC_RPATH" {getline; getline; print $2}'
     }
@@ -176,10 +174,8 @@ main() {
         rm -rf "$TMP_ICON_DIR"
     fi
 
-    # The newest minimum macOS among everything bundled. Homebrew's libraries
-    # are built for the CI runner's macOS, so they usually decide it. With it
-    # in Info.plist, Finder says "requires macOS X" instead of failing to launch.
-    # "<minimum macOS> <file>" for every binary in the bundle
+    # The newest minimum macOS among everything bundled, so Finder says "requires macOS X" instead of
+    # failing to launch. "<minimum macOS> <file>" for every binary in the bundle
     min_macos_per_file() {
         for f in "$MACOS"/* "$FRAMEWORKS"/*.dylib; do
             if [ -f "$f" ] && [ ! -L "$f" ]; then

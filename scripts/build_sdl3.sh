@@ -1,20 +1,10 @@
 #!/usr/bin/env bash
-# Build SDL3 from source, as both a static and a shared library, for the
-# packages built where no usable SDL3 is installed.
-#
-# Ubuntu 22.04 (the AppImage and .deb) and Debian 12 have no SDL3 package, and
-# Homebrew's bottles are built for a newer macOS than MACOSX_DEPLOYMENT_TARGET.
-# Builds without plugins link the static library. Plugin builds need the
-# shared one, since SDL hides its internal symbols and libimgui, liboshot_common
-# and oshot would each get their own copy of SDL's state. The packages bundle
-# it (BUNDLE_SDL3 for the zip and .deb, linuxdeploy and dylibbundler for the
-# AppImage and the .app).
-# Only video, render, dialog and tray are built: no audio, camera, joystick,
-# haptic, HIDAPI, sensor, power, GPU, Vulkan or KMSDRM (fullscreen without a
-# display server), none of which oshot uses, nor libdecor, which oshot turns off
-# (SDL_HINT_VIDEO_WAYLAND_ALLOW_LIBDECOR in main_tool_sdl3.cpp).
-# X11, Wayland and D-Bus are loaded at runtime, so the result runs on
-# either session without depending on their libraries.
+# Build SDL3 from source, static and shared, for the packages built where no usable SDL3 is installed
+# (Ubuntu 22.04, Debian 12, and macOS, where Homebrew's needs a newer one than MACOSX_DEPLOYMENT_TARGET).
+# Plugin builds need the shared one, since SDL hides its internals, so libimgui, liboshot_common and
+# oshot would each get their own copy of SDL's state.
+# Only video, render, dialog and tray are built, without libdecor, which oshot turns off. X11, Wayland
+# and D-Bus are loaded at runtime, so the result runs on either session.
 #
 # usage: scripts/build_sdl3.sh [install-prefix] (default: /usr/local)
 # Needs: cmake, pkg-config and, on Linux/BSD, the X11, Wayland, EGL and D-Bus

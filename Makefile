@@ -1,7 +1,5 @@
 # Wrapper around CMake, so `make`, `make install` and friends keep working.
-# The build itself is defined in CMakeLists.txt.
-#
-# GNU make only: on the BSDs run it as `gmake`.
+# The build itself is defined in CMakeLists.txt. GNU make only, so run it as `gmake` on the BSDs.
 
 CMAKE       ?= cmake
 # /usr/local outside Linux, where the base system owns /usr
@@ -73,7 +71,7 @@ dist: build
 install: build
 	$(CMAKE) --install $(BUILDDIR) --prefix $(PREFIX)
 
-# Removes what the last `make install` installed
+# Removes the files the last `make install` put in place
 uninstall:
 	@test -f $(BUILDDIR)/install_manifest.txt || { echo "Nothing to uninstall: $(BUILDDIR)/install_manifest.txt not found"; exit 1; }
 	xargs rm -f < $(BUILDDIR)/install_manifest.txt

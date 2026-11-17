@@ -56,17 +56,13 @@ using namespace spdlog;
 // macOS
 // ------------------------------
 
-// The OS automatically prompts for Screen Recording permission on first use.
-// Returns the 1-based screencapture display index (-D flag) for the monitor that
-// currently contains the cursor, or 1 (main display) if the query fails.
+// The 1-based screencapture -D index of the display under the cursor, or 1 (the main display)
 static int cursor_display_index()
 {
-    // Get current cursor position via CoreGraphics (no special permissions needed).
     CGEventRef event  = CGEventCreate(nullptr);
     CGPoint    cursor = CGEventGetLocation(event);
     CFRelease(event);
 
-    // Find which display(s) contain that point.
     CGDirectDisplayID hit    = kCGNullDirectDisplay;
     uint32_t          nfound = 0;
     CGGetDisplaysWithPoint(cursor, 1, &hit, &nfound);
@@ -101,8 +97,7 @@ Result<capture_result_t> capture_full_screen_macos()
 
     // -x        suppress shutter sound
     // -t png    force PNG format
-    // -D <n>    capture only display n (1-based index in active display list,
-    //           matching the monitor that currently contains the cursor)
+    // -D <n>    capture only display n (1-based)
     const std::string       display_idx = fmt::to_string(cursor_display_index());
     TinyProcessLib::Process proc({ "screencapture", "-x", "-t", "png", "-D", display_idx.c_str(), tmppath }, "");
 

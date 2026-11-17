@@ -293,7 +293,7 @@ host->register_action(ctx, OSHOT_PLACE_TOOLBAR, oshot_str("Upload"), &icon, on_c
   included. That image only exists once oshot has drawn and read back a frame, so it arrives later:
   `on_ready(user, image)` runs on the UI thread right after that frame. The image belongs to the plugin, which can
   hand it to a thread and free it there with `capture_free()`. If the overlay closes first, `on_ready` gets an image
-  whose `rgba` is NULL. Outside an overlay (in `on_capture_end()`), and while the person picks a monitor on Wayland, it
+  whose `rgba` is NULL. Outside an overlay (in `on_capture_end()`), and before anything is selected, it
   returns `OSHOT_ERR_UNSUPPORTED`.
 - `report_progress(ctx, action, fraction, text, err)` and `report_result(ctx, action, ok, message, copyable, err)`
   work from any thread. oshot shows them in a box in the overlay's bottom-right corner: a progress bar until the

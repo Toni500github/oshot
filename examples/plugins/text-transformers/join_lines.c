@@ -1,14 +1,12 @@
-/* Example oshot plugin: a text transformer that rejoins what OCR split over lines.
+/* Example oshot plugin with a text transformer that rejoins what OCR split over lines.
  *
  * - transform_text(): joins a word hyphenated at the end of a line ("exam-\nple"
  *                     becomes "example") and, unless the setting is off, the lines
- *                     of each paragraph into one, keeping the blank lines between
- *                     paragraphs. It only changes OCR text, since QR codes and
- *                     barcodes have no line breaks to fix, and passes the rest through
+ *                     of each paragraph. It only changes OCR text, since barcodes
+ *                     have no line breaks to fix
  *
- * oshot runs every plugin's transformer in the order set in Preferences > Plugins,
- * so put this one before a transformer that looks for links, or a link split over
- * two lines is cut in half.
+ * oshot runs the transformers in the order set in Preferences > Plugins, so put this
+ * one before one that looks for links, or a link split over two lines is cut in half.
  *
  * Build it with the CMakeLists.txt next to it, or install the folder with
  * `oshotpm install <this folder>`. See docs/plugins.md. Public domain (Unlicense).

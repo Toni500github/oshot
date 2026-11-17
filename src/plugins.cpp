@@ -232,9 +232,8 @@ static std::string unbalanced_stacks(const ImGuiErrorRecoveryState& a, const ImG
     return ret;
 }
 
-// Runs a UI callback of the plugin inside its own ID scope, with the ui_*
-// functions enabled, then closes the sections and ImGui stacks it left open
-// so they don't break the rest of oshot's frame
+// Runs a plugin UI callback in its own ID scope with the ui_* functions enabled, then closes the
+// sections and ImGui stacks it left open
 template <typename F>
 static bool call_plugin_ui(plugin_runtime_t& rt, F&& fn)
 {

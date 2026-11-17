@@ -88,10 +88,8 @@ static unsigned char* zlib_compress(unsigned char* data, int data_len, int* out_
 #include "stb_image.h"
 #include "stb_image_write.h"
 
-// Level 4 is zlib's first lazy-matching level. On screenshots it gets within 4% of level 6's size,
-// and on photo-like content (wallpapers) it's 4x faster (181 vs 824 ms at 1080p). Every row uses
-// the "Up" filter, since stb's default tries all five per row, which cost as much as the
-// compression itself for a file about 5% smaller
+// Level 4 (zlib's first lazy-matching level) is close to level 6's size on screenshots and much faster
+// on photos. Every row uses the Up filter, since trying all five per row cost as much as the compression
 [[maybe_unused]] static const bool png_settings = []() noexcept {
     stbi_write_png_compression_level = 4;
     stbi_write_force_png_filter      = 2;
@@ -151,9 +149,8 @@ void fit_to_screen(capture_result_t& img)
         return;
     }
 
-    // Linear filtering only blends the 2x2 nearest pixels, so a single step skips detail past 2x
-    // (at 3x it's the same as nearest), which costs OCR words. Like SDL_GetSurfaceImage(), halve at
-    // most each step, as a 2x linear step averages every pixel. Still 4-7x faster than stb_image_resize2
+    // Linear filtering blends only the 2x2 nearest pixels, so a single step skips detail past 2x and loses
+    // OCR words. Like SDL_GetSurfaceImage(), halve at most each step
     do
     {
         const int    step_w = std::max(new_w, (dst->w + 1) / 2);

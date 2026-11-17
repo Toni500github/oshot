@@ -318,9 +318,8 @@ struct install_node_t
     std::string                  output;  // build output printed while this step ran
 };
 
-// One plugin task's state, shared by the render thread and the worker thread.
-// A shared_ptr, so the worker can finish writing to it after the UI dropped
-// its reference (oshot closed mid-install).
+// One plugin task's state, shared with the worker thread, which may still write to it
+// after the UI dropped its reference (oshot closed mid-install)
 struct plugin_install_state_t
 {
     // PluginCallbacks::on_* events, drained by DrawPluginInstallStatus()
@@ -489,9 +488,8 @@ public:
     // The overlay window, nullptr without an overlay
     [[nodiscard]] SDL_Window* GetWindow() const { return m_window; }
 
-    // Draw the screenshot at its full resolution on a scaled output, instead of
-    // shrinking it to the logical screen size. The backend must then read back
-    // framebuffer pixels at GetImageScale().
+    // Draw the screenshot at full resolution on a scaled output, instead of the logical
+    // screen size. The backend then reads back framebuffer pixels at GetImageScale()
     void SetFullResolutionImage(bool enable) { m_full_res_image = enable; }
 
     void SetOnCancel(const std::function<void()>& cb) { m_on_cancel = cb; }
@@ -516,7 +514,7 @@ public:
     // Read back the active region with its annotations on the next frame, for request_final_image()
     void RequestFinalImage() { m_final_image_requested = true; }
 
-    // Whether RequestFinalImage() can work now (an image is shown and no output is being picked)
+    // Whether RequestFinalImage() can work now (an image is shown and something is selected)
     [[nodiscard]] bool CanReadFinalImage() const;
 
     // ------------------------------
@@ -607,9 +605,8 @@ private:
     // annotation being moved or resized
     struct selection_info_t
     {
-        // Snapshot of a Pencil annotation's points taken right before a drag
-        // starts. HandleAnnotationSelectionInput() scales from it, so the
-        // transform doesn't compound frame after frame
+        // A Pencil annotation's points when the drag started, so the scaling doesn't compound
+        // frame after frame
         std::vector<point_t> drag_start_points;
 
         // Line/Arrow: keep start/end as they are, they give the direction
@@ -845,9 +842,8 @@ private:
     // The annotation's bounds on screen
     [[nodiscard]] ImRect GetAnnotationBBox(const annotation_t& ann) const;
 
-    // GetAnnotationBBox() plus the padding DrawAnnotationResizeBorder() draws with, so the
-    // drawn handles and the clickable ones match. Only for Circle/CircleFilled/CounterBubble/Text
-    // (lines and arrows keep their own start and end, for the direction)
+    // GetAnnotationBBox() plus the padding DrawAnnotationResizeBorder() draws with, so the drawn and
+    // clickable handles match. Only for Circle/CircleFilled/CounterBubble/Text
     [[nodiscard]] ImRect GetAnnotationHandleBox(const annotation_t& ann) const;
 
     ImVec2 GetToolButtonSize();
@@ -955,7 +951,6 @@ private:
 #endif
 };
 
-// The overlay of this process
 extern ScreenshotTool g_ss_tool;
 
 /**

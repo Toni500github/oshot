@@ -431,10 +431,9 @@ static void add_lines(std::vector<ocr_line_t>& lines,
     }
 }
 
-// One reading made of the best reading of each line any pass found. Lines are taken from the most read text down,
-// skipping any that covers most of a word already taken, and need has_text and a mean confidence of sure_word
-// (or background scraps like "| |", read at 60-80%, get in). They keep the order of `order`, the best whole
-// reading, since Tesseract's layout analysis knows about columns and tables
+// One reading made of the best reading of each line any pass found, from the most read text down, skipping lines
+// that cover a word already taken. A line needs has_text and sure_word, or background scraps like "| |" get in.
+// Lines keep the order of `order`, the best whole reading, since Tesseract's layout analysis knows columns and tables
 static ocr_result_t merge_lines(std::vector<ocr_line_t> lines, const ocr_result_t& order)
 {
     std::ranges::stable_sort(lines, [](const ocr_line_t& a, const ocr_line_t& b) {
@@ -1066,8 +1065,7 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
 
     if (unsure(best))
     {
-        // One engine per core, up to a few, each ~20 MB. Kept until End(), for
-        // the next OCR of the capture
+        // One engine per core, up to a few, each holding the model. Kept until End(), for the next OCR
         if (!m_pool)
         {
             constexpr unsigned max_engines = 5;

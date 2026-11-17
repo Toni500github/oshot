@@ -1,13 +1,11 @@
-/* Example oshot plugin: uppercases the OCR output.
+/* Example oshot plugin that uppercases the OCR output.
  *
  * - render():      a button that uppercases the text, and the selection's size
  * - on_ocr_done(): optionally uppercases new text right away
- * - settings:      that option and a prefix, which oshot draws in Preferences > Plugins
- *                  and saves in the plugin's config.toml
+ * - settings:      that option and a prefix, drawn by oshot in Preferences > Plugins
  *
  * It draws only with the host's ui_* functions, so it works with any Dear ImGui
- * version oshot is built with (imgui_version = OSHOT_NO_IMGUI). ../cimgui is an example that
- * draws with cimgui instead.
+ * oshot is built with. ../cimgui draws with cimgui instead.
  *
  * Build it with the CMakeLists.txt next to it, or install the folder with
  * `oshotpm install <this folder>`. See docs/plugins.md. Public domain (Unlicense).
@@ -54,7 +52,7 @@ static void log_msg(state_t* s, oshot_log_level_t level, const char* msg)
     s->host->log(s->ctx, level, oshot_str_borrow(msg));
 }
 
-/* Reads the settings with the same keys and fallbacks as `settings` */
+/* Same keys and fallbacks as `settings` */
 static void read_settings(state_t* s)
 {
     s->auto_uppercase = s->host->get_bool(s->ctx, OSHOT_STORE_CONFIG, "auto-uppercase", false);
@@ -62,7 +60,7 @@ static void read_settings(state_t* s)
     s->prefix = s->host->get_string(s->ctx, OSHOT_STORE_CONFIG, "prefix", oshot_str(""));
 }
 
-/* Replaces oshot's OCR output with prefix + UPPERCASE(text) */
+/* Replaces oshot's OCR output with prefix + uppercased text */
 static void uppercase_text(state_t* s, oshot_str_t text)
 {
     const size_t prefix_len = s->prefix.len;
@@ -83,7 +81,7 @@ static void uppercase_text(state_t* s, oshot_str_t text)
 
 static bool plugin_init(const oshot_host_t* host, oshot_ctx_t* ctx, void** state)
 {
-    /* The ui_* functions came after the first plugin API: check the last one */
+    /* The ui_* functions came after the first plugin API, so check for the last one */
     if (!OSHOT_HOST_HAS(host, ui_end_section))
     {
         host->log(ctx, OSHOT_LOG_ERROR, oshot_str("this oshot is too old for this plugin: update it"));
@@ -123,7 +121,7 @@ static void plugin_render(void* state)
             host->str_free(&text);
         }
 
-        /* get_capture() copies the whole image: only on demand, never every frame */
+        /* get_capture() copies the whole image, so only on demand */
         oshot_capture_t cap = host->get_capture(s->ctx);
         s->cap_w            = cap.w;
         s->cap_h            = cap.h;

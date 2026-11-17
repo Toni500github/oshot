@@ -52,8 +52,8 @@ using namespace spdlog;
 
 Result<capture_result_t> capture_full_screen_wayland()
 {
-    // grim reads the screen through the compositor's screencopy protocol (wlroots, Hyprland, niri),
-    // in a third of the time the portal takes to save a PNG file for us to decode. GNOME has only the portal
+    // grim reads the screen through the compositor's screencopy protocol (wlroots, Hyprland, niri), faster
+    // than the portal saving a PNG for us to decode. GNOME has only the portal
     bool screencopy = false;
     if (wl_display* display = wl_display_connect(nullptr))
     {
@@ -224,8 +224,7 @@ Result<capture_result_t> capture_full_screen_portal()
         return Err(st.error_msg);
     }
 
-    // Call Screenshot portal synchronously so we can fail loudly if the service isn't there.
-    // Screenshot returns a "request handle" object path (type 'o').
+    // Synchronous, so a missing portal fails right away. It returns a request handle object path
     GVariant* reply = g_dbus_connection_call_sync(bus,
                                                   "org.freedesktop.portal.Desktop",
                                                   "/org/freedesktop/portal/desktop",
@@ -272,9 +271,8 @@ Result<capture_result_t> capture_full_screen_portal()
                                                             &st,
                                                             nullptr);
 
-    // Give up if nothing responds. The source ID is kept to remove it if on_response fires
-    // first, or the timeout would fire after this stack frame is gone and crash on
-    // g_main_loop_quit with a dangling portal_state_t*
+    // Give up if nothing responds. The source ID is kept so a response can remove it, or the timeout would
+    // fire after this stack frame is gone
     st.timeout_id = g_timeout_add_seconds(5, on_timeout, &st);
 
     g_main_loop_run(st.loop);

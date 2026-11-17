@@ -365,10 +365,8 @@ jobs:
             curl:p
 
       # Build
-      # A static libtesseract, since Homebrew's bottles need a newer macOS than
-      # MACOSX_DEPLOYMENT_TARGET (15.7.5 on arm64) and there's none for Intel, and
-      # Ubuntu 22.04's 4.1.1 is slower and makes the .deb depend on libtesseract4,
-      # which Debian 12+ and Ubuntu 24.04+ don't have
+      # A static libtesseract, since Homebrew's bottles need a newer macOS than MACOSX_DEPLOYMENT_TARGET,
+      # and Ubuntu 22.04's 4.1.1 is slower and makes the .deb depend on libtesseract4
       - name: Build Tesseract (macOS, AppImage, deb)
         if: runner.os == 'macOS' || matrix.target == 'linux-appimage' || matrix.target == 'debian-package'
         run: |
@@ -379,10 +377,8 @@ jobs:
             echo "PKG_CONFIG_PATH=$RUNNER_TEMP/tesseract/lib/pkgconfig" >> "$GITHUB_ENV"
           fi
 
-      # No SDL3 package on Ubuntu 22.04, and Homebrew's needs a newer macOS than
-      # MACOSX_DEPLOYMENT_TARGET. The zip builds it too, so it doesn't depend on
-      # the host's. Without plugins it's linked statically, plugin builds bundle
-      # the shared one (BUNDLE_SDL3 for the zip and .deb)
+      # No SDL3 package on Ubuntu 22.04, and Homebrew's needs a newer macOS than MACOSX_DEPLOYMENT_TARGET.
+      # Without plugins it's linked statically, plugin builds bundle the shared one
       - name: Build SDL3 (Linux, macOS)
         if: runner.os == 'macOS' || matrix.target == 'linux' || matrix.target == 'linux-appimage' || matrix.target == 'debian-package'
         run: |
