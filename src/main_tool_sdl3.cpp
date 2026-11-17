@@ -232,6 +232,18 @@ int run_main_tool()
     }
 #endif
 
+#if OSHOT_MACOS
+    // A destroyed window leaks its backing surfaces (16 MiB per capture), so the tray reuses one
+    struct kept_window_t
+    {
+        SDL_Window*   window   = nullptr;
+        SDL_Renderer* renderer = nullptr;
+        SDL_DisplayID display  = 0;
+        SDL_Rect      bounds{};
+    };
+    static kept_window_t kept;
+#endif
+
     // Undoes the setup so far, then shows the error
     const auto fail = [&](const std::string_view fmt, const std::string_view error) {
         g_ss_tool.SetWindow(nullptr);
@@ -239,6 +251,9 @@ int run_main_tool()
             SDL_DestroyRenderer(renderer);
         if (window)
             SDL_DestroyWindow(window);  // before the dialog, which would try to hide it
+#if OSHOT_MACOS
+        kept = {};
+#endif
         dialog::error(fmt, error);
         if (!g_is_systray)
             SDL_Quit();
@@ -265,8 +280,9 @@ int run_main_tool()
     }
 
     // Window sizes are in screen units (points on macOS and scaled Wayland outputs)
-    SDL_Rect bounds{};
-    if (!SDL_GetDisplayBounds(get_display_at_cursor(), &bounds))
+    SDL_Rect            bounds{};
+    const SDL_DisplayID cursor_display = get_display_at_cursor();
+    if (!SDL_GetDisplayBounds(cursor_display, &bounds))
         return fail("Failed to get the display's size: {}", SDL_GetError());
 
     // ImGui needs no depth or stencil buffer, and SDL's default depth buffer is as big as the screen
@@ -287,28 +303,49 @@ int run_main_tool()
     flags |= SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALWAYS_ON_TOP;
 #endif
 
-    const SDL_PropertiesID props = SDL_CreateProperties();
-    SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "oshot");
-    // With a position SDL asks Wayland for that output, which there is only the primary one.
-    // Without one the compositor picks (the focused output), and the event loop crops to it
-    if (!on_wayland())
+#if OSHOT_MACOS
+    if (kept.window && (kept.display != cursor_display || !SDL_RectsEqual(&kept.bounds, &bounds)))
     {
-        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_X_NUMBER, bounds.x);
-        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, bounds.y);
+        SDL_DestroyRenderer(kept.renderer);
+        SDL_DestroyWindow(kept.window);
+        kept = {};
     }
-    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, bounds.w);
-    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, bounds.h);
-    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, Sint64(flags));
-    window = SDL_CreateWindowWithProperties(props);
-    SDL_DestroyProperties(props);
-    if (!window)
-        return fail("Failed to create the overlay window: {}", SDL_GetError());
+    if (kept.window)
+    {
+        window   = kept.window;
+        renderer = kept.renderer;
+        SDL_SetRenderVSync(renderer, true);  // closing the last overlay turned it off
+    }
+    else
+#endif
+    {
+        const SDL_PropertiesID props = SDL_CreateProperties();
+        SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "oshot");
+        // With a position SDL asks Wayland for that output, which there is only the primary one.
+        // Without one the compositor picks (the focused output), and the event loop crops to it
+        if (!on_wayland())
+        {
+            SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_X_NUMBER, bounds.x);
+            SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, bounds.y);
+        }
+        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, bounds.w);
+        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, bounds.h);
+        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, Sint64(flags));
+        window = SDL_CreateWindowWithProperties(props);
+        SDL_DestroyProperties(props);
+        if (!window)
+            return fail("Failed to create the overlay window: {}", SDL_GetError());
 
-    renderer = SDL_CreateRenderer(window, nullptr);
-    if (!renderer)
-        return fail("Failed to create the overlay's renderer: {}", SDL_GetError());
-    SDL_SetRenderVSync(renderer, true);
-    spdlog::debug("SDL renderer: {}", SDL_GetRendererName(renderer));
+        renderer = SDL_CreateRenderer(window, nullptr);
+        if (!renderer)
+            return fail("Failed to create the overlay's renderer: {}", SDL_GetError());
+        SDL_SetRenderVSync(renderer, true);
+        spdlog::debug("SDL renderer: {}", SDL_GetRendererName(renderer));
+#if OSHOT_MACOS
+        if (g_is_systray)
+            kept = { window, renderer, cursor_display, bounds };
+#endif
+    }
 
     if (capture.valid())
     {
@@ -464,8 +501,17 @@ int run_main_tool()
     // The textures belong to the renderer
     g_ss_tool.ReleaseTextures();
     g_ss_tool.SetWindow(nullptr);
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
+#if OSHOT_MACOS
+    if (kept.window == window)
+    {
+        SDL_HideWindow(window);
+    }
+    else
+#endif
+    {
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+    }
 
     // The tray keeps running, so let the window system unmap the window now
     if (g_is_systray)
