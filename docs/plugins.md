@@ -11,7 +11,7 @@ use the [template](#starting-from-the-template).
 
 What a plugin can do:
 
-- draw its own section in the text tools window with oshot's widgets (buttons, text fields, sliders, ...);
+- draw its own tab in the text tools window with oshot's widgets (buttons, text fields, sliders, ...);
 - declare its settings, which oshot shows in Preferences > Plugins and saves for it;
 - draw anything else with Dear ImGui itself, through [cimgui](https://github.com/cimgui/cimgui);
 - read and replace the OCR and barcode text, and read the selected image, with or without the annotations;
@@ -254,7 +254,7 @@ static bool my_transform(void* state, const char* buffer_id, oshot_str_t in, osh
   their text no longer matches the transformed text.
 - `get_text()` returns the transformed text. A `set_text()` from `on_ocr_done()` still works and replaces what the
   chain made, but with two plugins the last one wins, which is why the chain exists.
-- The text tools window keeps the text from before the chain: an "Original" checkbox above the output shows it when a
+- The text tools window keeps the text from before the chain: an "Original" button above the output shows it when a
   transformer changed something.
 
 [`examples/plugins/text-transformers`](../examples/plugins/text-transformers) has two: one rejoins hyphenated words
@@ -372,7 +372,7 @@ treat anything but `OSHOT_OK` as a failure.
 
 ### Widgets
 
-`render()` draws the plugin's section in the text tools window, every frame while it's expanded, with the `ui_*`
+`render()` draws the plugin's tab in the text tools window, every frame while it's selected, with the `ui_*`
 functions of the host table: `ui_text`, `ui_button`, `ui_checkbox`, `ui_input_text`, `ui_combo`, `ui_slider_int`,
 `ui_slider_float`, `ui_color`, `ui_progress`, `ui_separator`, `ui_same_line`, `ui_tooltip` and
 `ui_begin_section`/`ui_end_section`. They draw with oshot's theme, fonts and scaling, and they're part of the plugin

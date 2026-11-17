@@ -600,8 +600,8 @@ typedef struct
     void (*destroy)(void* state);
 
     /**
-     * Draws the plugin's section in the text tools window, every frame while
-     * it's expanded.
+     * Draws the plugin's tab in the text tools window, every frame while it's
+     * selected.
      **/
     void (*render)(void* state);
 

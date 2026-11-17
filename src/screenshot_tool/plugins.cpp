@@ -73,21 +73,6 @@ using namespace std::chrono_literals;
 
 #ifndef DISABLE_PLUGINS
 
-// A small rounded label, e.g. a license or a status
-static void draw_tag(const char* label, const rgba_t col)
-{
-    const ImVec2 text_size = ImGui::CalcTextSize(label);
-    const ImVec2 pad(6.0f, 2.0f);
-    const ImVec2 p0 = ImGui::GetCursorScreenPos();
-    const ImVec2 size(text_size.x + pad.x * 2, text_size.y + pad.y * 2);
-
-    ImDrawList* draw_list = ImGui::GetWindowDrawList();
-    draw_list->AddRectFilled(p0, ImVec2(p0.x + size.x, p0.y + size.y), col.to_abgr(), 4.0f);
-    draw_list->AddText(ImVec2(p0.x + pad.x, p0.y + pad.y), Colors::WHITE.to_abgr(), label);
-
-    ImGui::Dummy(size);
-}
-
 // What a plugin declares it does on its own, as tags with the reason in their tooltip.
 // `same_line` continues the current line
 static void draw_capability_tags(const std::map<std::string, std::string>& capabilities, bool same_line)
@@ -106,12 +91,6 @@ static void draw_capability_tags(const std::map<std::string, std::string>& capab
         ImGui::SetItemTooltip(
             "%s\n\n%s", reason.c_str(), _("According to its author. oshot can't check or limit what plugins do."));
     }
-}
-
-// Right-aligns the next item of width `w` on the current line
-static void align_right(const float w)
-{
-    ImGui::SameLine(ImGui::GetContentRegionAvail().x - w + ImGui::GetCursorPosX());
 }
 
 static float button_width(const char* label)
@@ -483,18 +462,6 @@ void ScreenshotTool::DrawPluginReports()
     ImGui::End();
 }
 
-void ScreenshotTool::DrawOriginalToggle(const std::string& original, bool& show)
-{
-    if (original.empty())
-    {
-        show = false;
-        return;
-    }
-    ImGui::Checkbox(_("Original"), &show);
-    ImGui::SameLine();
-    HelpMarker(_("Show the text as it was read, before the plugins' text transformers changed it"));
-}
-
 void ScreenshotTool::DrawManagePluginsWindow()
 {
     static bool was_open = false;
@@ -618,7 +585,7 @@ void ScreenshotTool::DrawManagePluginsWindow()
                         tag     = loaded ? _("Enabled") : _("Not loaded");
                         tag_col = loaded ? 0x197233FF_rgba : 0x3f3f3fFF_rgba;
                     }
-                    align_right(ImGui::CalcTextSize(tag).x + 12.0f);
+                    align_right(tag_width(tag));
                     draw_tag(tag, tag_col);
 
                     if (!plugin.description.empty())

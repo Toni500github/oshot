@@ -152,19 +152,25 @@ Result<> ScreenshotTool::StartWindow()
                  .ocr_model                 = g_config->File.ocr_model,
                  .ocr_download_repo         = g_config->File.ocr_get_repo,
                  .ocr_model_downloaded_path = g_config->GetConfigDirPath() + DIR_SEP_STR "models",
+                 .ocr_seconds               = 0.0f,
                  .ocr_results               = {},
                  .barcode_text              = "",
+                 .barcode_scanned           = false,
+                 .barcode_seconds           = 0.0f,
                  .barcode_scan_result       = {},
                  .ann_font                  = "",
                  .resolved_ann_font_path    = "",
                  .ocr_original              = "",
                  .barcode_original          = "" };
 
+    m_selected_code = -1;
     m_current_color = (rgba_t(g_cache->GetValue(CacheEntry::AnnColor, Colors::RED.to_rgba())));
     m_state         = ToolState::Selecting;
     m_imgui_id_texts.insert_or_assign(OSHOT_TEXT_OCR, &m_inputs.ocr_results.data);
     m_imgui_id_texts.insert_or_assign(OSHOT_TEXT_BARCODE, &m_inputs.barcode_text);
     m_show_window.Set(SubWindow::MainTextTools, g_config->File.show_text_tools);
+    m_code_rows.clear();
+    m_code_filter.Clear();
 
     SyncRuntimeFromConfig();
 
@@ -374,31 +380,45 @@ void ScreenshotTool::RenderOverlay()
         DrawPreferencesWindow();
         DrawDownloadOCRWindow();
         DrawLogsWindow();
-        DrawOcrTools();
         DrawAboutWindow();
-        DrawBarDecodeTools();
 #ifndef DISABLE_PLUGINS
         DrawManagePluginsWindow();
         DrawBrowsePluginsWindow();
         DrawInstallPluginsWindow();
         DrawPluginInstallStatus();
-        for (auto& [id, rt] : g_plugins)
-        {
-            const oshot_plugin_t* plugin = rt.plugin;
-            if (!plugin->render)
-                continue;
-
-            ImGui::PushID(id.c_str());
-            if (ImGui::CollapsingHeader(plugin->name))
-            {
-                ImGui::BeginChild(
-                    "##plugin", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
-                rt.Render();
-                ImGui::EndChild();
-            }
-            ImGui::PopID();
-        }
 #endif
+
+        // OCR, codes, then a tab for each plugin that draws its own section
+        if (ImGui::BeginTabBar("##text_tools_tabs", ImGuiTabBarFlags_FittingPolicyScroll))
+        {
+            if (ImGui::BeginTabItem(_("Text")))
+            {
+                DrawOcrTools();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem(_("QR & Barcodes")))
+            {
+                DrawBarDecodeTools();
+                ImGui::EndTabItem();
+            }
+#ifndef DISABLE_PLUGINS
+            for (auto& [id, rt] : g_plugins)
+            {
+                const oshot_plugin_t* plugin = rt.plugin;
+                if (!plugin->render)
+                    continue;
+
+                ImGui::PushID(id.c_str());
+                if (ImGui::BeginTabItem(plugin->name))
+                {
+                    rt.Render();
+                    ImGui::EndTabItem();
+                }
+                ImGui::PopID();
+            }
+#endif
+            ImGui::EndTabBar();
+        }
         ImGui::End();
     }
     m_show_window.Set(SubWindow::MainTextTools, open);
@@ -1256,6 +1276,7 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
         return;
     }
 
+    const auto           start  = std::chrono::steady_clock::now();
     Result<ocr_result_t> result = m_ocr_api.ExtractTextCapture(img);
     if (!result.ok())
     {
@@ -1270,6 +1291,7 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
     }
 
     ClearError(ectx, OcrError::FailedToOCR);
+    m_inputs.ocr_seconds = std::chrono::duration<float>(std::chrono::steady_clock::now() - start).count();
     m_inputs.ocr_results = std::move(result.get());
 #ifndef DISABLE_PLUGINS
     TransformText(m_inputs.ocr_results.data, m_inputs.ocr_original, OSHOT_TEXT_OCR);
@@ -1281,10 +1303,15 @@ void ScreenshotTool::RunBarcodeScan(const capture_result_t& img)
 {
     ErrorContext<BarcodeError>& ectx = m_barcode_errors;
 
-    Result<barcode_result_t> scan = m_barcode_api.ExtractTextsCapture(img);
+    const auto               start = std::chrono::steady_clock::now();
+    Result<barcode_result_t> scan  = m_barcode_api.ExtractTextsCapture(img);
+    m_inputs.barcode_seconds       = std::chrono::duration<float>(std::chrono::steady_clock::now() - start).count();
     if (!scan.ok())
     {
+        // m_code_rows index into the codes, so they go with them
         m_inputs.barcode_scan_result = {};
+        m_code_rows.clear();
+        m_selected_code = -1;
         m_inputs.barcode_text.clear();
         m_inputs.barcode_original.clear();
         SetError(ectx, BarcodeError::FailedToScan, scan.error_v());
@@ -1298,6 +1325,19 @@ void ScreenshotTool::RunBarcodeScan(const capture_result_t& img)
 
     ClearError(ectx, BarcodeError::FailedToScan);
     m_inputs.barcode_scan_result = std::move(scan.get());
+    m_inputs.barcode_scanned     = true;
+    m_selected_code              = -1;
+
+    // Each code once, in the order they were found, for the text tools' table
+    const std::vector<barcode_t>& found = m_inputs.barcode_scan_result.codes;
+    m_code_rows.clear();
+    m_code_rows_width = 0.0f;
+    for (size_t i = 0; i < found.size(); ++i)
+        if (std::ranges::none_of(m_code_rows, [&](const code_row_t& row) {
+                return found[row.code].type == found[i].type && found[row.code].data == found[i].data;
+            }))
+            m_code_rows.push_back({ .code = i, .text = {}, .lines = 0 });
+
     m_inputs.barcode_text.clear();
     for (const std::string& data : m_inputs.barcode_scan_result.datas)
         m_inputs.barcode_text += data + "\n\n";

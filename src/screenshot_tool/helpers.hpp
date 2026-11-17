@@ -164,8 +164,11 @@ inline void draw_input_text_path(const char*                  label,
     handle_drop();
     ImGui::PopID();
 
-    ImGui::SameLine(0, 3);
-    ImGui::TextUnformatted(label);
+    if (*label)
+    {
+        ImGui::SameLine(0, 3);
+        ImGui::TextUnformatted(label);
+    }
 }
 
 inline void draw_input_text_file(const char*                  label,
@@ -192,6 +195,7 @@ inline void draw_input_text_folder(const char*                  label,
 inline bool create_timed_button(const std::string_view label1,
                                 const std::string_view label2,
                                 bool&                  armed,  // caller controls arming
+                                const ImVec2&          size       = ImVec2(0, 0),
                                 const float            delay_secs = 1.5f)
 {
     static double press_time = 0.0f;
@@ -200,7 +204,7 @@ inline bool create_timed_button(const std::string_view label1,
     if (armed && now - press_time > delay_secs)
         armed = false;
 
-    if (ImGui::Button(!armed ? label1.data() : label2.data()))
+    if (ImGui::Button(!armed ? label1.data() : label2.data(), size))
     {
         press_time = now;
         return true;  // caller decides whether to set armed=true
@@ -218,4 +222,34 @@ inline ImGuiCond center_cond(ImVec2& last_display)
     last_display = display;
     return ImGuiCond_Always;
 }
+
+// The width draw_tag() gives `label`
+inline float tag_width(const char* label)
+{
+    return ImGui::CalcTextSize(label).x + 12.0f;
+}
+
+// A small rounded label, e.g. a license or a status.
+// A `line_height` taller than the tag centers it on a line of that height, e.g. one of buttons
+inline void draw_tag(const char* label, const rgba_t col, const float line_height = 0.0f)
+{
+    const ImVec2 text_size = ImGui::CalcTextSize(label);
+    const ImVec2 pad(6.0f, 2.0f);
+    const ImVec2 size(text_size.x + pad.x * 2, text_size.y + pad.y * 2);
+    const float  offset = IM_ROUND(std::max(line_height - size.y, 0.0f) * 0.5f);
+    const ImVec2 p0(ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y + offset);
+
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    draw_list->AddRectFilled(p0, ImVec2(p0.x + size.x, p0.y + size.y), col.to_abgr(), 4.0f);
+    draw_list->AddText(ImVec2(p0.x + pad.x, p0.y + pad.y), Colors::WHITE.to_abgr(), label);
+
+    ImGui::Dummy(ImVec2(size.x, std::max(size.y, line_height)));
+}
+
+// Right-aligns the next item of width `w` on the current line
+inline void align_right(const float w)
+{
+    ImGui::SameLine(ImGui::GetContentRegionAvail().x - w + ImGui::GetCursorPosX());
+}
+
 #endif  // _SCREENSHOT_TOOL_HELPERS_HPP_

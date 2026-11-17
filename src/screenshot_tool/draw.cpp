@@ -33,6 +33,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <iterator>
 #include <memory>
@@ -76,6 +77,117 @@ static constexpr bool is_annotation_tool(ToolType t)
 {
     return idx(t) > idx(ToolType::kNone) && idx(t) <= idx(ToolType::Pencil);
 };
+
+// A box of `size` in the color of a text field, with `hint` centered in it, for an output that's empty
+static void draw_output_hint(const char* hint, const ImVec2& size)
+{
+    const ImGuiStyle& style     = ImGui::GetStyle();
+    ImFont*           font      = ImGui::GetFont();
+    const float       font_size = ImGui::GetFontSize();
+    const float       wrap      = std::max(size.x - style.FramePadding.x * 4.0f, 1.0f);
+    const char*       end       = hint + std::strlen(hint);
+
+    std::vector<std::string_view> lines;
+    for (const char* p = hint; p < end;)
+    {
+        const char* line_end = font->CalcWordWrapPosition(font_size, p, end, wrap);
+        if (line_end == p)  // a word longer than the line
+            line_end += ImTextCountUtf8BytesFromChar(p, end);
+        lines.emplace_back(p, line_end);
+        p = ImTextCalcWordWrapNextLineStart(line_end, end);
+    }
+
+    const ImVec2 min = ImGui::GetCursorScreenPos();
+    const ImU32  col = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    draw_list->AddRectFilled(
+        min, ImVec2(min.x + size.x, min.y + size.y), ImGui::GetColorU32(ImGuiCol_FrameBg), style.FrameRounding);
+
+    float y = IM_ROUND(min.y + (size.y - font_size * float(lines.size())) * 0.5f);
+    for (const std::string_view line : lines)
+    {
+        const float w = ImGui::CalcTextSize(line.data(), line.data() + line.size()).x;
+        draw_list->AddText(
+            ImVec2(IM_ROUND(min.x + (size.x - w) * 0.5f), y), col, line.data(), line.data() + line.size());
+        y += font_size;
+    }
+    ImGui::Dummy(size);
+}
+
+// An output's text box, or `hint` in its place while it's empty and can't be edited
+static void draw_output_text(const char*  id,
+                             std::string& text,
+                             const bool   editable,
+                             const bool   wrap,
+                             const char*  hint,
+                             const float  height)
+{
+    if (text.empty() && !editable)
+    {
+        draw_output_hint(hint, ImVec2(ImGui::GetContentRegionAvail().x, height));
+        return;
+    }
+
+    ImGuiInputTextFlags flags = editable ? 0 : ImGuiInputTextFlags_ReadOnly;
+    if (wrap)
+        flags |= ImGuiInputTextFlags_WordWrap;
+    ImGui::InputTextMultiline(id, &text, ImVec2(-FLT_MIN, height), flags);
+}
+
+// The height of a text box that shows `lines` lines
+static float text_box_height(const float lines)
+{
+    return ImGui::GetTextLineHeight() * lines + ImGui::GetStyle().FramePadding.y * 2.0f;
+}
+
+// Buttons in the colors of the text fields, for the ones next to a main action. A `pressed` one is drawn pushed in.
+// Pops with ImGui::PopStyleColor(4)
+static void push_secondary_button_colors(const bool pressed = false)
+{
+    const ImVec4* colors = ImGui::GetStyle().Colors;
+    ImGui::PushStyleColor(ImGuiCol_Button, colors[pressed ? ImGuiCol_HeaderActive : ImGuiCol_FrameBgHovered]);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors[ImGuiCol_FrameBgActive]);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors[ImGuiCol_HeaderActive]);
+    ImGui::PushStyleColor(ImGuiCol_Text, colors[pressed ? ImGuiCol_CheckMark : ImGuiCol_Text]);
+}
+
+// The non-empty parts separated by dots, e.g. "6 lines · 48 words · 420 ms"
+static std::string join_stats(std::initializer_list<std::string> parts)
+{
+    std::string line;
+    for (const std::string& part : parts)
+    {
+        if (part.empty())
+            continue;
+        if (!line.empty())
+            line += " · ";
+        line += part;
+    }
+    return line;
+}
+
+static void draw_stats(const std::string& stats)
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TextWrapped("%s", stats.c_str());
+    ImGui::PopStyleColor();
+}
+
+// The height draw_stats() takes, with the spacing under it
+static float stats_height(const std::string& stats)
+{
+    return ImGui::CalcTextSize(stats.c_str(), nullptr, false, ImGui::GetContentRegionAvail().x).y +
+           ImGui::GetStyle().ItemSpacing.y;
+}
+
+// How long a scan took, in ms under a second
+static std::string duration_str(const float seconds)
+{
+    if (seconds >= 1.0f)
+        return fmt::format("{:.2f} s", seconds);
+    return seconds < 0.001f ? "<1 ms" : fmt::format("{:.0f} ms", seconds * 1000.0f);
+}
 
 void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
                                           const float       sel_x,
@@ -213,12 +325,20 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
     }
 }
 
-void ScreenshotTool::CreateCopyTextButton(const std::string& text_copy, const std::string_view label1)
+void ScreenshotTool::CreateCopyTextButton(const std::string&     text_copy,
+                                          const std::string_view label1,
+                                          const ImVec2&          size,
+                                          const bool             show_error)
 {
     ErrorContext<GeneralError>& ectx = m_general_errors;
 
-    static bool armed = false;
-    if (create_timed_button(label1, _("Copied!"), armed))
+    // Each button says "Copied!" on its own, e.g. the ones in the rows of a table
+    ImGuiStorage* storage = ImGui::GetStateStorage();
+    ImGui::PushID("##copy_armed");
+    const ImGuiID key = ImGui::GetID(label1.data(), label1.data() + label1.size());
+    ImGui::PopID();
+    bool armed = storage->GetBool(key);
+    if (create_timed_button(label1, _("Copied!"), armed, size))
     {
         const Result<>& res = g_clipboard.CopyText(text_copy);
         if (res.ok())
@@ -231,8 +351,9 @@ void ScreenshotTool::CreateCopyTextButton(const std::string& text_copy, const st
             SetError(ectx, GeneralError::FailedToCopyText, res.error_v());
         }
     }
+    storage->SetBool(key, armed);
 
-    if (HasError(ectx, GeneralError::FailedToCopyText))
+    if (show_error && HasError(ectx, GeneralError::FailedToCopyText))
     {
         ImGui::SameLine();
         ImGui::TextColored(
@@ -747,54 +868,183 @@ void ScreenshotTool::DrawMenuItems()
     }
 }
 
+void ScreenshotTool::DrawOutputButtons(const std::string& text,
+                                       const std::string& original,
+                                       bool&              show_original,
+                                       const char*        copy_label,
+                                       const bool         show_wrap)
+{
+    if (original.empty())
+        show_original = false;
+
+    const float spacing    = ImGui::GetStyle().ItemSpacing.x;
+    const char* wrap_label = _("Wrap");
+    const char* orig_label = _("Original");
+    const float copy_w     = button_width({ copy_label, _("Copied!") });
+
+    float width = copy_w;
+    if (show_wrap)
+        width += button_width({ wrap_label }) + spacing;
+    if (!original.empty())
+        width += button_width({ orig_label }) + spacing;
+    align_right(width);
+
+    auto toggle = [](const char* label, bool& on, const char* tooltip) {
+        push_secondary_button_colors(on);
+        if (ImGui::Button(label))
+            on = !on;
+        ImGui::PopStyleColor(4);
+        ImGui::SetItemTooltip("%s", tooltip);
+        ImGui::SameLine();
+    };
+    if (show_wrap)
+        toggle(wrap_label, m_wrap_text, _("Wrap the lines that are wider than the text box"));
+    if (!original.empty())
+        toggle(orig_label,
+               show_original,
+               _("Show the text as it was read, before the plugins' text transformers changed it"));
+
+    const std::string& shown = show_original ? original : text;
+    ImGui::BeginDisabled(shown.empty());
+    push_secondary_button_colors();
+    CreateCopyTextButton(shown, copy_label, ImVec2(copy_w, 0.0f), false);
+    ImGui::PopStyleColor(4);
+    ImGui::EndDisabled();
+
+    if (HasError(m_general_errors, GeneralError::FailedToCopyText))
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
+        ImGui::TextWrapped(_("Failed to copy text: %s"),
+                           GetError(m_general_errors, GeneralError::FailedToCopyText).c_str());
+        ImGui::PopStyleColor();
+    }
+}
+
 void ScreenshotTool::DrawOcrTools()
 {
     ErrorContext<OcrError>& ectx = m_ocr_errors;
 
-    std::string& ocr_path  = m_inputs.ocr_path;
-    std::string& ocr_model = m_inputs.ocr_model;
-
-    static size_t item_selected_idx = 0;
-
-    auto push_error_style = [](bool cond) {
-        if (cond)
-            ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
-    };
-    auto pop_error_label = [](bool cond, const char* label) {
-        if (cond)
-        {
-            ImGui::PopStyleColor();
-            ImGui::SameLine();
-            ImGui::TextColored(Colors::RED, "%s", label);
-        }
-    };
-
-    ImGui::PushID("OcrTools");
-    ImGui::SeparatorText("OCR");
-
     const bool need_to_scan  = HasError(ectx, OcrError::NeedToScanDir);
     const bool invalid_path  = HasError(ectx, OcrError::InvalidPath);
     const bool invalid_model = HasError(ectx, OcrError::InvalidModel);
+    const bool models_ok     = !invalid_path && !need_to_scan;
 
-    // --- Path input ---
-    push_error_style(invalid_path);
-    push_error_style(need_to_scan);
-    draw_input_text_folder(_("Path"), "##ocr_path", [&] { SetError(ectx, OcrError::NeedToScanDir); }, ocr_path);
-    if (need_to_scan && ImGui::Button(_("Scan")))
-        RefreshOcrModels();
-    ImGui::SameLine();
-    const auto& it    = std::ranges::find(m_ocr_models_list, ocr_model);
-    item_selected_idx = (it != m_ocr_models_list.end()) ? std::distance(m_ocr_models_list.begin(), it) : 0;
-    pop_error_label(invalid_path, _("Invalid!"));
-    pop_error_label(need_to_scan, _("Need to scan new directory"));
-    ImGui::SameLine();
-    HelpMarker(_("Full path to the OCR models (.traineddata). Supports drag-and-drop."));
+    ImGui::PushID("OcrTools");
 
-    if (invalid_path)
+    // A setting's label, with its tooltip, then the cell for its widget
+    auto form_row = [](const char* label, const char* tooltip) {
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(label);
+        ImGui::SetItemTooltip("%s", tooltip);
+        ImGui::TableNextColumn();
+    };
+
+    if (ImGui::BeginTable("##ocr_settings", 2, ImGuiTableFlags_SizingFixedFit))
     {
+        ImGui::TableSetupColumn("##label", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("##value", ImGuiTableColumnFlags_WidthStretch);
+
+        // --- Path input ---
+        form_row(_("Folder"), _("The folder with the OCR models (.traineddata). Supports drag-and-drop"));
+        const char* load_label = _("Load");
+        if (invalid_path || need_to_scan)
+            ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
+        ImGui::PushItemWidth(need_to_scan ? -(button_width({ load_label }) + ImGui::GetStyle().ItemSpacing.x)
+                                          : -FLT_MIN);
+        draw_input_text_folder("", "##ocr_path", [&] { SetError(ectx, OcrError::NeedToScanDir); }, m_inputs.ocr_path);
+        ImGui::PopItemWidth();
+        if (invalid_path || need_to_scan)
+            ImGui::PopStyleColor();
+        if (need_to_scan)
+        {
+            ImGui::SameLine();
+            if (ImGui::Button(load_label))
+                RefreshOcrModels();
+            ImGui::SetItemTooltip("%s", _("Look for the models in this folder"));
+        }
+
+        if (models_ok)
+        {
+            // --- Model combo ---
+            form_row(_("Model"), _("The model of the language the text is in"));
+            std::string& ocr_model = m_inputs.ocr_model;
+            if (invalid_model)
+                ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            const bool combo_open = ImGui::BeginCombo("##model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge);
+            // Don't color the whole list red
+            if (invalid_model)
+            {
+                ImGui::PopStyleColor();
+                ImGui::SetItemTooltip("%s", _("Not in the models folder, pick another one"));
+            }
+
+            if (combo_open)
+            {
+                static ImGuiTextFilter filter;
+                if (ImGui::IsWindowAppearing())
+                {
+                    ImGui::SetKeyboardFocusHere();
+                    filter.Clear();
+                }
+
+                ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F);
+                filter.Draw("##Filter", -FLT_MIN);
+
+                for (const std::string& model : m_ocr_models_list)
+                {
+                    if (filter.PassFilter(model.c_str()) && ImGui::Selectable(model.c_str(), model == ocr_model))
+                    {
+                        ocr_model = model;
+                        ClearError(ectx, OcrError::InvalidModel);
+                    }
+                }
+                ImGui::EndCombo();
+            }
+
+            // --- Layout combo ---
+            // The layouts Tesseract can assume, as in Edit > Optimize OCR for...
+            form_row(_("Layout"), _("How the text is laid out. Automatic tries a few and keeps the best"));
+            const std::pair<int, const char*> layouts[] = {
+                { 0, _("Automatic") },
+                { tesseract::PSM_SINGLE_WORD, _("Single Word") },
+                { tesseract::PSM_SINGLE_LINE, _("Single Line") },
+                { tesseract::PSM_SINGLE_BLOCK, _("Paragraph") },
+                { tesseract::PSM_AUTO, _("Automatic (Layout)") },
+            };
+            int&        psm     = g_config->Runtime.preferred_psm;
+            const char* preview = layouts[0].second;
+            for (const auto& [value, label] : layouts)
+                if (value == psm)
+                    preview = label;
+
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::BeginCombo("##psm", preview))
+            {
+                for (const auto& [value, label] : layouts)
+                    if (ImGui::Selectable(label, value == psm))
+                        psm = value;
+                ImGui::EndCombo();
+            }
+        }
+        ImGui::EndTable();
+    }
+
+    // --- Suggestions ---
+    if (need_to_scan)
+    {
+        ImGui::TextWrapped("%s", _("Press Load to look for the OCR models in this folder."));
+    }
+    else if (invalid_path)
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
+        ImGui::TextWrapped("%s", _("No OCR models (.traineddata) in this folder"));
+        ImGui::PopStyleColor();
+
         ImGui::Spacing();
-        ImGui::TextColored((0x0AEFFFF_rgba), "%s", _("Suggestions:"));
-        ImGui::Indent();
+        ImGui::TextDisabled("%s", _("Suggestions:"));
 
         if (g_is_nix)
         {
@@ -809,162 +1059,350 @@ void ScreenshotTool::DrawOcrTools()
 
 #if !OSHOT_WINDOWS
         if (!g_is_flatpak)
-            ImGui::BulletText(
-                "%s",
-                _("Install one of the tesseract language packages (e.g. tesseract-data-eng on Arch, tesseract-ocr-eng "
-                  "on Debian/Ubuntu, tesseract-langpack-eng on Fedora)."));
+        {
+            ImGui::Bullet();
+            ImGui::TextWrapped("%s",
+                               _("Install one of the tesseract language packages (e.g. tesseract-data-eng on Arch, "
+                                 "tesseract-ocr-eng on Debian/Ubuntu, tesseract-langpack-eng on Fedora)."));
+        }
 #endif
-        ImGui::BulletText("%s", _("Download a tesseract language model via 'Tools -> Download OCR Model'."));
-        ImGui::Unindent();
+        ImGui::Bullet();
+        ImGui::TextWrapped("%s", _("Download a tesseract language model via 'Tools -> Download OCR Model'."));
+        ImGui::Spacing();
     }
 
-    // --- Model combo (only shown when path is valid and isn't changed) ---
-    if (!invalid_path && !need_to_scan)
+    // --- Extract button and output ---
+    ImGui::BeginDisabled(!models_ok || invalid_model);
+    if (ImGui::Button(_("Extract Text")))
+        RequestScan(ScanType::Ocr);
+    ImGui::EndDisabled();
+
+    DrawOutputButtons(m_inputs.ocr_results.data, m_inputs.ocr_original, m_show_ocr_original, _("Copy"), true);
+    ShowIfError(ectx, OcrError::FailedToOCR);
+
+    const ocr_result_t& res      = m_inputs.ocr_results;
+    const bool          scanned  = res.confidence >= 0;
+    const bool          original = m_show_ocr_original;
+    std::string&        text     = original ? m_inputs.ocr_original : m_inputs.ocr_results.data;
+
+    std::string stats;
+    if (scanned)
     {
-        push_error_style(invalid_model);
-
-        const bool combo_open = ImGui::BeginCombo(_("Model"), ocr_model.c_str(), ImGuiComboFlags_HeightLarge);
-
-        // Don't color the whole list red
-        if (invalid_model)
-            ImGui::PopStyleColor();
-
-        if (combo_open)
+        // Lines with text, words and characters (not bytes)
+        size_t lines = 0, words = 0, chars = 0;
+        bool   in_word = false, in_line = false;
+        for (const char c : text)
         {
-            static ImGuiTextFilter filter;
-            if (ImGui::IsWindowAppearing())
-            {
-                ImGui::SetKeyboardFocusHere();
-                filter.Clear();
-            }
-
-            ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F);
-            filter.Draw("##Filter", -FLT_MIN);
-
-            for (size_t i = 0; i < m_ocr_models_list.size(); ++i)
-            {
-                if (filter.PassFilter(m_ocr_models_list[i].c_str()))
-                {
-                    const bool is_selected = (item_selected_idx == i);
-                    if (ImGui::Selectable(m_ocr_models_list[i].c_str(), is_selected))
-                    {
-                        item_selected_idx = i;
-                        ocr_model         = m_ocr_models_list[i];
-                        ClearError(ectx, OcrError::InvalidModel);
-                    }
-                }
-            }
-            ImGui::EndCombo();
+            const bool space = c == ' ' || c == '\t' || c == '\n' || c == '\r';
+            chars += (uint8_t(c) & 0xC0) != 0x80;
+            words += !space && !in_word;
+            lines += !space && !in_line;
+            in_word = !space;
+            in_line = c != '\n' && (in_line || !space);
         }
-
-        if (invalid_model)
-        {
-            ImGui::SameLine();
-            ImGui::TextColored(Colors::RED, "%s", _("Invalid!"));
-        }
+        stats = join_stats({ i18n::tr_n_fmt("{} line", "{} lines", long(lines), lines),
+                             i18n::tr_n_fmt("{} word", "{} words", long(words), words),
+                             i18n::tr_n_fmt("{} character", "{} characters", long(chars), chars),
+                             duration_str(m_inputs.ocr_seconds),
+                             res.psm_str });
     }
 
-    // --- Extract button + result details ---
-    if (!invalid_path && !invalid_model && !need_to_scan)
+    // The text box fills the tab, leaving room for the confidence bar and the stats
+    const float below = scanned ? ImGui::GetFrameHeightWithSpacing() + stats_height(stats) : 0.0f;
+    const float height =
+        std::max(text_box_height(6), ImGui::GetContentRegionAvail().y - below - ImGui::GetStyle().ItemSpacing.y);
+    draw_output_text(original ? "##ocr_original" : "##" OSHOT_TEXT_OCR,
+                     text,
+                     !original && g_config->File.allow_out_edit,
+                     m_wrap_text,
+                     scanned ? _("No text found. Try another model or layout")
+                             : _("Select an area and press Extract Text to read its text"),
+                     height);
+
+    if (scanned)
     {
-        if (ImGui::Button(_("Extract Text")))
-            RequestScan(ScanType::Ocr);
+        // Muted red, yellow or green
+        const rgba_t col = res.confidence <= 45   ? 0xA33131FF_rgba
+                           : res.confidence <= 70 ? 0x9C7A1EFF_rgba
+                                                  : 0x1F8A47FF_rgba;
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, col);
+        ImGui::ProgressBar(float(res.confidence) / 100.0f,
+                           ImVec2(-FLT_MIN, 0.0f),
+                           i18n::tr_fmt("Confidence {}%", res.confidence).c_str());
+        ImGui::PopStyleColor();
+        ImGui::SetItemTooltip(
+            "%s", _("How sure the OCR is of the words it read. If the text seems off, try another model or layout"));
 
-        ImGui::SameLine();
-
-        if (HasError(ectx, OcrError::FailedToOCR))
-        {
-            ImGui::NewLine();  // own line, it can be wider than the panel
-            ShowIfError(ectx, OcrError::FailedToOCR);
-        }
-        else
-        {
-            ImGui::SameLine();
-            HelpMarker(_("If results seem off, try Edit > Optimize OCR for..."));
-        }
-
-        if (m_inputs.ocr_results.confidence > 0 && ImGui::TreeNode(_("Details")))
-        {
-            ImGui::BulletText("%s", _("Confidence:"));
-            ImGui::SameLine();
-            ImVec4 confidence_color(Colors::GREEN);
-            if (m_inputs.ocr_results.confidence <= 45)
-                confidence_color = Colors::RED;
-            else if (m_inputs.ocr_results.confidence <= 70)
-                confidence_color = Colors::YELLOW;
-
-            ImGui::TextColored(confidence_color, "%d%%", m_inputs.ocr_results.confidence);
-
-            ImGui::BulletText("PSM: %s", m_inputs.ocr_results.psm_str.c_str());
-            ImGui::TreePop();
-        }
+        draw_stats(stats);
     }
-
-#ifndef DISABLE_PLUGINS
-    DrawOriginalToggle(m_inputs.ocr_original, m_show_ocr_original);
-    if (m_show_ocr_original)
-    {
-        ImGui::InputTextMultiline("##ocr_original",
-                                  &m_inputs.ocr_original,
-                                  ImVec2(-1, ImGui::GetTextLineHeight() * 8),
-                                  ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_WordWrap);
-        CreateCopyTextButton(m_inputs.ocr_original);
-        ImGui::PopID();
-        return;
-    }
-#endif
-    ImGui::InputTextMultiline(
-        "##" OSHOT_TEXT_OCR,
-        &m_inputs.ocr_results.data,
-        ImVec2(-1, ImGui::GetTextLineHeight() * 8),
-        ImGuiInputTextFlags_WordWrap | (g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly));
-
-    if (!m_inputs.ocr_results.data.empty())
-        CreateCopyTextButton(m_inputs.ocr_results.data);
 
     ImGui::PopID();
 }
 
-void ScreenshotTool::DrawBarDecodeTools()
+void ScreenshotTool::DrawBarcodeTable(float height)
 {
-    ErrorContext<BarcodeError>& ectx = m_barcode_errors;
+    const ImGuiStyle&             style = ImGui::GetStyle();
+    const std::vector<barcode_t>& codes = m_inputs.barcode_scan_result.codes;
 
-    ImGui::PushID("BarDecodeTools");
-    ImGui::SeparatorText(_("QR/Bar Decode"));
-
-    if (ImGui::Button(_("Extract Text")))
-        RequestScan(ScanType::Barcode);
-
-    if (!ShowIfError(ectx, BarcodeError::FailedToScan) && !m_inputs.barcode_scan_result.datas.empty() &&
-        ImGui::TreeNode(_("Details")))
+    if (m_code_rows.empty())
     {
-        ImGui::TextUnformatted(_("Detected barcodes:"));
-        for (const auto& [sym, count] : m_inputs.barcode_scan_result.symbologies)
-            ImGui::BulletText("%s (x%d)", sym.c_str(), count);
-        ImGui::TreePop();
-    }
-
-#ifndef DISABLE_PLUGINS
-    DrawOriginalToggle(m_inputs.barcode_original, m_show_barcode_original);
-    if (m_show_barcode_original)
-    {
-        ImGui::InputTextMultiline("##barcode_original",
-                                  &m_inputs.barcode_original,
-                                  ImVec2(-1, ImGui::GetTextLineHeight() * 8),
-                                  ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_WordWrap);
-        CreateCopyTextButton(m_inputs.barcode_original);
-        ImGui::PopID();
+        m_selected_code = -1;
+        draw_output_hint(m_inputs.barcode_scanned
+                             ? _("No QR codes or barcodes found")
+                             : _("Select an area and press Decode to read its QR codes and barcodes"),
+                         ImVec2(ImGui::GetContentRegionAvail().x, height));
         return;
     }
-#endif
-    ImGui::InputTextMultiline(
-        "##" OSHOT_TEXT_BARCODE,
-        &m_inputs.barcode_text,
-        ImVec2(-1, ImGui::GetTextLineHeight() * 8),
-        ImGuiInputTextFlags_WordWrap | (g_config->File.allow_out_edit ? 0 : ImGuiInputTextFlags_ReadOnly));
+    if (m_selected_code >= int(m_code_rows.size()))
+        m_selected_code = -1;
 
-    if (!m_inputs.barcode_text.empty())
-        CreateCopyTextButton(m_inputs.barcode_text);
+    // --- Filter, once the list gets long ---
+    const bool filtering = m_code_rows.size() > 10;
+    if (filtering)
+    {
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (ImGui::InputTextWithHint("##code_filter",
+                                     _("Filter the codes by their text or type"),
+                                     m_code_filter.InputBuf,
+                                     IM_ARRAYSIZE(m_code_filter.InputBuf)))
+            m_code_filter.Build();
+        height -= ImGui::GetFrameHeightWithSpacing();
+    }
+
+    std::vector<size_t> shown;
+    for (size_t i = 0; i < m_code_rows.size(); ++i)
+    {
+        const barcode_t& code = codes[m_code_rows[i].code];
+        if (!filtering || m_code_filter.PassFilter(code.data.c_str()) || m_code_filter.PassFilter(code.type.c_str()))
+            shown.push_back(i);
+    }
+
+    // The clicked code's whole text goes under the table, up to 6 lines before it scrolls
+    const barcode_t* selected = m_selected_code >= 0 ? &codes[m_code_rows[size_t(m_selected_code)].code] : nullptr;
+    float            full_h   = 0.0f;
+    if (selected)
+    {
+        const float wrap = ImGui::GetContentRegionAvail().x - style.FramePadding.x * 2.0f - style.ScrollbarSize;
+        const float text = ImGui::CalcTextSize(selected->data.c_str(), nullptr, false, wrap).y;
+        full_h           = std::min(text, ImGui::GetTextLineHeight() * 6.0f) + style.FramePadding.y * 2.0f;
+    }
+
+    // The table, or the hint that stands in for it, takes the rest
+    const float table_h =
+        std::max(ImGui::GetFrameHeight() * 3.0f, height - (selected ? full_h + style.ItemSpacing.y : 0.0f));
+
+    if (shown.empty())
+    {
+        draw_output_hint(_("No code matches the filter"), ImVec2(ImGui::GetContentRegionAvail().x, table_h));
+    }
+    else
+    {
+        const char* copy_label = _("Copy");
+        const float copy_w     = button_width({ copy_label, _("Copied!") });
+
+        // Each row's data, wrapped to the Data column and cut to 3 lines, again only when the column's width changes
+        auto wrap_rows = [&](const float width) {
+            if (width == m_code_rows_width)
+                return;
+            m_code_rows_width = width;
+
+            ImFont*     font       = ImGui::GetFont();
+            const float font_size  = ImGui::GetFontSize();
+            const float ellipsis_w = ImGui::CalcTextSize("…").x;
+            for (code_row_t& row : m_code_rows)
+            {
+                const std::string& data = codes[row.code].data;
+                const char*        p    = data.data();
+                const char*        end  = p + data.size();
+
+                row.text.clear();
+                for (row.lines = 0; p < end && row.lines < 3; ++row.lines)
+                {
+                    const char* para_end = std::find(p, end, '\n');
+                    const char* line_end = font->CalcWordWrapPosition(font_size, p, para_end, width);
+                    if (line_end == p && p < para_end)  // not even one character fits
+                        line_end += ImTextCountUtf8BytesFromChar(p, para_end);
+
+                    if (row.lines > 0)
+                        row.text += '\n';
+                    row.text.append(p, line_end);
+
+                    if (line_end < para_end)
+                        p = ImTextCalcWordWrapNextLineStart(line_end, para_end);
+                    else
+                        p = para_end < end ? para_end + 1 : end;
+                }
+
+                // Some was left out, so the last line ends with an ellipsis
+                if (p < end)
+                {
+                    const size_t last = row.text.rfind('\n') + 1;  // npos + 1 is 0
+                    while (row.text.size() > last &&
+                           ImGui::CalcTextSize(row.text.c_str() + last).x + ellipsis_w > width)
+                    {
+                        while (row.text.size() > last && (uint8_t(row.text.back()) & 0xC0) == 0x80)
+                            row.text.pop_back();
+                        if (row.text.size() > last)
+                            row.text.pop_back();
+                    }
+                    row.text += "…";
+                }
+            }
+        };
+
+        // Before the table exists (the first frame) the Data column's width is estimated from the other columns
+        if (m_code_rows_width <= 0.0f)
+        {
+            float type_w = 0.0f;
+            for (const code_row_t& row : m_code_rows)
+                type_w = std::max(type_w, tag_width(codes[row.code].type.c_str()));
+            wrap_rows(std::max(
+                ImGui::GetContentRegionAvail().x - type_w - copy_w - style.CellPadding.x * 6.0f - style.ScrollbarSize,
+                50.0f));
+        }
+
+        constexpr ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
+                                          ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit |
+                                          ImGuiTableFlags_ScrollY;
+        if (ImGui::BeginTable("##codes", 3, flags, ImVec2(0.0f, table_h)))
+        {
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableSetupColumn(_("Type"), ImGuiTableColumnFlags_WidthFixed);
+            ImGui::TableSetupColumn(_("Data"), ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("##copy", ImGuiTableColumnFlags_WidthFixed);
+            ImGui::TableHeadersRow();
+
+            // The header's cell is as wide as the column
+            ImGui::TableSetColumnIndex(1);
+            wrap_rows(ImGui::GetContentRegionAvail().x);
+
+            for (const size_t i : shown)
+            {
+                const code_row_t& row   = m_code_rows[i];
+                const barcode_t&  code  = codes[row.code];
+                const float       row_h = std::max(ImGui::GetFrameHeight(), text_box_height(float(row.lines)));
+
+                ImGui::TableNextRow(ImGuiTableRowFlags_None, row_h + style.CellPadding.y * 2.0f);
+                ImGui::TableSetColumnIndex(0);
+
+                // Rows scrolled out of view only take their height
+                if (!ImGui::IsRectVisible(ImVec2(1.0f, row_h)))
+                    continue;
+
+                ImGui::PushID(int(i));
+
+                // The whole row can be clicked, under its tag, text and button. The selected one is tinted with
+                // the accent, so it stands out from the row colors
+                const ImVec2 cell        = ImGui::GetCursorPos();
+                const bool   is_selected = m_selected_code == int(i);
+                ImVec4       accent      = ImGui::GetStyleColorVec4(ImGuiCol_Button);
+                accent.w *= 0.35f;
+                ImGui::PushStyleColor(ImGuiCol_Header, accent);
+                if (ImGui::Selectable("##row",
+                                      is_selected,
+                                      ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap,
+                                      ImVec2(0.0f, row_h)))
+                    m_selected_code = is_selected ? -1 : int(i);
+                ImGui::PopStyleColor();
+                if (ImGui::BeginItemTooltip())
+                {
+                    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+                    ImGui::TextUnformatted(code.data.c_str());
+                    ImGui::Separator();
+                    ImGui::TextDisabled(
+                        "%s",
+                        i18n::tr_fmt(
+                            "At {:.0f}, {:.0f}, {:.0f}×{:.0f} pixels in the selection", code.x, code.y, code.w, code.h)
+                            .c_str());
+                    ImGui::TextDisabled(
+                        "%s", is_selected ? _("Click to hide the whole text") : _("Click to show the whole text"));
+                    ImGui::PopTextWrapPos();
+                    ImGui::EndTooltip();
+                }
+
+                ImGui::SetCursorPos(cell);
+                draw_tag(code.type.c_str(), 0x334c7fFF_rgba, ImGui::GetFrameHeight());
+
+                ImGui::TableSetColumnIndex(1);
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() + style.FramePadding.y);
+                ImGui::TextUnformatted(row.text.c_str());  // one item, so no spacing between its lines
+
+                ImGui::TableSetColumnIndex(2);
+                push_secondary_button_colors();
+                CreateCopyTextButton(code.data, copy_label, ImVec2(copy_w, 0.0f), false);
+                ImGui::PopStyleColor(4);
+
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+    }
+
+    // ReadOnly, so ImGui never writes to the data
+    if (selected)
+        ImGui::InputTextMultiline("##code_full",
+                                  const_cast<char*>(selected->data.c_str()),
+                                  selected->data.size() + 1,
+                                  ImVec2(-FLT_MIN, full_h),
+                                  ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_WordWrap);
+}
+
+void ScreenshotTool::DrawBarDecodeTools()
+{
+    const barcode_result_t& res = m_inputs.barcode_scan_result;
+
+    ImGui::PushID("BarDecodeTools");
+
+    if (ImGui::Button(_("Decode")))
+        RequestScan(ScanType::Barcode);
+
+    // The text box only when it says more than the table, since a plugin changed it or it can be edited
+    std::string payloads;
+    for (const std::string& data : res.datas)
+        payloads += data + "\n\n";
+    const bool show_text =
+        g_config->File.allow_out_edit || (!m_inputs.barcode_text.empty() && m_inputs.barcode_text != payloads);
+
+    DrawOutputButtons(
+        m_inputs.barcode_text, m_inputs.barcode_original, m_show_barcode_original, _("Copy all"), show_text);
+    ShowIfError(m_barcode_errors, BarcodeError::FailedToScan);
+
+    std::string stats;
+    if (m_inputs.barcode_scanned)
+    {
+        std::vector<std::pair<std::string, int>> symbologies(res.symbologies.begin(), res.symbologies.end());
+        std::ranges::sort(symbologies);
+        std::string kinds;
+        for (const auto& [sym, count] : symbologies)
+            kinds += fmt::format("{}{} ×{}", kinds.empty() ? "" : ", ", sym, count);
+
+        stats = join_stats({ i18n::tr_n_fmt("{} code", "{} codes", long(res.datas.size()), res.datas.size()),
+                             kinds,
+                             duration_str(m_inputs.barcode_seconds) });
+    }
+
+    // The table takes what the text box and the stats leave
+    const float text_h = text_box_height(4);
+    float       below  = ImGui::GetStyle().ItemSpacing.y;
+    if (show_text)
+        below += text_h + ImGui::GetStyle().ItemSpacing.y;
+    if (!stats.empty())
+        below += stats_height(stats);
+    DrawBarcodeTable(std::max(text_box_height(5), ImGui::GetContentRegionAvail().y - below));
+
+    if (show_text)
+    {
+        const bool original = m_show_barcode_original;
+        draw_output_text(original ? "##barcode_original" : "##" OSHOT_TEXT_BARCODE,
+                         original ? m_inputs.barcode_original : m_inputs.barcode_text,
+                         !original && g_config->File.allow_out_edit,
+                         m_wrap_text,
+                         "",
+                         text_h);
+    }
+
+    if (!stats.empty())
+        draw_stats(stats);
 
     ImGui::PopID();
 }

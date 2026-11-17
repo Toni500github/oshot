@@ -263,9 +263,12 @@ struct inputs_results_t
     std::string  ocr_model;
     std::string  ocr_download_repo;
     std::string  ocr_model_downloaded_path;  // where the OCR model downloader saves models
+    float        ocr_seconds = 0.0f;         // how long the last OCR took
     ocr_result_t ocr_results;
 
     std::string      barcode_text;
+    bool             barcode_scanned = false;  // so an empty barcode_text means it found nothing
+    float            barcode_seconds = 0.0f;
     barcode_result_t barcode_scan_result;
 
     std::string ann_font;
@@ -274,6 +277,14 @@ struct inputs_results_t
     // The OCR and barcode text from before the plugins' text transformers ran
     std::string ocr_original;
     std::string barcode_original;
+};
+
+// A decoded code in the text tools' table
+struct code_row_t
+{
+    size_t      code;   // in barcode_result_t::codes
+    std::string text;   // its data, wrapped to the Data column, at most 3 lines
+    size_t      lines;  // in text
 };
 
 #ifndef DISABLE_PLUGINS
@@ -701,9 +712,21 @@ private:
     ImU32                                 m_last_input_event_id = 0;
     std::atomic<bool>                     m_redraw_requested    = false;
 
-    OcrAPI                          m_ocr_api;
-    BarcodeAPI                      m_barcode_api;
-    inputs_results_t                m_inputs;
+    OcrAPI           m_ocr_api;
+    BarcodeAPI       m_barcode_api;
+    inputs_results_t m_inputs;
+    int              m_selected_code = -1;    // the code whose whole text the table shows, or -1
+    bool             m_wrap_text     = true;  // wrap the lines of the OCR and barcode text boxes
+
+    // The text tools show the text from before the plugins' transformers
+    bool m_show_ocr_original     = false;
+    bool m_show_barcode_original = false;
+
+    // The decoded codes the table shows, each once, built by RunBarcodeScan(). Their lines are wrapped
+    // to m_code_rows_width, the Data column's width
+    std::vector<code_row_t>         m_code_rows;
+    float                           m_code_rows_width = 0.0f;
+    ImGuiTextFilter                 m_code_filter;
     std::shared_ptr<ocr_download_t> m_ocr_download;
     std::vector<std::string>        m_ocr_models_list;
     ErrorContext<OcrError>          m_ocr_errors;
@@ -757,10 +780,6 @@ private:
 
     // The textures of the plugins' toolbar icons, by plugin ID and action ID. Deleted by Cancel()
     std::map<std::pair<std::string, int32_t>, ImTextureRef> m_plugin_icons;
-
-    // The text tools show the text from before the transformers
-    bool m_show_ocr_original     = false;
-    bool m_show_barcode_original = false;
 
     std::shared_ptr<plugin_index_state_t> m_index_state = std::make_shared<plugin_index_state_t>();
     std::thread                           m_install_thread;
@@ -858,8 +877,24 @@ private:
                               const float       sel_w,
                               const float       sel_h);
 
-    // A button that copies `text_copy` and says "Copied!" for a moment
-    void CreateCopyTextButton(const std::string& text_copy, const std::string_view label1 = _("Copy Text"));
+    // A button that copies `text_copy` and says "Copied!" for a moment.
+    // Without `show_error`, the caller shows GeneralError::FailedToCopyText
+    void CreateCopyTextButton(const std::string&     text_copy,
+                              const std::string_view label1     = _("Copy Text"),
+                              const ImVec2&          size       = ImVec2(0, 0),
+                              bool                   show_error = true);
+
+    // The Wrap, Original and Copy buttons over an output, right-aligned. Original shows while `original` (the text
+    // from before the transformers) isn't empty, and Copy copies the text shown
+    void DrawOutputButtons(const std::string& text,
+                           const std::string& original,
+                           bool&              show_original,
+                           const char*        copy_label,
+                           bool               show_wrap);
+
+    // Every decoded code once, with its type and a copy button, and the clicked one's whole text under them.
+    // Fills `height` pixels and scrolls. Past 10 codes a filter goes above
+    void DrawBarcodeTable(float height);
 
     void DrawDarkOverlay();
     void DrawAnnotations();
@@ -912,9 +947,6 @@ private:
 
     // The box in the overlay's corner with what report_progress() and report_result() said
     void DrawPluginReports();
-
-    // Draws the "Original" toggle above an output whose text the transformers changed
-    void DrawOriginalToggle(const std::string& original, bool& show);
 
     // Calls on_selection_changed() once the selection is done changing and differs
     // from what the plugins were last told
