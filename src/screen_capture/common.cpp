@@ -23,6 +23,11 @@
  *
  */
 
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_mouse.h>
+#include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL_video.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -71,6 +76,31 @@ Result<capture_result_t> capture_full_screen(SessionType session)
 #endif
         default: return Err("Unknown platform");
     }
+}
+
+bool is_wayland_session(const SessionType session)
+{
+#if OSHOT_FREEDESKTOP
+    return session == SessionType::Wayland || (session == SessionType::KDE && kde_on_wayland());
+#else
+    (void)session;
+    return false;
+#endif
+}
+
+SDL_DisplayID get_display_at_cursor()
+{
+    // SDL reports (0, 0) there
+    const char* driver = SDL_GetCurrentVideoDriver();
+    if (driver && strcmp(driver, "wayland") == 0)
+        return SDL_GetPrimaryDisplay();
+
+    float x = 0.0f, y = 0.0f;
+    SDL_GetGlobalMouseState(&x, &y);
+
+    const SDL_Point     cursor{ .x = int(x), .y = int(y) };
+    const SDL_DisplayID display = SDL_GetDisplayForPoint(&cursor);
+    return display ? display : SDL_GetPrimaryDisplay();
 }
 
 Result<capture_result_t> crop_image(const capture_result_t& src, const region_t& region)
@@ -189,42 +219,25 @@ Result<capture_result_t> crop_to_monitor(const capture_result_t&     full,
     return Ok(std::move(out));
 }
 
-capture_result_t rotate_rgba(const capture_result_t& src, int turns_cw)
+Result<capture_result_t> crop_to_display(const capture_result_t& full, const SDL_DisplayID display)
 {
-    turns_cw = ((turns_cw % 4) + 4) % 4;
-    if (turns_cw == 0)
-        return src;
+    SDL_Rect target{};
+    if (!SDL_GetDisplayBounds(display, &target))
+        return Err("Failed to get the display's bounds: {}", SDL_GetError());
 
-    capture_result_t out;
-    out.w = (turns_cw % 2 == 0) ? src.w : src.h;
-    out.h = (turns_cw % 2 == 0) ? src.h : src.w;
-    out.data.resize(size_t(out.w) * out.h * 4);
+    int            count    = 0;
+    SDL_DisplayID* displays = SDL_GetDisplays(&count);
+    if (!displays)
+        return Err("Failed to list the displays: {}", SDL_GetError());
 
-    for (int y = 0; y < src.h; ++y)
+    std::deque<region_t> layout;
+    for (int i = 0; i < count; ++i)
     {
-        for (int x = 0; x < src.w; ++x)
-        {
-            int dx = 0, dy = 0;
-            switch (turns_cw)
-            {
-                case 1:  // 90 CW
-                    dx = src.h - 1 - y;
-                    dy = x;
-                    break;
-                case 2:  // 180
-                    dx = src.w - 1 - x;
-                    dy = src.h - 1 - y;
-                    break;
-                case 3:  // 270 CW
-                    dx = y;
-                    dy = src.w - 1 - x;
-                    break;
-                default:;
-            }
-            const uint8_t* psrc = src.data.data() + (size_t(y) * src.w + x) * 4;
-            uint8_t*       pdst = out.data.data() + (size_t(dy) * out.w + dx) * 4;
-            std::memcpy(pdst, psrc, 4);
-        }
+        SDL_Rect r{};
+        if (SDL_GetDisplayBounds(displays[i], &r))
+            layout.push_back({ .x = r.x, .y = r.y, .w = r.w, .h = r.h });
     }
-    return out;
+    SDL_free(displays);
+
+    return crop_to_monitor(full, layout, { .x = target.x, .y = target.y, .w = target.w, .h = target.h });
 }

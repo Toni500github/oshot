@@ -7,7 +7,7 @@ oshot's tests, with [Catch2](https://github.com/catchorg/Catch2) v3.16.1's amalg
 | `text_extraction.cpp` | `[ocr]`, `[barcode]` | `OcrAPI` and `BarcodeAPI` over the images in `data/` |
 | `config.cpp` | `[config]` | the config `GenerateConfig()` writes loads back the same, every option included |
 | `hotkey.cpp` | `[hotkey]` | `hotkey::parse()` and `to_string()` |
-| `screen_capture.cpp` | `[capture]` | `parse_region()`, `crop_image()`, `crop_to_monitor()` (HiDPI, fractional, negative layouts), `rotate_rgba()` |
+| `screen_capture.cpp` | `[capture]` | `parse_region()`, `crop_image()`, `crop_to_monitor()` (HiDPI, fractional, negative layouts) |
 | `util.cpp` | `[util]` | `split()`, `parse_hex_rgba()` (`util/strings.hpp`, `util/color.hpp`), `ProcessLock` |
 | `plugin_index.cpp` | `[plugins]` | `compare_versions()`, `sha256_file()`, `parse_plugin_index()`, `is_installable()`, `pick_version()` |
 | `manifest.cpp` | `[plugins]` | `Manifest` (names, IDs, `oshot-plugin.toml`) and `StateManager` (`state.toml`, the text transformers' order included) |

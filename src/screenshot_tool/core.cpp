@@ -89,7 +89,6 @@ Result<> ScreenshotTool::Start()
     m_completed_op              = SavingOp::kNone;
     m_final_image_requested     = false;
     m_popup_open                = false;
-    m_show_window.Clear(SubWindow::OutputMenuSelection);
     m_annotations.clear();
 
     if (!g_config->Runtime.source_file.empty())
@@ -104,15 +103,6 @@ Result<> ScreenshotTool::Start()
 
         result = capture_full_screen(m_session);
         TRY_MSG(result, "Failed to capture screenshot: {}");
-
-#if OSHOT_FREEDESKTOP
-        if (m_session == SessionType::Wayland)
-        {
-            m_wayland_monitors = wl_get_monitors();
-            if (m_wayland_monitors.size() > 1)
-                m_show_window.Set(SubWindow::OutputMenuSelection);
-        }
-#endif
     }
 
     m_screenshot = std::move(result.get());
@@ -126,9 +116,6 @@ Result<> ScreenshotTool::Start()
 Result<> ScreenshotTool::StartWindow()
 {
     KeepDrawing();
-    m_uncropped = {};
-    if (m_show_window.Has(SubWindow::OutputMenuSelection))
-        m_uncropped = m_screenshot;
     fit_to_screen(m_screenshot);
 
     // Only the screenshot, nothing for the text tools window
@@ -262,17 +249,6 @@ void ScreenshotTool::RenderOverlay()
     if (WantsCleanFrame())
     {
         DrawAnnotations();
-        ImGui::End();
-        ImGui::PopStyleVar();
-        return;
-    }
-
-    if (m_session == SessionType::Wayland && m_show_window.Has(SubWindow::OutputMenuSelection))
-    {
-        DrawOutputMenuSelection();
-        DrawDarkOverlay();
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !disable_esc)
-            Cancel();
         ImGui::End();
         ImGui::PopStyleVar();
         return;
@@ -457,7 +433,7 @@ void ScreenshotTool::EndCapture()
 
     // Assigning {} frees the buffers, clear() would keep their capacity
     m_screenshot                = {};
-    m_uncropped                 = {};
+    m_desktop                   = {};
     m_annotations               = {};
     m_current_annotation        = {};
     m_current_annotation_resize = nullptr;
@@ -498,6 +474,56 @@ bool ScreenshotTool::OpenImage(const std::string& path)
     return true;
 }
 
+Result<> ScreenshotTool::CropAndUseDisplay(const SDL_DisplayID display, const bool keep_desktop)
+{
+    if (m_screenshot.whole_desktop)
+    {
+        int count = 0;
+        SDL_free(SDL_GetDisplays(&count));
+        if (count <= 1)
+        {
+            m_screenshot.whole_desktop = false;
+            return Ok();
+        }
+        m_desktop      = std::move(m_screenshot);
+        m_desktop_crop = 0;
+    }
+    if (m_desktop.data.empty())
+        return Ok();
+
+    if (display != m_desktop_crop)
+    {
+        Result<capture_result_t> cropped = crop_to_display(m_desktop, display);
+        if (!cropped.ok())
+        {
+            // Show every monitor rather than nothing
+            if (m_screenshot.data.empty())
+                m_screenshot = std::move(m_desktop);
+            m_screenshot.whole_desktop = false;
+            m_desktop                  = {};
+            return Err("Failed to crop the capture to the overlay's display: {}", cropped.error_v());
+        }
+        m_screenshot   = std::move(cropped.get());
+        m_desktop_crop = display;
+        spdlog::debug("Cropped the desktop to {}: {}x{}", SDL_GetDisplayName(display), m_screenshot.w, m_screenshot.h);
+
+        // Before StartWindow() there's no texture yet
+        if (m_texture_id._TexID)
+        {
+            fit_to_screen(m_screenshot);
+            const Result<ImTextureRef>& r =
+                CreateTexture(m_texture_id._TexID, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
+            TRY_MSG(r, "Failed to recreate the screenshot's texture: {}");
+            m_texture_id = r.get();
+            ResetSelection();
+        }
+    }
+
+    if (!keep_desktop)
+        m_desktop = {};
+    return Ok();
+}
+
 void ScreenshotTool::ResetSelection()
 {
     m_current_tool             = ToolType::kNone;
@@ -510,30 +536,6 @@ void ScreenshotTool::ResetSelection()
     m_main_sel.drag_start_mouse     = {};
     m_image_origin                  = {};
     m_image_end                     = {};
-}
-
-Result<> ScreenshotTool::CropToOutput(const std::deque<region_t>& layout, const monitor_t& target, int transform)
-{
-    const capture_result_t&  full    = m_uncropped.data.empty() ? m_screenshot : m_uncropped;
-    Result<capture_result_t> cropped = crop_to_monitor(full, layout, target.geo);
-    TRY_MSG(cropped, "Failed to crop capture to focused monitor: {}");
-
-    m_screenshot = std::move(cropped.get());
-    m_uncropped  = {};
-
-    spdlog::debug("target.transform = {}", target.transform);
-    if (transform >= 1 && transform <= 3)
-        m_screenshot = rotate_rgba(m_screenshot, 4 - transform);  // swap 1 (90) and 3 (270)
-    fit_to_screen(m_screenshot);
-
-    const Result<ImTextureRef>& r =
-        CreateTexture(m_texture_id._TexID, m_screenshot.view(), m_screenshot.w, m_screenshot.h);
-    TRY_MSG(r, "Failed to recreate texture after crop: {}");
-    m_texture_id = r.get();
-
-    UpdateWindowBg();  // re-center for the new size
-
-    return Ok();
 }
 
 // ------------------------------
@@ -658,8 +660,7 @@ capture_result_t ScreenshotTool::GetFinalImage()
 
 bool ScreenshotTool::CanReadFinalImage() const
 {
-    return m_state != ToolState::Idle && !m_screenshot.data.empty() &&
-           !m_show_window.Has(SubWindow::OutputMenuSelection);
+    return m_state != ToolState::Idle && !m_screenshot.data.empty();
 }
 
 region_t ScreenshotTool::GetActiveRegion() const

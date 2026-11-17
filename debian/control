@@ -7,7 +7,6 @@ Build-Depends:
  cmake,
  pkg-config,
  libx11-dev,
- libxrandr-dev,
  libglib2.0-dev,
  libgtk-3-dev,
  libfontconfig-dev,
@@ -17,9 +16,7 @@ Build-Depends:
  libzbar-dev,
  zlib1g-dev,
  libayatana-appindicator3-dev,
- libwayland-dev,
- libwayland-bin,
- wayland-protocols
+ libwayland-dev
 Standards-Version: 4.6.2
 Homepage: https://github.com/Toni500github/oshot
 

@@ -616,10 +616,8 @@ jobs:
               libappindicator \
               dbus \
               libX11 \
-              libXrandr \
               mesa-libs \
-              wayland \
-              wayland-protocols
+              wayland
           run: |
             set -e
             git config --global --add safe.directory '*'

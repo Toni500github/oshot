@@ -25,6 +25,8 @@
 
 #include "cli.hpp"
 
+#include <SDL3/SDL_init.h>
+
 #include <algorithm>
 #include <charconv>
 #include <chrono>
@@ -267,7 +269,22 @@ int run_without_overlay()
     {
         if (g_config->File.delay > 0)
             std::this_thread::sleep_for(std::chrono::milliseconds(g_config->File.delay));
-        loaded = capture_full_screen(get_session_type());
+
+        // X11 captures and crops to the monitor under the cursor, which only SDL knows here. Wayland
+        // keeps every monitor, as it can't tell the cursor's and slurp's --selection is in desktop coordinates
+        const SessionType session = get_session_type();
+        const bool        sdl     = !is_wayland_session(session) && SDL_InitSubSystem(SDL_INIT_VIDEO);
+        loaded                    = capture_full_screen(session);
+        if (sdl && loaded.ok() && loaded.get().whole_desktop)
+        {
+            Result<capture_result_t> cropped = crop_to_display(loaded.get(), get_display_at_cursor());
+            if (cropped.ok())
+                loaded = std::move(cropped);
+            else
+                spdlog::warn("Keeping every monitor: {}", cropped.error_v());
+        }
+        if (sdl)
+            SDL_QuitSubSystem(SDL_INIT_VIDEO);
     }
 
     if (!loaded.ok())

@@ -26,11 +26,11 @@
 #ifndef _SCREEN_CAPTURE_HPP_
 #define _SCREEN_CAPTURE_HPP_
 
-#include <array>
+#include <SDL3/SDL_video.h>
+
 #include <cstdint>
 #include <deque>
 #include <span>
-#include <string_view>
 #include <vector>
 
 #include "platform.hpp"
@@ -53,27 +53,11 @@ struct capture_result_t
     int                  w = 0;
     int                  h = 0;
 
+    // Every monitor (grim, the portal), to be cropped with crop_to_display()
+    bool whole_desktop = false;
+
     [[nodiscard]] std::span<const uint8_t> view() const { return data; }
     std::span<uint8_t>                     view() { return data; }
-};
-
-// A Wayland output, from wl_get_monitors()
-struct monitor_t
-{
-    // The output's name, e.g. "DP-1"
-    std::array<char, 64> name;
-
-    // Logical position and size in the compositor's space
-    region_t geo;
-
-    // The compositor sent all of the output's properties
-    bool done;
-
-    // struct wl_output*
-    void* handle = nullptr;
-
-    // WL_OUTPUT_TRANSFORM_* value
-    int32_t transform = 0;
 };
 
 // Which capture backend to use, from get_session_type()
@@ -108,6 +92,16 @@ SessionType get_session_type();
 bool kde_on_wayland();
 #endif
 
+// Whether the session is Wayland, KDE's included
+bool is_wayland_session(SessionType session);
+
+/**
+ * The display under the cursor, or the primary one if SDL can't tell.
+ * Wayland has no global cursor position, so there it's always the primary one.
+ * SDL's video subsystem must be initialized
+ **/
+SDL_DisplayID get_display_at_cursor();
+
 // ------------------------------
 // Image operations
 // ------------------------------
@@ -131,25 +125,16 @@ Result<capture_result_t> crop_to_monitor(const capture_result_t&     full,
                                          const region_t&             target);
 
 /**
- * Rotate an image by a multiple of 90 degrees clockwise.
- * Used for rotated Wayland outputs, whose content the compositor's capture doesn't rotate
- * @param src The image
- * @param quarter_turns_cw How many quarter turns (1 = 90, 2 = 180, 3 = 270)
+ * crop_to_monitor() with SDL's display layout.
+ * SDL's video subsystem must be initialized
+ * @param full The capture of the whole desktop
+ * @param display The display to crop out
  **/
-capture_result_t rotate_rgba(const capture_result_t& src, const int quarter_turns_cw);
+Result<capture_result_t> crop_to_display(const capture_result_t& full, SDL_DisplayID display);
 
 /**
  * Parse a region from --selection
  * @param str "WxH+X+Y" (X11 geometry, slop) or "X,Y WxH" (slurp)
  **/
 Result<region_t> parse_region(const char* str);
-
-#if OSHOT_FREEDESKTOP
-/**
- * List the Wayland outputs with their logical geometry (xdg-output)
- * @return The outputs, empty if there's no Wayland display
- **/
-std::deque<monitor_t> wl_get_monitors();
-#endif
-
 #endif  // !_SCREEN_CAPTURE_HPP_

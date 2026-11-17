@@ -116,18 +116,6 @@ static void* dialog_parent_()
     return nullptr;
 }
 
-// The display under the cursor, or the primary one if SDL can't tell. Wayland has no global
-// cursor position, so there it's the display at (0, 0), and the compositor picks the output anyway
-static SDL_DisplayID get_monitor_at_cursor()
-{
-    float x = 0.0f, y = 0.0f;
-    SDL_GetGlobalMouseState(&x, &y);
-
-    const SDL_Point     cursor{ .x = int(x), .y = int(y) };
-    const SDL_DisplayID display = SDL_GetDisplayForPoint(&cursor);
-    return display ? display : SDL_GetPrimaryDisplay();
-}
-
 int run_main_tool()
 {
     SDL_Window*   window   = nullptr;
@@ -281,11 +269,9 @@ int run_main_tool()
             return fail("Failed to start capture: {}", started.error_v());
     }
 
-    // Window sizes are in screen units (points on macOS and scaled Wayland outputs), the mode in pixels
-    const SDL_DisplayID    display = get_monitor_at_cursor();
-    const SDL_DisplayMode* mode    = SDL_GetDesktopDisplayMode(display);
-    SDL_Rect               bounds{};
-    if (!mode || !SDL_GetDisplayBounds(display, &bounds))
+    // Window sizes are in screen units (points on macOS and scaled Wayland outputs)
+    SDL_Rect bounds{};
+    if (!SDL_GetDisplayBounds(get_display_at_cursor(), &bounds))
         return fail("Failed to get the display's size: {}", SDL_GetError());
 
     // ImGui draws without depth or stencil tests. SDL asks OpenGL for a depth buffer as
@@ -311,8 +297,13 @@ int run_main_tool()
 
     const SDL_PropertiesID props = SDL_CreateProperties();
     SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "oshot");
-    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_X_NUMBER, bounds.x);
-    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, bounds.y);
+    // With a position SDL asks Wayland for that output, which there is only the primary one.
+    // Without one the compositor picks (the focused output), and the event loop crops to it
+    if (!on_wayland())
+    {
+        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_X_NUMBER, bounds.x);
+        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, bounds.y);
+    }
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, bounds.w);
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, bounds.h);
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, Sint64(flags));
@@ -338,8 +329,18 @@ int run_main_tool()
     // (scaled Wayland outputs, Retina), and fit_to_screen() shrinks images to the display's pixels
     g_ss_tool.SetWindow(window);
     g_ss_tool.SetFullResolutionImage(true);
-    g_scr_w = int(std::lround(float(mode->w) * mode->pixel_density));
-    g_scr_h = int(std::lround(float(mode->h) * mode->pixel_density));
+    const auto use_display = [](const SDL_DisplayID id, const bool keep_desktop) {
+        if (const SDL_DisplayMode* m = SDL_GetDesktopDisplayMode(id))
+        {
+            g_scr_w = int(std::lround(float(m->w) * m->pixel_density));
+            g_scr_h = int(std::lround(float(m->h) * m->pixel_density));
+        }
+        MUST_OK(g_ss_tool.CropAndUseDisplay(id, keep_desktop), spdlog::warn("{}", _r.error_v()));
+    };
+    // SDL sends a display change only from this display on
+    const SDL_DisplayID first_display = SDL_GetDisplayForWindow(window);
+    use_display(first_display, on_wayland());
+    bool placed = !on_wayland();
 
     SDL_ShowWindow(window);
     SDL_RaiseWindow(window);
@@ -397,6 +398,18 @@ int run_main_tool()
                 close = true;
             else if (event.type == SDL_EVENT_DROP_FILE && event.drop.data)
                 g_dropped_paths.emplace_back(event.drop.data);
+            else if (event.type == SDL_EVENT_WINDOW_DISPLAY_CHANGED)
+            {
+                placed = true;
+                use_display(SDL_DisplayID(event.window.data1), false);
+            }
+            // A click after no display change means the compositor kept the first display. Not a key,
+            // since SDL reports the modifiers still held from the shortcut when the overlay gets the keyboard
+            else if (!placed && event.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+            {
+                placed = true;
+                use_display(first_display, false);
+            }
         }
         if (close)
             break;

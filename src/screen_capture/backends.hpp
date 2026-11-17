@@ -28,7 +28,6 @@
 
 // The capture backends, shared by the src/screen_capture/ files. CMake builds only the current platform's ones
 
-#include <optional>
 #include <string>
 
 #include "platform.hpp"
@@ -36,18 +35,15 @@
 #include "util/result.hpp"
 
 #if OSHOT_FREEDESKTOP
-// Xlib's own typedef, so this header doesn't pull in Xlib and its macros
-typedef struct _XDisplay Display;  // NOLINT
-
 /**
- * Capture the monitor under the cursor with XGetImage() + XRandR.
+ * Capture the monitor under the cursor with XGetImage().
  * Falls back to the xdg-desktop-portal
  **/
 Result<capture_result_t> capture_full_screen_x11();
 
 /**
- * Capture the whole desktop through the xdg-desktop-portal,
- * falling back to `grim` (wlroots compositors)
+ * Capture the whole desktop with `grim` where the compositor has a screencopy protocol,
+ * else through the xdg-desktop-portal
  **/
 Result<capture_result_t> capture_full_screen_wayland();
 
@@ -73,17 +69,9 @@ Result<capture_result_t> capture_full_screen_kwin();
 Result<capture_result_t> capture_full_screen_spectacle();
 
 /**
- * Capture through the xdg-desktop-portal's Screenshot interface, cropped to the monitor under the cursor
- * when XRandR can tell which one that is
+ * Capture the whole desktop through the xdg-desktop-portal's Screenshot interface
  **/
 Result<capture_result_t> capture_full_screen_portal();
-
-/**
- * The geometry of the monitor under the cursor from XRandR (X11 or XWayland)
- * @param display An open display, or nullptr to open $DISPLAY for the query
- * @return nullopt without an X server
- **/
-std::optional<region_t> get_cursor_monitor_xrandr(Display* display);
 #endif
 
 #if OSHOT_WINDOWS

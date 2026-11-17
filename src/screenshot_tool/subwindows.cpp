@@ -24,7 +24,6 @@
  */
 
 #include <algorithm>
-#include <array>
 #include <cfloat>
 #include <chrono>
 #include <cmath>
@@ -509,71 +508,4 @@ void ScreenshotTool::DrawLogsWindow()
     ImGui::End();
 
     m_show_window.Set(SubWindow::Logs, open);
-}
-
-void ScreenshotTool::DrawOutputMenuSelection()
-{
-#if OSHOT_FREEDESKTOP
-    if (!m_show_window.Has(SubWindow::OutputMenuSelection))
-        return;
-
-    static int output_sel = 0;
-    static int trans_sel  = 0;
-
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 14));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 10));
-
-    static ImVec2 menu_display;
-    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), center_cond(menu_display), ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSizeConstraints(font_relative(25, 0), font_relative(40, 37));
-    ImGui::Begin(_("Choose an output to capture###select_output_crop"),
-                 nullptr,
-                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize);
-
-    std::deque<region_t> layout;
-
-    for (size_t i = 0; i < m_wayland_monitors.size(); ++i)
-    {
-        const monitor_t& m = m_wayland_monitors[i];
-        layout.push_back(m.geo);
-
-        ImGui::PushID(int(i));
-        ImGui::RadioButton(
-            fmt::format("{} ({}x{})", m.name[0] ? m.name.data() : _("Unknown"), m.geo.w, m.geo.h).c_str(),
-            &output_sel,
-            int(i));
-        ImGui::PopID();
-    }
-
-    output_sel              = layout.empty() ? 0 : std::clamp(output_sel, 0, static_cast<int>(layout.size()) - 1);
-    const monitor_t& target = m_wayland_monitors[output_sel];
-
-    ImGui::Spacing();
-    ImGui::TextDisabled(_("Detected transform: %d"), target.transform);
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    const auto rotations =
-        std::to_array({ _("No Rotation"), _("Left Rotation"), _("Down Rotation"), _("Right Rotation") });
-    ImGui::Combo("##rotate_combo", &trans_sel, rotations.data(), int(rotations.size()));
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("%s",
-                          _("Overrides the auto-detected output rotation for this crop.\n"
-                            "Should normally stay \"No Rotation\"."));
-
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    const float button_width = ImGui::GetContentRegionAvail().x;
-    ImGui::BeginDisabled(layout.empty());
-    if (ImGui::Button(_("Crop"), ImVec2(button_width, 0)))
-    {
-        m_show_window.Clear(SubWindow::OutputMenuSelection);
-        MUST_OK(g_ss_tool.CropToOutput(layout, target, trans_sel),
-                dialog::error("Crop to focused monitor failed: {}", _r.error_v()));
-    }
-    ImGui::EndDisabled();
-
-    ImGui::End();
-    ImGui::PopStyleVar(2);
-#endif
 }

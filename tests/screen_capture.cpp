@@ -215,39 +215,3 @@ TEST_CASE("crop_to_monitor()", "[capture][crop]")
         CHECK_FALSE(crop_to_monitor(full, monitors, { .x = 200, .y = 0, .w = 100, .h = 100 }).ok());
     }
 }
-
-TEST_CASE("rotate_rgba()", "[capture][rotate]")
-{
-    const capture_result_t img = make_image(3, 2);
-
-    SECTION("90 degrees clockwise")
-    {
-        const capture_result_t r = rotate_rgba(img, 1);
-        REQUIRE(r.w == 2);
-        REQUIRE(r.h == 3);
-        // The bottom left corner goes to the top left
-        CHECK(source_of(r, 0, 0) == point_t{ 0, 1 });
-        CHECK(source_of(r, 1, 0) == point_t{ 0, 0 });
-        CHECK(source_of(r, 1, 2) == point_t{ 2, 0 });
-    }
-
-    SECTION("180 and 270 degrees")
-    {
-        const capture_result_t r180 = rotate_rgba(img, 2);
-        REQUIRE(r180.w == 3);
-        CHECK(source_of(r180, 0, 0) == point_t{ 2, 1 });
-
-        const capture_result_t r270 = rotate_rgba(img, 3);
-        REQUIRE(r270.w == 2);
-        CHECK(source_of(r270, 0, 0) == point_t{ 2, 0 });
-    }
-
-    SECTION("Turns wrap around")
-    {
-        CHECK(rotate_rgba(img, 0).data == img.data);
-        CHECK(rotate_rgba(img, 4).data == img.data);
-        CHECK(rotate_rgba(img, -1).data == rotate_rgba(img, 3).data);
-        CHECK(rotate_rgba(rotate_rgba(img, 1), 3).data == img.data);
-        CHECK(rotate_rgba(rotate_rgba(img, 2), 2).data == img.data);
-    }
-}

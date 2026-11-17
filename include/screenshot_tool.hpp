@@ -155,7 +155,6 @@ enum class SubWindow : std::uint8_t
     ManagePlugins,
     BrowsePlugins,
     Logs,
-    OutputMenuSelection,
     COUNT
 };
 
@@ -467,9 +466,9 @@ public:
     // Shows an error dialog on failure
     bool OpenImage(const std::string& path);
 
-    // Crops the whole-desktop screenshot to the Wayland output picked in
-    // DrawOutputMenuSelection(), and undoes the output's rotation (`transform`, 0-3 quarter turns)
-    Result<> CropToOutput(const std::deque<region_t>& layout, const monitor_t& target, int transform = 0);
+    // Crops a whole-desktop capture to the overlay's display. With keep_desktop the desktop stays
+    // for another call, since Wayland only tells which output the overlay is on once it's mapped
+    Result<> CropAndUseDisplay(SDL_DisplayID display, bool keep_desktop);
 
     // ------------------------------
     // Backend setters
@@ -649,16 +648,13 @@ private:
     // ------------------------------
     // Screenshot
     // ------------------------------
-    // The whole-desktop capture at full resolution while the output picker is
-    // open, so the chosen monitor is cropped from it and not from the shrunk copy
-    capture_result_t m_uncropped;
-
     // Where the screenshot is drawn (centered), in screen units. See UpdateWindowBg()
     ImVec2 m_image_origin;
     ImVec2 m_image_end;
 
-    // Outputs for the output picker (Wayland)
-    std::deque<monitor_t> m_wayland_monitors;
+    // The whole-desktop capture while CropAndUseDisplay() may still pick another display
+    capture_result_t m_desktop;
+    SDL_DisplayID    m_desktop_crop = 0;
 
     capture_result_t m_screenshot;
     ImTextureRef     m_texture_id;
@@ -912,7 +908,6 @@ private:
     void DrawPreferencesWindow();
     void DrawDownloadOCRWindow();
     void DrawLogsWindow();
-    void DrawOutputMenuSelection();
 
 #ifndef DISABLE_PLUGINS
     // ------------------------------

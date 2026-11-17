@@ -27,12 +27,10 @@
 #include <unistd.h>
 #include <wayland-client.h>
 
-#include <algorithm>
 #include <climits>
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -119,8 +117,9 @@ Result<capture_result_t> capture_full_screen_wayland()
     if (!rgba)
         return Err("Failed to read PPM data: {}", STBI_ERROR);
 
-    result.w = w;
-    result.h = h;
+    result.w             = w;
+    result.h             = h;
+    result.whole_desktop = true;
     result.data.assign(rgba, rgba + (size_t(w) * h * 4));
     stbi_image_free(rgba);
 
@@ -316,38 +315,6 @@ Result<capture_result_t> capture_full_screen_portal()
     // Delete it now that we have the pixels in memory.
     unlink(st.png_path.c_str());
 
-    // The portal always captures the full virtual desktop on multi-monitor
-    // setups. Crop down to the monitor that contains the cursor.
-    // XRandR works on native X11 and on KDE/GNOME Wayland via XWayland.
-    std::optional<region_t> op_mon = get_cursor_monitor_xrandr(nullptr);
-    if (op_mon && (st.cap.w > op_mon->w || st.cap.h > op_mon->h))
-    {
-        region_t m = *op_mon;
-        debug("Portal: got monitor with xrandr at cursor position");
-        debug("Portal: cropping {}x{} capture to monitor {}x{}+{}+{}", st.cap.w, st.cap.h, m.w, m.h, m.x, m.y);
-
-        const int x0    = std::max(0, m.x);
-        const int y0    = std::max(0, m.y);
-        const int x1    = std::min(st.cap.w, m.x + m.w);
-        const int y1    = std::min(st.cap.h, m.y + m.h);
-        const int new_w = x1 - x0;
-        const int new_h = y1 - y0;
-
-        if (new_w > 0 && new_h > 0)
-        {
-            const int            src_stride = st.cap.w;
-            std::vector<uint8_t> cropped(size_t(new_w) * new_h * 4);
-            for (int row = 0; row < new_h; ++row)
-            {
-                const uint8_t* src = st.cap.data.data() + (size_t(y0 + row) * src_stride + x0) * 4;
-                uint8_t*       dst = cropped.data() + size_t(row) * new_w * 4;
-                std::memcpy(dst, src, size_t(new_w) * 4);
-            }
-            st.cap.data = std::move(cropped);
-            st.cap.w    = new_w;
-            st.cap.h    = new_h;
-        }
-    }
-
+    st.cap.whole_desktop = true;
     return Ok(std::move(st.cap));
 }

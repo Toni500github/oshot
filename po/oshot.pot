@@ -1115,43 +1115,8 @@ msgstr ""
 msgid "Copy line"
 msgstr ""
 
-#: src/screenshot_tool.cpp:5069
-msgid "Choose an output to capture"
-msgstr ""
-
 #: src/screenshot_tool.cpp:5082
 msgid "Unknown"
-msgstr ""
-
-#: src/screenshot_tool.cpp:5092
-#, c-format
-msgid "Detected transform: %d"
-msgstr ""
-
-#: src/screenshot_tool.cpp:5095
-msgid "No Rotation"
-msgstr ""
-
-#: src/screenshot_tool.cpp:5095
-msgid "Left Rotation"
-msgstr ""
-
-#: src/screenshot_tool.cpp:5095
-msgid "Down Rotation"
-msgstr ""
-
-#: src/screenshot_tool.cpp:5095
-msgid "Right Rotation"
-msgstr ""
-
-#: src/screenshot_tool.cpp:5099
-msgid ""
-"Overrides the auto-detected output rotation for this crop.\n"
-"Should normally stay \"No Rotation\"."
-msgstr ""
-
-#: src/screenshot_tool.cpp:5108
-msgid "Crop"
 msgstr ""
 
 #: src/screenshot_tool.cpp:5152

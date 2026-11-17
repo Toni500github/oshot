@@ -41,7 +41,6 @@
             ninja
             pkg-config
             wrapGAppsHook3
-            wayland-scanner
           ];
 
           buildInputs = with pkgs; [
@@ -55,14 +54,12 @@
 
             libx11
             libxcb
-            libxrandr
             glib
             gtk3
             fontconfig
             (ayatanaAppindicator pkgs)
             dbus
             wayland
-            wayland-protocols
 
             systemd
             libarchive

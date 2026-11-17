@@ -24,7 +24,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
+set(CMAKE_COLOR_DIAGNOSTICS ON)
 include(GNUInstallDirs)
 
 #add_compile_options($<$<CONFIG:Debug>:-fsanitize=address>)
@@ -190,21 +190,12 @@ if(UNIX AND NOT APPLE)
         )
     endif()
     pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0)
-    pkg_check_modules(XRANDR REQUIRED IMPORTED_TARGET xrandr)
     pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
     pkg_check_modules(DBUS REQUIRED IMPORTED_TARGET dbus-1)
     # For a UI font covering the language's script
     # (util.cpp, find_language_fonts())
     pkg_check_modules(FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
-    pkg_check_modules(
-        WAYLAND
-        REQUIRED
-        IMPORTED_TARGET
-        wayland-client
-        wayland-server
-        wayland-egl
-        wayland-cursor
-    )
+    pkg_check_modules(WAYLAND REQUIRED IMPORTED_TARGET wayland-client)
 elseif(APPLE)
     find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
 endif()
@@ -246,45 +237,6 @@ add_custom_command(
         ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_translations.cmake
     COMMENT "Embedding translations"
 )
-
-# The Wayland xdg-output protocol, for the monitors' logical geometry
-if(UNIX AND NOT APPLE)
-    set(PROTOCOL_BASE_NAME xdg-output-unstable-v1)
-    set(PROTOCOL_HEADER
-        ${CMAKE_SOURCE_DIR}/include/${PROTOCOL_BASE_NAME}-client-protocol.h
-    )
-    set(PROTOCOL_SOURCE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/${PROTOCOL_BASE_NAME}-protocol.c
-    )
-
-    pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
-    pkg_get_variable(WAYLAND_SCANNER wayland-scanner wayland_scanner)
-    set(XDG_OUTPUT_XML
-        "${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-output/${PROTOCOL_BASE_NAME}.xml"
-    )
-
-    add_custom_command(
-        OUTPUT ${PROTOCOL_HEADER}
-        COMMAND
-            ${WAYLAND_SCANNER} client-header ${XDG_OUTPUT_XML}
-            ${PROTOCOL_HEADER}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        DEPENDS ${XDG_OUTPUT_XML}
-        COMMENT "Generating Wayland ${PROTOCOL_BASE_NAME} header"
-    )
-    add_custom_command(
-        OUTPUT ${PROTOCOL_SOURCE}
-        COMMAND
-            ${WAYLAND_SCANNER} private-code ${XDG_OUTPUT_XML} ${PROTOCOL_SOURCE}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        DEPENDS ${XDG_OUTPUT_XML}
-        COMMENT "Generating Wayland ${PROTOCOL_BASE_NAME} private code"
-    )
-    add_custom_target(
-        generate_protocol
-        DEPENDS ${PROTOCOL_HEADER} ${PROTOCOL_SOURCE}
-    )
-endif()
 
 # =============================================================================
 # rpath
@@ -618,9 +570,7 @@ if(UNIX AND NOT APPLE)
         APPEND OSHOT_COMMON_SOURCES
         src/screen_capture/kde.cpp
         src/screen_capture/wayland.cpp
-        src/screen_capture/wayland_outputs.cpp
         src/screen_capture/x11.cpp
-        ${PROTOCOL_SOURCE}
     )
 elseif(APPLE)
     list(APPEND OSHOT_COMMON_SOURCES src/screen_capture/macos.cpp)
@@ -685,11 +635,9 @@ else()
             X11::X11
             PkgConfig::GTK
             PkgConfig::GIO
-            PkgConfig::XRANDR
             PkgConfig::WAYLAND
             PkgConfig::FONTCONFIG
     )
-    add_dependencies(oshot_common generate_protocol)
 endif()
 
 # i18n.cpp parses the translations with tinygettext

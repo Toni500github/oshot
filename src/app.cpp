@@ -27,7 +27,6 @@
 
 #include <SDL3/SDL_init.h>
 
-#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>

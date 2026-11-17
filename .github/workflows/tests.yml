@@ -61,10 +61,8 @@ jobs:
             tesseract-data-jpn \
             zbar \
             libayatana-appindicator \
-            wayland-protocols \
             wayland \
-            libxkbcommon \
-            libxrandr
+            libxkbcommon
 
       - name: Build tests
         run: |

@@ -294,7 +294,7 @@ Requires a C++20 compiler.
 
 **All platforms:** `SDL3` (3.2 or newer), `tesseract`, `leptonica`, `zbar`
 
-**Linux / BSD extras:** `libx11`, `libxrandr`, `gio-2.0`, `gtk+-3.0`, `dbus-1`, `fontconfig`, `libappindicator3` / `ayatana-appindicator3`, `wayland`, `wayland-protocols`
+**Linux / BSD extras:** `libx11`, `gio-2.0`, `gtk+-3.0`, `dbus-1`, `fontconfig`, `libappindicator3` / `ayatana-appindicator3`, `wayland`
 
 **macOS frameworks:** `Cocoa`, `CoreGraphics`, `IOKit`, `Carbon`, `UserNotifications`
 
@@ -308,12 +308,12 @@ Requires a C++20 compiler.
 ```bash
 sudo apt-get install -y \
   build-essential pkg-config cmake \
-  libx11-dev libxrandr-dev \
+  libx11-dev \
   libsdl3-dev \
   libtesseract-dev libleptonica-dev \
   libzbar-dev \
   libgtk-3-dev libdbus-1-dev libfontconfig-dev libayatana-appindicator3-dev \
-  libwayland-dev libwayland-bin wayland-protocols
+  libwayland-dev
 ```
 
 #### Arch Linux
@@ -321,12 +321,12 @@ sudo apt-get install -y \
 ```bash
 sudo pacman -S --needed \
   base-devel cmake \
-  libx11 libxrandr \
+  libx11 \
   sdl3 \
   tesseract leptonica \
   zbar \
   gtk3 libayatana-appindicator \
-  wayland wayland-protocols
+  wayland
 ```
 
 #### FreeBSD
@@ -334,7 +334,7 @@ sudo pacman -S --needed \
 ```bash
 pkg install git cmake pkgconf gmake \
   sdl3 tesseract zbar gtk3 libappindicator dbus \
-  libX11 libXrandr mesa-libs wayland wayland-protocols
+  libX11 mesa-libs wayland
 ```
 
 Other BSDs need the same libraries from their ports. FreeBSD is built in CI; the others aren't tested, so please report build errors.

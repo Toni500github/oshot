@@ -55,21 +55,12 @@
 #  include <thread>
 #endif
 
-static bool wayland_clipboard(SessionType session)
-{
-#if OSHOT_FREEDESKTOP
-    return session == SessionType::Wayland || (session == SessionType::KDE && kde_on_wayland());
-#else
-    return false;
-#endif
-}
-
 // Starts wl-copy/xclip in the background and returns the write end of its stdin pipe.
 // The one started before exits by itself once this one takes the selection
 Result<int> start_linux_copy(SessionType session, const std::string& mime_type)
 {
 #if OSHOT_FREEDESKTOP
-    const bool  wayland = wayland_clipboard(session);
+    const bool  wayland = is_wayland_session(session);
     const char* tool    = wayland ? "wl-copy" : "xclip";
     if (which(tool) == UNKNOWN)
         return Err("{} not found in PATH, please install it to enable clipboard support", tool);
@@ -124,7 +115,7 @@ Result<> Clipboard::CopyText(const std::string& text)
 {
     if (m_session != SessionType::Windows && m_session != SessionType::MacOS)
     {
-        const char*        mime = wayland_clipboard(m_session) ? "text/plain;charset=utf-8" : "UTF8_STRING";
+        const char*        mime = is_wayland_session(m_session) ? "text/plain;charset=utf-8" : "UTF8_STRING";
         const Result<int>& res  = start_linux_copy(m_session, mime);
         TRY(res);
 

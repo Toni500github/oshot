@@ -23,14 +23,12 @@
  *
  */
 
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_video.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-#include <X11/extensions/Xrandr.h>
 
-#include <algorithm>
 #include <cstdint>
-#include <cstdlib>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -45,64 +43,6 @@ using namespace spdlog;
 // ------------------------------
 // X11
 // ------------------------------
-
-// The geometry of the monitor under the cursor from XRandR (X11 or XWayland), nullopt without an X server
-std::optional<region_t> get_cursor_monitor_xrandr(Display* display)
-{
-    const char* disp_env = std::getenv("DISPLAY");
-    if (!disp_env || disp_env[0] == '\0')
-        return std::nullopt;
-
-    Display* dpy = display ? display : XOpenDisplay(disp_env);
-    if (!dpy)
-        return std::nullopt;
-
-    Window       root = DefaultRootWindow(dpy);
-    Window       root_ret, child_ret;
-    int          root_x = 0, root_y = 0, win_x = 0, win_y = 0;
-    unsigned int mask = 0;
-    XQueryPointer(dpy, root, &root_ret, &child_ret, &root_x, &root_y, &win_x, &win_y, &mask);
-
-    int             nmon     = 0;
-    XRRMonitorInfo* monitors = XRRGetMonitors(dpy, root, True, &nmon);
-
-    region_t mon_size;
-    bool     found = false;
-    if (monitors && nmon > 0)
-    {
-        // Default to first monitor in case the cursor position is ambiguous
-        mon_size.x = monitors[0].x;
-        mon_size.y = monitors[0].y;
-        mon_size.w = monitors[0].width;
-        mon_size.h = monitors[0].height;
-        found      = true;
-
-        debug("Found {} monitor{}", nmon, nmon > 1 ? "s" : "");
-        for (int i = 0; i < nmon; ++i)
-        {
-            debug("Iterating monitor #{}", i);
-            const int mx = monitors[i].x, my = monitors[i].y;
-            const int mw = monitors[i].width, mh = monitors[i].height;
-            if (root_x >= mx && root_x < mx + mw && root_y >= my && root_y < my + mh)
-            {
-                mon_size.x = mx;
-                mon_size.y = my;
-                mon_size.w = mw;
-                mon_size.h = mh;
-                debug("XRandR capturing: monitor {}x{}+{}+{} (cursor at {},{}) ", mw, mh, mx, my, root_x, root_y);
-                break;
-            }
-        }
-        XRRFreeMonitors(monitors);
-    }
-
-    if (!display)
-        XCloseDisplay(dpy);
-
-    if (found)
-        return mon_size;
-    return std::nullopt;
-}
 
 static std::vector<uint8_t> ximage_to_rgba(XImage* image, int width, int height)
 {
@@ -156,15 +96,15 @@ Result<capture_result_t> capture_full_screen_x11()
 
     Window root = DefaultRootWindow(display);
 
-    region_t capture{ .x = 0 };
-    if (std::optional<region_t> op_capture = get_cursor_monitor_xrandr(display))
+    region_t capture;
+    SDL_Rect bounds{};
+    if (SDL_GetDisplayBounds(get_display_at_cursor(), &bounds))
     {
-        capture = *op_capture;
+        capture = { .x = bounds.x, .y = bounds.y, .w = bounds.w, .h = bounds.h };
     }
     else
     {
-        // Fall back to root window dimensions (old single-monitor behavior)
-        spdlog::warn("XRandR returned no monitors, falling back to root window size");
+        spdlog::warn("Failed to get the monitor under the cursor, capturing the root window: {}", SDL_GetError());
         XWindowAttributes attrs;
         XGetWindowAttributes(display, root, &attrs);
         capture.w = attrs.width;
