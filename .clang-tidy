@@ -11,3 +11,5 @@ Checks: >
   -bugprone-signed-bitwise,
 WarningsAsErrors: ''
 HeaderFilterRegex: '.*'
+# Generated image data, and the plugin ABI, which is C
+ExcludeHeaderFilterRegex: '(tool_icons|oshot_png|tray_icon_png|oshot_plugin)\.h$'

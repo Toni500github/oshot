@@ -34,6 +34,7 @@
 #include <memory>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include "cache.hpp"
@@ -154,7 +155,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     return oshot_main(int(args.size()), argv.data());
 }
 #else
-// Not caught on purpose, since with the tray running there's nothing to unwind to
+// NOLINTNEXTLINE(bugprone-exception-escape): not caught on purpose, since with the tray running there's nothing to unwind to
 int main(int argc, char* argv[])
 {
     return oshot_main(argc, argv);
@@ -219,7 +220,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     // Registered only now that spdlog's registry exists. Exit handlers run in reverse order, so it
     // still exists in exit_handler_nc()
     atexit(exit_handler_nc);
-    g_imgui_log_sink = imgui;
+    g_imgui_log_sink = std::move(imgui);
 
     const std::string& configDir      = get_config_dir().string();
     const std::string& cacheDir       = get_cache_dir().string();

@@ -29,6 +29,7 @@
 // Shared by the src/screenshot_tool/*.cpp files
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -236,7 +237,7 @@ inline void draw_tag(const char* label, const rgba_t col, const float line_heigh
     const ImVec2 text_size = ImGui::CalcTextSize(label);
     const ImVec2 pad(6.0f, 2.0f);
     const ImVec2 size(text_size.x + pad.x * 2, text_size.y + pad.y * 2);
-    const float  offset = IM_ROUND(std::max(line_height - size.y, 0.0f) * 0.5f);
+    const float  offset = std::round(std::max(line_height - size.y, 0.0f) * 0.5f);
     const ImVec2 p0(ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y + offset);
 
     ImDrawList* draw_list = ImGui::GetWindowDrawList();

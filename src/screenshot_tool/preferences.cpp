@@ -631,7 +631,7 @@ static void draw_preference_fonts(const bool window_just_opened)
             const std::string name = suggestions[i].filename().string();
             ImGui::PushID(int(i));
             ImGui::PushStyleColor(ImGuiCol_Header, selection_color);
-            if (ImGui::Selectable(name.c_str(), highlighted == int(i)))
+            if (ImGui::Selectable(name.c_str(), std::cmp_equal(highlighted, i)))
                 add_font(name);
             ImGui::PopStyleColor();
             ImGui::SetItemTooltip("%s", suggestions[i].string().c_str());

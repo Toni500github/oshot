@@ -1033,7 +1033,7 @@ static void read_busy_text(OcrEnginePool&            engines,
 
 Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
 {
-    if (!m_initialized)
+    if (!m_initialized || !m_config)
         return Err("Initialize the engine first");
 
     if (cap.view().empty() || cap.w <= 0 || cap.h <= 0)

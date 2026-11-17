@@ -104,12 +104,12 @@ static void draw_output_hint(const char* hint, const ImVec2& size)
     draw_list->AddRectFilled(
         min, ImVec2(min.x + size.x, min.y + size.y), ImGui::GetColorU32(ImGuiCol_FrameBg), style.FrameRounding);
 
-    float y = IM_ROUND(min.y + (size.y - font_size * float(lines.size())) * 0.5f);
+    float y = std::round(min.y + (size.y - font_size * float(lines.size())) * 0.5f);
     for (const std::string_view line : lines)
     {
         const float w = ImGui::CalcTextSize(line.data(), line.data() + line.size()).x;
         draw_list->AddText(
-            ImVec2(IM_ROUND(min.x + (size.x - w) * 0.5f), y), col, line.data(), line.data() + line.size());
+            ImVec2(std::round(min.x + (size.x - w) * 0.5f), y), col, line.data(), line.data() + line.size());
         y += font_size;
     }
     ImGui::Dummy(size);
@@ -1003,13 +1003,13 @@ void ScreenshotTool::DrawOcrTools()
             // --- Layout combo ---
             // The layouts Tesseract can assume, as in Edit > Optimize OCR for...
             form_row(_("Layout"), _("How the text is laid out. Automatic tries a few and keeps the best"));
-            const std::pair<int, const char*> layouts[] = {
+            const auto  layouts = std::to_array<std::pair<int, const char*>>({
                 { 0, _("Automatic") },
                 { tesseract::PSM_SINGLE_WORD, _("Single Word") },
                 { tesseract::PSM_SINGLE_LINE, _("Single Line") },
                 { tesseract::PSM_SINGLE_BLOCK, _("Paragraph") },
                 { tesseract::PSM_AUTO, _("Automatic (Layout)") },
-            };
+            });
             int&        psm     = g_config->Runtime.preferred_psm;
             const char* preview = layouts[0].second;
             for (const auto& [value, label] : layouts)
@@ -1149,7 +1149,7 @@ void ScreenshotTool::DrawBarcodeTable(float height)
                          ImVec2(ImGui::GetContentRegionAvail().x, height));
         return;
     }
-    if (m_selected_code >= int(m_code_rows.size()))
+    if (std::cmp_greater_equal(m_selected_code, m_code_rows.size()))
         m_selected_code = -1;
 
     // --- Filter, once the list gets long ---
@@ -1290,7 +1290,7 @@ void ScreenshotTool::DrawBarcodeTable(float height)
                 // The whole row can be clicked, under its tag, text and button. The selected one is tinted with
                 // the accent, so it stands out from the row colors
                 const ImVec2 cell        = ImGui::GetCursorPos();
-                const bool   is_selected = m_selected_code == int(i);
+                const bool   is_selected = std::cmp_equal(m_selected_code, i);
                 ImVec4       accent      = ImGui::GetStyleColorVec4(ImGuiCol_Button);
                 accent.w *= 0.35f;
                 ImGui::PushStyleColor(ImGuiCol_Header, accent);

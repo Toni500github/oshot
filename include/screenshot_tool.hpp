@@ -398,6 +398,7 @@ struct ErrorContext : public GeneralContext<Enum>
 // The overlay: selection, annotations, toolbar, text tools and the other windows.
 // Backend-agnostic: main_tool_* owns the window and the textures, and talks to it
 // through the Set* callbacks
+// NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding): one instance, and the members are grouped by topic
 class ScreenshotTool
 {
 public:

@@ -683,10 +683,16 @@ region_t ScreenshotTool::GetActiveRegion() const
 // Textures, fonts and style
 // ------------------------------
 
+// ImGui keeps the SDL_Texture* as an integer ImTextureID
+static SDL_Texture* sdl_texture(const ImTextureID id)
+{
+    return reinterpret_cast<SDL_Texture*>(intptr_t(id));  // NOLINT(performance-no-int-to-ptr)
+}
+
 Result<ImTextureRef> ScreenshotTool::CreateTexture(ImTextureID tex, std::span<const uint8_t> data, int w, int h)
 {
     if (tex)
-        SDL_DestroyTexture(reinterpret_cast<SDL_Texture*>(intptr_t(tex)));
+        SDL_DestroyTexture(sdl_texture(tex));
 
     SDL_Renderer* renderer = SDL_GetRenderer(m_window);
     if (!renderer)
@@ -718,7 +724,7 @@ void ScreenshotTool::ReleaseTextures()
 {
     const auto destroy = [](ImTextureRef& tex) {
         if (tex._TexID)
-            SDL_DestroyTexture(reinterpret_cast<SDL_Texture*>(intptr_t(tex._TexID)));
+            SDL_DestroyTexture(sdl_texture(tex._TexID));
         tex = ImTextureRef{};
     };
 
