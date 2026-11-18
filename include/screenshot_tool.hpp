@@ -114,7 +114,7 @@ enum class HandleHovered : std::uint8_t
     Move
 };
 
-// The selection's borders the toolbar buttons go on, clockwise
+// The selection's borders the toolbar buttons go on, clockwise, in the order they're filled
 enum class SelectionBorder : std::uint8_t
 {
     Bottom,
@@ -625,11 +625,25 @@ private:
     // The annotation selected for moving or resizing, in m_annotations
     annotation_t* m_current_annotation_resize = nullptr;
 
-    // Toolbar buttons on each border of the selection, from UpdateAnnsToolbarPos()
-    std::array<std::vector<ToolType>, idx(SelectionBorder::COUNT)> m_tools_borders;
+    // A row (or column) of toolbar buttons outside a border of the selection, centered on it. Ring 0 is next to
+    // the selection, each further ring one button further out
+    struct toolbar_row_t
+    {
+        SelectionBorder       border;
+        size_t                ring;
+        std::vector<ToolType> tools;
+    };
+
+    // From UpdateAnnsToolbarPos(), in the order the buttons go
+    std::vector<toolbar_row_t> m_toolbar_rows;
 
     // All the toolbar buttons fit around the selection
     bool m_fill_tools_complete{};
+
+    // The open annotation settings popup's size last frame, to place it before Begin(), and whether that was the
+    // size it had been placed with
+    ImVec2 m_ann_popup_size{};
+    bool   m_ann_popup_placed = false;
 
     std::vector<annotation_t>                      m_annotations;
     annotation_t                                   m_current_annotation;
@@ -766,6 +780,12 @@ private:
     // Spreads the toolbar buttons over the selection's borders
     void UpdateAnnsToolbarPos();
 
+    // The toolbar's buttons in order, without the Text tools one while its window is open
+    [[nodiscard]] std::vector<ToolType> GetToolbarButtons() const;
+
+    // The plugins' toolbar buttons, drawn after SaveImage in its row
+    [[nodiscard]] static size_t CountPluginToolbarButtons();
+
     // Swaps the selection's start and end so start is the top-left corner
     void NormalizeSelection(selection_info_t& sel);
 
@@ -794,7 +814,10 @@ private:
     // clickable handles match. Only for Circle/CircleFilled/CounterBubble/Text
     [[nodiscard]] ImRect GetAnnotationHandleBox(const annotation_t& ann) const;
 
-    ImVec2 GetToolButtonSize();
+    static ImVec2 GetToolButtonSize();
+
+    // How far the toolbar's ring `ring` is from the selection, horizontally and vertically
+    static ImVec2 GetToolbarRingOffset(size_t ring);
 
     // ------------------------------
     // Scans
@@ -841,6 +864,10 @@ private:
     void DrawSelectionBorder();
     void DrawAnnotationResizeBorder();
     void DrawAnnotationToolbar();
+
+    // The color, size and font of `tool`, opened by right-clicking its button (the last item), which is on the
+    // selection's `side`
+    void DrawAnnotationSettingsPopup(ToolType tool, SelectionBorder side);
     void DrawMenuItems();
     void DrawOcrTools();
     void DrawBarDecodeTools();

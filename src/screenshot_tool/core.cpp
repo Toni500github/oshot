@@ -812,51 +812,84 @@ void ScreenshotTool::UpdateWindowBg()
     // clang-format on
 }
 
+std::vector<ToolType> ScreenshotTool::GetToolbarButtons() const
+{
+    const bool            text_tools_shown = m_show_window.Has(SubWindow::MainTextTools);
+    std::vector<ToolType> tools;
+    for (size_t i = idx(ToolType::kNone) + 1; i < idx(ToolType::COUNT); ++i)
+    {
+        const auto tool = toe<ToolType>(i);
+        if (has_toolbar_button(tool) && !(text_tools_shown && tool == ToolType::ToggleTextTools))
+            tools.push_back(tool);
+    }
+    return tools;
+}
+
+size_t ScreenshotTool::CountPluginToolbarButtons()
+{
+    size_t n = 0;
+#ifndef DISABLE_PLUGINS
+    for (const auto& [id, rt] : g_plugins)
+        n += size_t(std::ranges::count(rt.actions, OSHOT_PLACE_TOOLBAR, &plugin_action_t::place));
+#endif
+    return n;
+}
+
 void ScreenshotTool::UpdateAnnsToolbarPos()
 {
-    m_fill_tools_complete = false;
+    m_toolbar_rows.clear();
 
-    const ImGuiStyle& style = ImGui::GetStyle();
-    const ImVec2      btn   = GetToolButtonSize();
+    const ImGuiStyle&           style     = ImGui::GetStyle();
+    const ImVec2                btn       = GetToolButtonSize();
+    const ImVec2                display   = ImGui::GetIO().DisplaySize;
+    const selection_rect_t&     sel       = m_main_sel.selection;
+    const std::vector<ToolType> tools     = GetToolbarButtons();
+    const size_t                n_plugins = CountPluginToolbarButtons();
 
-    const ImVec2 display = ImGui::GetIO().DisplaySize;
-    const float  sel_x   = m_main_sel.selection.get_x();
-    const float  sel_y   = m_main_sel.selection.get_y();
-    const float  sel_w   = m_main_sel.selection.get_width();
-    const float  sel_h   = m_main_sel.selection.get_height();
+    // At least one, sticking out past a border shorter than a button
+    const size_t row_capacity  = std::max<size_t>(1, fit_count(sel.get_width(), btn.x, style.ItemSpacing.x));
+    const size_t side_capacity = std::max<size_t>(1, fit_count(sel.get_height(), btn.y, style.ItemSpacing.y));
 
-    // The buttons go outside the selection, so skip the borders where they'd leave the screen
-    std::array<bool, idx(SelectionBorder::COUNT)> on_screen{};
-    on_screen[idx(SelectionBorder::Bottom)] = sel_y + sel_h + TOOLBAR_OFFSET + btn.y <= display.y;
-    on_screen[idx(SelectionBorder::Right)]  = sel_x + sel_w + TOOLBAR_OFFSET + btn.x <= display.x;
-    on_screen[idx(SelectionBorder::Top)]    = sel_y - TOOLBAR_OFFSET - btn.y >= 0.0f;
-    on_screen[idx(SelectionBorder::Left)]   = sel_x - TOOLBAR_OFFSET - btn.x >= 0.0f;
-
-    const size_t end  = idx(ToolType::COUNT) - 1;
-    size_t       next = idx(ToolType::kNone) + 1;
-
-    ToolType last_tool = ToolType::kNone;
-    for (size_t i = 0; i < m_tools_borders.size(); ++i)
+    // Each border takes as many buttons as fit along it, and what's left goes around again one button further
+    // out, until all are placed or a ring would be entirely off screen
+    size_t next = 0;
+    for (size_t ring = 0; next < tools.size(); ++ring)
     {
-        std::vector<ToolType>& tools = m_tools_borders[i];
-        tools.clear();
-        if (!on_screen[i])
-            continue;
+        const ImVec2 out = GetToolbarRingOffset(ring);
 
-        const bool   is_side = i % 2 != 0;  // Bottom/Top = horizontal, Right/Left = vertical
-        const size_t capacity =
-            is_side ? fit_count(sel_h, btn.y, style.ItemSpacing.y) : fit_count(sel_w, btn.x, style.ItemSpacing.x);
+        std::array<bool, idx(SelectionBorder::COUNT)> on_screen{};
+        on_screen[idx(SelectionBorder::Bottom)] = sel.get_y() + sel.get_height() + out.y + btn.y <= display.y;
+        on_screen[idx(SelectionBorder::Right)]  = sel.get_x() + sel.get_width() + out.x + btn.x <= display.x;
+        on_screen[idx(SelectionBorder::Top)]    = sel.get_y() - out.y - btn.y >= 0.0f;
+        on_screen[idx(SelectionBorder::Left)]   = sel.get_x() - out.x - btn.x >= 0.0f;
+        if (std::ranges::none_of(on_screen, std::identity{}))
+            break;
 
-        for (; next < end && tools.size() < capacity; ++next)
+        for (size_t i = 0; i < on_screen.size() && next < tools.size(); ++i)
         {
-            last_tool = toe<ToolType>(next);
-            if (has_toolbar_button(last_tool))
-                tools.emplace_back(last_tool);
+            if (!on_screen[i])
+                continue;
+
+            const auto   border   = toe<SelectionBorder>(i);
+            const bool   is_row   = border == SelectionBorder::Bottom || border == SelectionBorder::Top;
+            const size_t capacity = is_row ? row_capacity : side_capacity;
+            const size_t left     = tools.size() - next;
+
+            // SaveImage only goes in a row with room for the plugins' buttons after it
+            size_t take = std::min(capacity, left);
+            if (take == left && take + n_plugins > capacity)
+                take = left - 1;
+            if (take == 0)
+                continue;
+
+            const auto first = tools.begin() + std::ptrdiff_t(next);
+            m_toolbar_rows.push_back(
+                { .border = border, .ring = ring, .tools = { first, first + std::ptrdiff_t(take) } });
+            next += take;
         }
     }
 
-    if (last_tool == ToolType::SaveImage)  // NOTE: Update if modifying enum class ToolType
-        m_fill_tools_complete = true;
+    m_fill_tools_complete = next == tools.size();
 }
 
 void ScreenshotTool::NormalizeSelection(selection_info_t& sel)
@@ -1129,6 +1162,13 @@ ImVec2 ScreenshotTool::GetToolButtonSize()
 {
     const ImGuiStyle& style = ImGui::GetStyle();
     return { TOOL_BUTTON_SIZE + style.FramePadding.x * 2.0f, TOOL_BUTTON_SIZE + style.FramePadding.y * 2.0f };
+}
+
+ImVec2 ScreenshotTool::GetToolbarRingOffset(const size_t ring)
+{
+    const ImVec2 btn     = GetToolButtonSize();
+    const ImVec2 spacing = ImGui::GetStyle().ItemSpacing;
+    return { TOOLBAR_OFFSET + float(ring) * (btn.x + spacing.x), TOOLBAR_OFFSET + float(ring) * (btn.y + spacing.y) };
 }
 
 // ------------------------------

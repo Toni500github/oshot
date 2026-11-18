@@ -32,6 +32,7 @@
 #include <utility>
 #include <vector>
 
+#include "cache.hpp"
 #include "config.hpp"
 #include "helpers.hpp"
 #include "i18n.hpp"
@@ -691,6 +692,7 @@ void ScreenshotTool::HandleColorPickerInput()
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
         {
             m_current_color = c;
+            g_cache->SetValue(CacheEntry::AnnColor, m_current_color.to_rgba());
             m_current_actions.Clear(CurrentAction::IsColorPicking);
         }
     }

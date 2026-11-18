@@ -79,6 +79,132 @@ static constexpr bool is_annotation_tool(ToolType t)
     return idx(t) > idx(ToolType::kNone) && idx(t) <= idx(ToolType::Pencil);
 };
 
+static const char* tool_name(ToolType t)
+{
+    switch (t)
+    {
+        case ToolType::Arrow:           return _("Arrow");
+        case ToolType::Line:            return _("Line");
+        case ToolType::Rectangle:       return _("Rectangle");
+        case ToolType::RectangleFilled: return _("Filled rectangle");
+        case ToolType::Circle:          return _("Circle");
+        case ToolType::CircleFilled:    return _("Filled circle");
+        case ToolType::CounterBubble:   return _("Counter");
+        case ToolType::Text:            return _("Text");
+        case ToolType::Pencil:          return _("Pencil");
+        case ToolType::ToggleTextTools: return _("Text tools");
+        case ToolType::CopyImage:       return _("Copy image");
+        case ToolType::SaveImage:       return _("Save image");
+        case ToolType::kNone:
+        case ToolType::Logo:
+        case ToolType::COUNT:           break;
+    }
+    return "";
+}
+
+// A setting's label, with its tooltip, then the cell for its widget
+static void form_row(const char* label, const char* tooltip)
+{
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(label);
+    ImGui::SetItemTooltip("%s", tooltip);
+    ImGui::TableNextColumn();
+}
+
+// The annotation color picker's look, from the Preferences
+static ImGuiColorEditFlags ann_color_picker_flags()
+{
+    ImGuiColorEditFlags flags =
+        ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_NoSmallPreview | ImGuiColorEditFlags_NoLabel;
+    flags |= g_config->File.color_picker == 0 ? ImGuiColorEditFlags_PickerHueBar : ImGuiColorEditFlags_PickerHueWheel;
+    switch (ColorPickerAlpha(g_config->File.cpa_mode))
+    {
+        case ColorPickerAlpha::Disabled: flags |= ImGuiColorEditFlags_NoAlpha; break;
+        case ColorPickerAlpha::Bar:      flags |= ImGuiColorEditFlags_AlphaBar; break;
+        case ColorPickerAlpha::Inline:   break;
+    }
+    return flags;
+}
+
+// Where a popup of `size` for the toolbar button `btn` goes: lined up with the button, outside `avoid` (the
+// selection and its toolbar) on the button's `side` or else the first other side it fits on. If none, over the
+// selection next to the button
+static ImVec2 toolbar_popup_pos(const ImRect& btn, const ImRect& avoid, SelectionBorder side, const ImVec2& size)
+{
+    static constexpr std::array<std::array<ImGuiDir, 4>, idx(SelectionBorder::COUNT)> order{ {
+        { ImGuiDir_Down, ImGuiDir_Right, ImGuiDir_Left, ImGuiDir_Up },
+        { ImGuiDir_Right, ImGuiDir_Down, ImGuiDir_Up, ImGuiDir_Left },
+        { ImGuiDir_Up, ImGuiDir_Right, ImGuiDir_Left, ImGuiDir_Down },
+        { ImGuiDir_Left, ImGuiDir_Down, ImGuiDir_Up, ImGuiDir_Right },
+    } };
+
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const float  gap     = ImGui::GetStyle().ItemSpacing.y;
+
+    auto outside = [&](ImGuiDir dir, const ImRect& r) {
+        switch (dir)
+        {
+            case ImGuiDir_Down:  return ImVec2(btn.Min.x, r.Max.y + gap);
+            case ImGuiDir_Up:    return ImVec2(btn.Min.x, r.Min.y - gap - size.y);
+            case ImGuiDir_Right: return ImVec2(r.Max.x + gap, btn.Min.y);
+            default:             return ImVec2(r.Min.x - gap - size.x, btn.Min.y);
+        }
+    };
+    auto fits = [&](ImGuiDir dir, const ImVec2& p) {
+        if (p.x < 0.0f || p.y < 0.0f)
+            return false;
+        return dir == ImGuiDir_Up || dir == ImGuiDir_Down ? p.y + size.y <= display.y : p.x + size.x <= display.x;
+    };
+
+    const std::array<ImGuiDir, 4>& dirs = order[idx(side)];
+    ImVec2                         pos  = outside(dirs.back(), btn);
+    for (const ImGuiDir dir : dirs)
+    {
+        if (fits(dir, outside(dir, avoid)))
+        {
+            pos = outside(dir, avoid);
+            break;
+        }
+    }
+
+    pos.x = std::clamp(pos.x, 0.0f, std::max(0.0f, display.x - size.x));
+    pos.y = std::clamp(pos.y, 0.0f, std::max(0.0f, display.y - size.y));
+    return pos;
+}
+
+// The top-left corner of a toolbar row `length` px long, centered on `border` of `sel` and `out` px away from it
+static ImVec2 toolbar_row_pos(const selection_rect_t& sel,
+                              SelectionBorder         border,
+                              const ImVec2&           out,
+                              const float             length,
+                              const ImVec2&           btn)
+{
+    const float centered_x = sel.get_x() + (sel.get_width() - length) * 0.5f;
+    const float centered_y = sel.get_y() + (sel.get_height() - length) * 0.5f;
+    switch (border)
+    {
+        case SelectionBorder::Bottom: return { centered_x, sel.get_y() + sel.get_height() + out.y };
+        case SelectionBorder::Top:    return { centered_x, sel.get_y() - out.y - btn.y };
+        case SelectionBorder::Right:  return { sel.get_x() + sel.get_width() + out.x, centered_y };
+        default:                      return { sel.get_x() - out.x - btn.x, centered_y };
+    }
+}
+
+// The borderless, auto-sized window a toolbar row is drawn in
+static void begin_toolbar_window(const char* name, const ImVec2& pos)
+{
+    ImGui::SetNextWindowPos(pos);
+    // The overlay leaves no window padding, so the border would clip the buttons' outer pixel and rounding
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::Begin(name,
+                 nullptr,
+                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::PopStyleVar();
+}
+
 // A box of `size` in the color of a text field, with `hint` centered in it, for an output that's empty
 static void draw_output_hint(const char* hint, const ImVec2& size)
 {
@@ -556,111 +682,161 @@ void ScreenshotTool::DrawAnnotationResizeBorder()
     DrawASelectionBorder(m_anno_sel, box.Min.x, box.Min.y, box.GetWidth() - PIXEL, box.GetHeight() - PIXEL);
 }
 
-void ScreenshotTool::DrawAnnotationToolbar()
+void ScreenshotTool::DrawAnnotationSettingsPopup(const ToolType tool, const SelectionBorder side)
 {
-    auto draw_and_set_button = [&](ToolType tool) -> bool {
-        bool       clicked  = false;
-        const bool is_tool  = is_annotation_tool(tool);
-        const bool selected = is_tool && (m_current_tool == tool);
+    const ImGuiStyle& style = ImGui::GetStyle();
 
-        if (selected)
-            ImGui::PushStyleColor(ImGuiCol_Button, theme::color(AppCol::ToolSelected));
+    // ImGui would open it at the cursor, over the toolbar and the selection
+    if (ImGui::IsPopupOpen("##ann_settings"))
+    {
+        const ImVec2 btn     = GetToolButtonSize();
+        const bool   rings   = m_fill_tools_complete && !g_config->File.old_toolbar_pos;
+        const ImVec2 out     = GetToolbarRingOffset(rings ? m_toolbar_rows.back().ring : 0);
+        const ImVec2 display = ImGui::GetIO().DisplaySize;
 
-        if (ImGui::ImageButton("##btn", m_tool_textures[idx(tool)].GetTexID(), TOOL_BUTTON_SIZE2))
+        // The selection and every ring of its toolbar
+        const selection_rect_t& sel = m_main_sel.selection;
+        const ImRect            avoid(sel.get_x() - out.x - btn.x,
+                                      sel.get_y() - out.y - btn.y,
+                                      sel.get_x() + sel.get_width() + out.x + btn.x,
+                                      sel.get_y() + sel.get_height() + out.y + btn.y);
+
+        // Off screen while its size isn't known yet, or it would show in the wrong place for a frame
+        ImVec2 pos(-display.x - m_ann_popup_size.x, -display.y - m_ann_popup_size.y);
+        if (m_ann_popup_placed)
+            pos = toolbar_popup_pos(
+                ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()), avoid, side, m_ann_popup_size);
+        else
+            RequestRedraw();
+        ImGui::SetNextWindowPos(pos);
+    }
+
+    // The overlay's zero padding would put the contents on the popup's border
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(style.ItemSpacing.x, style.ItemSpacing.x));
+    const bool open = ImGui::BeginPopupContextItem("##ann_settings");
+    ImGui::PopStyleVar();
+    if (!open)
+        return;
+
+    const ImVec2 popup_size = ImGui::GetWindowSize();
+    m_ann_popup_placed      = popup_size.x == m_ann_popup_size.x && popup_size.y == m_ann_popup_size.y;
+    m_ann_popup_size        = popup_size;
+
+    float&     thickness = m_tool_thickness[idx(tool)];
+    const bool is_text   = tool == ToolType::Text;
+    thickness            = is_text ? std::clamp(thickness, 8.0f, 144.0f) : std::clamp(thickness, 1.0f, 10.0f);
+
+    const ImGuiColorEditFlags flags = ann_color_picker_flags();
+    const float               width = ImGui::GetFontSize() * 16.0f;
+    ImGui::SeparatorText(tool_name(tool));
+
+    if (ImGui::BeginTable("##ann_settings_form", 2, ImGuiTableFlags_SizingFixedFit, ImVec2(width, 0)))
+    {
+        ImGui::TableSetupColumn("##label", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("##value", ImGuiTableColumnFlags_WidthStretch);
+
+        if (is_text)
         {
-            if (is_tool)
-                m_current_tool = selected ? ToolType::kNone : tool;
-            clicked = true;
+            form_row(_("Size"), _("The font size of the new text"));
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            ImGui::InputFloat("##font_size", &thickness, 2.0f, 8.0f, "%.0f px");
+
+            form_row(_("Font"),
+                     _("A font file name or path for the new text. Empty uses the interface font. Supports "
+                       "drag-and-drop"));
+            constexpr SDL_DialogFileFilter filter{ .name = N_("Fonts"), .pattern = "ttf;otf;ttc" };
+            ImGui::PushItemWidth(-FLT_MIN);
+            draw_input_text_file(
+                "",
+                "##font_path_ann_settings",
+                filter,
+                [&] { m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string(); },
+                m_inputs.ann_font);
+            ImGui::PopItemWidth();
+        }
+        // A filled shape has no outline to size
+        else if (tool != ToolType::RectangleFilled && tool != ToolType::CircleFilled)
+        {
+            form_row(_("Thickness"), _("The width of the lines"));
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            ImGui::SliderFloat("##thickness", &thickness, 1.0f, 10.0f, "%.0f px");
         }
 
+        form_row(_("Color"), _("Shared by all the tools"));
+        const float frame_h = ImGui::GetFrameHeight();
+        ImGui::ColorButton("##current_color",
+                           m_current_color,
+                           flags & ImGuiColorEditFlags_AlphaMask_,
+                           ImVec2(frame_h * 2.0f, frame_h));
+        ImGui::SameLine();
+        if (ImGui::Button(_("Pick from screen")))
+        {
+            m_current_actions.Set(CurrentAction::IsColorPicking);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SetItemTooltip("%s", _("Click anywhere on the image to pick a color"));
+
+        ImGui::EndTable();
+    }
+
+    ImVec4 picker = m_current_color;
+    ImGui::SetNextItemWidth(width);
+    if (ImGui::ColorPicker4("##color", reinterpret_cast<float*>(&picker), flags))
+    {
+        m_current_color = rgba_t(picker);
+        g_cache->SetValue(CacheEntry::AnnColor, m_current_color.to_rgba());
+    }
+    ImGui::EndPopup();
+}
+
+void ScreenshotTool::DrawAnnotationToolbar()
+{
+    // `side` is the selection border the button is on, which its settings popup opens away from
+    auto draw_button = [&](ToolType tool, SelectionBorder side, bool same_line) {
+        // Shown only while its window is closed
+        if (tool == ToolType::ToggleTextTools && m_show_window.Has(SubWindow::MainTextTools))
+            return;
+
+        const bool is_tool  = is_annotation_tool(tool);
+        const bool selected = is_tool && m_current_tool == tool;
+
+        ImGui::PushID(int(tool));
+        if (selected)
+            ImGui::PushStyleColor(ImGuiCol_Button, theme::color(AppCol::ToolSelected));
+        const bool clicked = ImGui::ImageButton("##btn", m_tool_textures[idx(tool)].GetTexID(), TOOL_BUTTON_SIZE2);
         if (selected)
             ImGui::PopStyleColor();
 
-        if (!is_tool)
-            return clicked;
-
-        // Right-click popup on this item
-        if (selected && ImGui::BeginPopupContextItem())
-        {
-            if (m_current_tool == ToolType::Text)
-                m_tool_thickness[idx(m_current_tool)] = std::clamp(m_tool_thickness[idx(m_current_tool)], 8.0f, 144.0f);
-            else
-                m_tool_thickness[idx(m_current_tool)] = std::clamp(m_tool_thickness[idx(m_current_tool)], 1.0f, 10.0f);
-
-            ImGuiColorEditFlags flags = g_config->File.color_picker == 0 ? ImGuiColorEditFlags_PickerHueBar
-                                                                         : ImGuiColorEditFlags_PickerHueWheel;
-
-            switch (ColorPickerAlpha(g_config->File.cpa_mode))
-            {
-                case ColorPickerAlpha::Disabled: flags |= ImGuiColorEditFlags_NoAlpha; break;
-                case ColorPickerAlpha::Bar:      flags |= ImGuiColorEditFlags_AlphaBar; break;
-                case ColorPickerAlpha::Inline:   /* no extra flag needed */ break;
-            }
-
-            ImGui::TextUnformatted(_("Annotation Settings"));
-            ImGui::Separator();
-            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f);
-
-            if (m_current_tool == ToolType::Text)
-            {
-                ImGui::InputFloat("##fontsize", &m_tool_thickness[idx(m_current_tool)], 2.0f, 2.0f, "%.0f px");
-                ImGui::SameLine();
-                ImGui::TextUnformatted(_("Font Size"));
-                constexpr SDL_DialogFileFilter filter{ .name = N_("Fonts"), .pattern = "ttf;otf;ttc" };
-                draw_input_text_file(
-                    _("Font name/path"),
-                    "##font_path_ann_settings",
-                    filter,
-                    [&] { m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string(); },
-                    m_inputs.ann_font);
-            }
-            else
-            {
-                ImGui::SliderFloat("##thickness", &m_tool_thickness[idx(m_current_tool)], 1.0f, 10.0f, "%.2f");
-                ImGui::SameLine();
-                ImGui::TextUnformatted(_("Thickness"));
-            }
-
-            if (ImGui::Button(_("Pick color")))
-            {
-                m_current_actions.Set(CurrentAction::IsColorPicking);
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::SameLine();
-            HelpMarker(_("Click anywhere on the image to pick a color"));
-
-            ImVec4 picker = m_current_color;
-            ImGui::ColorPicker4(_("Color"), reinterpret_cast<float*>(&picker), flags);
-
-            m_current_color = rgba_t(picker);
-            g_cache->SetValue(CacheEntry::AnnColor, m_current_color.to_rgba());
-            ImGui::EndPopup();
-        }
-
-        return clicked;
-    };
-
-    auto set_tool_button = [&](ToolType tool, bool same_line) {
-        ImGui::PushID(int(tool));
+        const char* name = tool_name(tool);
         switch (tool)
         {
-            case ToolType::kNone:
-            case ToolType::COUNT:
-            case ToolType::Logo:  break;
-
-            case ToolType::ToggleTextTools:
-                if (!m_show_window.Has(SubWindow::MainTextTools))
-                    if (draw_and_set_button(tool))
-                        m_show_window.Set(SubWindow::MainTextTools);
-                break;
-
+            case ToolType::SaveImage: ImGui::SetItemTooltip("%s (%s+S)", name, SHORTCUT_MOD); break;
             case ToolType::CopyImage:
-            case ToolType::SaveImage:
-                if (draw_and_set_button(tool))
-                    RequestComplete(tool == ToolType::SaveImage ? SavingOp::File : SavingOp::Clipboard);
+                ImGui::SetItemTooltip(
+                    "%s (%s+%sC)", name, SHORTCUT_MOD, g_config->File.ctrl_c_copy_img ? "" : "SHIFT+");
                 break;
+            default:
+                if (is_tool)
+                    ImGui::SetItemTooltip("%s\n%s", name, _("Right-click for its color and size"));
+                else
+                    ImGui::SetItemTooltip("%s", name);
+        }
 
-            default: draw_and_set_button(tool);
+        if (is_tool)
+        {
+            if (clicked)
+                m_current_tool = selected ? ToolType::kNone : tool;
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+                m_current_tool = tool;
+            DrawAnnotationSettingsPopup(tool, side);
+        }
+        else if (clicked && tool == ToolType::ToggleTextTools)
+        {
+            m_show_window.Set(SubWindow::MainTextTools);
+        }
+        else if (clicked)
+        {
+            RequestComplete(tool == ToolType::SaveImage ? SavingOp::File : SavingOp::Clipboard);
         }
         ImGui::PopID();
 
@@ -668,102 +844,73 @@ void ScreenshotTool::DrawAnnotationToolbar()
             ImGui::SameLine();
     };
 
-    const float sel_x = m_main_sel.selection.get_x();
-    const float sel_y = m_main_sel.selection.get_y();
-    const float sel_w = m_main_sel.selection.get_width();
-    const float sel_h = m_main_sel.selection.get_height();
+    const ImGuiStyle&       style = ImGui::GetStyle();
+    const ImVec2            btn   = GetToolButtonSize();
+    const selection_rect_t& sel   = m_main_sel.selection;
 
-    const ImGuiStyle& style = ImGui::GetStyle();
-    const ImVec2      btn   = GetToolButtonSize();
+    // Laid out again when the Text tools window opens or closes, which hides or shows its button
+    auto has_text_tools_button = [](const toolbar_row_t& row) {
+        return std::ranges::find(row.tools, ToolType::ToggleTextTools) != row.tools.end();
+    };
+    if (m_fill_tools_complete &&
+        std::ranges::any_of(m_toolbar_rows, has_text_tools_button) == m_show_window.Has(SubWindow::MainTextTools))
+        UpdateAnnsToolbarPos();
+
+    const size_t n_plugins = CountPluginToolbarButtons();
 
     if (m_fill_tools_complete && !g_config->File.old_toolbar_pos)
     {
-        std::array<ImVec2, idx(SelectionBorder::COUNT)> first_btn_pos{};
-        first_btn_pos[idx(SelectionBorder::Bottom)] = ImVec2(sel_x, sel_y + sel_h + TOOLBAR_OFFSET);
-        first_btn_pos[idx(SelectionBorder::Right)]  = ImVec2(sel_x + sel_w + TOOLBAR_OFFSET, sel_y);
-        first_btn_pos[idx(SelectionBorder::Top)]    = ImVec2(sel_x, sel_y - TOOLBAR_OFFSET - btn.y);
-        first_btn_pos[idx(SelectionBorder::Left)]   = ImVec2(sel_x - TOOLBAR_OFFSET - btn.x, sel_y);
-
-        for (size_t i = 0; i < m_tools_borders.size(); ++i)
+        for (size_t i = 0; i < m_toolbar_rows.size(); ++i)
         {
-            if (m_tools_borders[i].empty())
-                continue;
+            const toolbar_row_t& row      = m_toolbar_rows[i];
+            const bool           has_save = row.tools.back() == ToolType::SaveImage;
+            const bool horizontal         = row.border == SelectionBorder::Bottom || row.border == SelectionBorder::Top;
+
+            // Centered with the plugins' buttons, which come after SaveImage
+            const auto   n      = float(row.tools.size() + (has_save ? n_plugins : 0));
+            const float  length = horizontal ? n * btn.x + (n - 1.0f) * style.ItemSpacing.x
+                                             : n * btn.y + (n - 1.0f) * style.ItemSpacing.y;
+            const ImVec2 pos    = toolbar_row_pos(sel, row.border, GetToolbarRingOffset(row.ring), length, btn);
 
             // Kept on the stack since it's drawn every frame and is too long for std::string's inline buffer
             std::array<char, 32> name{};
             fmt::format_to_n(name.data(), name.size() - 1, "##annotation_toolbar_n{}", i);
+            begin_toolbar_window(name.data(), ImVec2(pos.x - style.WindowPadding.x, pos.y - style.WindowPadding.y));
 
-            ImGui::SetNextWindowPos(
-                ImVec2(first_btn_pos[i].x - style.WindowPadding.x, first_btn_pos[i].y - style.WindowPadding.y));
-            // The overlay leaves no window padding, so the border would clip the buttons' outer pixel and rounding
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-            ImGui::Begin(name.data(),
-                         nullptr,
-                         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                             ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize);
-            ImGui::PopStyleVar();
-
-            for (const ToolType tool : m_tools_borders[i])
-                set_tool_button(tool, i % 2 == 0);
+            for (const ToolType tool : row.tools)
+                draw_button(tool, row.border, horizontal);
 #ifndef DISABLE_PLUGINS
-            // The plugins' buttons continue after oshot's last one
-            if (m_tools_borders[i].back() == ToolType::SaveImage)
-                DrawPluginToolbarButtons(i % 2 == 0);
+            if (has_save)
+                DrawPluginToolbarButtons(horizontal);
 #endif
 
             ImGui::End();
         }
+        return;
     }
-    else
-    {
-        const ImVec2 display = ImGui::GetIO().DisplaySize;
 
-        // One row of buttons, as big as the window will be
-        size_t n_buttons = 0;
-        for (size_t i = 1; i < idx(ToolType::COUNT); ++i)
-            n_buttons += has_toolbar_button(toe<ToolType>(i)) ? 1 : 0;
+    // One row of buttons below the selection, else above it, else on screen wherever it fits
+    const std::vector<ToolType> tools   = GetToolbarButtons();
+    const ImVec2                display = ImGui::GetIO().DisplaySize;
+    const auto                  n       = float(tools.size() + n_plugins);
+    const float toolbar_w = n * (btn.x + style.ItemSpacing.x) - style.ItemSpacing.x + style.WindowPadding.x * 2.0f;
+    const float toolbar_h = btn.y + style.WindowPadding.y * 2.0f;
+
+    const float below_y   = sel.get_y() + sel.get_height() + TOOLBAR_OFFSET;
+    const float above_y   = sel.get_y() - TOOLBAR_OFFSET - toolbar_h;
+    float       toolbar_y = below_y;
+    if (below_y + toolbar_h > display.y)
+        toolbar_y = above_y >= 0.0f ? above_y : std::clamp(below_y, 0.0f, display.y - toolbar_h);
+    const float toolbar_x = std::clamp(sel.get_x(), 0.0f, std::max(0.0f, display.x - toolbar_w));
+
+    begin_toolbar_window("##annotation_toolbar", ImVec2(toolbar_x, toolbar_y));
+    const SelectionBorder side = toolbar_y < sel.get_y() ? SelectionBorder::Top : SelectionBorder::Bottom;
+    for (const ToolType tool : tools)
+        draw_button(tool, side, true);
 #ifndef DISABLE_PLUGINS
-        for (const auto& [id, rt] : g_plugins)
-            n_buttons += std::ranges::count(rt.actions, OSHOT_PLACE_TOOLBAR, &plugin_action_t::place);
+    DrawPluginToolbarButtons(true);
 #endif
-        const float toolbar_w =
-            (float(n_buttons) * (btn.x + style.ItemSpacing.x)) - style.ItemSpacing.x + (style.WindowPadding.x * 2.0f);
-        const float toolbar_h = btn.y + (style.WindowPadding.y * 2.0f);
-
-        const float below_y = sel_y + sel_h + TOOLBAR_OFFSET;
-        const float above_y = sel_y - TOOLBAR_OFFSET - toolbar_h;
-
-        float toolbar_y = below_y;
-
-        // Prefer below
-        if (below_y + toolbar_h > display.y)
-        {
-            // Try above
-            toolbar_y = above_y;
-
-            // If above also invalid, clamp
-            if (toolbar_y < 0.0f)
-                toolbar_y = std::clamp(below_y, 0.0f, display.y - toolbar_h);
-        }
-
-        const float toolbar_x = std::clamp(sel_x, 0.0f, std::max(0.0f, display.x - toolbar_w));
-
-        ImGui::SetNextWindowPos({ toolbar_x, toolbar_y });
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-        ImGui::Begin("##annotation_toolbar",
-                     nullptr,
-                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                         ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize);
-        ImGui::PopStyleVar();
-
-        for (size_t i = 1; i < idx(ToolType::COUNT); ++i)
-            set_tool_button(toe<ToolType>(i), true);
-#ifndef DISABLE_PLUGINS
-        DrawPluginToolbarButtons(true);
-#endif
-
-        ImGui::End();
-    }
+    ImGui::End();
 }
 
 void ScreenshotTool::DrawMenuItems()
@@ -928,16 +1075,6 @@ void ScreenshotTool::DrawOcrTools()
     const bool models_ok     = !invalid_path && !need_to_scan;
 
     ImGui::PushID("OcrTools");
-
-    // A setting's label, with its tooltip, then the cell for its widget
-    auto form_row = [](const char* label, const char* tooltip) {
-        ImGui::TableNextRow();
-        ImGui::TableNextColumn();
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(label);
-        ImGui::SetItemTooltip("%s", tooltip);
-        ImGui::TableNextColumn();
-    };
 
     if (ImGui::BeginTable("##ocr_settings", 2, ImGuiTableFlags_SizingFixedFit))
     {
