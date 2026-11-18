@@ -23,7 +23,6 @@
  *
  */
 
-#include <SDL3/SDL_render.h>
 #include <tesseract/publictypes.h>
 
 #include <algorithm>
@@ -952,24 +951,7 @@ void ScreenshotTool::DrawMenuItems()
 
         if (ImGui::BeginMenu(_("Edit")))
         {
-            if (ImGui::BeginMenu(_("Optimize OCR for...")))
-            {
-                if (ImGui::RadioButton(_("Automatic"), g_config->Runtime.preferred_psm == 0))
-                    g_config->Runtime.preferred_psm = 0;
-                ImGui::RadioButton(_("Single Word"), &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_WORD);
-                ImGui::RadioButton(_("Single Line"), &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_LINE);
-                ImGui::RadioButton(_("Paragraph"), &g_config->Runtime.preferred_psm, tesseract::PSM_SINGLE_BLOCK);
-                ImGui::RadioButton(_("Automatic (Layout)"), &g_config->Runtime.preferred_psm, tesseract::PSM_AUTO);
-                ImGui::EndMenu();
-            }
-
-            ImGui::Separator();
             ImGui::MenuItem(_("View Handles"), SHORTCUT_MOD "+G", &g_config->Runtime.enable_handles);
-            ImGui::MenuItem(_("Anns. in image scans"), "", &g_config->File.render_anns);
-            if (ImGui::MenuItem(_("Enable vsync"), "", &g_config->File.enable_vsync))
-                SDL_SetRenderVSync(SDL_GetRenderer(m_window), int(g_config->File.enable_vsync));
-            if (ImGui::MenuItem(_("Allow text edit"), SHORTCUT_MOD "+E", &g_config->File.allow_out_edit))
-                ImGui::ClearActiveID();
 
             ImGui::Separator();
             if (ImGui::MenuItem(_("Preferences...")))
@@ -1205,7 +1187,7 @@ void ScreenshotTool::DrawOcrTools()
         }
 #endif
         ImGui::Bullet();
-        ImGui::TextWrapped("%s", _("Download a tesseract language model via 'Tools -> Download OCR Model'."));
+        ImGui::TextWrapped("%s", _("Download a tesseract language model via 'Tools -> Download OCR model'."));
         ImGui::Spacing();
     }
 
