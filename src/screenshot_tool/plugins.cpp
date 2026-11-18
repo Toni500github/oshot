@@ -53,6 +53,7 @@
 #include "screenshot_tool.hpp"
 #include "spdlog/spdlog.h"
 #include "text_extraction.hpp"
+#include "theme.hpp"
 #include "util.hpp"
 #include "util/color.hpp"
 #include "util/paths.hpp"
@@ -87,7 +88,7 @@ static void draw_capability_tags(const std::map<std::string, std::string>& capab
                             : capability == "files"     ? _("Uses your files")
                             : capability == "processes" ? _("Runs programs")
                                                         : capability.c_str();
-        draw_tag(label, 0x725919FF_rgba);
+        draw_tag(label, theme::color(AppCol::TagWarning));
         ImGui::SetItemTooltip(
             "%s\n\n%s", reason.c_str(), _("According to its author. oshot can't check or limit what plugins do."));
     }
@@ -428,7 +429,7 @@ void ScreenshotTool::DrawPluginReports()
         else
         {
             ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
-            ImGui::TextColored(r.ok ? Colors::GREEN : Colors::RED, "%s", r.text.c_str());
+            ImGui::TextColored(theme::color(r.ok ? AppCol::Success : AppCol::Error), "%s", r.text.c_str());
             if (!r.copyable.empty())
                 ImGui::TextDisabled("%s", r.copyable.c_str());
             ImGui::PopTextWrapPos();
@@ -499,7 +500,7 @@ void ScreenshotTool::DrawManagePluginsWindow()
         if (ImGui::Button(_("Check for updates")))
             StartPluginTask(_("Updating plugins"), [](PluginManager& pm) { return pm.UpdateAll(); });
 
-        ImGui::PushStyleColor(ImGuiCol_Text, (0x999999FF_rgba));
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::TextMuted));
         ImGui::TextWrapped("%s",
                            _("Changes apply the next time oshot starts. If oshot runs in the tray, quit it from the "
                              "tray menu first."));
@@ -562,8 +563,8 @@ void ScreenshotTool::DrawManagePluginsWindow()
                     const bool      loaded  = g_plugins.contains(plugin.id);
 
                     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
-                    ImGui::PushStyleColor(ImGuiCol_ChildBg, (0xffffff07_rgba));
-                    ImGui::PushStyleColor(ImGuiCol_Border, (0xffffff14_rgba));
+                    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_Text, 0.03f));
+                    ImGui::PushStyleColor(ImGuiCol_Border, ImGui::GetColorU32(ImGuiCol_Text, 0.08f));
                     ImGui::BeginChild("card",
                                       ImVec2(0, 0),
                                       ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY,
@@ -574,19 +575,19 @@ void ScreenshotTool::DrawManagePluginsWindow()
                     ImGui::TextDisabled("(%s)", plugin.id.c_str());
 
                     const char* tag     = _("Disabled");
-                    rgba_t      tag_col = 0x725919FF_rgba;
+                    AppCol      tag_col = AppCol::TagWarning;
                     if (missing)
                     {
                         tag     = _("Missing");
-                        tag_col = 0x8c2626FF_rgba;
+                        tag_col = AppCol::TagError;
                     }
                     else if (plugin.enabled)
                     {
                         tag     = loaded ? _("Enabled") : _("Not loaded");
-                        tag_col = loaded ? 0x197233FF_rgba : 0x3f3f3fFF_rgba;
+                        tag_col = loaded ? AppCol::TagSuccess : AppCol::TagNeutral;
                     }
                     align_right(tag_width(tag));
-                    draw_tag(tag, tag_col);
+                    draw_tag(tag, theme::color(tag_col));
 
                     if (!plugin.description.empty())
                         ImGui::TextWrapped("%s", plugin.description.c_str());
@@ -599,13 +600,14 @@ void ScreenshotTool::DrawManagePluginsWindow()
                         for (const std::string& license : plugin.licenses)
                         {
                             ImGui::SameLine();
-                            draw_tag(license.c_str(), 0x334c7fFF_rgba);
+                            draw_tag(license.c_str(), theme::color(AppCol::Tag));
                         }
                     }
                     draw_capability_tags(plugin.capabilities, /*same_line=*/!plugin.licenses.empty());
 
                     if (missing)
-                        ImGui::TextColored(Colors::RED, "%s", _("The library is missing: reinstall the plugin"));
+                        ImGui::TextColored(
+                            theme::color(AppCol::Error), "%s", _("The library is missing: reinstall the plugin"));
                     else if (plugin.enabled && !loaded)
                         ImGui::TextDisabled("%s",
                                             _("Not loaded: restart oshot, or see View Logs if it failed to load"));
@@ -619,9 +621,9 @@ void ScreenshotTool::DrawManagePluginsWindow()
                         toggle_to = !plugin.enabled;
                     }
                     ImGui::SameLine();
-                    ImGui::PushStyleColor(ImGuiCol_Button, (0x8C1F1FFF_rgba));
-                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (0xB23333FF_rgba));
-                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, (0x730F0FFF_rgba));
+                    ImGui::PushStyleColor(ImGuiCol_Button, theme::color(AppCol::Danger));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, theme::color(AppCol::DangerHovered));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, theme::color(AppCol::DangerActive));
                     if (ImGui::Button(_("Uninstall")))
                     {
                         pending_uninstall = plugin.id;
@@ -661,9 +663,9 @@ void ScreenshotTool::DrawManagePluginsWindow()
             if (ImGui::Button(_("Cancel")))
                 ImGui::CloseCurrentPopup();
             ImGui::SameLine();
-            ImGui::PushStyleColor(ImGuiCol_Button, (0x8C1F1FFF_rgba));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (0xB23333FF_rgba));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, (0x730F0FFF_rgba));
+            ImGui::PushStyleColor(ImGuiCol_Button, theme::color(AppCol::Danger));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, theme::color(AppCol::DangerHovered));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, theme::color(AppCol::DangerActive));
             if (ImGui::Button(_("Uninstall")))
             {
                 StartPluginTask(i18n::tr_fmt("Uninstalling {}", pending_uninstall),
@@ -715,15 +717,16 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
         ImGui::SetNextItemWidth(-FLT_MIN);
         ImGui::InputTextWithHint("##index_filter", _("Search"), &m_index_filter);
 
-        ImGui::PushStyleColor(ImGuiCol_Text, (0x999999FF_rgba));
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::TextMuted));
         ImGui::TextWrapped("%s",
                            _("Plugins listed in the oshot plugin index. Listed doesn't mean audited: plugins run with "
                              "the same permissions as oshot, so only install the ones you trust."));
         ImGui::PopStyleColor();
         if (!m_index_state->error.empty())
-            ImGui::TextColored(Colors::RED, "%s", m_index_state->error.c_str());
+            ImGui::TextColored(theme::color(AppCol::Error), "%s", m_index_state->error.c_str());
         else if (m_index_state->stale)
-            ImGui::TextColored(0xFFCC33FF_rgba, "%s", _("Offline: this is the last downloaded copy of the index."));
+            ImGui::TextColored(
+                theme::color(AppCol::Warning), "%s", _("Offline: this is the last downloaded copy of the index."));
         ImGui::Separator();
         ImGui::Spacing();
 
@@ -757,8 +760,8 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
 
             ImGui::PushID(p.id.c_str());
             ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, (0xffffff07_rgba));
-            ImGui::PushStyleColor(ImGuiCol_Border, (0xffffff14_rgba));
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_Text, 0.03f));
+            ImGui::PushStyleColor(ImGuiCol_Border, ImGui::GetColorU32(ImGuiCol_Text, 0.08f));
             ImGui::BeginChild("card",
                               ImVec2(0, 0),
                               ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY,
@@ -780,12 +783,12 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
                     _("By %s"), fmt::format("{}", fmt::join(p.authors.empty() ? p.owners : p.authors, ", ")).c_str());
 
             if (!p.license.empty())
-                draw_tag(p.license.c_str(), 0x334c7fFF_rgba);
+                draw_tag(p.license.c_str(), theme::color(AppCol::Tag));
             draw_capability_tags(p.capabilities, /*same_line=*/!p.license.empty());
             for (const std::string& tag : p.tags)
             {
                 ImGui::SameLine();
-                draw_tag(tag.c_str(), 0x3f3f3fFF_rgba);
+                draw_tag(tag.c_str(), theme::color(AppCol::TagNeutral));
             }
 
             if (!p.homepage.empty())
@@ -797,7 +800,7 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
             }
 
             if (!best)
-                ImGui::TextColored(Colors::RED, _("Can't be installed here: %s"), why.c_str());
+                ImGui::TextColored(theme::color(AppCol::Error), _("Can't be installed here: %s"), why.c_str());
             else if (best->artifacts.contains(OSHOT_TARGET))
                 ImGui::TextDisabled(_("Prebuilt for %s"), OSHOT_TARGET);
             else
@@ -809,7 +812,7 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
                     current->yanked_reason.empty()
                         ? i18n::tr_fmt("Your version ({}) was withdrawn", current->version)
                         : i18n::tr_fmt("Your version ({}) was withdrawn: {}", current->version, current->yanked_reason);
-                ImGui::TextColored(Colors::RED, "%s", withdrawn.c_str());
+                ImGui::TextColored(theme::color(AppCol::Error), "%s", withdrawn.c_str());
             }
 
             // Right-aligned action
@@ -892,7 +895,7 @@ void ScreenshotTool::DrawInstallPluginsWindow()
             _("A git URL, a folder with an oshot-plugin.toml, or a prebuilt plugin archive (.zip, .tar.gz, .tar.xz). "
               "From git or a folder, the plugin is built on this computer, which needs git and its build tools."));
         ImGui::Spacing();
-        ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::Error));
         ImGui::TextWrapped(
             "%s", _("Plugins run with the same permissions as oshot. Only install them from people you trust."));
         ImGui::PopStyleColor();
@@ -1072,17 +1075,17 @@ void ScreenshotTool::DrawEventIcon(plugin_install_event_t::Kind kind)
     struct icon_t
     {
         const char* glyph;
-        rgba_t      color;
+        AppCol      color;
     };
     constexpr auto table = std::to_array<icon_t>({
-        { .glyph = "o", .color = 0x808080FF_rgba },  // Status (in progress)
-        { .glyph = "v", .color = 0x2ecc71FF_rgba },  // Success
-        { .glyph = "!", .color = 0xf1c40fFF_rgba },  // Warning
-        { .glyph = "x", .color = 0xe74c3cFF_rgba },  // Error
-        { .glyph = "i", .color = 0x3498dbFF_rgba },  // Info
-        { .glyph = ">", .color = 0x808080FF_rgba },  // Output
+        { .glyph = "o", .color = AppCol::TextMuted },  // Status (in progress)
+        { .glyph = "v", .color = AppCol::Success },
+        { .glyph = "!", .color = AppCol::Warning },
+        { .glyph = "x", .color = AppCol::Error },
+        { .glyph = "i", .color = AppCol::Info },
+        { .glyph = ">", .color = AppCol::TextMuted },  // Output
     });
     const icon_t&  icon  = table[idx(kind)];
-    ImGui::TextColored(icon.color, "%s", icon.glyph);
+    ImGui::TextColored(theme::color(icon.color), "%s", icon.glyph);
 }
 #endif

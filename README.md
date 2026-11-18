@@ -87,7 +87,7 @@ https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 - Copy or save the result as an image (`Ctrl+C` / `Ctrl+S`)
 
 **Customize**
-- Dark theme by default, with colors, rounding and borders customizable in a TOML theme file
+- Dark and light themes, customizable in a TOML theme file that reloads live and can include generated palettes (pywal, matugen), see [docs/theming.md](docs/theming.md)
 - Fonts, output filename format, behavior and rendering options, from the Preferences window or a TOML config file
 
 **Extend** (experimental, only in the `-plugins` builds, see [Installation](#installation))

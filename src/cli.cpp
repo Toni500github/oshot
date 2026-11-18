@@ -132,6 +132,7 @@ static const struct option opts[] = {
     {"extract-barcode", no_argument,       0, "extract-barcode"_fnv1a16},
     {"selection",       required_argument, 0, "selection"_fnv1a16},
     {"gen-config",      optional_argument, 0, "gen-config"_fnv1a16},
+    {"gen-theme",       optional_argument, 0, "gen-theme"_fnv1a16},
 
     {0,0,0,0}
 };
@@ -233,6 +234,19 @@ bool parseargs(int argc, char* argv[], const fs::path& configFile)
                     g_config->GenerateConfig(optarg);
                 else
                     g_config->GenerateConfig(configFile.string());
+                exit(EXIT_SUCCESS);
+
+            case "gen-theme"_fnv1a16:
+                if (OPTIONAL_ARGUMENT_IS_PRESENT)
+                {
+                    g_config->GenerateTheme(fs::absolute(optarg).string());
+                }
+                else
+                {
+                    // For the theme-file option
+                    g_config->LoadConfigFile(configFile.string());
+                    g_config->GenerateTheme(g_config->GetThemeFilePath());
+                }
                 exit(EXIT_SUCCESS);
 
             default:

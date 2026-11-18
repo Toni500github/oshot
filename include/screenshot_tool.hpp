@@ -542,9 +542,6 @@ public:
     // A font CacheAndGetFont() loaded, nullptr if it didn't yet, or the default font for an empty path
     [[nodiscard]] ImFont* GetCachedFont(const std::string& font_path, const float font_size) const;
 
-    // Applies oshot's default ImGui colors
-    static void StyleDefaultColor();
-
 private:
     // Gap between the selection border and the toolbar
     static constexpr float TOOLBAR_OFFSET = 10.0f;

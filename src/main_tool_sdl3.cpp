@@ -61,6 +61,7 @@
 #include <vector>
 
 void apply_imgui_theme();
+void reload_theme_if_changed();
 
 // The thread run_main_tool() runs on, the only one that may touch the window
 static std::thread::id window_thread;
@@ -397,6 +398,8 @@ int run_main_tool()
     fontconfig.wait();
 #endif
     build_font_atlas(io);
+    // The tray process loaded the theme when it started, and it may have changed since
+    reload_theme_if_changed();
     apply_imgui_theme();
 
     int ret = EXIT_SUCCESS;
@@ -455,6 +458,8 @@ int run_main_tool()
             SDL_Delay(10);
             continue;
         }
+
+        reload_theme_if_changed();
 
         // Start the Dear ImGui frame
         ImGui_ImplSDLRenderer3_NewFrame();

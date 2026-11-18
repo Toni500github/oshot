@@ -36,6 +36,7 @@
 
 #include "platform.hpp"
 #include "screen_capture.hpp"
+#include "theme.hpp"
 #include "toml_api.hpp"
 #include "util/image.hpp"
 #include "util/paths.hpp"
@@ -152,12 +153,32 @@ public:
         bool operator==(const runtime_settings_t&) const = default;
     } Runtime;
 
-    // The theme file's settings. The rounding and border sizes are -1 when not set,
-    // which keeps the default style's value
-    struct theme_overrides_t
+    using ThemeBase = ::ThemeBase;
+
+    // Color tables of a theme file. Values are "#RRGGBB[AA]" or "$name[/opacity%]" from the palette,
+    // kept as written so saving keeps the references
+    struct theme_colors_t
     {
-        // ImGuiCol name -> "#RRGGBB[AA]"
-        std::unordered_map<std::string, std::string> colors;
+        // Named colors the other tables refer to as "$name"
+        theme::table_t palette;
+
+        // ImGuiCol name -> value
+        theme::table_t colors;
+
+        // theme::app_color_name() -> value
+        theme::table_t oshot_colors;
+
+        bool operator==(const theme_colors_t&) const = default;
+    };
+
+    // The theme file's settings. The rounding and border sizes are -1 when not set,
+    // which keeps the base theme's value
+    struct theme_overrides_t : theme_colors_t
+    {
+        // Other theme files whose color tables apply first, as written (relative to the theme file, ~ and $VARS)
+        std::vector<std::string> includes;
+
+        ThemeBase base = ThemeBase::Dark;
 
         // Not an ImGui style setting, oshot's own
         bool smooth_animations = false;
@@ -171,6 +192,13 @@ public:
 
         bool operator==(const theme_overrides_t&) const = default;
     } theme_overrides;
+
+    // The color tables of the files in theme_overrides.includes, merged in order. Never saved
+    struct theme_included_t : theme_colors_t
+    {
+        // The includes as full paths, and whether each one loaded
+        std::vector<std::pair<std::string, bool>> files;
+    } theme_included;
 
     using TomlAPI::GetValue;
     using TomlAPI::SetValue;
@@ -188,10 +216,16 @@ public:
     void SeedBundledModels(const std::filesystem::path& models_dir);
 
     /**
-     * Parse the theme file into theme_overrides
+     * Parse the theme file into theme_overrides and its includes into theme_included
      * @param filename The theme file path, absolute or relative to the config directory
+     * @param reload Keep the current theme if the file doesn't parse, and only log why
      **/
-    void LoadThemeFile(const std::string& filename);
+    void LoadThemeFile(const std::string& filename, const bool reload = false);
+
+    /**
+     * Whether the theme file or one of its includes changed, appeared or went away since LoadThemeFile()
+     **/
+    [[nodiscard]] bool ThemeFilesChanged() const;
 
     /**
      * Write the config file with the current File values
@@ -217,8 +251,8 @@ public:
     [[nodiscard]] const std::string& GetConfigDirPath() const { return m_config_dir_path; }
 
 private:
-    // Parsed theme from LoadThemeFile()
-    TomlAPI m_theme;
+    // The files LoadThemeFile() read and their modification times, min() for a missing one
+    std::vector<std::pair<std::string, std::filesystem::file_time_type>> m_theme_files;
 
     std::string m_config_path;
     std::string m_config_dir_path;

@@ -29,14 +29,18 @@
 #include <array>
 #include <cstdlib>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <vector>
 
 #include "fmt/os.h"
 #include "spdlog/spdlog.h"
 #include "texts.hpp"
+#include "theme.hpp"
 #include "util.hpp"
+#include "util/color.hpp"
 #include "util/dialogs.hpp"
 #include "util/image.hpp"
 #include "util/paths.hpp"
@@ -162,33 +166,164 @@ std::string Config::GetThemeFilePath() const
     return File.theme_file_path;
 }
 
-void Config::LoadThemeFile(const std::string& filename)
+// The modification time of `path`, min() when it's missing
+static fs::file_time_type file_stamp(const std::string& path)
 {
-    theme_overrides = {};
-    theme_overrides.colors.clear();
+    std::error_code          ec;
+    const fs::file_time_type t = fs::last_write_time(path, ec);
+    return ec ? fs::file_time_type::min() : t;
+}
 
+// Read a theme file's color tables into `out`, over what it already holds
+static void read_color_tables(const toml::table& tbl, Config::theme_colors_t& out, const std::string& filename)
+{
+    const auto read = [&](const char* table, theme::table_t& map, auto&& known) {
+        const toml::table* t = tbl.at_path(table).as_table();
+        if (!t)
+            return;
+
+        for (const auto& [k, v] : *t)
+        {
+            const std::string key(k.str());
+            if (!known(key))
+                spdlog::warn("Theme {}: [{}] has no color named '{}'", filename, table, key);
+            else if (const toml::value<std::string>* str = v.as_string())
+                map[key] = str->get();
+            else
+                spdlog::warn("Theme {}: [{}] {} isn't a string", filename, table, key);
+        }
+    };
+    read("theme.palette", out.palette, theme::valid_palette_name);
+    read("theme.colors", out.colors, [](const std::string& k) { return theme::imgui_color_from_name(k) >= 0; });
+    read("theme.oshot-colors", out.oshot_colors, [](const std::string& k) {
+        return theme::app_color_from_name(k).has_value();
+    });
+}
+
+void Config::LoadThemeFile(const std::string& filename, const bool reload)
+{
     // default.theme-file is usually relative to the config directory
     CdGuard guard(m_config_dir_path);
 
-    // A broken theme isn't worth refusing to start over, so it falls back to the default one
-    if (fs::exists(filename))
-        MUST_OK(m_theme.LoadFile(filename), {
-            m_theme.GetTbl().clear();
-            dialog::error("{}\nUsing the default theme.", _r.error_v());
-        });
+    const std::string path = filename.empty() ? filename : fs::absolute(filename).string();
 
-    theme_overrides_t& ov = theme_overrides;
-    if (const toml::table* colors = m_theme.GetTbl().at_path("theme.colors").as_table())
-        colors->for_each(
-            [&](const toml::key& k, const toml::value<std::string>& v) { ov.colors[std::string(k.str())] = v.get(); });
+    std::vector<std::pair<std::string, fs::file_time_type>> files;
+    if (!path.empty())
+        files.emplace_back(path, file_stamp(path));
 
-    ov.smooth_animations = m_theme.GetValue<bool>("theme.smooth-animations", false);
-    ov.window_rounding   = m_theme.GetValue<float>("theme.style.window-rounding", -1.f);
-    ov.frame_rounding    = m_theme.GetValue<float>("theme.style.frame-rounding", -1.f);
-    ov.grab_rounding     = m_theme.GetValue<float>("theme.style.grab-rounding", -1.f);
-    ov.tab_rounding      = m_theme.GetValue<float>("theme.style.tab-rounding", -1.f);
-    ov.window_border     = m_theme.GetValue<float>("theme.style.window-border", -1.f);
-    ov.frame_border      = m_theme.GetValue<float>("theme.style.frame-border", -1.f);
+    TomlAPI tbl;
+    if (!path.empty() && fs::exists(path))
+    {
+        const Result<>& loaded = tbl.LoadFile(path);
+        if (!loaded.ok())
+        {
+            if (reload)
+            {
+                // Remembered as read, so it's parsed again only once it changes
+                spdlog::error("{}\nKeeping the current theme.", loaded.error_v());
+                std::erase_if(m_theme_files, [&](const auto& f) { return f.first == path; });
+                m_theme_files.push_back(files.front());
+                return;
+            }
+            // A broken theme isn't worth refusing to start over, so it falls back to the default one
+            dialog::error("{}\nUsing the default theme.", loaded.error_v());
+        }
+    }
+
+    theme_overrides_t ov;
+    read_color_tables(tbl.GetTbl(), ov, path);
+
+    const std::string base = str_tolower(tbl.GetValue<std::string>("theme.base", "dark"));
+    if (base == "light")
+        ov.base = ThemeBase::Light;
+    else if (base != "dark")
+        spdlog::warn("Theme {}: unknown base '{}', using the dark one", path, base);
+
+    const toml::node_view include    = tbl.GetTbl().at_path("theme.include");
+    bool                  include_ok = !include || include.is_string() || include.is_array();
+    if (const toml::value<std::string>* one = include.as_string())
+    {
+        ov.includes.push_back(one->get());
+    }
+    else if (const toml::array* many = include.as_array())
+    {
+        for (const toml::node& n : *many)
+        {
+            if (const toml::value<std::string>* str = n.as_string())
+                ov.includes.push_back(str->get());
+            else
+                include_ok = false;
+        }
+    }
+
+    if (!include_ok)
+        spdlog::warn("Theme {}: include must be a path or a list of paths", path);
+
+    ov.smooth_animations = tbl.GetValue<bool>("theme.smooth-animations", false);
+    ov.window_rounding   = tbl.GetValue<float>("theme.style.window-rounding", -1.f);
+    ov.frame_rounding    = tbl.GetValue<float>("theme.style.frame-rounding", -1.f);
+    ov.grab_rounding     = tbl.GetValue<float>("theme.style.grab-rounding", -1.f);
+    ov.tab_rounding      = tbl.GetValue<float>("theme.style.tab-rounding", -1.f);
+    ov.window_border     = tbl.GetValue<float>("theme.style.window-border", -1.f);
+    ov.frame_border      = tbl.GetValue<float>("theme.style.frame-border", -1.f);
+
+    // Theme files from before the light theme listed every dark color, which would hide any other base
+    if (ov.base != ThemeBase::Dark)
+        if (const size_t n = theme::drop_base_copies(ov.colors, ThemeBase::Dark))
+            spdlog::info("Theme {}: ignoring {} colors that repeat the dark theme's", path, n);
+
+    theme_included_t included;
+    const fs::path   dir = fs::path(path).parent_path();
+    for (const std::string& written : ov.includes)
+    {
+        fs::path p = expand_var(written);
+        if (p.is_relative())
+            p = dir / p;
+        const std::string inc_path = p.lexically_normal().string();
+        files.emplace_back(inc_path, file_stamp(inc_path));
+
+        TomlAPI inc;
+        bool    ok = fs::exists(inc_path);
+        if (!ok)
+        {
+            spdlog::warn("Theme {}: the include {} doesn't exist", path, inc_path);
+        }
+        else if (const Result<>& loaded = inc.LoadFile(inc_path); !loaded.ok())
+        {
+            spdlog::error("{}", loaded.error_v());
+            ok = false;
+        }
+        else
+        {
+            read_color_tables(inc.GetTbl(), included, inc_path);
+        }
+        included.files.emplace_back(inc_path, ok);
+    }
+
+    theme_overrides = std::move(ov);
+    theme_included  = std::move(included);
+    m_theme_files   = std::move(files);
+
+    const auto check = [&](const theme_colors_t& t, const std::string_view file) {
+        for (const auto& [name, value] : t.palette)
+            if (rgba_t col; !parse_hex_rgba(value, col))
+                spdlog::warn(R"(Theme {}: palette color {} = "{}" isn't "#RRGGBB[AA]")", file, name, value);
+        for (const auto* map : { &t.colors, &t.oshot_colors })
+            for (const auto& [name, value] : *map)
+                if (!theme::parse_color(value, *this))
+                    spdlog::warn(R"(Theme {}: {} = "{}" isn't "#RRGGBB[AA]" or a "$name[/opacity]" in the palette)",
+                                 file,
+                                 name,
+                                 value);
+    };
+    check(theme_overrides, path);
+    if (!theme_included.files.empty())
+        check(theme_included, "includes");
+}
+
+bool Config::ThemeFilesChanged() const
+{
+    return std::ranges::any_of(m_theme_files, [](const auto& f) { return file_stamp(f.first) != f.second; });
 }
 
 // fmt::output_file() throws if the file can't be created (missing folder, no permission)
@@ -262,51 +397,62 @@ void Config::GenerateTheme(const std::string& filename, const bool force)
     auto f = open_output_file(filename);
     if (!force)
     {
-        f.print("{}", AUTOTHEME);
+        f.print("{}{}{}", AUTOTHEME, THEME_COLORS_HEADER, AUTOTHEME_COLORS);
+        for (size_t i = 0; i < idx(AppCol::COUNT); ++i)
+            f.print("# {} = \"{}\"\n",
+                    theme::app_color_name(toe<AppCol>(i)),
+                    col_to_hexstr(theme::base_app_color(ThemeBase::Dark, toe<AppCol>(i))));
         return;
     }
 
-    theme_overrides_t& ov = theme_overrides;
-    f.print(R"([theme]
-smooth-animations = true
+    const theme_overrides_t& ov = theme_overrides;
 
-# All sections and keys are optional. Omit anything you don't want to override.
+    std::string includes;
+    for (const std::string& inc : ov.includes)
+        includes += fmt::format("{}\"{}\"", includes.empty() ? "" : ", ", EscapeString(inc));
+
+    f.print(R"([theme]
+# The built-in theme the settings below apply on top of: "dark" or "light"
+base = "{}"
+
+# Other theme files whose palette and color tables apply first, so this file's win.
+# Relative to this file, ~ and $VARS work. A palette generator can write one of them
+{}include = [{}]
+
+smooth-animations = {}
 
 # ---------------------------------------------------------------
 # Rounding (pixels, 0 = sharp corners, max ~12)
+# Border width in pixels. 0 = none, 1 = thin line.
 # ---------------------------------------------------------------
 [theme.style]
-window-rounding = {}
-frame-rounding  = {}
-grab-rounding   = {}
-tab-rounding    = {}
-
-# Border width in pixels. 0 = none, 1 = thin line.
-window-border = {}
-frame-border  = {}
 )",
-            ov.smooth_animations,
-            ov.window_rounding,
-            ov.frame_rounding,
-            ov.grab_rounding,
-            ov.tab_rounding,
-            ov.window_border,
-            ov.frame_border);
+            ov.base == ThemeBase::Light ? "light" : "dark",
+            ov.includes.empty() ? "# " : "",
+            ov.includes.empty() ? R"("~/.cache/wal/oshot.toml")" : includes,
+            ov.smooth_animations);
 
-    f.print(R"(
-# ---------------------------------------------------------------
-# Color overrides
-# Format: "#RRGGBBAA"
-# Only the entries you list here are overridden;
-# everything else falls back to the base theme.
-#
-# Full list of valid names:
-#   https://github.com/ocornut/imgui/blob/master/imgui.cpp
-#   (search for "GetStyleColorName")
-# ---------------------------------------------------------------
-[theme.colors]
-)");
+    const auto print_size = [&](const std::string_view key, const float val) {
+        if (val >= 0.f)
+            f.print("{} = {:.1f}\n", key, val);
+    };
+    print_size("window-rounding", ov.window_rounding);
+    print_size("frame-rounding", ov.frame_rounding);
+    print_size("grab-rounding", ov.grab_rounding);
+    print_size("tab-rounding", ov.tab_rounding);
+    print_size("window-border", ov.window_border);
+    print_size("frame-border", ov.frame_border);
 
-    for (const auto& [name, hex] : ov.colors)
-        f.print("{} = \"{}\"\n", name, hex);
+    const auto print_table = [&](const theme::table_t& map) {
+        for (const auto& [name, value] : map)
+            f.print("{} = \"{}\"\n", name, EscapeString(value));
+    };
+
+    f.print("{}", THEME_COLORS_HEADER);
+    f.print("\n[theme.palette]\n");
+    print_table(ov.palette);
+    f.print("\n[theme.colors]\n");
+    print_table(ov.colors);
+    f.print("\n[theme.oshot-colors]\n");
+    print_table(ov.oshot_colors);
 }

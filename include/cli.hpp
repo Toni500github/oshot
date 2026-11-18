@@ -39,8 +39,8 @@
 std::filesystem::path parse_config_path(int argc, char* argv[], const std::filesystem::path& configDir);  // NOLINT
 
 /**
- * Second pass over the options, applying them to g_config. Exits for --help, --version, --gen-config and
- * invalid options
+ * Second pass over the options, applying them to g_config. Exits for --help, --version, --gen-config,
+ * --gen-theme and invalid options
  * @param argc The argument count from main()
  * @param argv The arguments from main()
  * @param configFile The config file in use, where a bare --gen-config writes

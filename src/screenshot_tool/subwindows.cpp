@@ -51,6 +51,7 @@
 #include "screenshot_tool.hpp"
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "spdlog/spdlog.h"
+#include "theme.hpp"
 #include "tiny-process-library/process.hpp"
 #include "util.hpp"
 #include "util/color.hpp"
@@ -95,7 +96,7 @@ void ScreenshotTool::DrawAboutWindow()
 
 #ifdef DISABLE_PLUGINS
         text_display = centered_text(_("!!! NO PLUGINS SUPPORT !!!"));
-        ImGui::TextColored(Colors::RED, "%s", text_display);
+        ImGui::TextColored(theme::color(AppCol::Error), "%s", text_display);
         ImGui::Spacing();
 #endif
 
@@ -351,7 +352,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         ShowIfError(ectx, OcrDownloadError::FailedToDownload);
         if (has_downloaded && !ectx.Has(OcrDownloadError::FailedToDownload))
         {
-            ImGui::TextColored((0x33D933FF_rgba), "%s", _("Downloaded successfully!"));
+            ImGui::TextColored(theme::color(AppCol::Success), "%s", _("Downloaded successfully!"));
 
             // The Model list only shows the OCR path's models, often a system folder oshot can't write to
             std::error_code ec;
@@ -387,14 +388,14 @@ void ScreenshotTool::DrawLogsWindow()
     auto level_color = [](spdlog::level::level_enum lvl) {
         switch (lvl)
         {
-            case spdlog::level::trace:    return 0x888888FF_rgba;  // gray
-            case spdlog::level::debug:    return 0x9999FFFF_rgba;  // periwinkle
-            case spdlog::level::info:     return 0x00AEFFFF_rgba;  // blueish
-            case spdlog::level::warn:     return 0xFFCC33FF_rgba;  // amber
-            case spdlog::level::err:      return 0xFF4D4DFF_rgba;  // red
-            case spdlog::level::critical: return Colors::RED;      // pure red
+            case spdlog::level::trace:    return theme::color(AppCol::TextMuted);
+            case spdlog::level::debug:    return theme::color(AppCol::LogDebug);
+            case spdlog::level::info:     return theme::color(AppCol::Info);
+            case spdlog::level::warn:     return theme::color(AppCol::Warning);
+            case spdlog::level::err:
+            case spdlog::level::critical: return theme::color(AppCol::Error);
 
-            default: return Colors::WHITE;
+            default: return rgba_t(ImGui::GetStyleColorVec4(ImGuiCol_Text));
         }
     };
 

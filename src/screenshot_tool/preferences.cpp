@@ -33,6 +33,7 @@
 #include <filesystem>
 #include <functional>
 #include <future>
+#include <map>
 #include <memory>
 #include <optional>
 #include <span>
@@ -52,6 +53,7 @@
 #include "platform.hpp"
 #include "screenshot_tool.hpp"
 #include "spdlog/spdlog.h"
+#include "theme.hpp"
 #include "util.hpp"
 #include "util/color.hpp"
 #include "util/fonts.hpp"
@@ -71,16 +73,6 @@ using namespace std::chrono_literals;
 // Helpers
 // ------------------------------
 
-static std::unordered_map<std::string, int>& color_name_map()
-{
-    static std::unordered_map<std::string, int> map;
-    if (map.empty())
-        for (int i = 0; i < ImGuiCol_COUNT; ++i)
-            map[ImGui::GetStyleColorName(i)] = i;
-
-    return map;
-}
-
 // The interface font size: font-size, else `own_size`, the main font's own one
 static float interface_font_size(const float own_size)
 {
@@ -90,38 +82,33 @@ static float interface_font_size(const float own_size)
 
 void apply_imgui_theme()
 {
-    ScreenshotTool::StyleDefaultColor();
-
     ImGuiStyle& style = ImGui::GetStyle();
-    const auto& ov    = g_config->theme_overrides;
-    const auto& cmap  = color_name_map();
-
-    for (const auto& [name, hex] : ov.colors)
-    {
-        auto it = cmap.find(name);
-        if (it == cmap.end())
-            continue;
-        ImVec4 col;
-        if (hexstr_to_imvec4(hex.data(), col))
-            style.Colors[it->second] = col;
-    }
-
-    // -1 means "not set"
-    if (ov.window_rounding >= 0.f)
-        style.WindowRounding = ov.window_rounding;
-    if (ov.frame_rounding >= 0.f)
-        style.FrameRounding = ov.frame_rounding;
-    if (ov.grab_rounding >= 0.f)
-        style.GrabRounding = ov.grab_rounding;
-    if (ov.tab_rounding >= 0.f)
-        style.TabRounding = ov.tab_rounding;
-    if (ov.window_border >= 0.f)
-        style.WindowBorderSize = ov.window_border;
-    if (ov.frame_border >= 0.f)
-        style.FrameBorderSize = ov.frame_border;
+    theme::apply(*g_config, style);
 
     // For the next frame, since a frame puts back the size it started with (ImGui's own style editor does the same)
     style._NextFrameFontSizeBase = interface_font_size(ImGui::GetDefaultFont()->LegacySize);
+}
+
+// The theme as Preferences opened, saved or discarded it, so a reload can tell unsaved edits apart
+static Config::theme_overrides_t s_theme_snapshot;
+static bool                      s_prefs_open = false;
+
+void reload_theme_if_changed()
+{
+    static std::chrono::steady_clock::time_point next_check;
+    const auto                                   now = std::chrono::steady_clock::now();
+    if (now < next_check)
+        return;
+    next_check = now + 500ms;
+
+    // Unsaved theme edits in Preferences win, the files are read again once they're saved or discarded
+    if (!g_config->ThemeFilesChanged() || (s_prefs_open && g_config->theme_overrides != s_theme_snapshot))
+        return;
+
+    g_config->LoadThemeFile(g_config->GetThemeFilePath(), true);
+    apply_imgui_theme();
+    s_theme_snapshot = g_config->theme_overrides;
+    spdlog::info("Reloaded the theme");
 }
 
 // ------------------------------
@@ -303,7 +290,7 @@ static void draw_font_preview(const std::string& title,
 
     if (!font)
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, (0xFF6666FF_rgba).to_imvec4());
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::Error).to_imvec4());
         ImGui::TextWrapped("%s",
                            path.empty()
                                ? _("Not found: not an existing file, nor a file in the system font folders")
@@ -551,7 +538,7 @@ static void draw_preference_fonts(const bool window_just_opened)
 
             ImGui::TableNextColumn();
             if (resolved_font_paths[i].empty())
-                ImGui::TextColored((0xFF6666FF_rgba), "%s", display_name(fonts[i]).c_str());
+                ImGui::TextColored(theme::color(AppCol::Error), "%s", display_name(fonts[i]).c_str());
             else
                 ImGui::TextUnformatted(display_name(fonts[i]).c_str());
 
@@ -766,7 +753,8 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
           "drag-and-drop."));
     draw_input_text_file("", "##config_theme_file_path", toml_filter, nullptr, g_config->File.theme_file_path);
     if (!fs::exists(g_config->GetThemeFilePath()))
-        ImGui::TextColored((0xff7444FF_rgba), "%s", _("File doesn't exist, fallback to default hardcoded theme"));
+        ImGui::TextColored(
+            theme::color(AppCol::Notice), "%s", _("File doesn't exist, fallback to default hardcoded theme"));
     ImGui::Spacing();
 
     // A list instead of ImGui's "a\0b\0" string, whose items can't be translated one by one
@@ -909,7 +897,7 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
         r = get_config_image_out_fmt();
 
     if (!r.ok())
-        ImGui::TextColored(Colors::RED, "%s", r.error_v().c_str());
+        ImGui::TextColored(theme::color(AppCol::Error), "%s", r.error_v().c_str());
     else
         ImGui::TextDisabled("%s", r.get().c_str());
 
@@ -1230,89 +1218,338 @@ static void save_text_transformers(StateManager& state, const std::vector<std::p
 
 static void draw_theme_editor()
 {
-    Config::theme_overrides_t& ov = g_config->theme_overrides;
+    Config::theme_overrides_t& ov      = g_config->theme_overrides;
+    bool                       changed = false;
 
-    ImGui::SeparatorText(_("Custom theme options"));
+    ImGuiStyle base;
+    theme::style_base(ov.base, base);
 
-    ImGui::Checkbox(_("Enable smooth animations"), &ov.smooth_animations);
-
-    ImGui::SeparatorText(_("Style overrides"));
-
-    // Rounding / border sliders
-    auto style_row = [&](const char* label, float& val, float lo, float hi) {
-        float v = (val < 0.f) ? 0.f : val;
-        if (ImGui::SliderFloat(label, &v, lo, hi, "%.1f"))
-            val = v;
-        ImGui::SameLine();
-        if (ImGui::SmallButton(fmt::format("{}##{}", _("reset"), label).c_str()))
-            val = -1.f;
-    };
-
-    style_row(_("Window rounding"), ov.window_rounding, 0, 12);
-    style_row(_("Frame rounding"), ov.frame_rounding, 0, 12);
-    style_row(_("Grab rounding"), ov.grab_rounding, 0, 12);
-    style_row(_("Tab rounding"), ov.tab_rounding, 0, 12);
-    style_row(_("Window border"), ov.window_border, 0, 2);
-    style_row(_("Frame border"), ov.frame_border, 0, 2);
-
-    ImGui::Spacing();
-    ImGui::SeparatorText(_("Color overrides"));
-    ImGui::TextDisabled("%s", _("Click a swatch to edit. Changes apply on Save."));
-    ImGui::Spacing();
-
-    // Only the most used colors, so the list stays short. The theme file can set the others
-    static constexpr auto important = std::to_array({
-        "Text",          "TextDisabled",  "WindowBg",       "ChildBg",       "PopupBg",       "Border",
-        "PlotHistogram", "FrameBg",       "FrameBgHovered", "FrameBgActive", "TitleBg",       "TitleBgActive",
-        "MenuBarBg",     "ScrollbarBg",   "ScrollbarGrab",  "CheckMark",     "SliderGrab",    "SliderGrabActive",
-        "Button",        "ButtonHovered", "ButtonActive",   "Header",        "HeaderHovered", "HeaderActive",
-        "Tab",           "TabHovered",    "TabSelected",
-    });
-
-    const auto& cmap = color_name_map();
-
-    ImGui::BeginChild("##color_list", ImVec2(0, ImGui::GetFrameHeightWithSpacing() * 13.0f), true);
-    for (const char* name : important)
+    if (g_config->File.theme_file_path.empty())
     {
-        auto it = cmap.find(name);
-        if (it == cmap.end())
-            continue;
-
-        // The override, else the live style
-        ImVec4 col = ImGui::GetStyle().Colors[it->second];
-
-        auto oit = ov.colors.find(name);
-        if (oit != ov.colors.end())
-        {
-            const std::string& h = oit->second;
-            if (!h.empty() && h[0] == '#')
-                hexstr_to_imvec4(h, col);
-        }
-        ImGui::PushID(name);
-        if (ImGui::ColorEdit4(
-                "##c", reinterpret_cast<float*>(&col), ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar))
-        {
-            ov.colors[name] = col_to_hexstr(col);
-        }
+        ImGui::TextColored(
+            theme::color(AppCol::Notice), "%s", _("No theme file is set in Defaults, changes last until oshot quits"));
+    }
+    else
+    {
+        const std::string path = g_config->GetThemeFilePath();
+        std::error_code   ec;
+        ImGui::TextDisabled("%s", _("Theme file:"));
         ImGui::SameLine();
-        ImGui::TextUnformatted(name);
-
-        // Allow clearing individual override
-        if (oit != ov.colors.end())
+        ImGui::TextUnformatted(g_config->File.theme_file_path.c_str());
+        ImGui::SetItemTooltip("%s", path.c_str());
+        if (!fs::exists(path, ec))
         {
             ImGui::SameLine();
-            if (ImGui::SmallButton("x"))
-                ov.colors.erase(name);
+            ImGui::TextDisabled("%s", _("(created on Save)"));
+        }
+    }
+    ImGui::SameLine();
+    HelpMarker(
+        _("Changes show right away. Save writes them to the theme file, Discard undoes them.\n"
+          "Edits made to the theme file or its includes in a text editor show up on their own."));
+
+    const auto& included = g_config->theme_included;
+    for (size_t i = 0; i < included.files.size(); ++i)
+    {
+        const auto& [path, ok] = included.files[i];
+        ImGui::TextDisabled("%s", _("Includes:"));
+        ImGui::SameLine();
+        ImGui::TextUnformatted(i < ov.includes.size() ? ov.includes[i].c_str() : path.c_str());
+        ImGui::SetItemTooltip("%s", path.c_str());
+        if (!ok)
+        {
+            ImGui::SameLine();
+            ImGui::TextColored(theme::color(AppCol::Error), "%s", _("(not loaded, see Logs)"));
+        }
+    }
+
+    ImGui::SeparatorText(_("Base theme"));
+    int  base_idx     = int(idx(ov.base));
+    bool base_clicked = ImGui::RadioButton(_("Dark"), &base_idx, int(idx(ThemeBase::Dark)));
+    ImGui::SameLine();
+    base_clicked |= ImGui::RadioButton(_("Light"), &base_idx, int(idx(ThemeBase::Light)));
+    ImGui::SameLine();
+    HelpMarker(
+        _("The built-in colors the theme applies on top of.\n"
+          "Switching drops the colors that only repeat the old theme's."));
+    if (base_clicked && toe<ThemeBase>(base_idx) != ov.base)
+    {
+        theme::drop_base_copies(ov.colors, ov.base);
+        ov.base = toe<ThemeBase>(base_idx);
+        theme::style_base(ov.base, base);
+        changed = true;
+    }
+
+    changed |= ImGui::Checkbox(_("Smooth animations"), &ov.smooth_animations);
+    ImGui::SameLine();
+    HelpMarker(_("Progress bars glide to each new value instead of jumping."));
+
+    ImGui::SeparatorText(_("Sizes"));
+    if (ImGui::BeginTable("##sizes", 3, ImGuiTableFlags_SizingFixedFit))
+    {
+        ImGui::TableSetupColumn("##name");
+        ImGui::TableSetupColumn("##value", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("##reset");
+
+        const auto size_row = [&](const char* label, float& val, const float base_val, const float max) {
+            const bool set = val >= 0.f;
+            float      v   = set ? val : base_val;
+
+            ImGui::PushID(label);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            if (set)
+                ImGui::TextUnformatted(label);
+            else
+                ImGui::TextDisabled("%s", label);
+
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::SliderFloat("##v", &v, 0.f, max, "%.1f px"))
+            {
+                val     = v;
+                changed = true;
+            }
+
+            ImGui::TableNextColumn();
+            ImGui::BeginDisabled(!set);
+            if (ImGui::Button(_("Reset")))
+            {
+                val     = -1.f;
+                changed = true;
+            }
+            ImGui::EndDisabled();
+            ImGui::PopID();
+        };
+
+        size_row(_("Window rounding"), ov.window_rounding, base.WindowRounding, 12);
+        size_row(_("Frame rounding"), ov.frame_rounding, base.FrameRounding, 12);
+        size_row(_("Grab rounding"), ov.grab_rounding, base.GrabRounding, 12);
+        size_row(_("Tab rounding"), ov.tab_rounding, base.TabRounding, 12);
+        size_row(_("Window border"), ov.window_border, base.WindowBorderSize, 2);
+        size_row(_("Frame border"), ov.frame_border, base.FrameBorderSize, 2);
+        ImGui::EndTable();
+    }
+
+    constexpr ImGuiColorEditFlags swatch_flags = ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar |
+                                                 ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_NoOptions;
+    constexpr ImGuiTableFlags     table_flags =
+        ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_SizingFixedFit;
+
+    // The palette, the theme file's entries over the includes'
+    std::map<std::string, rgba_t> palette;
+    for (const theme::table_t* names : { &included.palette, &std::as_const(ov.palette) })
+        for (const auto& [name, value] : *names)
+            if (const auto col = theme::palette_color(name, *g_config))
+                palette[name] = *col;
+
+    ImGui::SeparatorText(_("Palette"));
+    ImGui::SameLine();
+    HelpMarker(
+        _("Named colors the colors below can use, so changing one changes all of them.\n"
+          "Right-click a color's swatch to pick one. In the theme file they're written \"$name\", "
+          "or \"$name/50\" for 50% opacity."));
+    if (!palette.empty() && ImGui::BeginTable("##palette", 4, table_flags))
+    {
+        ImGui::TableSetupColumn("##swatch");
+        ImGui::TableSetupColumn("##name", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("##hex");
+        ImGui::TableSetupColumn("##reset");
+        for (const auto& [name, rgba] : palette)
+        {
+            const bool own = ov.palette.contains(name);
+            ImVec4     col = rgba.to_imvec4();
+
+            ImGui::PushID(name.c_str());
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            if (ImGui::ColorEdit4("##c", &col.x, swatch_flags))
+            {
+                ov.palette[name] = col_to_hexstr(col);
+                changed          = true;
+            }
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("$%s", name.c_str());
+            if (!own)
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", _("(include)"));
+            }
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("%s", col_to_hexstr(col).c_str());
+            ImGui::TableNextColumn();
+            if (own && ImGui::SmallButton(included.palette.contains(name) ? _("Reset") : _("Remove")))
+            {
+                ov.palette.erase(name);
+                changed = true;
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+
+    static std::string new_name;
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
+    ImGui::InputTextWithHint("##new_palette", _("New palette color"), &new_name);
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!theme::valid_palette_name(new_name) || palette.contains(new_name));
+    if (ImGui::Button(_("Add")))
+    {
+        ov.palette[new_name] = col_to_hexstr(ImGui::GetStyle().Colors[ImGuiCol_Button]);
+        new_name.clear();
+        changed = true;
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    HelpMarker(_("Letters, digits, '-' and '_'."));
+
+    ImGui::SeparatorText(_("Colors"));
+
+    // The most used ImGui colors, unless "All ImGui colors" is on
+    static constexpr auto common = std::to_array<ImGuiCol>({
+        ImGuiCol_Text,          ImGuiCol_TextDisabled,     ImGuiCol_WindowBg,
+        ImGuiCol_ChildBg,       ImGuiCol_PopupBg,          ImGuiCol_Border,
+        ImGuiCol_FrameBg,       ImGuiCol_FrameBgHovered,   ImGuiCol_FrameBgActive,
+        ImGuiCol_TitleBg,       ImGuiCol_TitleBgActive,    ImGuiCol_MenuBarBg,
+        ImGuiCol_ScrollbarBg,   ImGuiCol_ScrollbarGrab,    ImGuiCol_CheckMark,
+        ImGuiCol_SliderGrab,    ImGuiCol_SliderGrabActive, ImGuiCol_Button,
+        ImGuiCol_ButtonHovered, ImGuiCol_ButtonActive,     ImGuiCol_Header,
+        ImGuiCol_HeaderHovered, ImGuiCol_HeaderActive,     ImGuiCol_Tab,
+        ImGuiCol_TabHovered,    ImGuiCol_TabSelected,      ImGuiCol_PlotHistogram,
+    });
+    static std::string    filter;
+    static bool           all_colors = false;
+
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
+    ImGui::InputTextWithHint("##color_filter", _("Filter"), &filter);
+    ImGui::SameLine();
+    ImGui::Checkbox(_("All ImGui colors"), &all_colors);
+    ImGui::SameLine();
+    const size_t own_colors = ov.colors.size() + ov.oshot_colors.size();
+    ImGui::BeginDisabled(own_colors == 0);
+    if (ImGui::Button(fmt::format("{} ({})###reset_all", _("Reset all"), own_colors).c_str()))
+    {
+        ov.colors.clear();
+        ov.oshot_colors.clear();
+        changed = true;
+    }
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("%s", _("Removes the colors the theme file sets. The palette and the includes stay."));
+
+    // A color's swatch, name, value and Reset. `own` is the theme file's table it belongs to
+    const auto color_row = [&](const char* name, theme::table_t& own, const theme::resolved_t& r, ImVec4 col) {
+        const auto own_it  = own.find(name);
+        const bool broken  = own_it != own.end() && r.source != theme::Source::File;
+        const bool via_ref = r.raw.starts_with('$');
+
+        ImGui::PushID(name);
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        if (ImGui::ColorEdit4("##c", &col.x, swatch_flags))
+        {
+            own[name] = col_to_hexstr(col);
+            changed   = true;
+        }
+        if (ImGui::BeginPopupContextItem("##palette_menu"))
+        {
+            ImGui::TextDisabled("%s", _("Use a palette color"));
+            for (const auto& [pname, rgba] : palette)
+            {
+                ImGui::ColorButton("##p",
+                                   rgba.to_imvec4(),
+                                   ImGuiColorEditFlags_AlphaPreviewHalf,
+                                   ImVec2(ImGui::GetTextLineHeight(), ImGui::GetTextLineHeight()));
+                ImGui::SameLine();
+                if (ImGui::Selectable(fmt::format("${}", pname).c_str()))
+                {
+                    own[name] = "$" + pname;
+                    changed   = true;
+                }
+            }
+            if (palette.empty())
+                ImGui::TextUnformatted(_("The palette is empty"));
+            ImGui::EndPopup();
+        }
+
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        if (broken)
+        {
+            ImGui::TextColored(theme::color(AppCol::Error), "%s", name);
+            ImGui::SetItemTooltip(_("\"%s\" isn't a color or a palette entry"), own_it->second.c_str());
+        }
+        else if (r.source == theme::Source::Base)
+            ImGui::TextDisabled("%s", name);
+        else
+            ImGui::TextUnformatted(name);
+        if (r.source == theme::Source::Include)
+        {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", _("(include)"));
+        }
+
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("%s", via_ref ? std::string(r.raw).c_str() : col_to_hexstr(col).c_str());
+
+        ImGui::TableNextColumn();
+        if (own_it != own.end() && ImGui::SmallButton(_("Reset")))
+        {
+            own.erase(own_it);
+            changed = true;
         }
         ImGui::PopID();
-    }
-    ImGui::EndChild();
+    };
 
-    ImGui::Spacing();
-    if (ImGui::Button(_("Clear all color overrides")))
-        ov.colors.clear();
-    ImGui::SameLine();
-    HelpMarker(_("Reverts to the base theme colors on next Save."));
+    const std::string needle  = str_tolower(filter);
+    const auto        matches = [&](const char* name) {
+        return needle.empty() || str_tolower(name).find(needle) != std::string::npos;
+    };
+    const auto section_row = [](const char* label) {
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TableNextColumn();
+        ImGui::SeparatorText(label);
+    };
+
+    const float height = std::max(ImGui::GetContentRegionAvail().y, ImGui::GetFrameHeightWithSpacing() * 8.0f);
+    if (ImGui::BeginTable("##colors", 4, table_flags | ImGuiTableFlags_ScrollY, ImVec2(0, height)))
+    {
+        ImGui::TableSetupColumn("##swatch");
+        ImGui::TableSetupColumn("##name", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("##value");
+        ImGui::TableSetupColumn("##reset");
+
+        section_row(_("Interface"));
+        const size_t count = all_colors ? size_t(ImGuiCol_COUNT) : common.size();
+        for (size_t n = 0; n < count; ++n)
+        {
+            const auto  i    = all_colors ? ImGuiCol(n) : common[n];
+            const char* name = ImGui::GetStyleColorName(i);
+            if (!matches(name))
+                continue;
+            const theme::resolved_t r = theme::resolve_imgui_color(name, *g_config);
+            color_row(name, ov.colors, r, r.value ? r.value->to_imvec4() : base.Colors[i]);
+        }
+
+        section_row(_("oshot"));
+        for (size_t n = 0; n < idx(AppCol::COUNT); ++n)
+        {
+            const auto  col  = toe<AppCol>(n);
+            const char* name = theme::app_color_name(col);
+            if (!matches(name))
+                continue;
+            const theme::resolved_t r = theme::resolve_app_color(col, *g_config);
+            color_row(name, ov.oshot_colors, r, r.value.value_or(theme::base_app_color(ov.base, col)).to_imvec4());
+        }
+        ImGui::EndTable();
+    }
+
+    if (changed)
+        apply_imgui_theme();
 }
 
 void ScreenshotTool::DrawPreferencesWindow()
@@ -1325,13 +1562,11 @@ void ScreenshotTool::DrawPreferencesWindow()
 #endif
 
     static bool    prefs_modified     = false;
-    static bool    prev_window_open   = false;
     static bool    armed              = false;
-    const bool     window_just_opened = !prev_window_open;
+    const bool     window_just_opened = !s_prefs_open;
     static PrefTab selected_tab       = PrefTab::Defaults;
 
     static Config::config_file_t                 config_snapshot;  // config state at the moment the window opened
-    static Config::theme_overrides_t             theme_snapshot;   // theme state at the moment the window opened
     static std::unordered_map<std::string, bool> plugin_dirty;
 #ifndef DISABLE_PLUGINS
     static std::vector<std::pair<std::string, bool>> transformers;  // the chain as Preferences shows it until saved
@@ -1341,12 +1576,12 @@ void ScreenshotTool::DrawPreferencesWindow()
 
     if (!m_show_window.Has(SubWindow::Preferences))
     {
-        prev_window_open = false;
+        s_prefs_open = false;
         release_preview_font();
         return;
     }
 
-    prev_window_open = true;
+    s_prefs_open = true;
 
     auto save_current_tab = [&]() {
         if (config_snapshot != g_config->File)
@@ -1358,16 +1593,15 @@ void ScreenshotTool::DrawPreferencesWindow()
                 g_config->LoadThemeFile(g_config->GetThemeFilePath());
             apply_imgui_theme();
             config_snapshot = g_config->File;
-            theme_snapshot  = g_config->theme_overrides;
+            s_theme_snapshot = g_config->theme_overrides;
         }
 
-        if (theme_snapshot != g_config->theme_overrides)
+        if (s_theme_snapshot != g_config->theme_overrides)
         {
             if (!g_config->File.theme_file_path.empty())
             {
                 g_config->GenerateTheme(g_config->GetThemeFilePath(), true);
                 g_config->LoadThemeFile(g_config->GetThemeFilePath());
-                color_name_map().clear();
             }
             else
             {
@@ -1375,7 +1609,7 @@ void ScreenshotTool::DrawPreferencesWindow()
             }
 
             apply_imgui_theme();
-            theme_snapshot = g_config->theme_overrides;
+            s_theme_snapshot = g_config->theme_overrides;
         }
 
 #ifndef DISABLE_PLUGINS
@@ -1401,7 +1635,8 @@ void ScreenshotTool::DrawPreferencesWindow()
 
     auto discard_current_tab = [&]() {
         g_config->File            = config_snapshot;
-        g_config->theme_overrides = theme_snapshot;
+        g_config->theme_overrides = s_theme_snapshot;
+        apply_imgui_theme();
 #ifndef DISABLE_PLUGINS
         transformers = current_text_transformers();
         for (auto& [id, rt] : g_plugins)
@@ -1420,7 +1655,7 @@ void ScreenshotTool::DrawPreferencesWindow()
     if (window_just_opened)
     {
         config_snapshot = g_config->File;
-        theme_snapshot  = g_config->theme_overrides;
+        s_theme_snapshot = g_config->theme_overrides;
 #ifndef DISABLE_PLUGINS
         // Edits left from a window that closed without Save or Discard are dropped
         plugin_dirty.clear();
@@ -1430,7 +1665,7 @@ void ScreenshotTool::DrawPreferencesWindow()
 #endif
     }
 
-    if (config_snapshot != g_config->File || theme_snapshot != g_config->theme_overrides)
+    if (config_snapshot != g_config->File || s_theme_snapshot != g_config->theme_overrides)
         prefs_modified = true;
 
     bool window_open = true;
@@ -1539,7 +1774,7 @@ void ScreenshotTool::DrawPreferencesWindow()
     // Once closed, the next open starts fresh
     if (!m_show_window.Has(SubWindow::Preferences))
     {
-        prev_window_open = false;
+        s_prefs_open     = false;
         prefs_modified   = false;
     }
 }

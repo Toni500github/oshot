@@ -495,6 +495,7 @@ set(OSHOT_COMMON_SOURCES
     src/screenshot_tool/input.cpp
     src/screenshot_tool/preferences.cpp
     src/screenshot_tool/subwindows.cpp
+    src/screenshot_tool/theme.cpp
     src/text_extraction/barcode_zbar.cpp
     src/text_extraction/ocr.cpp
     src/text_extraction/ocr_image.cpp

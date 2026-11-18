@@ -54,6 +54,7 @@
 #include "screenshot_tool.hpp"
 #include "spdlog/spdlog.h"
 #include "text_extraction.hpp"
+#include "theme.hpp"
 #include "tool_icons.h"
 #include "util.hpp"
 #include "util/color.hpp"
@@ -252,9 +253,9 @@ void ScreenshotTool::RenderOverlay()
         static ImVec2 hint_display;
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), center_cond(hint_display), ImVec2(0.5f, 0.5f));
         ImGui::Begin("##select_area", nullptr, minimal_win_flags);
-        ImGui::TextColored(Colors::GREEN, "%s", _("Select an area"));
-        ImGui::TextColored(Colors::CYAN, "%s", _("Press Save/Copy for the full screenshot"));
-        ImGui::TextColored((0x0077FFFF_rgba), "%s", _("CTRL+A for whole image selection"));
+        ImGui::TextColored(theme::color(AppCol::HintSelect), "%s", _("Select an area"));
+        ImGui::TextColored(theme::color(AppCol::HintFull), "%s", _("Press Save/Copy for the full screenshot"));
+        ImGui::TextColored(theme::color(AppCol::HintSelectAll), "%s", _("CTRL+A for whole image selection"));
         ImGui::End();
     }
 
@@ -770,65 +771,6 @@ ImFont* ScreenshotTool::GetCachedFont(const std::string& font_path, const float 
 
     const auto it = m_font_cache.find({ font_path, std::max(font_size, 16.0f) });
     return it != m_font_cache.end() ? it->second : nullptr;
-}
-
-void ScreenshotTool::StyleDefaultColor()
-{
-    // clang-format off
-    constexpr std::array theme_colors = std::to_array<std::pair<ImGuiCol, rgba_t>>({
-        { ImGuiCol_Text,          0xDCDDE1FF_rgba },
-        { ImGuiCol_TextDisabled,  0x666870FF_rgba },
-        { ImGuiCol_WindowBg,      0x0D1015FF_rgba },
-        { ImGuiCol_ChildBg,       0x0D1015FF_rgba },
-        { ImGuiCol_PopupBg,       0x10131AFF_rgba },
-
-        { ImGuiCol_Border,        0x242933FF_rgba },
-
-        { ImGuiCol_TitleBg,       0x090B0FFF_rgba },
-        { ImGuiCol_TitleBgActive, 0x5274F0FF_rgba },
-
-        { ImGuiCol_FrameBg,       0x151920FF_rgba },
-        { ImGuiCol_FrameBgHovered,0x202630FF_rgba },
-        { ImGuiCol_FrameBgActive, 0x29313EFF_rgba },
-
-        { ImGuiCol_Button,        0x294CC7FF_rgba },
-        { ImGuiCol_ButtonHovered, 0x385DE0FF_rgba },
-        { ImGuiCol_ButtonActive,  0x203CA6FF_rgba },
-
-        { ImGuiCol_Header,        0x1A1F28FF_rgba },
-        { ImGuiCol_HeaderHovered, 0x252C38FF_rgba },
-        { ImGuiCol_HeaderActive,  0x303946FF_rgba },
-
-        { ImGuiCol_Tab,           0x10141BFF_rgba },
-        { ImGuiCol_TabHovered,    0x252E42FF_rgba },
-        { ImGuiCol_TabSelected,   0x294CC7FF_rgba },
-
-        { ImGuiCol_SliderGrab,    0x294CC7FF_rgba },
-        { ImGuiCol_SliderGrabActive, 0x5274F0FF_rgba },
-
-        { ImGuiCol_ScrollbarBg,   0x07090CFF_rgba },
-        { ImGuiCol_ScrollbarGrab, 0x2A303AFF_rgba },
-
-        { ImGuiCol_CheckMark,     0x5274F0FF_rgba },
-        { ImGuiCol_MenuBarBg,     0x090B0FFF_rgba },
-        { ImGuiCol_PlotHistogram, 0x5274F0FF_rgba },
-    });
-    // clang-format on
-
-    ImGui::StyleColorsDark();
-
-    auto& style = ImGui::GetStyle();
-
-    style.WindowRounding = 4.0f;
-    style.FrameRounding  = 4.0f;
-    style.GrabRounding   = 1.5f;
-    style.TabRounding    = 2.0f;
-
-    style.WindowBorderSize = 1.0f;
-    style.FrameBorderSize  = 0.0f;
-
-    for (const auto& [color, rgba] : theme_colors)
-        style.Colors[color] = rgba;
 }
 
 // ------------------------------

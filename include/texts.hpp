@@ -159,6 +159,8 @@ GENERAL OPTIONS:
                                 and prints the path.
     --gen-config [<PATH>]       Generate the default config file, at PATH or else the default location.
                                 Prompts before overwriting.
+    --gen-theme [<PATH>]        Generate the default theme file, at PATH or else where theme-file points.
+                                Prompts before overwriting.
 
     -g, --gui                   Only launch the GUI.
     -t, --tray                  Only launch the system tray.
@@ -286,7 +288,7 @@ image-out-ext = "{}"
 
 # Format of the output image filename when saving.
 # The image extension is appended automatically.
-# Uses {{fmt}} chrono specifiers. NOTE: 
+# Uses {{fmt}} chrono specifiers. NOTE:
 #    the colon inside {{}} is required: {{:%F}} correct, {{%F}} will error.
 #
 # Default: "oshot_{{:%F_%H-%M}}"
@@ -302,87 +304,111 @@ theme-file = "{}"
 )#";
 
 inline constexpr std::string_view AUTOTHEME = (R"([theme]
+# The built-in theme the settings below apply on top of: "dark" or "light"
+base = "dark"
+
+# Other theme files whose palette and color tables apply first, so this file's win.
+# Relative to this file, ~ and $VARS work. A palette generator can write one of them
+# include = ["~/.cache/wal/oshot.toml"]
+
 smooth-animations = true
 
 # All sections and keys are optional. Omit anything you don't want to override.
 
 # ---------------------------------------------------------------
 # Rounding (pixels, 0 = sharp corners, max ~12)
+# Border width in pixels. 0 = none, 1 = thin line.
 # ---------------------------------------------------------------
 [theme.style]
 window-rounding = 4.0
 frame-rounding  = 4.0
 grab-rounding   = 1.5
 tab-rounding    = 2.0
-
-# Border width in pixels. 0 = none, 1 = thin line.
 window-border = 1.0
 frame-border  = 0.0
+)");
 
+// Before the color tables, in both the default theme file and the one Preferences saves
+inline constexpr std::string_view THEME_COLORS_HEADER = (R"(
 # ---------------------------------------------------------------
-# Color overrides
-# Format: "#RRGGBBAA"
-# Only the entries you list here are overridden;
-# everything else falls back to the base theme.
+# Colors
+# A value is "#RRGGBB" or "#RRGGBBAA", or a palette color as "$name",
+# or "$name/50" for it at 50% opacity.
+# Only the entries you list are overridden, the rest come from the
+# includes, then from the base theme.
 #
-# Full list of valid names:
-#   https://github.com/ocornut/imgui/blob/master/imgui.cpp
-#   (search for "GetStyleColorName")
+# [theme.palette]      named colors for the tables below
+# [theme.colors]       ImGui's colors, every name is in
+#                      https://github.com/ocornut/imgui/blob/master/imgui.cpp
+#                      (search for "GetStyleColorName")
+# [theme.oshot-colors] the overlay, messages, tags and logs
 # ---------------------------------------------------------------
+)");
+
+// The default theme file's color tables. The commented values are the dark theme's own,
+// and GenerateTheme() appends the [theme.oshot-colors] ones
+inline constexpr std::string_view AUTOTHEME_COLORS = (R"(
+[theme.palette]
+# accent = "#5274F0"
+
 [theme.colors]
+# For example: Button = "$accent"
+# The dark theme's own values:
 
 # Main text
-Text = "#DCDDE1FF"
-TextDisabled = "#666870FF"
+# Text = "#DCDDE1FF"
+# TextDisabled = "#666870FF"
 
 # Main application backgrounds
-WindowBg = "#0D1015FF"
-ChildBg = "#0D1015FF"
-PopupBg = "#10131AFF"
+# WindowBg = "#0D1015FF"
+# ChildBg = "#0D1015FF"
+# PopupBg = "#10131AFF"
 
 # Borders
-Border = "#242933FF"
+# Border = "#242933FF"
 
 # Title bars
-TitleBg = "#090B0FFF"
-TitleBgActive = "#5274F0FF"
+# TitleBg = "#090B0FFF"
+# TitleBgActive = "#5274F0FF"
 
 # Input fields and other framed widgets
-FrameBg = "#151920FF"
-FrameBgHovered = "#202630FF"
-FrameBgActive = "#29313EFF"
+# FrameBg = "#151920FF"
+# FrameBgHovered = "#202630FF"
+# FrameBgActive = "#29313EFF"
 
 # Buttons
-Button = "#294CC7FF"
-ButtonHovered = "#385DE0FF"
-ButtonActive = "#203CA6FF"
+# Button = "#294CC7FF"
+# ButtonHovered = "#385DE0FF"
+# ButtonActive = "#203CA6FF"
 
 # Headers
-Header = "#1A1F28FF"
-HeaderHovered = "#252C38FF"
-HeaderActive = "#303946FF"
+# Header = "#1A1F28FF"
+# HeaderHovered = "#252C38FF"
+# HeaderActive = "#303946FF"
 
 # Tabs
-Tab = "#10141BFF"
-TabHovered = "#252E42FF"
-TabSelected = "#294CC7FF"
+# Tab = "#10141BFF"
+# TabHovered = "#252E42FF"
+# TabSelected = "#294CC7FF"
 
 # Sliders
-SliderGrab = "#294CC7FF"
-SliderGrabActive = "#5274F0FF"
+# SliderGrab = "#294CC7FF"
+# SliderGrabActive = "#5274F0FF"
 
 # Scrollbars
-ScrollbarBg = "#07090CFF"
-ScrollbarGrab = "#2A303AFF"
+# ScrollbarBg = "#07090CFF"
+# ScrollbarGrab = "#2A303AFF"
 
 # Checkboxes and other selection indicators
-CheckMark = "#5274F0FF"
+# CheckMark = "#5274F0FF"
 
 # Menu bar
-MenuBarBg = "#090B0FFF"
+# MenuBarBg = "#090B0FFF"
 
 # Graphs / histogram elements
-PlotHistogram = "#5274F0FF"
+# PlotHistogram = "#5274F0FF"
+
+[theme.oshot-colors]
 )");
 
 inline constexpr std::string_view AUTO_MANIFEST =

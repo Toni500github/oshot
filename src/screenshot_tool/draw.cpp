@@ -54,6 +54,7 @@
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "text_extraction.hpp"
+#include "theme.hpp"
 #include "util.hpp"
 #include "util/color.hpp"
 #include "util/file_dialogs.hpp"
@@ -200,7 +201,7 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
     // Draw selection border
     draw_list->AddRect(ImVec2(sel_x, sel_y),
                        ImVec2(sel_x + sel_w, sel_y + sel_h),
-                       (0x0096ffFF_rgba).to_abgr(),
+                       theme::color(AppCol::SelectionBorder).to_abgr(),
                        0.0f,
                        1.0f,
                        ImDrawFlags_None);
@@ -214,12 +215,11 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
         ImVec2 min = ImVec2(pos.x - handle_draw, pos.y - handle_draw);
         ImVec2 max = ImVec2(pos.x + handle_draw, pos.y + handle_draw);
 
-        auto color = Colors::WHITE;
-        if (sel.handle_hover == type || sel.dragging_handle == type)
-            color.b = 0;  // yellow
+        const bool   hovered = sel.handle_hover == type || sel.dragging_handle == type;
+        const rgba_t color   = theme::color(hovered ? AppCol::SelectionHandleHovered : AppCol::SelectionHandle);
 
         draw_list->AddRectFilled(min, max, color.to_abgr());
-        draw_list->AddRect(min, max, Colors::WHITE.to_abgr(), 0.0f, 2.0f, ImDrawFlags_None);
+        draw_list->AddRect(min, max, theme::color(AppCol::SelectionHandle).to_abgr(), 0.0f, 2.0f, ImDrawFlags_None);
     };
 
     // Corner handles
@@ -301,14 +301,13 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
 
         ImGui::SetNextWindowPos(win_pos);
         ImGui::SetNextWindowSize(win_size);
-        ImGui::SetNextWindowBgAlpha(0.85f);
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kPaddingX, kPaddingY));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, (0x0F0F0FFF_rgba));
-        ImGui::PushStyleColor(ImGuiCol_Border, (0xFFFFFF40_rgba));
-        ImGui::PushStyleColor(ImGuiCol_Text, Colors::WHITE);
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, theme::color(AppCol::SizeLabelBg));
+        ImGui::PushStyleColor(ImGuiCol_Border, theme::color(AppCol::SizeLabelBorder));
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::SizeLabelText));
 
         if (ImGui::Begin("##selection_size_window",
                          nullptr,
@@ -354,7 +353,9 @@ void ScreenshotTool::CreateCopyTextButton(const std::string&     text_copy,
     if (show_error && ectx.Has(GeneralError::FailedToCopyText))
     {
         ImGui::SameLine();
-        ImGui::TextColored(Colors::RED, _("Failed to copy text: %s"), ectx.Get(GeneralError::FailedToCopyText).c_str());
+        ImGui::TextColored(theme::color(AppCol::Error),
+                           _("Failed to copy text: %s"),
+                           ectx.Get(GeneralError::FailedToCopyText).c_str());
     }
 }
 
@@ -367,7 +368,7 @@ void ScreenshotTool::DrawDarkOverlay()
     const float sel_w = m_main_sel.selection.get_width();
     const float sel_h = m_main_sel.selection.get_height();
 
-    constexpr ImU32 dark_color = (0x00000080_rgba).to_abgr();
+    const ImU32 dark_color = theme::color(AppCol::SelectionDim).to_abgr();
 
     // Above, below, left and right of the selection
     draw_list->AddRectFilled(m_image_origin, ImVec2(m_image_end.x, sel_y), dark_color);
@@ -563,7 +564,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
         const bool selected = is_tool && (m_current_tool == tool);
 
         if (selected)
-            ImGui::PushStyleColor(ImGuiCol_Button, (0x6699FFFF_rgba));
+            ImGui::PushStyleColor(ImGuiCol_Button, theme::color(AppCol::ToolSelected));
 
         if (ImGui::ImageButton("##btn", m_tool_textures[idx(tool)].GetTexID(), TOOL_BUTTON_SIZE2))
         {
@@ -910,7 +911,7 @@ void ScreenshotTool::DrawOutputButtons(const std::string& text,
 
     if (m_general_errors.Has(GeneralError::FailedToCopyText))
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::Error));
         ImGui::TextWrapped(_("Failed to copy text: %s"), m_general_errors.Get(GeneralError::FailedToCopyText).c_str());
         ImGui::PopStyleColor();
     }
@@ -946,7 +947,7 @@ void ScreenshotTool::DrawOcrTools()
         form_row(_("Folder"), _("The folder with the OCR models (.traineddata). Supports drag-and-drop"));
         const char* load_label = _("Load");
         if (invalid_path || need_to_scan)
-            ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::Error));
         ImGui::PushItemWidth(need_to_scan ? -(button_width({ load_label }) + ImGui::GetStyle().ItemSpacing.x)
                                           : -FLT_MIN);
         draw_input_text_folder("", "##ocr_path", [&] { ectx.Set(OcrError::NeedToScanDir); }, m_inputs.ocr_path);
@@ -967,7 +968,7 @@ void ScreenshotTool::DrawOcrTools()
             form_row(_("Model"), _("The model of the language the text is in"));
             std::string& ocr_model = m_inputs.ocr_model;
             if (invalid_model)
-                ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
+                ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::Error));
             ImGui::SetNextItemWidth(-FLT_MIN);
             const bool combo_open = ImGui::BeginCombo("##model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge);
             // Don't color the whole list red
@@ -1035,7 +1036,7 @@ void ScreenshotTool::DrawOcrTools()
     }
     else if (invalid_path)
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, Colors::RED);
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::Error));
         ImGui::TextWrapped("%s", _("No OCR models (.traineddata) in this folder"));
         ImGui::PopStyleColor();
 
@@ -1048,7 +1049,7 @@ void ScreenshotTool::DrawOcrTools()
             ImGui::TextWrapped(
                 "%s",
                 _("Run the following command in your terminal, then update the OCR path in the Preferences window:"));
-            ImGui::TextColored((0xFFCC33FF_rgba), cmd);
+            ImGui::TextColored(theme::color(AppCol::Warning), "%s", cmd);
             CreateCopyTextButton(cmd, _("Copy command"));
             ImGui::Spacing();
         }
@@ -1117,10 +1118,9 @@ void ScreenshotTool::DrawOcrTools()
 
     if (scanned)
     {
-        // Muted red, yellow or green
-        const rgba_t col = res.confidence <= 45   ? 0xA33131FF_rgba
-                           : res.confidence <= 70 ? 0x9C7A1EFF_rgba
-                                                  : 0x1F8A47FF_rgba;
+        const rgba_t col = theme::color(res.confidence <= 45   ? AppCol::ConfidenceLow
+                                        : res.confidence <= 70 ? AppCol::ConfidenceMid
+                                                               : AppCol::ConfidenceHigh);
         ImGui::PushStyleColor(ImGuiCol_PlotHistogram, col);
         ImGui::ProgressBar(float(res.confidence) / 100.0f,
                            ImVec2(-FLT_MIN, 0.0f),
@@ -1317,7 +1317,7 @@ void ScreenshotTool::DrawBarcodeTable(float height)
                 }
 
                 ImGui::SetCursorPos(cell);
-                draw_tag(code.type.c_str(), 0x334c7fFF_rgba, ImGui::GetFrameHeight());
+                draw_tag(code.type.c_str(), theme::color(AppCol::Tag), ImGui::GetFrameHeight());
 
                 ImGui::TableSetColumnIndex(1);
                 ImGui::SetCursorPosY(ImGui::GetCursorPosY() + style.FramePadding.y);

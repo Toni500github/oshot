@@ -246,11 +246,8 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
         console->set_level(spdlog::level::info);
 
     g_config->LoadConfigFile(configFile);
-    {
-        fs::path p(g_config->GetThemeFilePath());
-        if (fs::exists(p) && p.has_filename())
-            g_config->LoadThemeFile(p.string());
-    }
+    // Even a missing one, so the overlay picks it up once it's created
+    g_config->LoadThemeFile(g_config->GetThemeFilePath());
     i18n::init(g_config->File.language, configDir);
 
     spdlog::set_level(spdlog::level::debug);
