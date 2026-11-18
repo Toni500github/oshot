@@ -73,10 +73,10 @@ https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 - Multi-monitor support on X11, Wayland (KWin, screenshot portal or grim), Windows and macOS
 - Tray mode with a global hotkey on Windows and macOS (on Linux, bind `oshot --gui` in your desktop settings)
 - Open existing images with `oshot -f <image>`
-- Borderless overlay window, always on top
+- Fullscreen overlay that covers panels and taskbars
 
 **Read**
-- OCR via Tesseract, with multiple languages and a configurable segmentation mode
+- OCR via Tesseract, with multiple languages and a layout setting (automatic, single word, single line or paragraph)
 - In-app OCR model downloader
 - QR code and barcode decoding via ZBar
 - Edit the recognized text before copying it
@@ -171,7 +171,7 @@ Download the `.dmg` that matches your Mac:
 | `oshot-macos-arm64-<version>.dmg` | Apple Silicon (M1 and newer) | macOS 15 (Sequoia) or later |
 | `oshot-macos-x86_64-<version>.dmg` | Intel | macOS 15 (Sequoia) or later |
 
-Older macOS versions aren't supported yet: the bundled libraries come from Homebrew, which builds them for the macOS of our build machines.
+Older macOS versions aren't supported yet: some of the bundled libraries (Leptonica, ZBar and what they need) come from Homebrew, which builds them for the macOS of our build machines.
 
 1. Open the `.dmg` and drag **oshot** onto **Applications**.
 2. The app isn't notarized yet, so macOS blocks the first launch. Run this once in Terminal:
@@ -244,7 +244,7 @@ text or image after oshot closes. Install the one for your session; the `.deb` r
 
 #### Wayland
 
-On GNOME and most other desktops, screenshots go through the desktop's screenshot portal (the first capture may ask for permission). On KDE Plasma, oshot asks KWin for the screenshot directly. Plasma 6.7 and older only allow that for an oshot installed with its desktop file (distribution packages, the .deb, `make install`), so other builds use Spectacle there, if it's installed, and else the portal, which takes longer (see [KDE Plasma: the overlay is slow to appear](#kde-plasma-the-overlay-is-slow-to-appear)). Where no screenshot portal is available (e.g. some Sway/Hyprland setups), install `grim`.
+On GNOME and most other desktops, screenshots go through the desktop's screenshot portal (the first capture may ask for permission). On Sway, Hyprland, niri and other compositors with a screencopy protocol, oshot uses `grim` when it's installed, which is faster than the portal. On KDE Plasma, oshot asks KWin for the screenshot directly. Plasma 6.7 and older only allow that for an oshot installed with its desktop file (distribution packages, the .deb, `make install`), so other builds use Spectacle there, if it's installed, and else the portal, which takes longer (see [KDE Plasma: the overlay is slow to appear](#kde-plasma-the-overlay-is-slow-to-appear)). Where no screenshot portal is available (e.g. some Sway/Hyprland setups), `grim` is required.
 
 oshot doesn't need XWayland. Capturing, copying and dialogs all talk to Wayland directly, and the
 overlay is a native Wayland window too. It works on compositors running without XWayland, such as Hyprland with
@@ -285,6 +285,9 @@ oshot --instant-copy --selection "$(slop)"          # copy a region picked with 
 | `Ctrl+G` | Toggle handles |
 | `Ctrl+E` | Toggle text editing |
 | `Esc` | Close |
+
+On macOS, use `Cmd` instead of `Ctrl`. With `ctrl-c-copy-img = false` in the config, copying the image moves to
+`Ctrl+Shift+C`.
 
 ## Build from source
 

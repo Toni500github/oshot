@@ -1,4 +1,4 @@
-.TH OSHOT 1 "2026-11-11" "oshot" "User Commands"
+.TH OSHOT 1 "" "oshot" "User Commands"
 .SH NAME
 oshot \- screenshot overlay that extracts text and scans QR codes and barcodes
 .SH SYNOPSIS
@@ -130,10 +130,11 @@ Values remembered between runs, such as the folder an image was last saved to.
 The log of each run (\fI/tmp\fR when \fBTMPDIR\fR isn't set).
 .SH NOTES
 On Wayland the screen is captured through KWin on KDE Plasma
-(then Spectacle, then the portal), the desktop's screenshot portal
-elsewhere, or
+.RB "(then " spectacle (1),
+then the portal),
 .BR grim (1)
-where no portal is available. Before Plasma 6.8, KWin only answers an oshot
+on compositors with a screencopy protocol (Sway, Hyprland, niri) when it is
+installed, and the desktop's screenshot portal elsewhere. Before Plasma 6.8, KWin only answers an oshot
 installed with its desktop file. Copying to the clipboard needs
 .BR wl\-copy (1)
 on Wayland and
