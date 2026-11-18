@@ -25,12 +25,17 @@ prefix="${1:-/usr/local}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-install_build() {
+# Runs a command that writes to the prefix, with sudo when it isn't writable
+as_prefix_owner() {
     if [ -w "$prefix" ] || { [ ! -e "$prefix" ] && [ -w "$(dirname "$prefix")" ]; }; then
-        cmake --install "$1"
+        "$@"
     else
-        sudo cmake --install "$1"
+        sudo "$@"
     fi
+}
+
+install_build() {
+    as_prefix_owner cmake --install "$1"
 }
 
 # usage: fetch <url> <tag> <commit> <dir>
@@ -99,6 +104,10 @@ if [ "$(uname -s)" = Linux ]; then
         -DENABLE_OPENJPEG=OFF
     cmake --build "$work/lept-build" --parallel "$(getconf _NPROCESSORS_ONLN)"
     install_build "$work/lept-build"
+    # Its package config doesn't look up what a static build links, and Tesseract's configure
+    # check fails on the missing targets with CMake 3.25+
+    as_prefix_owner sed -i 's/^include(CMakeFindDependencyMacro)$/&\nfind_dependency(ZLIB)\nfind_dependency(PNG)\nfind_dependency(TIFF)\nfind_dependency(JPEG)/' \
+        "$prefix/lib/cmake/leptonica/LeptonicaConfig.cmake"
 fi
 
 fetch https://github.com/tesseract-ocr/tesseract.git "$TESSERACT_VERSION" "$TESSERACT_COMMIT" "$work/src"
