@@ -40,11 +40,19 @@
 #include "i18n.hpp"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
+#include "platform.hpp"
 #include "screenshot_tool.hpp"
 #include "util/color.hpp"
 #include "util/file_dialogs.hpp"
 #include "util/paths.hpp"
 #include "util/window.hpp"
+
+// ImGui's shortcuts use Cmd where they use Ctrl elsewhere
+#if OSHOT_MACOS
+#  define SHORTCUT_MOD "CMD"
+#else
+#  define SHORTCUT_MOD "CTRL"
+#endif
 
 #ifdef DISABLE_PLUGINS
 #  define OSHOT_TEXT_OCR     "ocr_output"

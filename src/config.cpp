@@ -197,7 +197,7 @@ static void read_color_tables(const toml::table& tbl, Config::theme_colors_t& ou
     });
 }
 
-void Config::LoadThemeFile(const std::string& filename, const bool reload)
+bool Config::LoadThemeFile(const std::string& filename, const bool reload)
 {
     // default.theme-file is usually relative to the config directory
     CdGuard guard(m_config_dir_path);
@@ -220,7 +220,7 @@ void Config::LoadThemeFile(const std::string& filename, const bool reload)
                 spdlog::error("{}\nKeeping the current theme.", loaded.error_v());
                 std::erase_if(m_theme_files, [&](const auto& f) { return f.first == path; });
                 m_theme_files.push_back(files.front());
-                return;
+                return false;
             }
             // A broken theme isn't worth refusing to start over, so it falls back to the default one
             dialog::error("{}\nUsing the default theme.", loaded.error_v());
@@ -316,6 +316,7 @@ void Config::LoadThemeFile(const std::string& filename, const bool reload)
     check(theme_overrides, path);
     if (!theme_included.files.empty())
         check(theme_included, "includes");
+    return true;
 }
 
 bool Config::ThemeFilesChanged() const

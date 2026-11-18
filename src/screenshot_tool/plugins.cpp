@@ -1037,8 +1037,11 @@ void ScreenshotTool::DrawPluginInstallStatus()
         if (has_confirm)
             ImGui::OpenPopup(_("Confirm###plugin_install_confirm"));
 
-        ImGui::SetNextWindowSize(font_relative(42, 17));
-        if (ImGui::BeginPopupModal(_("Confirm###plugin_install_confirm"), nullptr, ImGuiWindowFlags_NoCollapse))
+        const float confirm_width = font_relative(42, 0).x;
+        ImGui::SetNextWindowSizeConstraints({ confirm_width, 0.0f }, { confirm_width, FLT_MAX });
+        if (ImGui::BeginPopupModal(_("Confirm###plugin_install_confirm"),
+                                   nullptr,
+                                   ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
         {
             std::scoped_lock lock(m_install_state->confirm_mutex);
             ImGui::TextWrapped("%s", m_install_state->confirm_prompt.c_str());
@@ -1050,7 +1053,7 @@ void ScreenshotTool::DrawPluginInstallStatus()
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button(_("No")))
+            if (ImGui::Button(_("No")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false))
             {
                 m_install_state->confirm_answer   = false;
                 m_install_state->confirm_answered = true;

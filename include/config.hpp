@@ -219,8 +219,9 @@ public:
      * Parse the theme file into theme_overrides and its includes into theme_included
      * @param filename The theme file path, absolute or relative to the config directory
      * @param reload Keep the current theme if the file doesn't parse, and only log why
+     * @return false if the file didn't parse and the theme was kept
      **/
-    void LoadThemeFile(const std::string& filename, const bool reload = false);
+    bool LoadThemeFile(const std::string& filename, const bool reload = false);
 
     /**
      * Whether the theme file or one of its includes changed, appeared or went away since LoadThemeFile()

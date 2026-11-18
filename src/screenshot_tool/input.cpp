@@ -82,6 +82,10 @@ static bool ui_blocks_selection()
     if (!ctx)
         return false;
 
+    // A modal leaves nothing hovered behind it, so a click there would reach the overlay
+    if (ImGui::GetTopMostPopupModal())
+        return true;
+
     // Looked up every time, since every capture makes a new ImGui context
     const ImGuiWindow* overlay_window = ImGui::FindWindowByName("Screenshot Tool");
     const ImGuiWindow* hovered        = ctx->HoveredWindow;

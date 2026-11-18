@@ -255,7 +255,9 @@ void ScreenshotTool::RenderOverlay()
         ImGui::Begin("##select_area", nullptr, minimal_win_flags);
         ImGui::TextColored(theme::color(AppCol::HintSelect), "%s", _("Select an area"));
         ImGui::TextColored(theme::color(AppCol::HintFull), "%s", _("Press Save/Copy for the full screenshot"));
-        ImGui::TextColored(theme::color(AppCol::HintSelectAll), "%s", _("CTRL+A for whole image selection"));
+        ImGui::TextColored(theme::color(AppCol::HintSelectAll),
+                           "%s",
+                           i18n::tr_fmt("{}+A for whole image selection", SHORTCUT_MOD).c_str());
         ImGui::End();
     }
 

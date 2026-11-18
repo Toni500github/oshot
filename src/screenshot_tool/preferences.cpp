@@ -105,7 +105,8 @@ void reload_theme_if_changed()
     if (!g_config->ThemeFilesChanged() || (s_prefs_open && g_config->theme_overrides != s_theme_snapshot))
         return;
 
-    g_config->LoadThemeFile(g_config->GetThemeFilePath(), true);
+    if (!g_config->LoadThemeFile(g_config->GetThemeFilePath(), true))
+        return;
     apply_imgui_theme();
     s_theme_snapshot = g_config->theme_overrides;
     spdlog::info("Reloaded the theme");
@@ -742,7 +743,8 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     HelpMarker(
         _("Delay before acquiring a screenshot (milliseconds).\n"
           "Has no effect when opening an external image (e.g. -f flag)."));
-    ImGui::InputInt("##config_delay", &g_config->File.delay, 5, 10);
+    if (ImGui::InputInt("##config_delay", &g_config->File.delay, 5, 10))
+        g_config->File.delay = std::max(g_config->File.delay, 0);
     ImGui::Spacing();
 
     // --- Theme settings ---
@@ -827,11 +829,13 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
         _("Draw the toolbar icons with smooth edges. Disable it for pixel-perfect icons.\n"
           "Applies from the next capture."));
 
-    ImGui::Checkbox(_("Use CTRL+C to copy image##config_ctrl_c_copy_img"), &g_config->File.ctrl_c_copy_img);
+    ImGui::Checkbox((i18n::tr_fmt("Use {}+C to copy image", SHORTCUT_MOD) + "##config_ctrl_c_copy_img").c_str(),
+                    &g_config->File.ctrl_c_copy_img);
     ImGui::SameLine();
-    HelpMarker(
-        _("Shortcut to use when copying the image selection.\n"
-          "If disabled, the shortcut will be CTRL+SHIFT+C."));
+    HelpMarker(i18n::tr_fmt("Shortcut to use when copying the image selection.\n"
+                            "If disabled, the shortcut will be {}+SHIFT+C.",
+                            SHORTCUT_MOD)
+                   .c_str());
 
 #if OSHOT_HAS_GLOBAL_HOTKEY
     ImGui::Spacing();
@@ -1134,13 +1138,10 @@ static void draw_text_transformers(std::vector<std::pair<std::string, bool>>& ch
 }
 
 static void draw_preference_plugin(auto&                                      plugin_dirty,
-                                   bool&                                      prefs_modified,
                                    std::vector<std::pair<std::string, bool>>& transformers,
                                    bool                                       busy)
 {
     draw_text_transformers(transformers, busy);
-    if (transformers != current_text_transformers())
-        prefs_modified = true;
 
     bool any = !transformers.empty();
     for (auto& [id, rt] : g_plugins)
@@ -1156,24 +1157,15 @@ static void draw_preference_plugin(auto&                                      pl
         ImGui::Spacing();
 
         if (has_settings)
-        {
             draw_plugin_settings(rt);
-            if (rt.settings_editing != rt.settings_saved)
-            {
-                plugin_dirty[id] = true;
-                prefs_modified   = true;
-            }
-        }
 
         // A custom page goes under the generated settings
         if (pl->render_preferences)
         {
             ImGui::BeginChild("##plugin_prefs", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AutoResizeY);
+            // A custom page can't be compared with what was saved, so it counts as changed once touched
             if (rt.RenderPreferences())
-            {
                 plugin_dirty[id] = true;
-                prefs_modified   = true;
-            }
             ImGui::EndChild();
         }
 
@@ -1393,10 +1385,12 @@ static void draw_theme_editor()
 
     static std::string new_name;
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
-    ImGui::InputTextWithHint("##new_palette", _("New palette color"), &new_name);
+    const bool entered = ImGui::InputTextWithHint(
+        "##new_palette", _("New palette color"), &new_name, ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();
-    ImGui::BeginDisabled(!theme::valid_palette_name(new_name) || palette.contains(new_name));
-    if (ImGui::Button(_("Add")))
+    const bool can_add = theme::valid_palette_name(new_name) && !palette.contains(new_name);
+    ImGui::BeginDisabled(!can_add);
+    if (ImGui::Button(_("Add")) || (entered && can_add))
     {
         ov.palette[new_name] = col_to_hexstr(ImGui::GetStyle().Colors[ImGuiCol_Button]);
         new_name.clear();
@@ -1561,7 +1555,6 @@ void ScreenshotTool::DrawPreferencesWindow()
     static constexpr auto items = std::to_array({ N_("Defaults"), N_("Theme") });
 #endif
 
-    static bool    prefs_modified     = false;
     static bool    armed              = false;
     const bool     window_just_opened = !s_prefs_open;
     static PrefTab selected_tab       = PrefTab::Defaults;
@@ -1584,19 +1577,22 @@ void ScreenshotTool::DrawPreferencesWindow()
     s_prefs_open = true;
 
     auto save_current_tab = [&]() {
+        const bool theme_edited = s_theme_snapshot != g_config->theme_overrides;
         if (config_snapshot != g_config->File)
         {
             g_config->GenerateConfig(g_config->GetConfigPath(), true);
             g_config->LoadConfigFile(g_config->GetConfigPath());
             SyncRuntimeFromConfig();
-            if (!g_config->File.theme_file_path.empty())
+            // Theme edits would be lost by reading the file, they're written below instead
+            if (!theme_edited && !g_config->File.theme_file_path.empty())
                 g_config->LoadThemeFile(g_config->GetThemeFilePath());
             apply_imgui_theme();
             config_snapshot = g_config->File;
-            s_theme_snapshot = g_config->theme_overrides;
+            if (!theme_edited)
+                s_theme_snapshot = g_config->theme_overrides;
         }
 
-        if (s_theme_snapshot != g_config->theme_overrides)
+        if (theme_edited)
         {
             if (!g_config->File.theme_file_path.empty())
             {
@@ -1618,7 +1614,7 @@ void ScreenshotTool::DrawPreferencesWindow()
 
         for (auto& [id, rt] : g_plugins)
         {
-            if (!plugin_dirty[id])
+            if (!plugin_dirty[id] && rt.settings_editing == rt.settings_saved)
                 continue;
 
             if (rt.settings_editing != rt.settings_saved)
@@ -1641,7 +1637,7 @@ void ScreenshotTool::DrawPreferencesWindow()
         transformers = current_text_transformers();
         for (auto& [id, rt] : g_plugins)
         {
-            if (!plugin_dirty[id])
+            if (!plugin_dirty[id] && rt.settings_editing == rt.settings_saved)
                 continue;
             rt.settings_editing = rt.settings_saved;
             if (rt.plugin->on_discard_preferences)
@@ -1665,8 +1661,19 @@ void ScreenshotTool::DrawPreferencesWindow()
 #endif
     }
 
-    if (config_snapshot != g_config->File || s_theme_snapshot != g_config->theme_overrides)
-        prefs_modified = true;
+    // Compared every frame, so changing a value back counts as unchanged again
+    auto prefs_modified = [&] {
+        if (config_snapshot != g_config->File || s_theme_snapshot != g_config->theme_overrides)
+            return true;
+#ifndef DISABLE_PLUGINS
+        if (transformers != current_text_transformers())
+            return true;
+        for (auto& [id, rt] : g_plugins)
+            if (plugin_dirty[id] || rt.settings_editing != rt.settings_saved)
+                return true;
+#endif
+        return false;
+    };
 
     bool window_open = true;
     ImGui::SetNextWindowSize(font_relative(40, 34), ImGuiCond_FirstUseEver);
@@ -1674,9 +1681,11 @@ void ScreenshotTool::DrawPreferencesWindow()
     {
         // [x] or Esc closes it, or asks first if there are unsaved changes.
         // OpenPopup() must be called between Begin() and End()
-        if (!window_open || ImGui::IsKeyPressed(ImGuiKey_Escape))
+        // While the unsaved changes prompt is open, Esc is its Cancel
+        if ((!window_open || ImGui::IsKeyPressed(ImGuiKey_Escape)) &&
+            !ImGui::IsPopupOpen(_("Unsaved changes###pref_unsaved")))
         {
-            if (prefs_modified)
+            if (prefs_modified())
                 ImGui::OpenPopup(_("Unsaved changes###pref_unsaved"));
             else
                 m_show_window.Clear(SubWindow::Preferences);
@@ -1705,21 +1714,19 @@ void ScreenshotTool::DrawPreferencesWindow()
             case PrefTab::kNone:    break;
             case PrefTab::Defaults: draw_preference_edit_config([&] { RefreshOcrModels(); }, window_just_opened); break;
 #ifndef DISABLE_PLUGINS
-            case PrefTab::Plugins:
-                draw_preference_plugin(plugin_dirty, prefs_modified, transformers, plugin_busy);
-                break;
+            case PrefTab::Plugins: draw_preference_plugin(plugin_dirty, transformers, plugin_busy); break;
 #endif
             case PrefTab::Theme: draw_theme_editor(); break;
         }
         ImGui::EndChild();
 
-        if (prefs_modified && create_timed_button(_("Save##save_press"), _("Saved!"), armed))
+        const bool modified = prefs_modified();
+        if (modified && create_timed_button(_("Save##save_press"), _("Saved!"), armed))
         {
             save_current_tab();
-            prefs_modified = false;
-            armed          = true;
+            armed = true;
         }
-        else if (prefs_modified && selected_tab == PrefTab::Defaults)
+        else if (modified && selected_tab == PrefTab::Defaults)
         {
             ImGui::SameLine();
             ImGui::TextDisabled("%s", _("Restart oshot for the new settings to take effect"));
@@ -1749,7 +1756,9 @@ void ScreenshotTool::DrawPreferencesWindow()
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button(_("Cancel"), size))
+            // Not on the frame it opens, whose Esc is the one that opened it
+            if (ImGui::Button(_("Cancel"), size) ||
+                (!ImGui::IsWindowAppearing() && ImGui::IsKeyPressed(ImGuiKey_Escape, false)))
             {
                 ImGui::CloseCurrentPopup();
             }
@@ -1774,7 +1783,6 @@ void ScreenshotTool::DrawPreferencesWindow()
     // Once closed, the next open starts fresh
     if (!m_show_window.Has(SubWindow::Preferences))
     {
-        s_prefs_open     = false;
-        prefs_modified   = false;
+        s_prefs_open = false;
     }
 }

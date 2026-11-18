@@ -788,10 +788,11 @@ void ScreenshotTool::DrawMenuItems()
 
             ImGui::Separator();
 
-            if (ImGui::MenuItem(_("Save Image"), "CTRL+S"))
+            if (ImGui::MenuItem(_("Save Image"), SHORTCUT_MOD "+S"))
                 RequestComplete(SavingOp::File);
 
-            if (ImGui::MenuItem(_("Copy Image"), g_config->File.ctrl_c_copy_img ? "CTRL+C" : "CTRL+SHIFT+C"))
+            if (ImGui::MenuItem(_("Copy Image"),
+                                g_config->File.ctrl_c_copy_img ? SHORTCUT_MOD "+C" : SHORTCUT_MOD "+SHIFT+C"))
                 RequestComplete(SavingOp::Clipboard);
 
             ImGui::Separator();
@@ -816,11 +817,11 @@ void ScreenshotTool::DrawMenuItems()
             }
 
             ImGui::Separator();
-            ImGui::MenuItem(_("View Handles"), "CTRL+G", &g_config->Runtime.enable_handles);
+            ImGui::MenuItem(_("View Handles"), SHORTCUT_MOD "+G", &g_config->Runtime.enable_handles);
             ImGui::MenuItem(_("Anns. in image scans"), "", &g_config->File.render_anns);
             if (ImGui::MenuItem(_("Enable vsync"), "", &g_config->File.enable_vsync))
                 SDL_SetRenderVSync(SDL_GetRenderer(m_window), int(g_config->File.enable_vsync));
-            if (ImGui::MenuItem(_("Allow text edit"), "CTRL+E", &g_config->File.allow_out_edit))
+            if (ImGui::MenuItem(_("Allow text edit"), SHORTCUT_MOD "+E", &g_config->File.allow_out_edit))
                 ImGui::ClearActiveID();
 
             ImGui::Separator();
@@ -989,6 +990,9 @@ void ScreenshotTool::DrawOcrTools()
 
                 ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F);
                 filter.Draw("##Filter", -FLT_MIN);
+                // Esc would only leave the filter, so one press closes the list
+                if (ImGui::IsItemDeactivated() && ImGui::IsKeyPressed(ImGuiKey_Escape))
+                    ImGui::CloseCurrentPopup();
 
                 for (const std::string& model : m_ocr_models_list)
                 {
