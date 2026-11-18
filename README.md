@@ -193,7 +193,7 @@ In the `-plugins` builds, the plugin manager is at `/Applications/oshot.app/Cont
 | ------- | ----------- |
 | `oshot-<arch>-<version>.AppImage` | Recommended. Self-contained, runs on most distributions |
 | `oshot-debian-package-<arch>-<version>.deb` | Debian, Ubuntu and derivatives |
-| `oshot-linux-x86_64-<version>.zip` | Generic binary, needs the runtime libraries installed (see [Dependencies](#dependencies)) |
+| `oshot-linux-x86_64-<version>.zip` | Built on Arch Linux, so it needs a glibc and libraries as new as Arch's (rolling distributions); the runtime libraries must be installed (see [Dependencies](#dependencies)) |
 
 `<arch>` is your CPU, as printed by `uname -m`: `x86_64` for Intel/AMD and `aarch64` for 64-bit ARM (the `.deb`s
 use Debian's names, `amd64` and `arm64`). Other architectures, including 32-bit ARM, can [build from source](#build-from-source).

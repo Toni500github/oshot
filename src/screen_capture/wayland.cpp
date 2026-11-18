@@ -73,11 +73,13 @@ Result<capture_result_t> capture_full_screen_wayland()
         wl_display_disconnect(display);
     }
 
+    std::string portal_err;
     if (!screencopy)
     {
         Result<capture_result_t> res = capture_full_screen_portal();
         if (res.ok())
             return res;
+        portal_err = res.error_v();
     }
 
     capture_result_t result;
@@ -104,7 +106,9 @@ Result<capture_result_t> capture_full_screen_wayland()
             spdlog::debug("Capture with grim failed: {}", err);
             return capture_full_screen_portal();
         }
-        return Err("Capture with grim failed: {}", err);
+        while (!err.empty() && (err.back() == '\n' || err.back() == ' '))
+            err.pop_back();
+        return Err("{} (grim: {})", portal_err, err);
     }
 
     // stbi_load_from_memory takes an int length
@@ -179,11 +183,26 @@ static void on_response(GDBusConnection* conn,
 
     g_variant_get(parameters, "(u@a{sv})", &response, &results);
 
-    if (response != 0)
-        st->error_msg = fmt::format("Canceled or failed (response={})", (unsigned)response);
+    // GNOME answers a denied permission prompt with 2, not 1
+    if (response == 1)
+        st->error_msg = "The screenshot request was canceled";
+    else if (response != 0)
+        st->error_msg = fmt::format("The screenshot portal refused the request (response {}). If its permission "
+                                    "prompt was denied, allow screenshots in the desktop's privacy settings",
+                                    response);
     else if (!(g_variant_lookup(results, "uri", "&s", &uri) && uri))
         st->error_msg = "Screenshot portal succeeded but returned no file path";
 
+    if (st->error_msg.empty())
+    {
+        const Result<std::string>& res = uri_to_path(uri);
+        if (res.ok())
+            st->png_path = res.get();
+        else
+            st->error_msg = res.error_v();
+    }
+
+    // uri points into results
     if (results)
         g_variant_unref(results);
 
@@ -191,18 +210,6 @@ static void on_response(GDBusConnection* conn,
     {
         g_dbus_connection_signal_unsubscribe(conn, st->subscription_id);
         st->subscription_id = 0;  // mark as removed so cleanup in capture_full_screen_portal skips it
-    }
-
-    const Result<std::string>& res = uri_to_path(uri);
-    if (res.ok())
-    {
-        st->png_path  = res.get();
-        st->error_msg = "";
-    }
-    else
-    {
-        st->png_path  = "";
-        st->error_msg = res.error_v();
     }
 
     g_main_loop_quit(st->loop);
@@ -271,8 +278,9 @@ Result<capture_result_t> capture_full_screen_portal()
                                                             &st,
                                                             nullptr);
 
-    // Give up if nothing responds
-    GSource* timeout = g_timeout_source_new_seconds(5);
+    // Give up if nothing responds. Long enough for the user to answer the permission
+    // prompt GNOME shows on the first capture
+    GSource* timeout = g_timeout_source_new_seconds(60);
     g_source_set_callback(timeout, on_timeout, &st, nullptr);
     g_source_attach(timeout, ctx);
 

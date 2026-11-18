@@ -26,16 +26,22 @@ if [ "$1" = "--uninstall" ]; then
             rm -f "$PREFIX/$f"
         done
     done
-    rmdir "$PREFIX/lib/oshot" "$PREFIX/include/oshot" "$PREFIX/share/licenses/oshot" 2>/dev/null || true
+    rmdir "$PREFIX/lib/oshot" "$PREFIX/lib/cmake/oshot" "$PREFIX/include/oshot" "$PREFIX/share/licenses/oshot" \
+        2>/dev/null || true
     refresh_caches
     echo "oshot removed from $PREFIX"
     exit 0
 fi
 
+# File by file, since a directory copy fails where the prefix has a symlinked directory
+# (Arch's /usr/local/share/man -> ../man)
 for dir in bin lib include share; do
     [ -d "$dir" ] || continue
-    mkdir -p "$PREFIX/$dir"
-    cp -a "$dir/." "$PREFIX/$dir/"
+    find "$dir" ! -type d | while IFS= read -r f; do
+        mkdir -p "$PREFIX/$(dirname "$f")"
+        rm -f "$PREFIX/$f"
+        cp -Pp "$f" "$PREFIX/$f"
+    done
 done
 refresh_caches
 

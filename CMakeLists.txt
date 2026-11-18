@@ -147,6 +147,23 @@ message(STATUS "SDL3 ${SDL3_VERSION}: ${SDL3_TARGET}")
 pkg_check_modules(TESSERACT REQUIRED IMPORTED_TARGET tesseract)
 pkg_check_modules(LEPTONICA REQUIRED IMPORTED_TARGET lept)
 pkg_check_modules(ZBAR REQUIRED IMPORTED_TARGET zbar)
+# A static Leptonica (scripts/build_tesseract.sh on Linux) needs its own dependencies, which lept.pc only
+# lists in Libs.private
+if(LEPTONICA_LINK_LIBRARIES MATCHES "\\.a(;|$)")
+    set(_lept_deps ${LEPTONICA_STATIC_LIBRARIES})
+    list(REMOVE_ITEM _lept_deps leptonica lept)
+    # Its own directory first, so -ltiff and -ljpeg are the static libraries built with it
+    set_property(
+        TARGET PkgConfig::LEPTONICA
+        APPEND
+        PROPERTY INTERFACE_LINK_DIRECTORIES ${LEPTONICA_STATIC_LIBRARY_DIRS}
+    )
+    set_property(
+        TARGET PkgConfig::LEPTONICA
+        APPEND
+        PROPERTY INTERFACE_LINK_LIBRARIES ${_lept_deps}
+    )
+endif()
 # Where Tesseract is installed, one of the places to look for its models
 pkg_get_variable(TESSERACT_DATADIR tesseract datadir)
 
