@@ -2,6 +2,8 @@ Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: oshot
 Upstream-Contact: Toni500 <tonino512@linuxmail.org>
 Source: https://github.com/Toni500github/oshot
+Comment: The .deb built by oshot's CI links Tesseract, Leptonica, libtiff, libjpeg-turbo and SDL3
+ statically. Their licenses are in /usr/share/doc/oshot/THIRD-PARTY-LICENSES.
 
 Files: *
 Copyright: 2025-2026 Toni500

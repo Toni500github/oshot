@@ -19,6 +19,11 @@ SDL_COMMIT="f00dc919ca35b9756316e86c4777392de442f9b2" # what the tag pointed to 
 
 prefix="${1:-/usr/local}"
 work="$(mktemp -d)"
+# One section per function and variable, so oshot's link (--gc-sections) drops what it doesn't call
+if [ "$(uname -s)" != Darwin ]; then
+    export CFLAGS="${CFLAGS:-} -ffunction-sections -fdata-sections"
+    export CXXFLAGS="${CXXFLAGS:-} -ffunction-sections -fdata-sections"
+fi
 trap 'rm -rf "$work"' EXIT
 
 git clone --quiet --depth 1 --branch "release-$SDL_VERSION" https://github.com/libsdl-org/SDL.git "$work/src"

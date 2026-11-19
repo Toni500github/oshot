@@ -9,6 +9,7 @@
 # usage: scripts/bundle_windows_dlls.sh <dir> [search-dir]
 #   search-dir defaults to $MINGW_PREFIX/bin, the active MSYS2 environment
 #   OBJDUMP overrides the objdump to use (GNU or llvm-objdump)
+# The licenses of the MSYS2 packages the DLLs come from go to <dir>/licenses, as MSYS2 lays them out.
 
 set -euo pipefail
 
@@ -26,6 +27,7 @@ done
 shopt -s nullglob
 todo=("$dir"/*.exe "$dir"/*.dll)
 declare -A seen
+bundled=()
 while [ ${#todo[@]} -gt 0 ]; do
     file="${todo[-1]}"
     unset 'todo[-1]'
@@ -41,8 +43,24 @@ while [ ${#todo[@]} -gt 0 ]; do
         dest="$dir/$(basename "$src")"
         if [ ! -e "$dest" ]; then
             cp "$src" "$dest"
+            bundled+=("$src")
             echo "bundled $(basename "$src")"
         fi
         todo+=("$dest")
     done <<< "$imports"
 done
+
+if [ ${#bundled[@]} -gt 0 ] && command -v pacman >/dev/null; then
+    for pkg in $(pacman -Qqo "${bundled[@]}" | sort -u); do
+        licenses="$(pacman -Qlq "$pkg" | grep '/share/licenses/.*[^/]$' || true)"
+        if [ -z "$licenses" ]; then
+            echo "no license files in $pkg" >&2
+            continue
+        fi
+        while read -r f; do
+            rel="${f#*/share/licenses/}"
+            mkdir -p "$dir/licenses/$(dirname "$rel")"
+            cp "$f" "$dir/licenses/$rel"
+        done <<< "$licenses"
+    done
+fi

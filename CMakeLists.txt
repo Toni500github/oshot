@@ -72,6 +72,11 @@ set(OSHOT_INSTALL_LICENSEDIR
     CACHE STRING
     "Where to install the LICENSE file, relative to the prefix (empty to skip)"
 )
+set(OSHOT_THIRD_PARTY_LICENSES
+    "$ENV{OSHOT_THIRD_PARTY_LICENSES}"
+    CACHE STRING
+    "License directories (one per library, named after it) of the libraries a package links statically, merged into THIRD-PARTY-LICENSES"
+)
 
 # =============================================================================
 # Toolchain
@@ -115,6 +120,9 @@ endif()
 # as Ubuntu's GCC and the distros' packaging flags already do
 if(UNIX AND NOT APPLE)
     add_link_options(LINKER:--as-needed)
+    # Drops the unused functions of the static libraries built with -ffunction-sections
+    # (scripts/build_tesseract.sh, build_sdl3.sh)
+    add_link_options("$<$<CONFIG:Release>:LINKER:--gc-sections>")
 endif()
 
 # The warnings oshot's own executables are built with (tests/ too)
@@ -660,6 +668,14 @@ target_link_libraries(
 if(OpenMP_CXX_FOUND)
     target_link_libraries(oshot_common PRIVATE OpenMP::OpenMP_CXX)
 endif()
+# The packages' static OCR libraries stay private to liboshot_common, so --gc-sections can drop their unused
+# code and a plugin bringing its own Tesseract doesn't bind to ours
+if(UNIX AND NOT APPLE AND NOT DISABLE_PLUGINS)
+    target_link_options(
+        oshot_common
+        PRIVATE "LINKER:--exclude-libs,libtesseract.a:libleptonica.a:libtiff.a:libjpeg.a"
+    )
+endif()
 
 if(NOT DISABLE_PLUGINS)
     set_target_properties(
@@ -981,6 +997,30 @@ endif()
 
 if(OSHOT_INSTALL_LICENSEDIR)
     install(FILES LICENSE DESTINATION ${OSHOT_INSTALL_LICENSEDIR})
+endif()
+
+if(OSHOT_THIRD_PARTY_LICENSES)
+    set(_third_party "${CMAKE_BINARY_DIR}/THIRD-PARTY-LICENSES")
+    file(WRITE ${_third_party} "Licenses of the libraries built into this package of oshot\n")
+    foreach(_dir ${OSHOT_THIRD_PARTY_LICENSES})
+        get_filename_component(_lib ${_dir} NAME)
+        file(GLOB _files LIST_DIRECTORIES false "${_dir}/*")
+        if(NOT _files)
+            message(FATAL_ERROR "No license files in ${_dir}")
+        endif()
+        list(SORT _files)
+        foreach(_file ${_files})
+            get_filename_component(_name ${_file} NAME)
+            file(READ ${_file} _text)
+            file(APPEND ${_third_party} "\n==== ${_lib}: ${_name} ====\n\n${_text}")
+        endforeach()
+    endforeach()
+    # Debian keeps licenses in the doc folder, next to the copyright file
+    if(OSHOT_INSTALL_LICENSEDIR)
+        install(FILES ${_third_party} DESTINATION ${OSHOT_INSTALL_LICENSEDIR})
+    else()
+        install(FILES ${_third_party} DESTINATION ${CMAKE_INSTALL_DOCDIR})
+    endif()
 endif()
 
 # Desktop integration for Linux and the BSDs (freedesktop.org)

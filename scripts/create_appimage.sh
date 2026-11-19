@@ -117,6 +117,11 @@ EOF
     # missing, but renaming it would no longer match the component id
     install -Dm644 assets/linux/io.github.toni500github.oshot.metainfo.xml -t AppDir/usr/share/metainfo/
 
+    install -Dm644 LICENSE -t AppDir/usr/share/licenses/oshot/
+    if [ -f "$BUILD_DIR/THIRD-PARTY-LICENSES" ]; then
+        install -Dm644 "$BUILD_DIR/THIRD-PARTY-LICENSES" -t AppDir/usr/share/licenses/oshot/
+    fi
+
     ./linuxdeploy-${ARCH}.AppImage \
         --appdir AppDir \
         --executable AppDir/usr/bin/oshot \
@@ -126,6 +131,10 @@ EOF
     # linuxdeploy prefers the SVG for the top-level icon, but .DirIcon (which
     # appimagetool links to it) should be a PNG
     rm -f AppDir/oshot.svg AppDir/oshot.png
+
+    # linuxdeploy leaves the binaries it was given unstripped
+    find AppDir/usr/bin AppDir/usr/lib -type f \( -name 'oshot*' -o -name 'lib*imgui.so*' -o -name 'liboshot_common.so*' \) \
+        -exec strip --strip-unneeded {} +
     ln -s usr/share/icons/hicolor/256x256/apps/oshot.png AppDir/oshot.png
 
     # With UPDATE_INFORMATION set (e.g. "gh-releases-zsync|user|repo|latest|app-*.AppImage.zsync"),

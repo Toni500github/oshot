@@ -23,6 +23,11 @@ LEPTONICA_COMMIT="13275a278eb55b5746e33f95fbf5a2c8f604b3ab"
 
 prefix="${1:-/usr/local}"
 work="$(mktemp -d)"
+# One section per function and variable, so oshot's link (--gc-sections) drops what it doesn't call
+if [ "$(uname -s)" = Linux ]; then
+    export CFLAGS="${CFLAGS:-} -ffunction-sections -fdata-sections"
+    export CXXFLAGS="${CXXFLAGS:-} -ffunction-sections -fdata-sections"
+fi
 trap 'rm -rf "$work"' EXIT
 
 # Runs a command that writes to the prefix, with sudo when it isn't writable
@@ -34,8 +39,12 @@ as_prefix_owner() {
     fi
 }
 
+# usage: install_build <build-dir> <name> <license file>...
+# The licenses go to <prefix>/share/licenses/<name>, for oshot's THIRD-PARTY-LICENSES (OSHOT_THIRD_PARTY_LICENSES)
 install_build() {
     as_prefix_owner cmake --install "$1"
+    as_prefix_owner mkdir -p "$prefix/share/licenses/$2"
+    as_prefix_owner cp "${@:3}" "$prefix/share/licenses/$2/"
 }
 
 # usage: fetch <url> <tag> <commit> <dir>
@@ -59,7 +68,7 @@ if [ "$(uname -s)" = Linux ]; then
         -DWITH_SIMD=OFF \
         -DWITH_TURBOJPEG=OFF
     cmake --build "$work/jpeg-build" --parallel "$(getconf _NPROCESSORS_ONLN)"
-    install_build "$work/jpeg-build"
+    install_build "$work/jpeg-build" libjpeg-turbo "$work/jpeg/LICENSE.md" "$work/jpeg/README.ijg"
 
     fetch https://gitlab.com/libtiff/libtiff.git "$TIFF_VERSION" "$TIFF_COMMIT" "$work/tiff"
     cmake -S "$work/tiff" -B "$work/tiff-build" \
@@ -83,7 +92,7 @@ if [ "$(uname -s)" = Linux ]; then
         -Dzstd=OFF \
         -Dwebp=OFF
     cmake --build "$work/tiff-build" --parallel "$(getconf _NPROCESSORS_ONLN)"
-    install_build "$work/tiff-build"
+    install_build "$work/tiff-build" libtiff "$work/tiff/LICENSE.md"
 
     fetch https://github.com/DanBloomberg/leptonica.git "$LEPTONICA_VERSION" "$LEPTONICA_COMMIT" "$work/lept"
     cmake -S "$work/lept" -B "$work/lept-build" \
@@ -103,7 +112,7 @@ if [ "$(uname -s)" = Linux ]; then
         -DENABLE_WEBP=OFF \
         -DENABLE_OPENJPEG=OFF
     cmake --build "$work/lept-build" --parallel "$(getconf _NPROCESSORS_ONLN)"
-    install_build "$work/lept-build"
+    install_build "$work/lept-build" leptonica "$work/lept/leptonica-license.txt"
     # Its package config doesn't look up what a static build links, and Tesseract's configure
     # check fails on the missing targets with CMake 3.25+
     as_prefix_owner sed -i 's/^include(CMakeFindDependencyMacro)$/&\nfind_dependency(ZLIB)\nfind_dependency(PNG)\nfind_dependency(TIFF)\nfind_dependency(JPEG)/' \
@@ -130,4 +139,4 @@ cmake -S "$work/src" -B "$work/build" \
     -DENABLE_CCACHE=OFF
 cmake --build "$work/build" --parallel "$(getconf _NPROCESSORS_ONLN)"
 
-install_build "$work/build"
+install_build "$work/build" tesseract "$work/src/LICENSE"

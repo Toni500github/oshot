@@ -378,6 +378,8 @@ jobs:
         run: |
           echo "TESSERACT_PREFIX=$RUNNER_TEMP/tesseract" >> "$GITHUB_ENV"
           ./scripts/build_tesseract.sh "$RUNNER_TEMP/tesseract"
+          # Their licenses, which CMake merges into THIRD-PARTY-LICENSES (the SDL3 step adds SDL's)
+          echo "OSHOT_THIRD_PARTY_LICENSES=$(printf '%s;' "$RUNNER_TEMP"/tesseract/share/licenses/* | sed 's/;$//')" >> "$GITHUB_ENV"
           # Found before Ubuntu's tesseract.pc, by CMake here and under dpkg-buildpackage
           if [ "$RUNNER_OS" = Linux ]; then
             echo "PKG_CONFIG_PATH=$RUNNER_TEMP/tesseract/lib/pkgconfig" >> "$GITHUB_ENV"
@@ -389,11 +391,13 @@ jobs:
         if: runner.os == 'macOS' || matrix.target == 'linux' || matrix.target == 'linux-appimage' || matrix.target == 'debian-package'
         run: |
           if [ "$RUNNER_OS" = macOS ]; then
-            echo "SDL3_PREFIX=$RUNNER_TEMP/sdl3" >> "$GITHUB_ENV"
-            ./scripts/build_sdl3.sh "$RUNNER_TEMP/sdl3"
+            SDL3_PREFIX="$RUNNER_TEMP/sdl3"
+            echo "SDL3_PREFIX=$SDL3_PREFIX" >> "$GITHUB_ENV"
           else
-            ./scripts/build_sdl3.sh /usr/local
+            SDL3_PREFIX=/usr/local
           fi
+          ./scripts/build_sdl3.sh "$SDL3_PREFIX"
+          echo "OSHOT_THIRD_PARTY_LICENSES=${OSHOT_THIRD_PARTY_LICENSES:+$OSHOT_THIRD_PARTY_LICENSES;}$SDL3_PREFIX/share/licenses/SDL3" >> "$GITHUB_ENV"
           echo "BUNDLE_SDL3=${{ matrix.plugins && '1' || '0' }}" >> "$GITHUB_ENV"
 
       - name: Build project (Linux)
@@ -546,10 +550,10 @@ jobs:
           STRIP=$(command -v strip || command -v llvm-strip)
           "$STRIP" --strip-unneeded package/oshot_install/bin/*.exe package/oshot_install/bin/*.dll
           cp package/oshot_install/bin/*.exe package/oshot_install/bin/*.dll package/oshot/
-          cp ./assets/windows/oshot.ico ./assets/windows/oshot-tray.ico package/oshot/
+          cp ./assets/windows/oshot.ico ./assets/windows/oshot-tray.ico LICENSE package/oshot/
           # Plugin SDK (headers, CMake package, pkg-config files, cimgui import library), which oshotpm hands to plugin builds
           if [ -d build/sdk ]; then cp -r build/sdk package/oshot/; fi
-          # Every DLL that oshot, oshotpm and their DLLs need from the MSYS2 environment
+          # Every DLL that oshot, oshotpm and their DLLs need from the MSYS2 environment, and their licenses
           ./scripts/bundle_windows_dlls.sh package/oshot
           curl -fL $MODELS_URL_RAW/eng.traineddata -o package/oshot/models/eng.traineddata
           cd package && zip -ry oshot-windows-${{ matrix.arch }}${{ matrix.plugins && '-plugins' || '' }}.zip oshot/

@@ -236,6 +236,33 @@ main() {
 </plist>
 EOF
 
+    # oshot's license, those of the libraries linked statically (THIRD-PARTY-LICENSES, from
+    # OSHOT_THIRD_PARTY_LICENSES) and those of the Homebrew formulae the bundled dylibs come from
+    mkdir -p "${RESOURCES}/licenses"
+    cp -f LICENSE "${RESOURCES}/licenses/"
+    if [ -f "$(dirname "$BINARY")/THIRD-PARTY-LICENSES" ]; then
+        cp -f "$(dirname "$BINARY")/THIRD-PARTY-LICENSES" "${RESOURCES}/licenses/"
+    fi
+    if command -v brew &>/dev/null; then
+        CELLAR="$(brew --cellar)"
+        for lib in "$FRAMEWORKS"/*.dylib; do
+            keg="$(find "$CELLAR" -path "*/lib/$(basename "$lib")" -print -quit)"
+            if [ -z "$keg" ]; then continue; fi
+            keg="${keg%/lib/*}"
+            formula="$(basename "$(dirname "$keg")")"
+            if [ -d "${RESOURCES}/licenses/${formula}" ]; then continue; fi
+            shopt -s nullglob
+            files=("$keg"/LICENSE* "$keg"/COPYING* "$keg"/COPYRIGHT* "$keg"/NOTICE* "$keg"/README.ijg*)
+            shopt -u nullglob
+            if [ ${#files[@]} -eq 0 ]; then
+                echo "no license files for ${formula}" >&2
+                continue
+            fi
+            mkdir -p "${RESOURCES}/licenses/${formula}"
+            cp -f "${files[@]}" "${RESOURCES}/licenses/${formula}/"
+        done
+    fi
+
     # Ad-hoc code signature. Required to run at all on Apple Silicon; a Developer ID
     # signature + notarization is needed to open without the Gatekeeper prompt.
     codesign --force --deep --sign - "$APP_DIR"
