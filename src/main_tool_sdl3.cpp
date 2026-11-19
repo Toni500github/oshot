@@ -246,7 +246,7 @@ int run_main_tool()
 #endif
 
     // Undoes the setup so far, then shows the error
-    const auto fail = [&](const std::string_view fmt, const std::string_view error) {
+    const auto fail = [&](const dialog::located_fmt_t fmt, const std::string_view error) {
         g_ss_tool.SetWindow(nullptr);
         if (renderer)
             SDL_DestroyRenderer(renderer);
@@ -341,7 +341,7 @@ int run_main_tool()
         if (!renderer)
             return fail("Failed to create the overlay's renderer: {}", SDL_GetError());
         SDL_SetRenderVSync(renderer, true);
-        spdlog::debug("SDL renderer: {}", SDL_GetRendererName(renderer));
+        spdlog::debug("SDL video driver: {}, renderer: {}", SDL_GetCurrentVideoDriver(), SDL_GetRendererName(renderer));
 #if OSHOT_MACOS
         if (g_is_systray)
             kept = { window, renderer, cursor_display, bounds };

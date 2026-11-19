@@ -38,7 +38,6 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
-#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -209,7 +208,7 @@ Result<capture_result_t> load_image_rgba(const std::string& path)
     {
         pixels = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
         // stb only says "can't fopen", but fopen() left the reason in errno
-        if (!pixels && std::string_view(STBI_ERROR) == "can't fopen")
+        if (!pixels && std::strcmp(STBI_ERROR, "can't fopen") == 0)
             return Err("{}: {}", path, strerror(errno));
     }
     else

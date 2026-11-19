@@ -29,8 +29,10 @@
 // Message dialogs, and the log helpers that show one
 
 #include <cctype>
+#include <concepts>
 #include <cstdlib>
 #include <iostream>
+#include <source_location>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -58,6 +60,23 @@
 namespace dialog
 {
 // ------------------------------
+// Types
+// ------------------------------
+
+/* A format string and the place it was passed from, which die()/error()/warn()/info() report */
+struct located_fmt_t
+{
+    std::string_view     str;
+    std::source_location loc;
+
+    // Implicit and with a default location, so callers keep passing a plain format string
+    template <typename S>
+        requires std::convertible_to<const S&, std::string_view>
+    located_fmt_t(const S& s, const std::source_location l = std::source_location::current()) : str(s), loc(l)
+    {}
+};
+
+// ------------------------------
 // Functions
 // ------------------------------
 
@@ -78,6 +97,30 @@ void disable() noexcept;
  * @param str The message
  **/
 void create(const char* title, const NvdDialogType type, const std::string& str) noexcept;
+
+/**
+ * create(), with the log file's path below the message
+ * @param title The dialog's title
+ * @param type The dialog's icon
+ * @param str The message
+ **/
+void create_with_log(const char* title, const NvdDialogType type, const std::string& str) noexcept;
+
+/**
+ * Set the log file that error dialogs point to
+ * @param path The log file's path, or empty if there's none
+ **/
+void set_log_file(std::string path) noexcept;
+
+/* The log file set by set_log_file() */
+const std::string& log_file() noexcept;
+
+/**
+ * Describe a place in the code
+ * @param loc The place
+ * @return e.g. "ScreenshotTool::OpenImage (core.cpp:445)"
+ **/
+std::string where(const std::source_location& loc) noexcept;
 
 // ------------------------------
 // Template functions
@@ -105,62 +148,62 @@ inline std::string format_noexcept(const std::string_view fmt, Args&&... args) n
 
 /**
  * Log a critical error, show it in a dialog, then exit with code 1
- * @param fmt The format string
+ * @param fmt The format string, which carries the caller's location
  * @param args Arguments in the format
  **/
 template <typename... Args>
 // NOLINTNEXTLINE(bugprone-exception-escape): only reachable through spdlog's own error handler
-[[noreturn]] inline void die(const std::string_view fmt, Args&&... args) noexcept
+[[noreturn]] inline void die(const located_fmt_t fmt, Args&&... args) noexcept
 {
-    const std::string& str = format_noexcept(fmt, std::forward<Args>(args)...);
+    const std::string& str = format_noexcept(fmt.str, std::forward<Args>(args)...);
 
-    spdlog::critical("{}", str);
-    create(_("oshot Fatal Error"), NVD_DIALOG_ERROR, str);
+    spdlog::critical("{} [{}]", str, where(fmt.loc));
+    create_with_log(_("oshot Fatal Error"), NVD_DIALOG_ERROR, str);
     std::exit(1);
 }
 
 /**
  * Log an error and show it in a dialog
- * @param fmt The format string
+ * @param fmt The format string, which carries the caller's location
  * @param args Arguments in the format
  **/
 template <typename... Args>
 // NOLINTNEXTLINE(bugprone-exception-escape): only reachable through spdlog's own error handler
-inline void error(const std::string_view fmt, Args&&... args) noexcept
+inline void error(const located_fmt_t fmt, Args&&... args) noexcept
 {
-    const std::string& str = format_noexcept(fmt, std::forward<Args>(args)...);
+    const std::string& str = format_noexcept(fmt.str, std::forward<Args>(args)...);
 
-    spdlog::error("{}", str);
-    create(_("oshot Error"), NVD_DIALOG_ERROR, str);
+    spdlog::error("{} [{}]", str, where(fmt.loc));
+    create_with_log(_("oshot Error"), NVD_DIALOG_ERROR, str);
 }
 
 /**
  * Log a warning and show it in a dialog
- * @param fmt The format string
+ * @param fmt The format string, which carries the caller's location
  * @param args Arguments in the format
  **/
 template <typename... Args>
 // NOLINTNEXTLINE(bugprone-exception-escape): only reachable through spdlog's own error handler
-inline void warn(const std::string_view fmt, Args&&... args) noexcept
+inline void warn(const located_fmt_t fmt, Args&&... args) noexcept
 {
-    const std::string& str = format_noexcept(fmt, std::forward<Args>(args)...);
+    const std::string& str = format_noexcept(fmt.str, std::forward<Args>(args)...);
 
-    spdlog::warn("{}", str);
-    create(_("oshot Warning"), NVD_DIALOG_WARNING, str);
+    spdlog::warn("{} [{}]", str, where(fmt.loc));
+    create_with_log(_("oshot Warning"), NVD_DIALOG_WARNING, str);
 }
 
 /**
  * Log a message and show it in a dialog
- * @param fmt The format string
+ * @param fmt The format string, which carries the caller's location
  * @param args Arguments in the format
  **/
 template <typename... Args>
 // NOLINTNEXTLINE(bugprone-exception-escape): only reachable through spdlog's own error handler
-inline void info(const std::string_view fmt, Args&&... args) noexcept
+inline void info(const located_fmt_t fmt, Args&&... args) noexcept
 {
-    const std::string& str = format_noexcept(fmt, std::forward<Args>(args)...);
+    const std::string& str = format_noexcept(fmt.str, std::forward<Args>(args)...);
 
-    spdlog::info("{}", str);
+    spdlog::info("{} [{}]", str, where(fmt.loc));
     create(_("oshot Info"), NVD_DIALOG_SIMPLE, str);
 }
 

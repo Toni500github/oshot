@@ -69,6 +69,8 @@
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/spdlog.h"
 #include "util.hpp"
+#include "util/diagnostics.hpp"
+#include "util/dialogs.hpp"
 #include "util/image.hpp"
 #include "util/paths.hpp"
 
@@ -164,6 +166,20 @@ int main(int argc, char* argv[])
 
 static int oshot_main(int argc, char* argv[])  // NOLINT
 {
+    // The crash handler starts oshot again with this, since the crashed process can't show a dialog
+    if (argc == 4 && std::strcmp(argv[1], CRASH_REPORT_ARG) == 0)
+    {
+        i18n::init("auto", {});
+        dialog::create(_("oshot crashed"),
+                       NVD_DIALOG_ERROR,
+                       i18n::tr_fmt("oshot crashed with {}.\n\nThe log file has the details:\n{}\n\n"
+                                    "Please report it at {} and attach the log file.",
+                                    argv[2],
+                                    argv[3],
+                                    ISSUES_URL));
+        return EXIT_FAILURE;
+    }
+
     // Runs on every return. Left to the global destructors, g_ss_tool would go after Tesseract's static
     // caches, and g_plugins after spdlog's registry, which a plugin's destroy() may still log to
     struct ExitCleanup
@@ -216,6 +232,8 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     logger->set_pattern("[%Y-%m-%d %T.%e] [%l] %^%v%$");
     logger->flush_on(spdlog::level::trace);
     spdlog::set_default_logger(logger);
+    dialog::set_log_file(file ? file->filename() : std::string());
+    install_crash_handler(dialog::log_file());
 
     // Registered only now that spdlog's registry exists. Exit handlers run in reverse order, so it
     // still exists in exit_handler_nc()
@@ -267,6 +285,7 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     logger->info("=== oshot starting ===");
     if (file)
         logger->info("Log file path: {}", file->filename());
+    logger->debug("{}{}", version_infos, system_info());
 
     if (no_overlay)
         return run_without_overlay();

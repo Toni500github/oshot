@@ -40,6 +40,11 @@
 // ------------------------------
 // Types
 // ------------------------------
+// Get string literal length
+constexpr size_t operator""_len(const char*, size_t ln) noexcept
+{
+    return ln;
+}
 
 /**
  * Changes the working directory, and changes it back when it goes out of scope.

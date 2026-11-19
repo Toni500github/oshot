@@ -526,6 +526,7 @@ set(OSHOT_COMMON_SOURCES
     src/text_extraction/ocr_image.cpp
     src/util.cpp
     src/util/color.cpp
+    src/util/diagnostics.cpp
     src/util/dialogs.cpp
     src/util/file_dialogs.cpp
     src/util/fonts.cpp
@@ -604,7 +605,7 @@ target_compile_definitions(
         TOML_HEADER_ONLY=0
         SPDLOG_COMPILED_LIB
         ${OSHOT_OPTION_DEFINITIONS}
-    PRIVATE $<$<CONFIG:Debug>:DEBUG=1>
+    PRIVATE $<$<CONFIG:Debug>:DEBUG=1> ZBAR_PKG_VERSION="${ZBAR_VERSION}"
 )
 if(TESSERACT_DATADIR)
     target_compile_definitions(
@@ -667,6 +668,11 @@ target_link_libraries(
 )
 if(OpenMP_CXX_FOUND)
     target_link_libraries(oshot_common PRIVATE OpenMP::OpenMP_CXX)
+endif()
+# backtrace() for the crash handler, in libexecinfo on the BSDs and musl
+find_package(Backtrace)
+if(Backtrace_FOUND)
+    target_link_libraries(oshot_common PRIVATE ${Backtrace_LIBRARIES})
 endif()
 # The packages' static OCR libraries stay private to liboshot_common, so --gc-sections can drop their unused
 # code and a plugin bringing its own Tesseract doesn't bind to ours

@@ -1,6 +1,7 @@
 #include "manifest.hh"
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <map>
 #include <optional>
@@ -75,7 +76,7 @@ TEST_CASE("Manifest::IsSupported()", "[plugins][manifest]")
     CHECK(Manifest::IsSupported(plugin));
     plugin.platforms = { "dragonfly", "netbsd" };
     CHECK(Manifest::IsSupported(plugin) ==
-          (std::string_view(OSHOT_PLATFORM) == "dragonfly" || std::string_view(OSHOT_PLATFORM) == "netbsd"));
+          (std::strcmp(OSHOT_PLATFORM, "dragonfly") == 0 || std::strcmp(OSHOT_PLATFORM, "netbsd") == 0));
 }
 
 TEST_CASE("capabilities_notice()", "[plugins][manifest]")

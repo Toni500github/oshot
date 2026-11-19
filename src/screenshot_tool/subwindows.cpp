@@ -55,6 +55,7 @@
 #include "tiny-process-library/process.hpp"
 #include "util.hpp"
 #include "util/color.hpp"
+#include "util/diagnostics.hpp"
 #include "util/dialogs.hpp"
 #include "util/paths.hpp"
 #include "util/result.hpp"
@@ -107,8 +108,9 @@ void ScreenshotTool::DrawAboutWindow()
                               ImVec2(0, ImGui::GetTextLineHeightWithSpacing() * 6.0f),
                               false,
                               ImGuiWindowFlags_HorizontalScrollbar);
-            ImGui::TextUnformatted(version_infos.c_str());
-            CreateCopyTextButton(version_infos);
+            static const std::string details = version_infos + system_info();
+            ImGui::TextUnformatted(details.c_str());
+            CreateCopyTextButton(details);
             ImGui::EndChild();
             ImGui::TreePop();
         }
