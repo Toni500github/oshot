@@ -72,7 +72,7 @@ extern "C" {
  * with the exact same ImGui version. oshot updates ImGui only in minor
  * releases (x.y.0). Plugins that use only the ui_* functions don't depend on it.
  **/
-#define OSHOT_IMGUI_VERSION 19284u
+#define OSHOT_IMGUI_VERSION 19303u
 
 /* imgui_version of a plugin that doesn't call Dear ImGui through cimgui */
 #define OSHOT_NO_IMGUI 0

@@ -128,7 +128,7 @@ main() {
         # Spelled like dylibbundler's -p, so it's skipped if already there
         install_name_tool -add_rpath @executable_path/../Frameworks/ "${MACOS}/${APP_NAME}" 2>/dev/null || true
 
-        # dylibbundler names copies after the real file (libimgui.1.92.9.dylib),
+        # dylibbundler names copies after the real file (libimgui.1.93.1.dylib),
         # plugins reference the soname (libimgui.1.dylib)
         for f in "${FRAMEWORKS}"/*.dylib; do
             b="$(basename "$f")"

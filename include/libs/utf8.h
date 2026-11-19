@@ -60,6 +60,13 @@
 
 #if defined(_MSC_VER) && (_MSC_VER < 1920)
 typedef __int32 utf8_int32_t;
+#if (_MSC_VER < 1600)
+#ifdef _WIN64
+#define SIZE_MAX 0xffffffffffffffffULL
+#else
+#define SIZE_MAX 0xffffffffUL
+#endif
+#endif
 #else
 #include <stdint.h>
 typedef int32_t utf8_int32_t;
@@ -88,7 +95,12 @@ extern "C" {
 #if defined(_MSC_VER)
 #define utf8_nonnull
 #define utf8_pure
+#if (_MSC_VER < 1600)
+/*avoiding compiler fatal error C1600: unsupported data type */
+#define utf8_restrict
+#else
 #define utf8_restrict __restrict
+#endif
 #define utf8_weak __inline
 #elif defined(__clang__) || defined(__GNUC__)
 #define utf8_nonnull UTF8_ATTRIBUTE(nonnull)
@@ -240,6 +252,11 @@ utf8str(const utf8_int8_t *haystack, const utf8_int8_t *needle);
 utf8_constexpr14 utf8_nonnull utf8_pure utf8_int8_t *
 utf8casestr(const utf8_int8_t *haystack, const utf8_int8_t *needle);
 
+/* The position of needle in haystack, case insensitive. */
+utf8_constexpr14 utf8_nonnull utf8_pure utf8_int8_t *
+utf8ncasestr(const utf8_int8_t *haystack, size_t haystack_len,
+             const utf8_int8_t *needle, size_t needle_len);
+
 /* Return 0 on success, or the position of the invalid
  * utf8 codepoint on failure. */
 utf8_constexpr14 utf8_nonnull utf8_pure utf8_int8_t *
@@ -259,6 +276,12 @@ utf8_nonnull utf8_weak int utf8makevalid(utf8_int8_t *str,
 utf8_constexpr14 utf8_nonnull utf8_int8_t *
 utf8codepoint(const utf8_int8_t *utf8_restrict str,
               utf8_int32_t *utf8_restrict out_codepoint);
+
+/* Decode one valid utf8 codepoint from at most n bytes. Returns the address
+ * after the codepoint, or null if n is zero or the input is incomplete or
+ * invalid. Leaves out_codepoint unchanged on failure. */
+utf8_constexpr14 utf8_nonnull utf8_int8_t *
+utf8ncodepoint(const utf8_int8_t *str, utf8_int32_t *out_codepoint, size_t n);
 
 /* Calculates the size of the next utf8 codepoint in str. */
 utf8_constexpr14 utf8_nonnull utf8_pure size_t
@@ -316,8 +339,8 @@ utf8_weak utf8_int8_t *utf8dup_ex(const utf8_int8_t *src,
                                                                  size_t),
                                   utf8_int8_t *user_data);
 
-/* Similar to utf8dup, except that at most n bytes of src are copied. If src is
- * longer than n, only n bytes are copied and a null byte is added.
+/* Similar to utf8dup_ex, except that at most n bytes of src are copied. If src
+ * is longer than n, only n bytes are copied and a null byte is added.
  *
  * Returns a new string if successful, 0 otherwise. */
 utf8_weak utf8_int8_t *utf8ndup_ex(const utf8_int8_t *src, size_t n,
@@ -335,6 +358,37 @@ utf8_constexpr14_impl int utf8casecmp(const utf8_int8_t *src1,
                src2_upr_cp = 0, src1_orig_cp = 0, src2_orig_cp = 0;
 
   for (;;) {
+    /* Fast path: both bytes are ASCII, so each is a whole codepoint whose
+     * case mapping only touches A-Z and a-z. */
+    if ((0 == (0x80 & *src1)) && (0 == (0x80 & *src2))) {
+      src1_orig_cp = *src1;
+      src2_orig_cp = *src2;
+      src1++;
+      src2++;
+
+      if ((0 == src1_orig_cp) && (0 == src2_orig_cp)) {
+        return 0;
+      }
+
+      src1_lwr_cp = ('A' <= src1_orig_cp && 'Z' >= src1_orig_cp)
+                        ? src1_orig_cp + 32
+                        : src1_orig_cp;
+      src2_lwr_cp = ('A' <= src2_orig_cp && 'Z' >= src2_orig_cp)
+                        ? src2_orig_cp + 32
+                        : src2_orig_cp;
+      src1_upr_cp = ('a' <= src1_orig_cp && 'z' >= src1_orig_cp)
+                        ? src1_orig_cp - 32
+                        : src1_orig_cp;
+      src2_upr_cp = ('a' <= src2_orig_cp && 'z' >= src2_orig_cp)
+                        ? src2_orig_cp - 32
+                        : src2_orig_cp;
+
+      if ((src1_lwr_cp == src2_lwr_cp) || (src1_upr_cp == src2_upr_cp)) {
+        continue;
+      }
+      return src1_lwr_cp - src2_lwr_cp;
+    }
+
     src1 = utf8codepoint(src1, &src1_orig_cp);
     src2 = utf8codepoint(src2, &src2_orig_cp);
 
@@ -559,6 +613,14 @@ utf8_constexpr14_impl size_t utf8nlen(const utf8_int8_t *str, size_t n) {
 
   while ((size_t)(str - t) < n && '\0' != *str) {
     size_t cp_len = 1;
+
+    /* Fast path: an ASCII byte is a whole codepoint. */
+    if (0 == (0x80 & *str)) {
+      str++;
+      length++;
+      continue;
+    }
+
     if (0xf0 == (0xf8 & *str)) {
       /* 4-byte utf8 code point (began with 0b11110xxx) */
       cp_len = 4;
@@ -675,7 +737,7 @@ utf8_int8_t *utf8ncat(utf8_int8_t *utf8_restrict dst,
 
   /* overwriting the null terminating byte in dst, append src byte-by-byte
    * stopping if we run out of space */
-  while (('\0' != *src) && (0 != n--)) {
+  while ((0 != n--) && ('\0' != *src)) {
     *d++ = *src++;
   }
 
@@ -720,7 +782,8 @@ utf8_int8_t *utf8ncpy(utf8_int8_t *utf8_restrict dst,
     }
   }
 
-  for (check_index = index - 1;
+  /* An empty src leaves index at 0, and index - 1 would wrap around. */
+  for (check_index = index > 0 ? index - 1 : 0;
        check_index > 0 && 0x80 == (0xc0 & d[check_index]); check_index--) {
     /* just moving the index */
   }
@@ -750,7 +813,7 @@ utf8_int8_t *utf8ndup_ex(const utf8_int8_t *src, size_t n,
   size_t bytes = 0;
 
   /* Find the end of the string or stop when n is reached */
-  while ('\0' != src[bytes] && bytes < n) {
+  while (bytes < n && '\0' != src[bytes]) {
     bytes++;
   }
 
@@ -776,7 +839,7 @@ utf8_int8_t *utf8ndup_ex(const utf8_int8_t *src, size_t n,
   bytes = 0;
 
   /* copy src byte-by-byte into our new utf8 string */
-  while ('\0' != src[bytes] && bytes < n) {
+  while (bytes < n && '\0' != src[bytes]) {
     c[bytes] = src[bytes];
     bytes++;
   }
@@ -990,6 +1053,16 @@ utf8_constexpr14_impl utf8_int8_t *utf8str(const utf8_int8_t *haystack,
     const utf8_int8_t *maybeMatch = haystack;
     const utf8_int8_t *n = needle;
 
+    /* Skip ASCII bytes that cannot begin a match; each is its own codepoint. */
+    while ((0 == (0x80 & *haystack)) && ('\0' != *haystack) &&
+           (*haystack != *needle)) {
+      haystack++;
+    }
+    if ('\0' == *haystack) {
+      break;
+    }
+    maybeMatch = haystack;
+
     while (*haystack == *n && (*haystack != '\0' && *n != '\0')) {
       n++;
       haystack++;
@@ -1013,6 +1086,11 @@ utf8_constexpr14_impl utf8_int8_t *utf8str(const utf8_int8_t *haystack,
 
 utf8_constexpr14_impl utf8_int8_t *utf8casestr(const utf8_int8_t *haystack,
                                                const utf8_int8_t *needle) {
+  /* the needle's first byte lowered if it is ascii, otherwise 0 */
+  const utf8_int32_t first = (0 != (0x80 & *needle))            ? 0
+                             : ('A' <= *needle && 'Z' >= *needle) ? *needle + 32
+                                                                  : *needle;
+
   /* if needle has no utf8 codepoints before the null terminating
    * byte then return haystack */
   if ('\0' == *needle) {
@@ -1021,11 +1099,28 @@ utf8_constexpr14_impl utf8_int8_t *utf8casestr(const utf8_int8_t *haystack,
 
   for (;;) {
     const utf8_int8_t *maybeMatch = haystack;
+    const utf8_int8_t *nextH = haystack;
     const utf8_int8_t *n = needle;
     utf8_int32_t h_cp = 0, n_cp = 0;
 
+    /* skip ascii bytes that cannot start a match, each is a whole codepoint */
+    if (0 != first) {
+      for (;;) {
+        const utf8_int32_t c = *haystack;
+        const int is_ascii = (0 == (0x80 & c)) && (0 != c);
+        const utf8_int32_t lowered = ('A' <= c && 'Z' >= c) ? c + 32 : c;
+
+        if (!is_ascii || first == lowered) {
+          break;
+        }
+        haystack++;
+      }
+      maybeMatch = haystack;
+    }
+
     /* Get the next code point and track it */
-    const utf8_int8_t *nextH = haystack = utf8codepoint(haystack, &h_cp);
+    haystack = utf8codepoint(haystack, &h_cp);
+    nextH = haystack;
     n = utf8codepoint(n, &n_cp);
 
     while ((0 != h_cp) && (0 != n_cp)) {
@@ -1057,6 +1152,142 @@ utf8_constexpr14_impl utf8_int8_t *utf8casestr(const utf8_int8_t *haystack,
   }
 }
 
+utf8_constexpr14_impl utf8_int8_t *
+utf8ncodepoint(const utf8_int8_t *str, utf8_int32_t *out_codepoint,
+               size_t n) {
+  unsigned char lead = 0, continuation = 0;
+  size_t width = 0, index = 0;
+  utf8_int32_t codepoint = 0;
+
+  if (0 == n) {
+    return utf8_null;
+  }
+
+  lead = (unsigned char)str[0];
+  if (lead <= 0x7f) {
+    width = 1;
+    codepoint = (utf8_int32_t)lead;
+  } else if ((0xc2 <= lead) && (0xdf >= lead)) {
+    width = 2;
+    codepoint = (utf8_int32_t)(lead & 0x1f);
+  } else if ((0xe0 <= lead) && (0xef >= lead)) {
+    width = 3;
+    codepoint = (utf8_int32_t)(lead & 0x0f);
+  } else if ((0xf0 <= lead) && (0xf4 >= lead)) {
+    width = 4;
+    codepoint = (utf8_int32_t)(lead & 0x07);
+  } else {
+    return utf8_null;
+  }
+
+  if (n < width) {
+    return utf8_null;
+  }
+
+  for (index = 1; index < width; index++) {
+    continuation = (unsigned char)str[index];
+    if (0x80 != (continuation & 0xc0)) {
+      return utf8_null;
+    }
+
+    if ((1 == index) &&
+        (((0xe0 == lead) && (0xa0 > continuation)) ||
+         ((0xed == lead) && (0x9f < continuation)) ||
+         ((0xf0 == lead) && (0x90 > continuation)) ||
+         ((0xf4 == lead) && (0x8f < continuation)))) {
+      return utf8_null;
+    }
+
+    codepoint = (codepoint << 6) | (utf8_int32_t)(continuation & 0x3f);
+  }
+
+  *out_codepoint = codepoint;
+  return (utf8_int8_t *)(str + width);
+}
+
+utf8_constexpr14_impl utf8_int8_t *
+utf8ncasestr(const utf8_int8_t *haystack, size_t haystack_len,
+             const utf8_int8_t *needle, size_t needle_len) {
+  size_t needle_offset = 0, haystack_offset = 0, haystack_start = 0;
+  size_t codepoint_size = 0, match_haystack_offset = 0;
+  size_t haystack_codepoint_size = 0, needle_codepoint_size = 0;
+  utf8_int32_t needle_codepoint = 0, haystack_codepoint = 0;
+  const utf8_int8_t *next_codepoint = utf8_null;
+  int matches = 0;
+
+  if (0 == needle_len) {
+    return (utf8_int8_t *)haystack;
+  }
+
+  /* Reject needles that end within, or contain invalid, codepoints. */
+  while (needle_offset < needle_len) {
+    next_codepoint =
+        utf8ncodepoint(needle + needle_offset, &needle_codepoint,
+                       needle_len - needle_offset);
+    if (utf8_null == next_codepoint) {
+      return utf8_null;
+    }
+    needle_offset = (size_t)(next_codepoint - needle);
+  }
+
+  haystack_offset = 0;
+  while (haystack_offset < haystack_len) {
+    haystack_start = haystack_offset;
+    next_codepoint =
+        utf8ncodepoint(haystack + haystack_offset, &haystack_codepoint,
+                       haystack_len - haystack_offset);
+    if (utf8_null == next_codepoint) {
+      /* Invalid bytes cannot start a match; continue looking after the byte. */
+      haystack_offset++;
+      continue;
+    }
+
+    codepoint_size = (size_t)(next_codepoint - (haystack + haystack_offset));
+    haystack_offset += codepoint_size;
+    match_haystack_offset = haystack_start;
+    needle_offset = 0;
+    matches = 1;
+
+    while (needle_offset < needle_len) {
+      next_codepoint =
+          utf8ncodepoint(haystack + match_haystack_offset,
+                         &haystack_codepoint,
+                         haystack_len - match_haystack_offset);
+      if (utf8_null == next_codepoint) {
+        matches = 0;
+        break;
+      }
+      haystack_codepoint_size =
+          (size_t)(next_codepoint - (haystack + match_haystack_offset));
+
+      next_codepoint =
+          utf8ncodepoint(needle + needle_offset, &needle_codepoint,
+                         needle_len - needle_offset);
+      if (utf8_null == next_codepoint) {
+        matches = 0;
+        break;
+      }
+      needle_codepoint_size =
+          (size_t)(next_codepoint - (needle + needle_offset));
+
+      if (utf8lwrcodepoint(haystack_codepoint) !=
+          utf8lwrcodepoint(needle_codepoint)) {
+        matches = 0;
+        break;
+      }
+
+      match_haystack_offset += haystack_codepoint_size;
+      needle_offset += needle_codepoint_size;
+    }
+
+    if (matches) {
+      return (utf8_int8_t *)(haystack + haystack_start);
+    }
+  }
+
+  return utf8_null;
+}
+
 utf8_constexpr14_impl utf8_int8_t *utf8valid(const utf8_int8_t *str) {
   return utf8nvalid(str, SIZE_MAX);
 }
@@ -1069,7 +1300,10 @@ utf8_constexpr14_impl utf8_int8_t *utf8nvalid(const utf8_int8_t *str,
   while ((void)(consumed = (size_t)(str - t)), consumed < n && '\0' != *str) {
     const size_t remaining = n - consumed;
 
-    if (0xf0 == (0xf8 & *str)) {
+    if (0x00 == (0x80 & *str)) {
+      /* 1-byte ascii (began with 0b0xxxxxxx) */
+      str += 1;
+    } else if (0xf0 == (0xf8 & *str)) {
       /* ensure that there's 4 bytes or more remaining */
       if (remaining < 4) {
         return (utf8_int8_t *)str;
@@ -1159,9 +1393,6 @@ utf8_constexpr14_impl utf8_int8_t *utf8nvalid(const utf8_int8_t *str,
 
       /* 2-byte utf8 code point (began with 0b110xxxxx) */
       str += 2;
-    } else if (0x00 == (0x80 & *str)) {
-      /* 1-byte ascii (began with 0b0xxxxxxx) */
-      str += 1;
     } else {
       /* we have an invalid 0b1xxxxxxx utf8 code point entry */
       return (utf8_int8_t *)str;
@@ -1182,19 +1413,21 @@ int utf8makevalid(utf8_int8_t *str, const utf8_int32_t replacement) {
   }
 
   while ('\0' != *read) {
-    if (0xf0 == (0xf8 & *read)) {
+    if ((0xf0 == (0xf8 & *read)) && (0x04 >= (0x07 & *read))) {
       /* ensure each of the 3 following bytes in this 4-byte
-       * utf8 codepoint began with 0b10xxxxxx */
+       * utf8 codepoint began with 0b10xxxxxx, and that for a
+       * leading byte of 0xf4 the second byte does not exceed 0x8f */
       if ((0x80 != (0xc0 & read[1])) || (0x80 != (0xc0 & read[2])) ||
-          (0x80 != (0xc0 & read[3]))) {
+          (0x80 != (0xc0 & read[3])) ||
+          ((4 == (0x07 & read[0])) && (0 != (0x30 & read[1])))) {
         *write++ = r;
         read++;
         continue;
       }
 
-      /* 4-byte utf8 code point (began with 0b11110xxx) */
+      /* 4-byte utf8 code point (began with 0b11110000..0b11110100) */
       (void)utf8codepoint(read, &codepoint);
-      if ((codepoint > 0x10ffff) ||
+      if ((0 == codepoint) || (codepoint > 0x10ffff) ||
           ((codepoint >= 0xd800) && (codepoint <= 0xdfff))) {
         /* Invalid scalar values cannot be repaired by re-encoding them. */
         *write++ = r;
@@ -1495,36 +1728,56 @@ utf8_constexpr14_impl int utf8isupper(utf8_int32_t chr) {
 }
 
 void utf8lwr(utf8_int8_t *utf8_restrict str) {
-  utf8_int32_t cp = 0;
-  utf8_int8_t *pn = utf8codepoint(str, &cp);
+  for (;;) {
+    utf8_int32_t cp = 0;
+    utf8_int8_t *pn = str;
+    utf8_int32_t mapped_cp = 0;
 
-  while (cp != 0) {
-    const utf8_int32_t lwr_cp = utf8lwrcodepoint(cp);
-    const size_t size = utf8codepointsize(lwr_cp);
-
-    if (lwr_cp != cp) {
-      utf8catcodepoint(str, lwr_cp, size);
+    /* Fast path: ASCII bytes are whole codepoints, only A-Z change. */
+    while ((0 == (0x80 & *str)) && ('\0' != *str)) {
+      if ('A' <= *str && 'Z' >= *str) {
+        *str += 32;
+      }
+      str++;
     }
 
-    str = pn;
     pn = utf8codepoint(str, &cp);
+    if (0 == cp) {
+      return;
+    }
+
+    mapped_cp = utf8lwrcodepoint(cp);
+    if (mapped_cp != cp) {
+      utf8catcodepoint(str, mapped_cp, utf8codepointsize(mapped_cp));
+    }
+    str = pn;
   }
 }
 
 void utf8upr(utf8_int8_t *utf8_restrict str) {
-  utf8_int32_t cp = 0;
-  utf8_int8_t *pn = utf8codepoint(str, &cp);
+  for (;;) {
+    utf8_int32_t cp = 0;
+    utf8_int8_t *pn = str;
+    utf8_int32_t mapped_cp = 0;
 
-  while (cp != 0) {
-    const utf8_int32_t lwr_cp = utf8uprcodepoint(cp);
-    const size_t size = utf8codepointsize(lwr_cp);
-
-    if (lwr_cp != cp) {
-      utf8catcodepoint(str, lwr_cp, size);
+    /* Fast path: ASCII bytes are whole codepoints, only a-z change. */
+    while ((0 == (0x80 & *str)) && ('\0' != *str)) {
+      if ('a' <= *str && 'z' >= *str) {
+        *str -= 32;
+      }
+      str++;
     }
 
-    str = pn;
     pn = utf8codepoint(str, &cp);
+    if (0 == cp) {
+      return;
+    }
+
+    mapped_cp = utf8uprcodepoint(cp);
+    if (mapped_cp != cp) {
+      utf8catcodepoint(str, mapped_cp, utf8codepointsize(mapped_cp));
+    }
+    str = pn;
   }
 }
 
@@ -1557,13 +1810,15 @@ utf8_constexpr14_impl utf8_int32_t utf8lwrcodepoint(utf8_int32_t cp) {
              ((0x0246 <= cp) && (0x024f >= cp)) ||
              ((0x03d8 <= cp) && (0x03ef >= cp)) ||
              ((0x0460 <= cp) && (0x0481 >= cp)) ||
-             ((0x048a <= cp) && (0x04ff >= cp))) {
+             ((0x048a <= cp) && (0x04bf >= cp)) ||
+             ((0x04d0 <= cp) && (0x04ff >= cp))) {
     cp |= 0x1;
   } else if (((0x0139 <= cp) && (0x0148 >= cp)) ||
              ((0x0179 <= cp) && (0x017e >= cp)) ||
              ((0x01af <= cp) && (0x01b0 >= cp)) ||
              ((0x01b3 <= cp) && (0x01b6 >= cp)) ||
-             ((0x01cd <= cp) && (0x01dc >= cp))) {
+             ((0x01cd <= cp) && (0x01dc >= cp)) ||
+             ((0x04c1 <= cp) && (0x04ce >= cp))) {
     cp += 1;
     cp &= ~0x1;
   } else {
@@ -1572,6 +1827,9 @@ utf8_constexpr14_impl utf8_int32_t utf8lwrcodepoint(utf8_int32_t cp) {
       break;
     case 0x0178:
       cp = 0x00ff;
+      break;
+    case 0x04c0:
+      cp = 0x04cf;
       break;
     case 0x0243:
       cp = 0x0180;
@@ -1728,13 +1986,15 @@ utf8_constexpr14_impl utf8_int32_t utf8uprcodepoint(utf8_int32_t cp) {
              ((0x0246 <= cp) && (0x024f >= cp)) ||
              ((0x03d8 <= cp) && (0x03ef >= cp)) ||
              ((0x0460 <= cp) && (0x0481 >= cp)) ||
-             ((0x048a <= cp) && (0x04ff >= cp))) {
+             ((0x048a <= cp) && (0x04bf >= cp)) ||
+             ((0x04d0 <= cp) && (0x04ff >= cp))) {
     cp &= ~0x1;
   } else if (((0x0139 <= cp) && (0x0148 >= cp)) ||
              ((0x0179 <= cp) && (0x017e >= cp)) ||
              ((0x01af <= cp) && (0x01b0 >= cp)) ||
              ((0x01b3 <= cp) && (0x01b6 >= cp)) ||
-             ((0x01cd <= cp) && (0x01dc >= cp))) {
+             ((0x01cd <= cp) && (0x01dc >= cp)) ||
+             ((0x04c1 <= cp) && (0x04ce >= cp))) {
     cp -= 1;
     cp |= 0x1;
   } else {
@@ -1743,6 +2003,9 @@ utf8_constexpr14_impl utf8_int32_t utf8uprcodepoint(utf8_int32_t cp) {
       break;
     case 0x00ff:
       cp = 0x0178;
+      break;
+    case 0x04cf:
+      cp = 0x04c0;
       break;
     case 0x03c2:
       /* final sigma has no uppercase form of its own */
@@ -1879,21 +2142,8 @@ utf8rcodepoint(const utf8_int8_t *utf8_restrict str,
                utf8_int32_t *utf8_restrict out_codepoint) {
   const utf8_int8_t *s = (const utf8_int8_t *)str;
 
-  if (0xf0 == (0xf8 & s[0])) {
-    /* 4 byte utf8 codepoint */
-    *out_codepoint = ((0x07 & s[0]) << 18) | ((0x3f & s[1]) << 12) |
-                     ((0x3f & s[2]) << 6) | (0x3f & s[3]);
-  } else if (0xe0 == (0xf0 & s[0])) {
-    /* 3 byte utf8 codepoint */
-    *out_codepoint =
-        ((0x0f & s[0]) << 12) | ((0x3f & s[1]) << 6) | (0x3f & s[2]);
-  } else if (0xc0 == (0xe0 & s[0])) {
-    /* 2 byte utf8 codepoint */
-    *out_codepoint = ((0x1f & s[0]) << 6) | (0x3f & s[1]);
-  } else {
-    /* 1 byte utf8 codepoint otherwise */
-    *out_codepoint = s[0];
-  }
+  /* utf8codepoint stops at a NUL, so a truncated sequence is not over-read. */
+  (void)utf8codepoint(s, out_codepoint);
 
   do {
     s--;

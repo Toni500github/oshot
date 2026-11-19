@@ -525,7 +525,7 @@ void ScreenshotTool::DrawAnnotations()
             ImVec2 min(std::min(p1.x, p2.x), std::min(p1.y, p2.y));
             ImVec2 max(std::max(p1.x, p2.x), std::max(p1.y, p2.y));
             filled ? draw_list->AddRectFilled(min, max, ann.color.to_abgr(), 0.0f, ImDrawFlags_None)
-                   : draw_list->AddRect(min, max, ann.color.to_abgr(), 0.0f, t, ImDrawFlags_None);
+                   : draw_list->AddRect(min, max, ann.color.to_abgr(), 0.0f, t, ImDrawFlags_StrokeCenter);
         };
 
     auto draw_circle_or_filled =
@@ -534,7 +534,7 @@ void ScreenshotTool::DrawAnnotations()
             float dy     = p2.y - p1.y;
             float radius = std::sqrt(dx * dx + dy * dy);
             filled ? draw_list->AddCircleFilled(p1, radius, ann.color.to_abgr(), 0)
-                   : draw_list->AddCircle(p1, radius, ann.color.to_abgr(), 0, t);
+                   : draw_list->AddCircle(p1, radius, ann.color.to_abgr(), 0, t, ImDrawFlags_StrokeCenter);
         };
 
     auto draw_counter_bubble = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
@@ -1108,7 +1108,8 @@ void ScreenshotTool::DrawOcrTools()
                 }
 
                 ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F);
-                filter.Draw("##Filter", -FLT_MIN);
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                filter.DrawWithHint("##Filter", nullptr);
                 // Esc would only leave the filter, so one press closes the list
                 if (ImGui::IsItemDeactivated() && ImGui::IsKeyPressed(ImGuiKey_Escape))
                     ImGui::CloseCurrentPopup();

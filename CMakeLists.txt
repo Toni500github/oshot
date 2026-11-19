@@ -314,7 +314,7 @@ else()
     set_target_properties(
         imgui
         PROPERTIES
-            VERSION 1.92.9
+            VERSION 1.93.1
             SOVERSION 1
             WINDOWS_EXPORT_ALL_SYMBOLS ON
             INSTALL_RPATH "${_rpath_origin}"

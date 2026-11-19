@@ -453,7 +453,8 @@ void ScreenshotTool::DrawLogsWindow()
             ImGui::EndCombo();
         }
         ImGui::SameLine();
-        text_filter.Draw(_("Filter"), 200);
+        ImGui::SetNextItemWidth(200);
+        text_filter.DrawWithHint(_("Filter"), nullptr);
 
         ImGui::Separator();
 

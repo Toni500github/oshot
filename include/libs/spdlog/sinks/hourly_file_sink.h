@@ -22,10 +22,10 @@ SPDLOG_NAMESPACE_BEGIN
 namespace sinks {
 
 /*
- * Generator of Hourly log file names in format basename.YYYY-MM-DD-HH.ext
+ * Generator of Hourly log file names in format basename_YYYY-MM-DD_HH.ext
  */
 struct hourly_filename_calculator {
-    // Create filename for the form basename.YYYY-MM-DD-H
+    // Create filename of the form basename_YYYY-MM-DD_HH.ext
     static filename_t calc_filename(const filename_t &filename, const tm &now_tm) {
         filename_t basename, ext;
         std::tie(basename, ext) = details::file_helper::split_by_extension(filename);
@@ -59,7 +59,7 @@ public:
         auto filename = FileNameCalc::calc_filename(base_filename_, now_tm(now));
         file_helper_.open(filename, truncate_);
         remove_init_file_ = file_helper_.size() == 0;
-        rotation_tp_ = next_rotation_tp_();
+        rotation_tp_ = next_rotation_tp_(now);
 
         if (max_files_ > 0) {
             init_filenames_q_();
@@ -82,7 +82,7 @@ protected:
             }
             auto filename = FileNameCalc::calc_filename(base_filename_, now_tm(time));
             file_helper_.open(filename, truncate_);
-            rotation_tp_ = next_rotation_tp_();
+            rotation_tp_ = next_rotation_tp_(time);
         }
         remove_init_file_ = false;
         memory_buf_t formatted;
@@ -122,8 +122,7 @@ private:
         return details::os::localtime(tnow);
     }
 
-    log_clock::time_point next_rotation_tp_() {
-        auto now = log_clock::now();
+    log_clock::time_point next_rotation_tp_(log_clock::time_point now) {
         tm date = now_tm(now);
         date.tm_min = 0;
         date.tm_sec = 0;
