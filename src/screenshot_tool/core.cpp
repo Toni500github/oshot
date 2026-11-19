@@ -80,9 +80,10 @@ Result<> ScreenshotTool::Start()
 
     // g_ss_tool outlives a capture, since the tray runs every one of them with it
     ResetSelection();
-    m_anno_sel.handle_hover     = HandleHovered::kNone;
-    m_anno_sel.dragging_handle  = HandleHovered::kNone;
-    m_current_annotation        = {};
+    m_anno_sel.handle_hover    = HandleHovered::kNone;
+    m_anno_sel.dragging_handle = HandleHovered::kNone;
+    m_current_annotation       = {};
+    m_edited_text.reset();
     m_current_annotation_resize = nullptr;
     m_current_actions           = {};
     m_pending_scan              = ScanType::kNone;
@@ -212,8 +213,9 @@ void ScreenshotTool::RenderOverlay()
 
     const bool subwindow_shown = m_state == ToolState::Selected && m_show_window.Has(SubWindow::MainTextTools) &&
                                  m_show_window.HasAny(SubWindow::OcrDownload, SubWindow::Preferences);
-    const bool disable_esc =
-        m_current_actions.HasAny(CurrentAction::IsTextPlacing, CurrentAction::IsColorPicking) || subwindow_shown;
+    // With an annotation selected, Esc deselects it
+    const bool disable_esc = m_current_actions.HasAny(CurrentAction::IsTextPlacing, CurrentAction::IsColorPicking) ||
+                             subwindow_shown || m_current_annotation_resize;
 
     static constexpr int minimal_win_flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
                                              ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoResize |
@@ -239,9 +241,11 @@ void ScreenshotTool::RenderOverlay()
     if (ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear)
         ImGui::GetBackgroundDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
 
-    // Save/copy or scan requested: this frame is read back as the image, so draw only the annotations
+    // Save/copy or scan requested: this frame is read back as the image, so draw only the annotations, with the
+    // text still being typed
     if (WantsCleanFrame())
     {
+        CommitTextAnnotation();
         DrawAnnotations();
         ImGui::End();
         ImGui::PopStyleVar();
@@ -283,7 +287,6 @@ void ScreenshotTool::RenderOverlay()
         const bool swallowed_deselect_click = HandleAnnotationSelectionInput();
         if (m_current_annotation_resize)
         {
-            UpdateHandleHoverState(m_anno_sel);
             UpdateCursor(m_anno_sel);
         }
         else if (!swallowed_deselect_click)
@@ -741,9 +744,9 @@ void ScreenshotTool::ReleaseTextures()
 #endif
 }
 
-ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const float font_size)
+ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path)
 {
-    ImFont* font = GetCachedFont(font_path, font_size);
+    ImFont* font = GetCachedFont(font_path);
     if (font)
     {
         ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
@@ -752,7 +755,7 @@ ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const floa
 
     ImFontConfig cfg;
     cfg.GlyphRanges = ImGui::GetIO().Fonts->GetGlyphRangesDefault();
-    font            = add_font_file(ImGui::GetIO().Fonts, font_path, font_size, &cfg);
+    font            = add_font_file(ImGui::GetIO().Fonts, font_path, 16.0f, &cfg);
     if (!font)
     {
         // Cached too, so the warning shows once
@@ -760,18 +763,18 @@ ImFont* ScreenshotTool::CacheAndGetFont(const std::string& font_path, const floa
         font = ImGui::GetDefaultFont();
     }
 
-    m_font_cache[{ font_path, std::max(font_size, 16.0f) }] = font;
+    m_font_cache[font_path] = font;
     ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
 
     return font;
 }
 
-ImFont* ScreenshotTool::GetCachedFont(const std::string& font_path, const float font_size) const
+ImFont* ScreenshotTool::GetCachedFont(const std::string& font_path) const
 {
     if (font_path.empty())
         return ImGui::GetDefaultFont();
 
-    const auto it = m_font_cache.find({ font_path, std::max(font_size, 16.0f) });
+    const auto it = m_font_cache.find(font_path);
     return it != m_font_cache.end() ? it->second : nullptr;
 }
 
@@ -975,27 +978,54 @@ void ScreenshotTool::RefreshOcrModels()
     }
 }
 
-void ScreenshotTool::UpdateHandleHoverState(selection_info_t& sel)
+std::vector<std::pair<HandleHovered, ImVec2>> ScreenshotTool::GetSelectionHandles(const selection_info_t& sel) const
 {
-    const ImVec2& mouse_pos = ImGui::GetMousePos();
-    sel.handle_hover        = HandleHovered::kNone;
+    const annotation_t* ann = sel.is_ann ? m_current_annotation_resize : nullptr;
+    if (ann && (ann->type == ToolType::Line || ann->type == ToolType::Arrow))
+        return { { HandleHovered::LineStart, ImVec2(ann->start.x, ann->start.y) },
+                 { HandleHovered::LineEnd, ImVec2(ann->end.x, ann->end.y) } };
 
     const float sel_x = sel.selection.get_x();
     const float sel_y = sel.selection.get_y();
     const float sel_w = sel.selection.get_width();
     const float sel_h = sel.selection.get_height();
-    const float hover = 15.0f;
 
-    const std::array<std::pair<HandleHovered, ImVec2>, 8> handles = { {
+    // Corners first, they win where handles overlap
+    std::vector<std::pair<HandleHovered, ImVec2>> handles = {
         { HandleHovered::TopLeft, ImVec2(sel_x, sel_y) },
         { HandleHovered::TopRight, ImVec2(sel_x + sel_w, sel_y) },
         { HandleHovered::BottomLeft, ImVec2(sel_x, sel_y + sel_h) },
         { HandleHovered::BottomRight, ImVec2(sel_x + sel_w, sel_y + sel_h) },
-        { HandleHovered::Top, ImVec2(sel_x + sel_w / 2, sel_y) },
-        { HandleHovered::Bottom, ImVec2(sel_x + sel_w / 2, sel_y + sel_h) },
-        { HandleHovered::Left, ImVec2(sel_x, sel_y + sel_h / 2) },
-        { HandleHovered::Right, ImVec2(sel_x + sel_w, sel_y + sel_h / 2) },
-    } };
+    };
+
+    // Text scales with its font size, which only the corners change
+    if (!ann || ann->type != ToolType::Text)
+    {
+        handles.insert(handles.end(),
+                       { { HandleHovered::Top, ImVec2(sel_x + sel_w / 2, sel_y) },
+                         { HandleHovered::Bottom, ImVec2(sel_x + sel_w / 2, sel_y + sel_h) },
+                         { HandleHovered::Left, ImVec2(sel_x, sel_y + sel_h / 2) },
+                         { HandleHovered::Right, ImVec2(sel_x + sel_w, sel_y + sel_h / 2) } });
+    }
+    return handles;
+}
+
+void ScreenshotTool::UpdateHandleHoverState(selection_info_t& sel)
+{
+    const ImVec2& mouse_pos = ImGui::GetMousePos();
+    sel.handle_hover        = HandleHovered::kNone;
+
+    const auto handles = GetSelectionHandles(sel);
+
+    // Smaller on a small annotation, so its handles leave room to grab it in the middle
+    float hover = 15.0f;
+    if (sel.is_ann)
+    {
+        float extent = std::min(sel.selection.get_width(), sel.selection.get_height());
+        if (handles.size() == 2)
+            extent = std::hypot(handles[1].second.x - handles[0].second.x, handles[1].second.y - handles[0].second.y);
+        hover = std::clamp(extent * 0.25f, 5.0f, 15.0f);
+    }
 
     for (const auto& [type, pos] : handles)
     {
@@ -1017,63 +1047,32 @@ void ScreenshotTool::UpdateCursor(const selection_info_t& sel)
     {
         HandleHovered handle = (sel.dragging_handle != HandleHovered::kNone) ? sel.dragging_handle : sel.handle_hover;
 
-        annotation_t*& annres        = m_current_annotation_resize;
-        const bool     is_ann_text   = annres && sel.is_ann && annres->type == ToolType::Text;
-        const bool     is_ann_circle = annres && sel.is_ann &&
-                                       (annres->type == ToolType::Circle || annres->type == ToolType::CircleFilled ||
-                                        annres->type == ToolType::CounterBubble);
-
         switch (handle)
         {
             case HandleHovered::Move: ImGui::SetMouseCursor(ImGuiMouseCursor_Hand); break;
 
             case HandleHovered::TopLeft:
-            case HandleHovered::BottomRight:
-                if (is_ann_text)
-                    ImGui::SetMouseCursor(ImGuiMouseCursor_NotAllowed);
-                else
-                    ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE);
-                break;
+            case HandleHovered::BottomRight: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE); break;
 
             case HandleHovered::TopRight:
-            case HandleHovered::BottomLeft:
-                if (is_ann_text)
-                    ImGui::SetMouseCursor(ImGuiMouseCursor_NotAllowed);
-                else
-                    ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNESW);
-                break;
+            case HandleHovered::BottomLeft: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNESW); break;
 
             case HandleHovered::Top:
-            case HandleHovered::Bottom:
-                if (is_ann_circle || is_ann_text)
-                    ImGui::SetMouseCursor(ImGuiMouseCursor_NotAllowed);
-                else
-                    ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-                break;
+            case HandleHovered::Bottom: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS); break;
 
             case HandleHovered::Left:
-            case HandleHovered::Right:
-                if (is_ann_circle || is_ann_text)
-                    ImGui::SetMouseCursor(ImGuiMouseCursor_NotAllowed);
-                else
-                    ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-                break;
+            case HandleHovered::Right: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW); break;
+
+            case HandleHovered::LineStart:
+            case HandleHovered::LineEnd:   ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll); break;
 
             default: ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow); break;
         }
     }
-    else if (m_state == ToolState::Selected || m_state == ToolState::Resizing || m_state == ToolState::AnnResizing)
+    else if (m_state == ToolState::Selected || m_state == ToolState::Resizing)
     {
-        const float sel_x = sel.selection.get_x();
-        const float sel_y = sel.selection.get_y();
-        const float sel_w = sel.selection.get_width();
-        const float sel_h = sel.selection.get_height();
-
         // Inside the selection, for moving it
-        ImRect       selection_rect(ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h));
-        const ImVec2 mouse_pos = ImGui::GetMousePos();
-
-        if (selection_rect.Contains(mouse_pos))
+        if (sel.selection.rect().Contains(ImGui::GetMousePos()) || m_hovered_annotation)
             ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         else
             ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
@@ -1117,11 +1116,10 @@ ImRect ScreenshotTool::GetAnnotationBBox(const annotation_t& ann) const
 
         case ToolType::Text:
         {
-            const float font_size = ann.thickness > 8.0f ? ann.thickness : ImGui::GetFontSize();
-            ImFont*     font      = GetCachedFont(m_inputs.resolved_ann_font_path, font_size);
+            ImFont* font = GetCachedFont(ann.font);
             if (font)
                 ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
-            const ImVec2 size = font ? font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, ann.text.c_str())
+            const ImVec2 size = font ? font->CalcTextSizeA(ann.thickness, FLT_MAX, 0.0f, ann.text.c_str())
                                      : ImGui::CalcTextSize(ann.text.c_str());
             return { ann.start.x, ann.start.y, ann.start.x + size.x, ann.start.y + size.y };
         }
@@ -1145,16 +1143,20 @@ ImRect ScreenshotTool::GetAnnotationBBox(const annotation_t& ann) const
         case ToolType::Rectangle:
         case ToolType::RectangleFilled:
         default:
-            // Already corners
-            return { ann.start.x, ann.start.y, ann.end.x, ann.end.y };
+            // Opposite corners, in the order they were dragged
+            return { std::min(ann.start.x, ann.end.x),
+                     std::min(ann.start.y, ann.end.y),
+                     std::max(ann.start.x, ann.end.x),
+                     std::max(ann.start.y, ann.end.y) };
     }
 }
 
 ImRect ScreenshotTool::GetAnnotationHandleBox(const annotation_t& ann) const
 {
-    constexpr float PIXEL   = 1.0f;
-    const float     padding = ann.thickness - PIXEL;
-    const ImRect    bbox    = GetAnnotationBBox(ann);
+    // A Text annotation's thickness is its font size
+    const float  stroke  = ann.type == ToolType::Text ? 0.0f : ann.thickness * ImGui::GetIO().DisplayFramebufferScale.x;
+    const float  padding = ann.type == ToolType::Text ? TEXT_HANDLE_PADDING : stroke * 0.5f + 3.0f;
+    const ImRect bbox    = GetAnnotationBBox(ann);
     return { bbox.Min.x - padding, bbox.Min.y - padding, bbox.Max.x + padding, bbox.Max.y + padding };
 }
 

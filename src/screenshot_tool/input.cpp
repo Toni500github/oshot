@@ -25,10 +25,14 @@
 
 #include <algorithm>
 #include <array>
+#include <cfloat>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -41,6 +45,7 @@
 #include "imgui/imgui_stdlib.h"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
+#include "theme.hpp"
 #include "util.hpp"
 #include "util/color.hpp"
 #include "util/image.hpp"
@@ -101,156 +106,364 @@ static bool ui_blocks_selection()
     return true;
 }
 
-bool ScreenshotTool::HandleAnnotationSelectionInput()
+static float dist_to_segment(const ImVec2& p, const ImVec2& a, const ImVec2& b)
 {
-    annotation_t*& ann           = m_current_annotation_resize;
-    const bool     had_selection = (ann != nullptr);
+    const ImVec2 c = ImLineClosestPoint(a, b, p);
+    return std::sqrt(ImLengthSqr(ImVec2(p.x - c.x, p.y - c.y)));
+}
 
-    const ImVec2& mouse_pos    = ImGui::GetMousePos();
-    const bool    was_dragging = (m_anno_sel.dragging_handle != HandleHovered::kNone);
+std::vector<annotation_t*> ScreenshotTool::GetAnnotationsAt(const ImVec2& pos)
+{
+    std::vector<annotation_t*> under;
 
-    // A click on the toolbar or a window must not (de)select the annotation under it
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ui_blocks_selection())
+    // How far off the drawn shape a click still hits it
+    constexpr float slack = 4.0f;
+    const float     dpi   = ImGui::GetIO().DisplayFramebufferScale.x;
+
+    // Last drawn is on top
+    for (auto it = m_annotations.rbegin(); it != m_annotations.rend(); ++it)
     {
-        bool found = false;
-        for (annotation_t& lann : m_annotations)
+        const annotation_t& ann   = *it;
+        const float         t     = ann.thickness * dpi;
+        const float         reach = t * 0.5f + slack;
+        const ImVec2        p1(ann.start.x, ann.start.y);
+        const ImVec2        p2(ann.end.x, ann.end.y);
+        const float         dist_p1 = std::sqrt(ImLengthSqr(ImVec2(pos.x - p1.x, pos.y - p1.y)));
+        const float         radius  = std::sqrt(ImLengthSqr(ImVec2(p2.x - p1.x, p2.y - p1.y)));
+
+        bool hit = false;
+        switch (ann.type)
         {
-            ImRect bbox = GetAnnotationBBox(lann);
-            bbox.Expand(15.0f);
+            case ToolType::Line: hit = dist_to_segment(pos, p1, p2) <= reach; break;
 
-            if (bbox.Contains(mouse_pos) && m_current_tool == ToolType::kNone)
+            case ToolType::Arrow:
+                // The head is 6t long and 4t wide at its base
+                hit = dist_to_segment(pos, p1, p2) <= reach ||
+                      ImLengthSqr(ImVec2(pos.x - p2.x, pos.y - p2.y)) <= ImPow(t * 3.0f + slack, 2.0f);
+                break;
+
+            case ToolType::Rectangle:
             {
-                m_state = ToolState::AnnResizing;
-                ann     = &lann;
-
-                switch (ann->type)
-                {
-                    case ToolType::Circle:
-                    case ToolType::CircleFilled:
-                    case ToolType::CounterBubble:
-                    case ToolType::Text:
-                    {
-                        // The padded box that gets drawn, so the handles line up with it
-                        const ImRect handle_box = GetAnnotationHandleBox(*ann);
-                        m_anno_sel.selection    = { .start = { .x = handle_box.Min.x, .y = handle_box.Min.y },
-                                                    .end   = { .x = handle_box.Max.x, .y = handle_box.Max.y } };
-                        break;
-                    }
-
-                    case ToolType::Pencil:
-                        // The points' bounds, since they're scaled below and start/end don't draw a pencil
-                        m_anno_sel.selection = { .start = { .x = bbox.Min.x, .y = bbox.Min.y },
-                                                 .end   = { .x = bbox.Max.x, .y = bbox.Max.y } };
-                        break;
-
-                    default:  // Rectangle, RectangleFilled, Line, Arrow
-                        // start/end as they are, since they give Line/Arrow their
-                        // direction. Only the drawn border is normalized
-                        m_anno_sel.selection = { .start = ann->start, .end = ann->end };
-                        break;
-                }
-
-                m_anno_sel.preserve_direction = (ann->type == ToolType::Line || ann->type == ToolType::Arrow);
-
-                found = true;
+                // Only the outline, so a click inside still reaches what's under it
+                ImRect outer = GetAnnotationBBox(ann);
+                ImRect inner = outer;
+                outer.Expand(reach);
+                inner.Expand(-reach);
+                hit = outer.Contains(pos) && !inner.Contains(pos);
                 break;
             }
-        }
 
-        // A click outside the selected annotation deselects it, and is swallowed so it doesn't also start or
-        // move the main selection
-        if (!found)
-        {
-            m_state       = ToolState::Selected;
-            m_input_owner = InputOwner::Tools;
-            ann           = nullptr;
-            return had_selection;
-        }
-    }
+            case ToolType::Circle: hit = std::abs(dist_p1 - radius) <= reach; break;
 
-    // The pencil's points before the drag, which the scaling below starts from
-    // every frame. Kept for the whole drag
-    if (ann && ann->type == ToolType::Pencil && !was_dragging)
-        m_anno_sel.drag_start_points = ann->points;
-
-    HandleSelectionInput(m_anno_sel);
-
-    if (ann)
-    {
-        HandleResizeInput(m_anno_sel);
-
-        // Read again, since HandleSelectionInput() may have changed ann
-        const ToolType type  = ann->type;
-        const float    sel_x = m_anno_sel.selection.get_x();
-        const float    sel_y = m_anno_sel.selection.get_y();
-        const float    sel_w = m_anno_sel.selection.get_width();
-        const float    sel_h = m_anno_sel.selection.get_height();
-
-        switch (type)
-        {
-            case ToolType::Circle:
             case ToolType::CircleFilled:
-            case ToolType::CounterBubble:
-            {
-                // The selection is the padded GetAnnotationHandleBox(), so remove the padding before converting
-                // it to center + radius
-                constexpr float PIXEL   = 1.0f;
-                const float     padding = ann->thickness - PIXEL;
-                const float     box_x   = sel_x + padding;
-                const float     box_y   = sel_y + padding;
-                const float     box_w   = sel_w - padding * 2.0f;
-                const float     box_h   = sel_h - padding * 2.0f;
-                const float     radius  = std::min(box_w, box_h) * 0.5f;
-
-                ann->start = { .x = box_x + box_w * 0.5f, .y = box_y + box_h * 0.5f };
-                ann->end   = { .x = ann->start.x + radius, .y = ann->start.y };
-                break;
-            }
-
-            case ToolType::Text:
-            {
-                // Same padding as above. The box comes from the font size,
-                // so dragging a handle only moves the text
-                constexpr float PIXEL   = 1.0f;
-                const float     padding = ann->thickness - PIXEL;
-                ann->start              = { .x = sel_x + padding, .y = sel_y + padding };
-                break;
-            }
+            case ToolType::CounterBubble: hit = dist_p1 <= radius + reach; break;
 
             case ToolType::Pencil:
-            {
-                // Scale the points from the drag-start snapshot into the new box.
-                // Only while dragging, drag_start_selection is stale otherwise
-                if (was_dragging && !m_anno_sel.drag_start_points.empty())
-                {
-                    const selection_rect_t& old_box = m_anno_sel.drag_start_selection;
-                    const float             old_w   = old_box.get_width();
-                    const float             old_h   = old_box.get_height();
-                    const float             scale_x = old_w > 0.0f ? sel_w / old_w : 1.0f;
-                    const float             scale_y = old_h > 0.0f ? sel_h / old_h : 1.0f;
+                if (ann.points.size() == 1)
+                    hit = std::sqrt(ImLengthSqr(ImVec2(pos.x - ann.points[0].x, pos.y - ann.points[0].y))) <= reach;
+                for (size_t i = 1; i < ann.points.size() && !hit; ++i)
+                    hit = dist_to_segment(pos,
+                                          ImVec2(ann.points[i - 1].x, ann.points[i - 1].y),
+                                          ImVec2(ann.points[i].x, ann.points[i].y)) <= reach;
+                break;
 
-                    ann->points.resize(m_anno_sel.drag_start_points.size());
-                    for (size_t i = 0; i < m_anno_sel.drag_start_points.size(); ++i)
-                    {
-                        const point_t& p = m_anno_sel.drag_start_points[i];
-                        ann->points[i].x = sel_x + (p.x - old_box.get_x()) * scale_x;
-                        ann->points[i].y = sel_y + (p.y - old_box.get_y()) * scale_y;
-                    }
-                    if (!ann->points.empty())
-                    {
-                        ann->start = ann->points.front();
-                        ann->end   = ann->points.back();
-                    }
-                }
+            default:  // RectangleFilled, Text
+            {
+                ImRect bbox = GetAnnotationBBox(ann);
+                bbox.Expand(slack);
+                hit = bbox.Contains(pos);
                 break;
             }
+        }
 
-            default:  // Rectangle, RectangleFilled, Line, Arrow
-                ann->start = m_anno_sel.selection.start;
-                ann->end   = m_anno_sel.selection.end;
+        if (hit)
+            under.push_back(&*it);
+    }
+
+    // Then the outlines it's inside, smallest first, so a shape drawn inside a bigger one comes before it
+    std::vector<annotation_t*> inside;
+    for (annotation_t& ann : m_annotations)
+    {
+        if ((ann.type != ToolType::Rectangle && ann.type != ToolType::Circle) ||
+            std::ranges::find(under, &ann) != under.end())
+            continue;
+
+        const ImRect bbox     = GetAnnotationBBox(ann);
+        const float  radius   = bbox.GetWidth() * 0.5f;
+        const ImVec2 center   = bbox.GetCenter();
+        const bool   contains = ann.type == ToolType::Rectangle
+                                    ? bbox.Contains(pos)
+                                    : ImLengthSqr(ImVec2(pos.x - center.x, pos.y - center.y)) <= radius * radius;
+        if (contains)
+            inside.push_back(&ann);
+    }
+    std::ranges::stable_sort(inside, {}, [&](const annotation_t* a) { return GetAnnotationBBox(*a).GetArea(); });
+
+    under.insert(under.end(), inside.begin(), inside.end());
+    return under;
+}
+
+void ScreenshotTool::DeselectAnnotation()
+{
+    m_current_annotation_resize = nullptr;
+    m_anno_sel.handle_hover     = HandleHovered::kNone;
+    m_anno_sel.dragging_handle  = HandleHovered::kNone;
+    if (m_input_owner == InputOwner::AnnSelection)
+        m_input_owner = InputOwner::kNone;
+}
+
+void ScreenshotTool::ApplyAnnotationDrag()
+{
+    annotation_t&       ann  = *m_current_annotation_resize;
+    const annotation_t& orig = m_ann_drag_start;
+    selection_info_t&   sel  = m_anno_sel;
+
+    const ImVec2& mouse_pos = ImGui::GetMousePos();
+    const point_t delta     = { .x = mouse_pos.x - sel.drag_start_mouse.x, .y = mouse_pos.y - sel.drag_start_mouse.y };
+    const auto    offset    = [&](const point_t& p) { return point_t{ .x = p.x + delta.x, .y = p.y + delta.y }; };
+
+    switch (sel.dragging_handle)
+    {
+        case HandleHovered::Move:
+            ann.start = offset(orig.start);
+            ann.end   = offset(orig.end);
+            for (size_t i = 0; i < orig.points.size(); ++i)
+                ann.points[i] = offset(orig.points[i]);
+            return;
+
+        case HandleHovered::LineStart: ann.start = offset(orig.start); return;
+        case HandleHovered::LineEnd:   ann.end = offset(orig.end); return;
+        default:                       break;
+    }
+
+    // The bounds with the dragged edges moved. An edge dragged past the opposite one mirrors the annotation
+    sel.selection = sel.drag_start_selection;
+    HandleResizeInput(sel);
+    const selection_rect_t& from   = sel.drag_start_selection;
+    const selection_rect_t& to     = sel.selection;
+    const float             from_w = from.end.x - from.start.x;
+    const float             from_h = from.end.y - from.start.y;
+    const float             to_w   = to.end.x - to.start.x;
+    const float             to_h   = to.end.y - to.start.y;
+
+    const HandleHovered h = sel.dragging_handle;
+    const bool moves_left = h == HandleHovered::TopLeft || h == HandleHovered::BottomLeft || h == HandleHovered::Left;
+    const bool moves_top  = h == HandleHovered::TopLeft || h == HandleHovered::TopRight || h == HandleHovered::Top;
+    const bool is_corner  = h == HandleHovered::TopLeft || h == HandleHovered::TopRight ||
+                            h == HandleHovered::BottomLeft || h == HandleHovered::BottomRight;
+    const bool moves_x    = is_corner || h == HandleHovered::Left || h == HandleHovered::Right;
+    const bool moves_y    = is_corner || h == HandleHovered::Top || h == HandleHovered::Bottom;
+
+    // A corner drag scales by how far the mouse went along the diagonal from the opposite corner, so moving
+    // across the diagonal doesn't change the size
+    const float diag_x  = moves_left ? -from_w : from_w;
+    const float diag_y  = moves_top ? -from_h : from_h;
+    const float diag_sq = diag_x * diag_x + diag_y * diag_y;
+    const float diag_scale =
+        diag_sq > 0.0f ? ((diag_x + delta.x) * diag_x + (diag_y + delta.y) * diag_y) / diag_sq : 1.0f;
+    const point_t anchor = { .x = moves_left ? from.end.x : from.start.x, .y = moves_top ? from.end.y : from.start.y };
+
+    switch (ann.type)
+    {
+        case ToolType::Circle:
+        case ToolType::CircleFilled:
+        case ToolType::CounterBubble:
+        {
+            // Stays round, against the edges that aren't dragged
+            float cx   = 0.0f;
+            float cy   = 0.0f;
+            float side = 0.0f;
+            if (is_corner && from_w > 0.0f)
+            {
+                side          = std::max(std::abs(diag_scale) * from_w, 4.0f);
+                const float k = std::copysign(side / from_w, diag_scale);
+                cx            = anchor.x + diag_x * k * 0.5f;
+                cy            = anchor.y + diag_y * k * 0.5f;
+            }
+            else
+            {
+                side = std::max(std::abs(moves_x ? to_w : to_h), 4.0f);
+                cx   = !moves_x     ? from.start.x + from_w * 0.5f
+                       : moves_left ? to.end.x - std::copysign(side, to_w) * 0.5f
+                                    : to.start.x + std::copysign(side, to_w) * 0.5f;
+                cy   = !moves_y    ? from.start.y + from_h * 0.5f
+                       : moves_top ? to.end.y - std::copysign(side, to_h) * 0.5f
+                                   : to.start.y + std::copysign(side, to_h) * 0.5f;
+            }
+
+            ann.start = { .x = cx, .y = cy };
+            ann.end   = { .x = cx + side * 0.5f, .y = cy };
+            break;
+        }
+
+        case ToolType::Text:
+        {
+            // The corners scale the font, against the opposite corner
+            if (from_w <= 0.0f || from_h <= 0.0f)
                 break;
+
+            const float size = std::clamp(std::round(orig.thickness * diag_scale), 8.0f, 144.0f);
+            const float k    = size / orig.thickness;
+
+            ann.thickness = size;
+            ann.start     = { .x = moves_left ? anchor.x - from_w * k : anchor.x,
+                              .y = moves_top ? anchor.y - from_h * k : anchor.y };
+            break;
+        }
+
+        default:  // Rectangle, RectangleFilled, Pencil
+        {
+            const auto map = [&](const point_t& p) {
+                return point_t{ .x = from_w > 0.0f ? to.start.x + (p.x - from.start.x) * to_w / from_w
+                                                   : p.x + to.start.x - from.start.x,
+                                .y = from_h > 0.0f ? to.start.y + (p.y - from.start.y) * to_h / from_h
+                                                   : p.y + to.start.y - from.start.y };
+            };
+            ann.start = map(orig.start);
+            ann.end   = map(orig.end);
+            for (size_t i = 0; i < orig.points.size(); ++i)
+                ann.points[i] = map(orig.points[i]);
+            break;
         }
     }
+}
+
+bool ScreenshotTool::HandleAnnotationSelectionInput()
+{
+    annotation_t*& ann       = m_current_annotation_resize;
+    const ImVec2&  mouse_pos = ImGui::GetMousePos();
+    const bool     dragging  = m_anno_sel.dragging_handle != HandleHovered::kNone;
+
+    const auto sync_box = [&] { m_anno_sel.selection = selection_rect_t::from_rect(GetAnnotationHandleBox(*ann)); };
+
+    // A tool picked from the toolbar takes the clicks
+    if (ann && m_current_tool != ToolType::kNone)
+        DeselectAnnotation();
+
+    if (ann && !dragging)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+        {
+            DeselectAnnotation();
+        }
+        else if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal) ||
+                 ImGui::Shortcut(ImGuiKey_Backspace, ImGuiInputFlags_RouteGlobal))
+        {
+            m_annotations.erase(m_annotations.begin() + (ann - m_annotations.data()));
+            DeselectAnnotation();
+        }
+        else
+        {
+            sync_box();
+            UpdateHandleHoverState(m_anno_sel);
+        }
+    }
+
+    // A handle of the main selection wins over the annotations under it
+    const bool can_pick = m_current_tool == ToolType::kNone && !dragging && m_input_owner != InputOwner::Selection &&
+                          !ui_blocks_selection();
+    const std::vector<annotation_t*> under = can_pick && (ann || m_main_sel.handle_hover == HandleHovered::kNone)
+                                                 ? GetAnnotationsAt(mouse_pos)
+                                                 : std::vector<annotation_t*>{};
+
+    // A double-click focuses the topmost one, or the one under the focused one, so each of a stack can be reached.
+    // A focused text stays, and is edited instead
+    annotation_t* next = nullptr;
+    if (!under.empty())
+    {
+        const auto it = std::ranges::find(under, ann);
+        if (it != under.end() && ann->type == ToolType::Text)
+            next = ann;
+        else
+            next = it == under.end() || std::next(it) == under.end() ? under.front() : *std::next(it);
+    }
+
+    // Inside the main selection a click moves it, so an annotation there takes a double-click
+    const bool in_main = m_main_sel.selection.rect().Contains(mouse_pos);
+
+    m_hovered_annotation.reset();
+    m_hover_hint = nullptr;
+    if (next && next != ann)
+    {
+        m_hovered_annotation = size_t(next - m_annotations.data());
+        if (in_main)
+            m_hover_hint = _("Double-click to select");
+    }
+    else if (next && next->type == ToolType::Text)
+    {
+        m_hovered_annotation = size_t(next - m_annotations.data());
+        m_hover_hint         = _("Double-click to edit");
+    }
+
+    const bool double_click = can_pick && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+    if (double_click && ann && next == ann && ann->type == ToolType::Text)
+    {
+        EditTextAnnotation(size_t(ann - m_annotations.data()));
+        return true;
+    }
+
+    if (can_pick && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+    {
+        // The focused one's handles and box come first, then outside the main selection one click focuses another
+        HandleHovered handle = HandleHovered::kNone;
+        annotation_t* focus  = nullptr;
+        const bool    on_ann = ann && m_anno_sel.handle_hover != HandleHovered::kNone;
+
+        // A stroke's box is mostly empty, so only the stroke grabs it
+        const bool is_stroke =
+            ann && (ann->type == ToolType::Line || ann->type == ToolType::Arrow || ann->type == ToolType::Pencil);
+        const bool in_ann = ann && (is_stroke ? std::ranges::find(under, ann) != under.end()
+                                              : m_anno_sel.selection.rect().Contains(mouse_pos));
+        if (double_click && next && next != ann)
+            focus = next;
+        else if (on_ann)
+            handle = m_anno_sel.handle_hover;
+        else if (in_ann)
+            handle = HandleHovered::Move;
+        else if (!in_main && !under.empty())
+            focus = under.front();
+        else if (ann)
+        {
+            // Swallowed, so it doesn't also start or move the main selection
+            DeselectAnnotation();
+            return true;
+        }
+
+        // Focused and grabbed with the same press
+        if (focus)
+        {
+            DeselectAnnotation();
+            ann                     = focus;
+            handle                  = HandleHovered::Move;
+            m_main_sel.handle_hover = HandleHovered::kNone;
+        }
+
+        if (handle != HandleHovered::kNone)
+        {
+            m_ann_drag_start = *ann;
+            m_input_owner    = InputOwner::AnnSelection;
+
+            m_anno_sel.dragging_handle      = handle;
+            m_anno_sel.drag_start_mouse     = mouse_pos;
+            m_anno_sel.drag_start_selection = selection_rect_t::from_rect(GetAnnotationBBox(*ann));
+        }
+    }
+
+    if (ann && m_anno_sel.dragging_handle != HandleHovered::kNone)
+    {
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
+        {
+            ApplyAnnotationDrag();
+        }
+        else
+        {
+            m_anno_sel.dragging_handle = HandleHovered::kNone;
+            m_input_owner              = InputOwner::kNone;
+        }
+    }
+
+    if (ann)
+        sync_box();
 
     return false;
 }
@@ -271,8 +484,13 @@ void ScreenshotTool::HandleShortcutsInput()
         UpdateAnnsToolbarPos();
     }
 
-    if (ImGui::Shortcut(ImGuiKey_Z | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal) && !m_annotations.empty())
+    // Not while a text is typed, whose edit holds an index into m_annotations
+    if (ImGui::Shortcut(ImGuiKey_Z | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal) && !m_annotations.empty() &&
+        !m_current_actions.Has(CurrentAction::IsTextPlacing))
+    {
+        DeselectAnnotation();
         m_annotations.pop_back();
+    }
 
     if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
         g_config->Runtime.enable_handles = !g_config->Runtime.enable_handles;
@@ -298,11 +516,6 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
     }
 
     const ImVec2& mouse_pos = ImGui::GetMousePos();
-    const float   sel_x     = sel.selection.get_x();
-    const float   sel_y     = sel.selection.get_y();
-    const float   sel_w     = sel.selection.get_width();
-    const float   sel_h     = sel.selection.get_height();
-    const ImRect  selection_rect(ImVec2(sel_x, sel_y), ImVec2(sel_x + sel_w, sel_y + sel_h));
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && m_input_owner != sel.main_input_owner)
     {
@@ -311,27 +524,24 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
         // Resizing from a handle
         if (sel.handle_hover != HandleHovered::kNone)
         {
-            // HandleResizeInput() expects start <= end, except for Line/Arrow,
-            // where the order is the direction
-            if (!sel.preserve_direction)
-                NormalizeSelection(sel);
+            // HandleResizeInput() expects start <= end
+            NormalizeSelection(sel);
             sel.dragging_handle      = sel.handle_hover;
             sel.drag_start_mouse     = mouse_pos;
             sel.drag_start_selection = sel.selection;
             m_state                  = sel.resizing_state;
         }
         // Moving the selection
-        else if (selection_rect.Contains(mouse_pos))
+        else if (sel.selection.rect().Contains(mouse_pos))
         {
-            if (!sel.preserve_direction)
-                NormalizeSelection(sel);
+            NormalizeSelection(sel);
             sel.dragging_handle      = HandleHovered::Move;
             sel.drag_start_mouse     = mouse_pos;
             sel.drag_start_selection = sel.selection;
             m_state                  = sel.resizing_state;
         }
-        // A new selection, unless it's an annotation's
-        else if (!sel.is_ann)
+        // A new selection
+        else
         {
             sel.selection.start = { .x = mouse_pos.x, .y = mouse_pos.y };
             sel.selection.end   = sel.selection.start;
@@ -346,8 +556,7 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
         else  // ToolState::Selecting
             sel.selection.end = { .x = mouse_pos.x, .y = mouse_pos.y };
 
-        if (!sel.is_ann)
-            ClampSelectionToImage(sel);
+        ClampSelectionToImage(sel);
     }
 
     if (m_input_owner == sel.main_input_owner && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
@@ -357,14 +566,11 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
 
         // Only a click or a slip of the mouse counts as too small, since a line of text can be 10 px high
         constexpr float min_size = 3.0f;
-        if (sel.is_ann || (sel.selection.get_width() >= min_size && sel.selection.get_height() >= min_size))
+        if (sel.selection.get_width() >= min_size && sel.selection.get_height() >= min_size)
             m_state = sel.idle_state;
 
-        if (!sel.preserve_direction)
-            NormalizeSelection(sel);
-
-        if (!sel.is_ann)
-            UpdateAnnsToolbarPos();
+        NormalizeSelection(sel);
+        UpdateAnnsToolbarPos();
     }
 }
 
@@ -431,38 +637,78 @@ void ScreenshotTool::HandleAnnotationInput()
 {
     const ImVec2& mouse_pos = ImGui::GetMousePos();
 
-    // Cancel a text being placed when another tool is picked, or its input reappears at (0, 0) the next time
-    // Text is selected
+    // Picking another tool keeps the text being typed
     if (m_current_actions.Has(CurrentAction::IsTextPlacing) && m_current_tool != ToolType::Text)
-    {
-        m_current_annotation = {};
-        m_current_actions.Clear(CurrentAction::IsTextPlacing);
-    }
+        CommitTextAnnotation();
+
+    // Without a tool, clicks select annotations or move the selection
+    if (m_current_tool == ToolType::kNone)
+        return;
 
     if (m_current_tool == ToolType::Text)
     {
-        if (!m_current_actions.Has(CurrentAction::IsTextPlacing) && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-            !ui_blocks_selection())
+        // A click outside the input ends the text. On a text it edits that one, anywhere else it starts a new one
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ui_blocks_selection())
         {
-            m_current_actions.Set(CurrentAction::IsTextPlacing);
-            m_current_annotation.type      = ToolType::Text;
-            m_current_annotation.start     = { .x = mouse_pos.x, .y = mouse_pos.y };
-            m_current_annotation.end       = m_current_annotation.start;
-            m_current_annotation.color     = m_current_color;
-            m_current_annotation.thickness = m_tool_thickness[idx(ToolType::Text)];
-            m_current_annotation.text.clear();
+            CommitTextAnnotation();
+
+            std::optional<size_t> hit;
+            for (size_t i = m_annotations.size(); i-- > 0;)
+            {
+                ImRect bbox = GetAnnotationBBox(m_annotations[i]);
+                bbox.Expand(TEXT_HANDLE_PADDING);
+                if (m_annotations[i].type == ToolType::Text && bbox.Contains(mouse_pos))
+                {
+                    hit = i;
+                    break;
+                }
+            }
+
+            if (hit)
+            {
+                EditTextAnnotation(*hit);
+            }
+            else
+            {
+                m_current_annotation       = {};
+                m_current_annotation.type  = ToolType::Text;
+                m_current_annotation.start = { .x = mouse_pos.x, .y = mouse_pos.y };
+                m_current_annotation.end   = m_current_annotation.start;
+                m_current_actions.Set(CurrentAction::IsTextPlacing);
+                m_focus_text_input = true;
+                ++m_text_input_id;
+            }
         }
 
         if (m_current_actions.Has(CurrentAction::IsTextPlacing))
         {
-            const float padding_y =
-                std::max(2.0f, (m_current_annotation.thickness - ImGui::GetTextLineHeight()) * 0.5f);
+            annotation_t& ann = m_current_annotation;
 
-            ImGui::SetNextWindowPos(ImVec2(m_current_annotation.start.x, m_current_annotation.start.y));
+            // Follows the Text tool's settings, which EditTextAnnotation() set from the edited text
+            ann.color     = m_current_color;
+            ann.thickness = m_tool_thickness[idx(ToolType::Text)];
+            ann.font      = m_inputs.resolved_ann_font_path;
+
+            ImFont*      font = CacheAndGetFont(ann.font);
+            const ImVec2 pad(4.0f, 2.0f);
+
+            // As big as the text with room for the next character, so it doesn't scroll. CalcTextSizeA() leaves
+            // out a trailing empty line
+            const ImVec2 text_size = font->CalcTextSizeA(ann.thickness, FLT_MAX, 0.0f, ann.text.c_str());
+            const float  lines     = float(std::ranges::count(ann.text, '\n') + 1);
+            const ImVec2 input_size(text_size.x + ann.thickness + pad.x * 2.0f, lines * ann.thickness + pad.y * 2.0f);
+
+            // Placed so the text lines up with where it's drawn once added
+            ImGui::SetNextWindowPos(ImVec2(ann.start.x - pad.x, ann.start.y - pad.y));
             ImGui::SetNextWindowBgAlpha(0.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4, padding_y));
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, pad);
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
             ImGui::PushStyleColor(ImGuiCol_FrameBg, 0x00000000_rgba);
+            ImGui::PushStyleColor(ImGuiCol_Border, theme::color(AppCol::SelectionBorder));
+            ImGui::PushStyleColor(ImGuiCol_Text, ann.color.to_abgr());
+            // The input has its own border, and the keyboard focus would add the nav cursor's around it
+            ImGui::PushStyleColor(ImGuiCol_NavCursor, 0x00000000_rgba);
 
             ImGui::Begin("##text_ann_input_win",
                          nullptr,
@@ -470,44 +716,75 @@ void ScreenshotTool::HandleAnnotationInput()
                              ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_NoScrollbar);
 
-            if (ImGui::IsWindowAppearing())
+            // Asked again until it takes, since the click that opened it focuses the overlay at the end of the frame
+            if (m_focus_text_input)
                 ImGui::SetKeyboardFocusHere();
 
-            ImFont* ann_font = CacheAndGetFont(m_inputs.resolved_ann_font_path, m_current_annotation.thickness);
-            ImGui::PushFont(ann_font, ann_font->LegacySize);
-
-            ImGui::PushStyleColor(ImGuiCol_Text, m_current_annotation.color.to_abgr());
-            if (ImGui::InputText(
-                    "##text_ann_input_text", &m_current_annotation.text, ImGuiInputTextFlags_EnterReturnsTrue))
-            {
-                if (!m_current_annotation.text.empty())
-                {
-                    // Move start to where the text is drawn, past the FramePadding pushed above
-                    const ImVec2& fp = ImGui::GetStyle().FramePadding;
-                    m_current_annotation.start.x += fp.x;
-                    m_current_annotation.start.y += fp.y;
-
-                    m_annotations.push_back(m_current_annotation);
-                }
-                m_current_annotation = {};
-                m_current_actions.Clear(CurrentAction::IsTextPlacing);
-            }
+            ImGui::PushFont(font, ann.thickness);
+            ImGui::PushID(int(m_text_input_id));
+            // An edited text gets the caret at its end, not its start
+            auto caret_to_end = [](ImGuiInputTextCallbackData* data) {
+                data->CursorPos = data->SelectionStart = data->SelectionEnd = data->BufTextLen;
+                return 0;
+            };
+            const bool entered = ImGui::InputTextMultiline(
+                "##text_ann_input_text",
+                &ann.text,
+                input_size,
+                ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CtrlEnterForNewLine |
+                    ImGuiInputTextFlags_NoHorizontalScroll |
+                    (m_focus_text_input ? ImGuiInputTextFlags_CallbackAlways : ImGuiInputTextFlags_None),
+                caret_to_end);
+            ImGui::PopID();
             ImGui::PopFont();
-
-            ImGui::TextUnformatted(_("Enter: Place | ESC: Cancel"));
-
-            ImGui::PopStyleColor();
-
-            if (ImGui::IsKeyPressed(ImGuiKey_Escape))
-            {
-                m_current_annotation = {};
-                m_current_actions.Clear(CurrentAction::IsTextPlacing);
-            }
+            const ImRect input_rect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+            if (ImGui::IsItemActive())
+                m_focus_text_input = false;
 
             ImGui::End();
-            ImGui::PopStyleColor();
-            ImGui::PopStyleVar();
-            ImGui::PopStyleVar();
+            ImGui::PopStyleColor(4);
+            ImGui::PopStyleVar(3);
+
+            // The keys, below the input in the selection size label's colors so they read on any image
+            const char*  hint = _("Enter: add  Shift+Enter: new line  Esc: cancel");
+            const ImVec2 hint_pad(6.0f, 3.0f);
+            const ImVec2 hint_size(ImGui::CalcTextSize(hint).x + hint_pad.x * 2.0f,
+                                   ImGui::GetTextLineHeight() + hint_pad.y * 2.0f);
+            const ImVec2 display = ImGui::GetIO().DisplaySize;
+            ImVec2       hint_pos(input_rect.Min.x, input_rect.Max.y + 4.0f);
+            if (hint_pos.y + hint_size.y > display.y)
+                hint_pos.y = input_rect.Min.y - 4.0f - hint_size.y;
+            hint_pos.x = std::clamp(hint_pos.x, 0.0f, std::max(0.0f, display.x - hint_size.x));
+
+            ImGui::SetNextWindowPos(hint_pos);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, hint_pad);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+            ImGui::PushStyleColor(ImGuiCol_WindowBg, theme::color(AppCol::SizeLabelBg));
+            ImGui::PushStyleColor(ImGuiCol_Border, theme::color(AppCol::SizeLabelBorder));
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::SizeLabelText));
+            ImGui::Begin("##text_ann_hint",
+                         nullptr,
+                         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove |
+                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize |
+                             ImGuiWindowFlags_NoFocusOnAppearing);
+            ImGui::TextUnformatted(hint);
+            ImGui::End();
+            ImGui::PopStyleColor(3);
+            ImGui::PopStyleVar(3);
+
+            if (entered)
+            {
+                CommitTextAnnotation();
+            }
+            // Not the Esc that closed the settings popup
+            else if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !m_popup_open)
+            {
+                m_current_annotation = {};
+                m_edited_text.reset();
+                m_current_actions.Clear(CurrentAction::IsTextPlacing);
+                ImGui::SetWindowFocus(nullptr);
+            }
         }
         return;  // never fall through to the generic drag path
     }
@@ -573,6 +850,51 @@ void ScreenshotTool::HandleAnnotationInput()
 
         m_current_annotation = annotation_t{};
     }
+}
+
+void ScreenshotTool::CommitTextAnnotation()
+{
+    if (!m_current_actions.Has(CurrentAction::IsTextPlacing))
+        return;
+    m_current_actions.Clear(CurrentAction::IsTextPlacing);
+
+    const bool empty = m_current_annotation.text.find_first_not_of(" \t\n") == std::string::npos;
+    if (m_edited_text && *m_edited_text < m_annotations.size())
+    {
+        if (empty)
+            m_annotations.erase(m_annotations.begin() + std::ptrdiff_t(*m_edited_text));
+        else
+            m_annotations[*m_edited_text] = m_current_annotation;
+    }
+    else if (!empty)
+    {
+        m_annotations.push_back(m_current_annotation);
+    }
+
+    m_edited_text.reset();
+    m_current_annotation = {};
+
+    // The focus would go back to the toolbar with the nav cursor on a button, which arrows, Enter and Space then use
+    ImGui::SetWindowFocus(nullptr);
+}
+
+void ScreenshotTool::EditTextAnnotation(const size_t i)
+{
+    const annotation_t& ann = m_annotations[i];
+
+    m_current_annotation                  = ann;
+    m_edited_text                         = i;
+    m_current_color                       = ann.color;
+    m_tool_thickness[idx(ToolType::Text)] = ann.thickness;
+    m_inputs.ann_font                     = ann.font;
+    m_inputs.resolved_ann_font_path       = ann.font;
+
+    m_current_tool = ToolType::Text;
+    m_state        = ToolState::Selected;
+    DeselectAnnotation();
+    m_current_actions.Set(CurrentAction::IsTextPlacing);
+    m_focus_text_input = true;
+    ++m_text_input_id;
 }
 
 void ScreenshotTool::HandleColorPickerInput()

@@ -40,6 +40,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -96,7 +97,6 @@ enum class ToolState : std::uint8_t
     Selecting,
     Selected,
     Resizing,
-    AnnResizing,  // an annotation is selected, to move or resize it
 };
 
 // The handle of a selection under the cursor. Move is anywhere inside it
@@ -111,7 +111,9 @@ enum class HandleHovered : std::uint8_t
     TopRight,
     BottomLeft,
     BottomRight,
-    Move
+    Move,
+    LineStart,  // a Line/Arrow annotation's endpoints
+    LineEnd
 };
 
 // The selection's borders the toolbar buttons go on, clockwise, in the order they're filled
@@ -230,6 +232,13 @@ struct selection_rect_t
     [[nodiscard]] float get_y() const { return std::min(start.y, end.y); }
     [[nodiscard]] float get_width() const { return std::abs(end.x - start.x); }
     [[nodiscard]] float get_height() const { return std::abs(end.y - start.y); }
+
+    [[nodiscard]] ImRect rect() const { return { get_x(), get_y(), get_x() + get_width(), get_y() + get_height() }; }
+
+    static selection_rect_t from_rect(const ImRect& r)
+    {
+        return { .start = { .x = r.Min.x, .y = r.Min.y }, .end = { .x = r.Max.x, .y = r.Max.y } };
+    }
 };
 
 struct annotation_t
@@ -239,8 +248,9 @@ struct annotation_t
     point_t start;
     point_t end;
 
-    // Text tool
+    // Text tool, and the font file it's drawn with (empty for the interface font)
     std::string text;
+    std::string font;
 
     // CounterBubble tool: the number in the bubble
     unsigned int count = 0;
@@ -535,16 +545,19 @@ public:
     // destroying its renderer, which owns them
     void ReleaseTextures();
 
-    // Fonts by path and size, added to the atlas the first time. Sizes under 16 share one entry.
-    // Returns the default font for a file that can't be loaded
-    ImFont* CacheAndGetFont(const std::string& font_name, const float font_size);
+    // Fonts by path, added to the atlas the first time and drawn at any size. Returns the default font for a
+    // file that can't be loaded
+    ImFont* CacheAndGetFont(const std::string& font_path);
 
     // A font CacheAndGetFont() loaded, nullptr if it didn't yet, or the default font for an empty path
-    [[nodiscard]] ImFont* GetCachedFont(const std::string& font_path, const float font_size) const;
+    [[nodiscard]] ImFont* GetCachedFont(const std::string& font_path) const;
 
 private:
     // Gap between the selection border and the toolbar
     static constexpr float TOOLBAR_OFFSET = 10.0f;
+
+    // Between a text annotation and its resize handles
+    static constexpr float TEXT_HANDLE_PADDING = 4.0f;
 
     static constexpr int    TOOL_BUTTON_SIZE = 24;
     static constexpr ImVec2 TOOL_BUTTON_SIZE2{ TOOL_BUTTON_SIZE, TOOL_BUTTON_SIZE };
@@ -571,13 +584,6 @@ private:
     // annotation being moved or resized
     struct selection_info_t
     {
-        // A Pencil annotation's points when the drag started, so the scaling doesn't compound
-        // frame after frame
-        std::vector<point_t> drag_start_points;
-
-        // Line/Arrow: keep start/end as they are, they give the direction
-        bool preserve_direction = false;
-
         const bool       is_ann;
         const InputOwner main_input_owner;
         const ToolState  resizing_state;
@@ -617,13 +623,21 @@ private:
     GeneralContext<CurrentAction> m_current_actions;
 
     selection_info_t m_main_sel{ false, InputOwner::Selection, ToolState::Resizing, ToolState::Selected };
-    selection_info_t m_anno_sel{ true, InputOwner::AnnSelection, ToolState::AnnResizing, ToolState::AnnResizing };
+    selection_info_t m_anno_sel{ true, InputOwner::AnnSelection, ToolState::Selected, ToolState::Selected };
 
     // ------------------------------
     // Annotations and toolbar
     // ------------------------------
-    // The annotation selected for moving or resizing, in m_annotations
+    // The annotation selected for moving or resizing, in m_annotations. m_annotations must not grow or shrink
+    // while it's set
     annotation_t* m_current_annotation_resize = nullptr;
+
+    // The selected annotation as it was when the drag started, which every frame of the drag starts from
+    annotation_t m_ann_drag_start;
+
+    // The annotation a (double-)click would focus, outlined while hovered, and what to tell about it
+    std::optional<size_t> m_hovered_annotation;
+    const char*           m_hover_hint = nullptr;
 
     // A row (or column) of toolbar buttons outside a border of the selection, centered on it. Ring 0 is next to
     // the selection, each further ring one button further out
@@ -651,6 +665,15 @@ private:
     rgba_t                                         m_current_color;
     std::array<float, idx(ToolType::COUNT)>        m_tool_thickness;
     std::array<ImTextureRef, idx(ToolType::COUNT)> m_tool_textures;
+
+    // While IsTextPlacing: the m_annotations index of the text being edited, which isn't drawn meanwhile
+    std::optional<size_t> m_edited_text;
+
+    // Focus the text input on its next frame
+    bool m_focus_text_input = false;
+
+    // A new ID for each text typed or edited, or ImGui would put the last one's text into the next
+    unsigned m_text_input_id = 0;
 
     // ------------------------------
     // Text tools
@@ -695,8 +718,8 @@ private:
     // ------------------------------
     // Windows and fonts
     // ------------------------------
-    GeneralContext<SubWindow>                             m_show_window;
-    std::map<std::pair<std::string, float>, ImFont*>      m_font_cache;
+    GeneralContext<SubWindow>      m_show_window;
+    std::map<std::string, ImFont*> m_font_cache;
 
     // A menu or popup was open at the end of the last frame, see RenderOverlay()
     bool m_popup_open = false;
@@ -771,6 +794,12 @@ private:
     void HandleAnnotationInput();
     void HandleColorPickerInput();
 
+    // Adds the text being typed, or saves the one being edited (removed if it's left empty)
+    void CommitTextAnnotation();
+
+    // Reopens the input on m_annotations[i], with the Text tool set to its color, size and font
+    void EditTextAnnotation(size_t i);
+
     // ------------------------------
     // State updates
     // ------------------------------
@@ -801,8 +830,20 @@ private:
     // Lists the models in the OCR path, if it changed since the last scan
     void RefreshOcrModels();
 
+    // The handles of a selection, with their positions. A Line/Arrow annotation only has its endpoints
+    [[nodiscard]] std::vector<std::pair<HandleHovered, ImVec2>> GetSelectionHandles(const selection_info_t& sel) const;
+
     void UpdateHandleHoverState(selection_info_t& sel);
     void UpdateCursor(const selection_info_t& sel);
+
+    // Drops the selected annotation and its drag
+    void DeselectAnnotation();
+
+    // The annotations under `pos`: the ones whose drawn shape it's on, topmost first, then the outlines it's inside
+    [[nodiscard]] std::vector<annotation_t*> GetAnnotationsAt(const ImVec2& pos);
+
+    // Moves or resizes the selected annotation, from m_ann_drag_start and the mouse's movement since
+    void ApplyAnnotationDrag();
 
     // ------------------------------
     // Geometry
@@ -810,8 +851,7 @@ private:
     // The annotation's bounds on screen
     [[nodiscard]] ImRect GetAnnotationBBox(const annotation_t& ann) const;
 
-    // GetAnnotationBBox() plus the padding DrawAnnotationResizeBorder() draws with, so the drawn and
-    // clickable handles match. Only for Circle/CircleFilled/CounterBubble/Text
+    // GetAnnotationBBox() plus a margin for the stroke, where the selected annotation's border and handles go
     [[nodiscard]] ImRect GetAnnotationHandleBox(const annotation_t& ann) const;
 
     static ImVec2 GetToolButtonSize();

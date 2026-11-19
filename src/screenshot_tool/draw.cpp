@@ -347,17 +347,8 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
         draw_list->AddRect(min, max, theme::color(AppCol::SelectionHandle).to_abgr(), 0.0f, 2.0f, ImDrawFlags_None);
     };
 
-    // Corner handles
-    draw_handle(ImVec2(sel_x, sel_y), HandleHovered::TopLeft);
-    draw_handle(ImVec2(sel_x + sel_w, sel_y), HandleHovered::TopRight);
-    draw_handle(ImVec2(sel_x, sel_y + sel_h), HandleHovered::BottomLeft);
-    draw_handle(ImVec2(sel_x + sel_w, sel_y + sel_h), HandleHovered::BottomRight);
-
-    // Edge handles
-    draw_handle(ImVec2(sel_x + sel_w / 2, sel_y), HandleHovered::Top);
-    draw_handle(ImVec2(sel_x + sel_w / 2, sel_y + sel_h), HandleHovered::Bottom);
-    draw_handle(ImVec2(sel_x, sel_y + sel_h / 2), HandleHovered::Left);
-    draw_handle(ImVec2(sel_x + sel_w, sel_y + sel_h / 2), HandleHovered::Right);
+    for (const auto& [type, pos] : GetSelectionHandles(sel))
+        draw_handle(pos, type);
 
     if (sel.is_ann)
         return;
@@ -515,9 +506,7 @@ void ScreenshotTool::DrawAnnotations()
     };
 
     auto draw_text = [&](const annotation_t& ann, const ImVec2& p1) {
-        const float font_size = ann.thickness > 8.0f ? ann.thickness : ImGui::GetFontSize();
-        ImFont*     font      = CacheAndGetFont(m_inputs.resolved_ann_font_path, font_size);
-        draw_list->AddText(font, font_size, p1, ann.color.to_abgr(), ann.text.c_str());
+        draw_list->AddText(CacheAndGetFont(ann.font), ann.thickness, p1, ann.color.to_abgr(), ann.text.c_str());
     };
 
     auto draw_rectangle_or_filled =
@@ -547,7 +536,7 @@ void ScreenshotTool::DrawAnnotations()
         const float radius = std::sqrt(dx * dx + dy * dy);
         // ~70% of the diameter
         const float font_size = std::max(8.0f, radius * 1.4f);
-        ImFont*     font      = CacheAndGetFont(m_inputs.resolved_ann_font_path, font_size);
+        ImFont*     font      = CacheAndGetFont(m_inputs.resolved_ann_font_path);
 
         const ImVec2 text_size =
             font ? font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, label.c_str()) : ImGui::CalcTextSize(label.c_str());
@@ -647,8 +636,11 @@ void ScreenshotTool::DrawAnnotations()
         }
     };
 
-    for (const annotation_t& ann : m_annotations)
-        draw_annotation(ann);
+    // The text being edited shows in its input instead
+    const bool editing = m_edited_text && m_current_actions.Has(CurrentAction::IsTextPlacing);
+    for (size_t i = 0; i < m_annotations.size(); ++i)
+        if (!editing || i != *m_edited_text)
+            draw_annotation(m_annotations[i]);
 
     // The one being drawn, on top
     if (m_current_actions.Has(CurrentAction::IsDrawing))
@@ -667,18 +659,42 @@ void ScreenshotTool::DrawSelectionBorder()
 
 void ScreenshotTool::DrawAnnotationResizeBorder()
 {
+    ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
+
+    if (m_hovered_annotation && *m_hovered_annotation < m_annotations.size())
+    {
+        const ImRect box = GetAnnotationHandleBox(m_annotations[*m_hovered_annotation]);
+        if (&m_annotations[*m_hovered_annotation] != m_current_annotation_resize)
+        {
+            rgba_t color = theme::color(AppCol::SelectionBorder);
+            color.a /= 2;
+            draw_list->AddRect(box.Min, box.Max, color.to_abgr(), 0.0f, 1.0f, ImDrawFlags_None);
+        }
+
+        if (m_hover_hint)
+        {
+            const ImVec2 pad(6.0f, 3.0f);
+            const ImVec2 text_size = ImGui::CalcTextSize(m_hover_hint);
+            const ImVec2 display   = ImGui::GetIO().DisplaySize;
+            ImVec2       pos(box.Min.x, box.Max.y + 4.0f);
+            if (pos.y + text_size.y + pad.y * 2.0f > display.y)
+                pos.y = box.Min.y - 4.0f - text_size.y - pad.y * 2.0f;
+            pos.x = std::clamp(pos.x, 0.0f, std::max(0.0f, display.x - text_size.x - pad.x * 2.0f));
+
+            const ImVec2 end(pos.x + text_size.x + pad.x * 2.0f, pos.y + text_size.y + pad.y * 2.0f);
+            draw_list->AddRectFilled(pos, end, theme::color(AppCol::SizeLabelBg).to_abgr(), 4.0f);
+            draw_list->AddRect(pos, end, theme::color(AppCol::SizeLabelBorder).to_abgr(), 4.0f);
+            draw_list->AddText(
+                ImVec2(pos.x + pad.x, pos.y + pad.y), theme::color(AppCol::SizeLabelText).to_abgr(), m_hover_hint);
+        }
+    }
+
     const annotation_t* ann = m_current_annotation_resize;
     if (!ann)
         return;
 
-    constexpr float PIXEL = 1.0f;
-
-    const float padding = ann->thickness - PIXEL;
-    if (padding == 0.0f)
-        return;
-
     const ImRect box = GetAnnotationHandleBox(*ann);
-    DrawASelectionBorder(m_anno_sel, box.Min.x, box.Min.y, box.GetWidth() - PIXEL, box.GetHeight() - PIXEL);
+    DrawASelectionBorder(m_anno_sel, box.Min.x, box.Min.y, box.GetWidth(), box.GetHeight());
 }
 
 void ScreenshotTool::DrawAnnotationSettingsPopup(const ToolType tool, const SelectionBorder side)
