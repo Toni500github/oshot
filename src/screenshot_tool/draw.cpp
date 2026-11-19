@@ -978,7 +978,7 @@ void ScreenshotTool::DrawMenuItems()
 
         if (ImGui::BeginMenu(_("Tools")))
         {
-            if (ImGui::MenuItem(_("Download OCR model")))
+            if (ImGui::MenuItem(_("Download OCR languages")))
                 m_show_window.Set(SubWindow::OcrDownload);
             ImGui::Separator();
 
@@ -1067,10 +1067,8 @@ void ScreenshotTool::DrawOcrTools()
 {
     ErrorContext<OcrError>& ectx = m_ocr_errors;
 
-    const bool need_to_scan  = ectx.Has(OcrError::NeedToScanDir);
     const bool invalid_path  = ectx.Has(OcrError::InvalidPath);
     const bool invalid_model = ectx.Has(OcrError::InvalidModel);
-    const bool models_ok     = !invalid_path && !need_to_scan;
 
     ImGui::PushID("OcrTools");
 
@@ -1079,39 +1077,27 @@ void ScreenshotTool::DrawOcrTools()
         ImGui::TableSetupColumn("##label", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("##value", ImGuiTableColumnFlags_WidthStretch);
 
-        // --- Path input ---
-        form_row(_("Folder"), _("The folder with the OCR models (.traineddata). Supports drag-and-drop"));
-        const char* load_label = _("Load");
-        if (invalid_path || need_to_scan)
-            ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::Error));
-        ImGui::PushItemWidth(need_to_scan ? -(button_width({ load_label }) + ImGui::GetStyle().ItemSpacing.x)
-                                          : -FLT_MIN);
-        draw_input_text_folder("", "##ocr_path", [&] { ectx.Set(OcrError::NeedToScanDir); }, m_inputs.ocr_path);
-        ImGui::PopItemWidth();
-        if (invalid_path || need_to_scan)
-            ImGui::PopStyleColor();
-        if (need_to_scan)
+        if (!invalid_path)
         {
-            ImGui::SameLine();
-            if (ImGui::Button(load_label))
-                RefreshOcrModels();
-            ImGui::SetItemTooltip("%s", _("Look for the models in this folder"));
-        }
-
-        if (models_ok)
-        {
-            // --- Model combo ---
-            form_row(_("Model"), _("The model of the language the text is in"));
-            std::string& ocr_model = m_inputs.ocr_model;
+            // --- Language combo ---
+            form_row(_("Language"), _("The language the text is in"));
+            const auto         current      = std::ranges::find_if(m_ocr_languages, [&](const ocr_language_t& l) {
+                return l.code == m_inputs.ocr_language && l.folder == m_inputs.ocr_path;
+            });
+            const std::string& lang_preview = current != m_ocr_languages.end() ? current->label : m_inputs.ocr_language;
             if (invalid_model)
                 ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::Error));
             ImGui::SetNextItemWidth(-FLT_MIN);
-            const bool combo_open = ImGui::BeginCombo("##model", ocr_model.c_str(), ImGuiComboFlags_HeightLarge);
+            const bool combo_open = ImGui::BeginCombo("##language", lang_preview.c_str(), ImGuiComboFlags_HeightLarge);
             // Don't color the whole list red
             if (invalid_model)
             {
                 ImGui::PopStyleColor();
-                ImGui::SetItemTooltip("%s", _("Not in the models folder, pick another one"));
+                ImGui::SetItemTooltip("%s", _("No language folder has this language, pick another one"));
+            }
+            else
+            {
+                ImGui::SetItemTooltip("%s", m_inputs.ocr_path.c_str());
             }
 
             if (combo_open)
@@ -1130,14 +1116,44 @@ void ScreenshotTool::DrawOcrTools()
                 if (ImGui::IsItemDeactivated() && ImGui::IsKeyPressed(ImGuiKey_Escape))
                     ImGui::CloseCurrentPopup();
 
-                for (const std::string& model : m_ocr_models_list)
+                for (size_t i = 0; i < m_ocr_folders.size(); ++i)
                 {
-                    if (filter.PassFilter(model.c_str()) && ImGui::Selectable(model.c_str(), model == ocr_model))
+                    const std::string& folder = m_ocr_folders[i];
+                    const auto         passes = [&](const ocr_language_t& l) {
+                        return l.folder == folder && filter.PassFilter(l.label.c_str());
+                    };
+                    const bool empty = std::ranges::none_of(
+                        m_ocr_languages, [&](const ocr_language_t& l) { return l.folder == folder; });
+                    if (filter.IsActive() && std::ranges::none_of(m_ocr_languages, passes))
+                        continue;
+
+                    ImGui::PushID(int(i));
+                    ImGui::SeparatorText(folder.c_str());
+                    if (empty)
+                        ImGui::TextDisabled("%s", _("Doesn't exist or is empty"));
+                    for (const ocr_language_t& lang : m_ocr_languages)
                     {
-                        ocr_model = model;
-                        ectx.Clear(OcrError::InvalidModel);
+                        if (!passes(lang))
+                            continue;
+                        const bool selected = lang.code == m_inputs.ocr_language && folder == m_inputs.ocr_path;
+                        if (ImGui::Selectable(lang.label.c_str(), selected))
+                        {
+                            m_inputs.ocr_language = lang.code;
+                            m_inputs.ocr_path     = folder;
+                            ectx.Clear(OcrError::InvalidModel);
+                            g_cache->SetValue(CacheEntry::OcrLanguage, lang.code);
+                            g_cache->SetValue(CacheEntry::OcrLanguageFolder, folder);
+                            g_cache->SetValue(CacheEntry::OcrLanguageDefault, g_config->File.ocr_language);
+                        }
                     }
+                    ImGui::PopID();
                 }
+
+                ImGui::Separator();
+                if (ImGui::Selectable(_("Download languages...")))
+                    m_show_window.Set(SubWindow::OcrDownload);
+                if (ImGui::Selectable(_("Edit language folders...")))
+                    m_show_window.Set(SubWindow::Preferences);
                 ImGui::EndCombo();
             }
 
@@ -1170,15 +1186,16 @@ void ScreenshotTool::DrawOcrTools()
     }
 
     // --- Suggestions ---
-    if (need_to_scan)
-    {
-        ImGui::TextWrapped("%s", _("Press Load to look for the OCR models in this folder."));
-    }
-    else if (invalid_path)
+    if (invalid_path)
     {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::Error));
-        ImGui::TextWrapped("%s", _("No OCR models (.traineddata) in this folder"));
+        ImGui::TextWrapped("%s", _("No OCR languages (.traineddata) found in the language folders."));
         ImGui::PopStyleColor();
+        if (ImGui::Button(_("Download languages...")))
+            m_show_window.Set(SubWindow::OcrDownload);
+        ImGui::SameLine();
+        if (ImGui::Button(_("Edit language folders...")))
+            m_show_window.Set(SubWindow::Preferences);
 
         ImGui::Spacing();
         ImGui::TextDisabled("%s", _("Suggestions:"));
@@ -1188,7 +1205,8 @@ void ScreenshotTool::DrawOcrTools()
             constexpr const char* cmd = "nix build --no-link --print-out-paths nixpkgs#tesseract";
             ImGui::TextWrapped(
                 "%s",
-                _("Run the following command in your terminal, then update the OCR path in the Preferences window:"));
+                _("Run the following command in your terminal, then add its folder to the language folders in the "
+                  "Preferences window:"));
             ImGui::TextColored(theme::color(AppCol::Warning), "%s", cmd);
             CreateCopyTextButton(cmd, _("Copy command"));
             ImGui::Spacing();
@@ -1204,12 +1222,12 @@ void ScreenshotTool::DrawOcrTools()
         }
 #endif
         ImGui::Bullet();
-        ImGui::TextWrapped("%s", _("Download a tesseract language model via 'Tools -> Download OCR model'."));
+        ImGui::TextWrapped("%s", _("Download a language with the button above."));
         ImGui::Spacing();
     }
 
     // --- Extract button and output ---
-    ImGui::BeginDisabled(!models_ok || invalid_model);
+    ImGui::BeginDisabled(invalid_path || invalid_model);
     if (ImGui::Button(_("Extract Text")))
         RequestScan(ScanType::Ocr);
     ImGui::EndDisabled();

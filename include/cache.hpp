@@ -40,8 +40,11 @@
 // Values remembered between runs, in cache.toml
 enum class CacheEntry : uint8_t
 {
-    AnnColor,     // last color picked for annotations
-    ImgSavePath,  // folder the save dialog last saved to
+    AnnColor,            // last color picked for annotations
+    ImgSavePath,         // folder the save dialog last saved to
+    OcrLanguage,         // OCR language last picked in the text tools
+    OcrLanguageFolder,   // the folder it was picked from
+    OcrLanguageDefault,  // ocr-language when OcrLanguage was picked, so a changed ocr-language wins
     COUNT
 };
 
@@ -79,8 +82,8 @@ protected:
 private:
     // Keys of the CacheEntry values, in the same order
     static constexpr std::array<std::string_view, idx(CacheEntry::COUNT)> mk_cache_entries = {
-        "default-color-picker-color",
-        "last-saved-dir"
+        "default-color-picker-color", "last-saved-dir", "last-ocr-language", "last-ocr-language-folder",
+        "last-ocr-language-default",
     };
 
     static constexpr const char* mk_file_path = "cache.toml";

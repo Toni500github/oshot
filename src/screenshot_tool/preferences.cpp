@@ -31,7 +31,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <functional>
 #include <future>
 #include <map>
 #include <memory>
@@ -665,7 +664,7 @@ static void draw_preference_fonts(const bool window_just_opened)
     ImGui::EndGroup();
 }
 
-static void draw_preference_edit_config(const std::function<void()>& refresh_models_func, bool window_just_opened)
+static void draw_preference_edit_config(const std::vector<ocr_language_t>& languages, bool window_just_opened)
 {
     static constexpr auto image_prev_units = std::to_array({ "off", "auto", "B", "KiB", "MiB", "KB", "MB" });
     static constexpr SDL_DialogFileFilter toml_filter{ .name = N_("TOML files"), .pattern = "toml" };
@@ -725,16 +724,82 @@ static void draw_preference_edit_config(const std::function<void()>& refresh_mod
     }
     ImGui::Spacing();
 
-    // --- OCR path ---
-    ImGui::TextUnformatted(_("Default OCR path"));
+    // --- OCR language folders ---
+    ImGui::TextUnformatted(_("OCR language folders"));
     ImGui::SameLine();
-    HelpMarker(_("Full path to the OCR models (.traineddata). Supports drag-and-drop."));
-    draw_input_text_folder("", "##config_ocr_path", refresh_models_func, g_config->File.ocr_path);
+    HelpMarker(
+        _("The folders with the OCR languages (.traineddata). The text tools list the languages of each folder.\n"
+          "Folders can be dropped on Add folder."));
+    {
+        std::vector<std::string>& folders  = g_config->File.ocr_folders;
+        const float               remove_w = ImGui::GetFrameHeight();
+        const float               width    = ImGui::CalcItemWidth();
+        std::optional<size_t>     removed;
+        for (size_t i = 0; i < folders.size(); ++i)
+        {
+            ImGui::PushID(int(i));
+            ImGui::PushItemWidth(width - remove_w - ImGui::GetStyle().ItemSpacing.x);
+            draw_input_text_folder("", "##ocr_folder", {}, folders[i]);
+            ImGui::PopItemWidth();
+            ImGui::SameLine();
+            if (ImGui::Button("x", ImVec2(remove_w, remove_w)))
+                removed = i;
+            ImGui::SetItemTooltip("%s", _("Remove this folder"));
+            ImGui::PopID();
+        }
+        if (removed)
+            folders.erase(folders.begin() + static_cast<ptrdiff_t>(*removed));
+
+        if (ImGui::Button(_("Add folder")))
+        {
+            const bool                        hidden = hide_window();
+            const std::optional<std::string>& folder = dialog::select_folder(_("Open folder"));
+            if (hidden)
+                show_window();
+            if (folder && std::ranges::find(folders, *folder) == folders.end())
+                folders.push_back(*folder);
+        }
+        ImGui::SetItemTooltip("%s", _("Add a folder, or drop folders on this button"));
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && !g_dropped_paths.empty())
+        {
+            std::error_code ec;
+            for (const std::string& dropped : g_dropped_paths)
+                if (fs::is_directory(dropped, ec) && std::ranges::find(folders, dropped) == folders.end())
+                    folders.push_back(dropped);
+            g_dropped_paths.clear();
+        }
+    }
     ImGui::Spacing();
 
-    // --- OCR model ---
-    ImGui::TextUnformatted(_("Default OCR model"));
-    ImGui::InputText("##config_ocr_model", &g_config->File.ocr_model);
+    // --- OCR language ---
+    ImGui::TextUnformatted(_("Default OCR language"));
+    ImGui::SameLine();
+    HelpMarker(
+        _("The language the text tools start with, from the first folder that has it. "
+          "A language picked there is used instead, until this changes."));
+    {
+        // Each language once, from the first folder that has it, which is where ocr-language loads it from
+        std::vector<const ocr_language_t*> firsts;
+        for (const ocr_language_t& l : languages)
+            if (std::ranges::none_of(firsts, [&](const ocr_language_t* f) { return f->code == l.code; }))
+                firsts.push_back(&l);
+        std::ranges::sort(firsts, {}, [](const ocr_language_t* l) { return l->label; });
+
+        std::string& lang    = g_config->File.ocr_language;
+        const auto   current = std::ranges::find(firsts, lang, [](const ocr_language_t* l) { return l->code; });
+        if (ImGui::BeginCombo("##config_ocr_language",
+                              current != firsts.end() ? (*current)->label.c_str() : lang.c_str(),
+                              ImGuiComboFlags_HeightLarge))
+        {
+            for (const ocr_language_t* l : firsts)
+            {
+                if (ImGui::Selectable(l->label.c_str(), l->code == lang))
+                    lang = l->code;
+                ImGui::SetItemTooltip("%s", l->folder.c_str());
+            }
+            ImGui::EndCombo();
+        }
+    }
     ImGui::Spacing();
 
     // --- Capture delay ---
@@ -1650,7 +1715,7 @@ void ScreenshotTool::DrawPreferencesWindow()
     // Snapshot the config when the window first appears so Discard can restore it.
     if (window_just_opened)
     {
-        config_snapshot = g_config->File;
+        config_snapshot  = g_config->File;
         s_theme_snapshot = g_config->theme_overrides;
 #ifndef DISABLE_PLUGINS
         // Edits left from a window that closed without Save or Discard are dropped
@@ -1712,7 +1777,7 @@ void ScreenshotTool::DrawPreferencesWindow()
         switch (selected_tab)
         {
             case PrefTab::kNone:    break;
-            case PrefTab::Defaults: draw_preference_edit_config([&] { RefreshOcrModels(); }, window_just_opened); break;
+            case PrefTab::Defaults: draw_preference_edit_config(m_ocr_languages, window_just_opened); break;
 #ifndef DISABLE_PLUGINS
             case PrefTab::Plugins: draw_preference_plugin(plugin_dirty, transformers, plugin_busy); break;
 #endif

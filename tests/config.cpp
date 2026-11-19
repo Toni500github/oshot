@@ -2,13 +2,14 @@
 
 #include <chrono>
 #include <cstdint>
-#include <cstdlib>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "catch2/catch_amalgamated.hpp"
 #include "common.hpp"
+#include "platform.hpp"
 #include "theme.hpp"
 #include "util/image.hpp"
 #include "util/paths.hpp"
@@ -27,8 +28,8 @@ static Config::config_file_t as_loaded(Config::config_file_t file)
 // the AUTOCONFIG template in texts.hpp or its print call in GenerateConfig()
 static void check_same(const Config::config_file_t& got, const Config::config_file_t& want)
 {
-    CHECK(got.ocr_path == want.ocr_path);
-    CHECK(got.ocr_model == want.ocr_model);
+    CHECK(got.ocr_folders == want.ocr_folders);
+    CHECK(got.ocr_language == want.ocr_language);
     CHECK(got.ocr_get_repo == want.ocr_get_repo);
     CHECK(got.delay == want.delay);
     CHECK(got.color_picker == want.color_picker);
@@ -72,10 +73,7 @@ TEST_CASE("Config: the generated config loads back the same", "[config]")
         Config loaded(file, dir);
         loaded.LoadConfigFile(file.string());
 
-        Config::config_file_t want = as_loaded(written.File);
-        if (const char* env = std::getenv("TESSDATA_PREFIX"))
-            want.ocr_path = env;  // the default config-over-env = false lets it win
-        check_same(loaded.File, want);
+        check_same(loaded.File, as_loaded(written.File));
     }
 
     SECTION("Every option changed")
@@ -84,33 +82,33 @@ TEST_CASE("Config: the generated config loads back the same", "[config]")
 
         Config::config_file_t& f = written.File;
         // Backslashes, quotes and non-ASCII, which EscapeString() has to escape
-        f.ocr_path             = R"(C:\Users\Тест\"oshot"\models)";
-        f.ocr_model            = "ita+eng";
-        f.ocr_get_repo         = "tesseract-ocr/tessdata_best\twith\ncontrol\x01chars";
-        f.delay                = 250;
-        f.color_picker         = 1;
-        f.cpa_mode             = 0;
-        f.fullscreen           = !f.fullscreen;
-        f.enable_vsync         = !f.enable_vsync;
-        f.glx_vendor           = "mesa";
-        f.allow_out_edit       = !f.allow_out_edit;
-        f.allow_multi_tray     = !f.allow_multi_tray;
-        f.allow_multi_overlay  = !f.allow_multi_overlay;
-        f.show_text_tools      = !f.show_text_tools;
-        f.pref_conf_to_env     = true;  // else TESSDATA_PREFIX would replace ocr_path
-        f.render_anns          = !f.render_anns;
-        f.old_toolbar_pos      = !f.old_toolbar_pos;
-        f.aa_icons             = !f.aa_icons;
-        f.ctrl_c_copy_img      = !f.ctrl_c_copy_img;
-        f.hotkey               = "Ctrl+Alt+P";
-        f.language             = "pt_BR";
-        f.fonts                = { "Noto Sans", R"(A "quoted" \ font)" };
-        f.builtin_font         = !f.builtin_font;
-        f.font_size            = 20;
-        f.image_out_type       = { "jpeg", ImageExt::JPEG };
-        f.image_out_fmt        = "shot_{:%F}";
-        f.image_out_size_fmt   = "MiB";
-        f.theme_file_path      = "mytheme.toml";
+        f.ocr_folders         = { R"(C:\Users\Тест\"oshot"\models)", "/usr/share/tessdata" };
+        f.ocr_language        = "ita";
+        f.ocr_get_repo        = "tesseract-ocr/tessdata_best\twith\ncontrol\x01chars";
+        f.delay               = 250;
+        f.color_picker        = 1;
+        f.cpa_mode            = 0;
+        f.fullscreen          = !f.fullscreen;
+        f.enable_vsync        = !f.enable_vsync;
+        f.glx_vendor          = "mesa";
+        f.allow_out_edit      = !f.allow_out_edit;
+        f.allow_multi_tray    = !f.allow_multi_tray;
+        f.allow_multi_overlay = !f.allow_multi_overlay;
+        f.show_text_tools     = !f.show_text_tools;
+        f.pref_conf_to_env    = !f.pref_conf_to_env;
+        f.render_anns         = !f.render_anns;
+        f.old_toolbar_pos     = !f.old_toolbar_pos;
+        f.aa_icons            = !f.aa_icons;
+        f.ctrl_c_copy_img     = !f.ctrl_c_copy_img;
+        f.hotkey              = "Ctrl+Alt+P";
+        f.language            = "pt_BR";
+        f.fonts               = { "Noto Sans", R"(A "quoted" \ font)" };
+        f.builtin_font        = !f.builtin_font;
+        f.font_size           = 20;
+        f.image_out_type      = { "jpeg", ImageExt::JPEG };
+        f.image_out_fmt       = "shot_{:%F}";
+        f.image_out_size_fmt  = "MiB";
+        f.theme_file_path     = "mytheme.toml";
         written.GenerateConfig(file.string(), true);
 
         Config loaded(file, dir);
@@ -159,6 +157,59 @@ image-out-size-ind = "furlongs"
     CHECK(loaded.File.image_out_type.first == "PNG");
     CHECK(loaded.File.image_out_type.second == ImageExt::PNG);
     CHECK(loaded.File.image_out_size_fmt == "auto");
+}
+
+TEST_CASE("Config: the old ocr-path and ocr-model keys still load", "[config]")
+{
+    const fs::path dir  = test_temp_dir() / "config-old-ocr-keys";
+    const fs::path file = dir / "config.toml";
+    fs::remove_all(dir);
+
+    SECTION("On their own")
+    {
+        write_file(file, R"([default]
+ocr-path = "/opt/tessdata"
+ocr-model = "ita"
+config-over-env = true
+)");
+        Config loaded(file, dir);
+        loaded.LoadConfigFile(file.string());
+#if OSHOT_FREEDESKTOP
+        // Plus the downloader's folder
+        CHECK(loaded.File.ocr_folders == std::vector<std::string>{ "/opt/tessdata", (dir / "models").string() });
+#else
+        CHECK(loaded.File.ocr_folders == std::vector<std::string>{ "/opt/tessdata" });
+#endif
+        CHECK(loaded.File.ocr_language == "ita");
+    }
+
+    SECTION("The new keys win")
+    {
+        write_file(file, R"([default]
+ocr-path = "/opt/tessdata"
+ocr-folders = ["/a", "/b"]
+ocr-model = "ita"
+ocr-language = "jpn"
+config-over-env = true
+)");
+        Config loaded(file, dir);
+        loaded.LoadConfigFile(file.string());
+        CHECK(loaded.File.ocr_folders == std::vector<std::string>{ "/a", "/b" });
+        CHECK(loaded.File.ocr_language == "jpn");
+    }
+}
+
+TEST_CASE("Config: GetOcrFolders() lists each folder once", "[config]")
+{
+    const fs::path dir = test_temp_dir() / "config-ocr-folders";
+    fs::remove_all(dir);
+    fs::create_directories(dir / "models");
+
+    Config config(dir / "config.toml", dir);
+    config.File.pref_conf_to_env = true;  // leave TESSDATA_PREFIX out
+    config.File.ocr_folders      = { "/nonexistent", (dir / "models").string(),      "",
+                                     "/nonexistent", (dir / "models" / "").string(), (dir / "." / "models").string() };
+    CHECK(config.GetOcrFolders() == std::vector<std::string>{ "/nonexistent", (dir / "models").string() });
 }
 
 TEST_CASE("Config: the saved theme loads back the same", "[config][theme]")

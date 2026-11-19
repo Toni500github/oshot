@@ -31,6 +31,7 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "platform.hpp"
 
@@ -147,9 +148,17 @@ fs::path get_bundled_models_dir();
 
 /**
  * Get where the system's tesseract models are, which differs per distro.
- * Only the default of the ocr-path option
+ * The first default folder of the ocr-path option
  **/
 std::string get_default_ocr_path();
+
+/**
+ * Find the first folder that has an OCR language
+ * @param folders The ocr-folders
+ * @param lang The language code, e.g. "eng"
+ * @return The folder, or empty if none has it
+ **/
+std::string find_ocr_language_folder(const std::vector<std::string>& folders, const std::string_view lang);
 
 /**
  * fs::remove_all() that also deletes read-only files (on Windows), and only logs on failure

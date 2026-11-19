@@ -27,6 +27,7 @@
 
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstdint>
@@ -440,4 +441,13 @@ std::string get_default_ocr_path()
     // Windows and macOS ship eng.traineddata, which Config seeds into the config dir
     return "./models";
 #endif
+}
+
+std::string find_ocr_language_folder(const std::vector<std::string>& folders, const std::string_view lang)
+{
+    std::error_code ec;
+    const auto      it = std::ranges::find_if(folders, [&](const std::string& folder) {
+        return !lang.empty() && fs::is_regular_file(fs::path(folder) / fmt::format("{}.traineddata", lang), ec);
+    });
+    return it != folders.end() ? *it : std::string();
 }

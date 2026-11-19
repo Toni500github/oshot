@@ -141,7 +141,7 @@ GENERAL OPTIONS:
     -V, --version               Print version and other information about the build.
     -f, --source <PATH>         Path to the image to use as background (use '-' for reading from stdin).
     -C, --config <PATH>         Path to the config file to use (default: ~/.config/oshot/config.toml).
-    -O, --override <OPTION>     Override a config option (e.g. "delay=200", "default.ocr-model='jpn'",
+    -O, --override <OPTION>     Override a config option (e.g. "delay=200", "default.ocr-language='jpn'",
                                 "fonts=['/path/to/font.ttf']").
     -d, --delay <MILLIS>        Wait MILLIS milliseconds before taking the screenshot.
                                 Has no effect with the -f flag.
@@ -168,12 +168,14 @@ GENERAL OPTIONS:
 
 // default oshot config
 inline constexpr std::string_view AUTOCONFIG = R"#([default]
-# Folder with the OCR models ('.traineddata' files).
-# The TESSDATA_PREFIX environment variable supersedes this.
-ocr-path = "{}"
+# Folders with OCR languages ('.traineddata' files). The text tools list the languages of each folder.
+# e.g. ocr-folders = ["/usr/share/tessdata", "~/.config/oshot/models"]
+# The TESSDATA_PREFIX environment variable adds its folder in front.
+ocr-folders = [{}]
 
-# Default OCR model.
-ocr-model = "{}"
+# The language the text tools start with, from the first folder that has it,
+# until you pick another one there.
+ocr-language = "{}"
 
 # GitHub repository the OCR model downloader gets
 # '.traineddata' models from.

@@ -60,10 +60,13 @@ Config::Config(const fs::path& configFile, const fs::path& configDir)
         fs::create_directories(configDir / "plugins");
     }
 
-#if !OSHOT_FREEDESKTOP
+#if OSHOT_FREEDESKTOP
+    // Where the model downloader saves
+    File.ocr_folders.push_back((configDir / "models").string());
+#else
     // The install location isn't writable and the working directory is arbitrary when launched from
     // Explorer/Finder, so keep every OCR model in the config dir, seeded with the bundled ones
-    File.ocr_path = (configDir / "models").string();
+    File.ocr_folders = { (configDir / "models").string() };
     SeedBundledModels(configDir / "models");
 #endif
 
@@ -98,13 +101,30 @@ void Config::SeedBundledModels(const fs::path& models_dir)
     }
 }
 
+std::vector<std::string> Config::GetOcrFolders() const
+{
+    std::vector<std::string> ret;
+    if (const char* env = std::getenv("TESSDATA_PREFIX"); !File.pref_conf_to_env && env && *env)
+        ret.emplace_back(env);
+
+    for (const std::string& folder : File.ocr_folders)
+    {
+        std::error_code ec;
+        if (!folder.empty() && std::ranges::none_of(ret, [&](const std::string& added) {
+                return added == folder || fs::equivalent(added, folder, ec);
+            }))
+            ret.push_back(folder);
+    }
+    return ret;
+}
+
 void Config::LoadConfigFile(const std::string& filename)
 {
     MUST_OK(LoadFile(filename), dialog::die("{}", _r.error_v()));
 
-    File.ocr_path            = GetValue<std::string>("default.ocr-path", File.ocr_path);
+    File.ocr_language =
+        GetValue<std::string>("default.ocr-language", GetValue<std::string>("default.ocr-model", "eng"));
     File.ocr_get_repo        = GetValue<std::string>("default.ocr-repo-download", "tesseract-ocr/tessdata");
-    File.ocr_model           = GetValue<std::string>("default.ocr-model", "eng");
     File.theme_file_path     = GetValue<std::string>("default.theme-file", "theme.toml");
     File.image_out_fmt       = GetValue<std::string>("default.image-out-fmt", "oshot_{:%F_%H-%M}");
     File.delay               = GetValue<int>("default.delay", -1);
@@ -128,9 +148,25 @@ void Config::LoadConfigFile(const std::string& filename)
     File.builtin_font        = GetValue<bool>("default.builtin-font", false);
     File.font_size           = GetValue<int>("default.font-size", 0);
 
-    const char* t = getenv("TESSDATA_PREFIX");
-    if (!File.pref_conf_to_env && t)
-        File.ocr_path = t;
+    // ocr-path and ocr-model: their names until 0.5.0, when ocr-path held one folder
+    if (const std::string& folder = GetValue<std::string>("default.ocr-folders", ""); !folder.empty())
+    {
+        File.ocr_folders = { folder };
+    }
+    else if (std::vector<std::string> folders = GetValueArrayStr("default.ocr-folders", {}); !folders.empty())
+    {
+        for (std::string& f : folders)
+            f = expand_var(f);
+        File.ocr_folders = std::move(folders);
+    }
+    else if (const std::string& old_path = GetValue<std::string>("default.ocr-path", ""); !old_path.empty())
+    {
+        File.ocr_folders = { old_path };
+#if OSHOT_FREEDESKTOP
+        // Where the model downloader saves, which ocr-path couldn't list next to the system folder
+        File.ocr_folders.push_back((fs::path(m_config_dir_path) / "models").string());
+#endif
+    }
 
     File.image_out_type.first = str_toupper(GetValue<std::string>("default.image-out-ext", "PNG"));
     const auto ext_it =
@@ -345,18 +381,16 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
 
     auto f = open_output_file(filename);
 
-    std::string fonts_str;
-    if (!File.fonts.empty())
-    {
-        for (const std::string& font : File.fonts)
-            fonts_str += '"' + EscapeString(font) + "\", ";
-        fonts_str.pop_back();  // ' '
-        fonts_str.pop_back();  // ','
-    }
+    const auto to_array = [](const std::vector<std::string>& strs) {
+        std::string ret;
+        for (const std::string& str : strs)
+            ret += fmt::format("{}\"{}\"", ret.empty() ? "" : ", ", EscapeString(str));
+        return ret;
+    };
 
     f.print(AUTOCONFIG,
-            EscapeString(File.ocr_path),
-            EscapeString(File.ocr_model),
+            to_array(File.ocr_folders),
+            EscapeString(File.ocr_language),
             EscapeString(File.ocr_get_repo),
             File.delay,
             File.color_picker,
@@ -375,7 +409,7 @@ void Config::GenerateConfig(const std::string& filename, const bool force)
             File.ctrl_c_copy_img,
             EscapeString(File.hotkey),
             EscapeString(File.language),
-            fonts_str,
+            to_array(File.fonts),
             File.builtin_font,
             File.font_size,
             EscapeString(File.image_out_type.first),

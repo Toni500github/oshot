@@ -30,6 +30,7 @@
 #include <cfloat>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -135,8 +136,8 @@ Result<> ScreenshotTool::StartWindow()
     std::call_once(plugins_loaded, [&] { load_plugins(m_plugin_manager.GetStateManager()); });
 #endif
 
-    m_inputs = { .ocr_path                  = g_config->File.ocr_path,
-                 .ocr_model                 = g_config->File.ocr_model,
+    m_inputs = { .ocr_path                  = "",
+                 .ocr_language              = g_config->File.ocr_language,
                  .ocr_download_repo         = g_config->File.ocr_get_repo,
                  .ocr_model_downloaded_path = g_config->GetConfigDirPath() + DIR_SEP_STR "models",
                  .ocr_seconds               = 0.0f,
@@ -928,11 +929,147 @@ void ScreenshotTool::ClampSelectionToImage(selection_info_t& sel)
     }
 }
 
+// The languages of the tesseract-ocr/tessdata models, by code
+static constexpr auto OCR_LANGUAGE_NAMES = std::to_array<std::pair<std::string_view, const char*>>({
+    { "afr", N_("Afrikaans") },
+    { "amh", N_("Amharic") },
+    { "ara", N_("Arabic") },
+    { "asm", N_("Assamese") },
+    { "aze", N_("Azerbaijani") },
+    { "aze_cyrl", N_("Azerbaijani (Cyrillic)") },
+    { "bel", N_("Belarusian") },
+    { "ben", N_("Bengali") },
+    { "bod", N_("Tibetan") },
+    { "bos", N_("Bosnian") },
+    { "bre", N_("Breton") },
+    { "bul", N_("Bulgarian") },
+    { "cat", N_("Catalan") },
+    { "ceb", N_("Cebuano") },
+    { "ces", N_("Czech") },
+    { "chi_sim", N_("Chinese (Simplified)") },
+    { "chi_sim_vert", N_("Chinese (Simplified, vertical)") },
+    { "chi_tra", N_("Chinese (Traditional)") },
+    { "chi_tra_vert", N_("Chinese (Traditional, vertical)") },
+    { "chr", N_("Cherokee") },
+    { "cos", N_("Corsican") },
+    { "cym", N_("Welsh") },
+    { "dan", N_("Danish") },
+    { "deu", N_("German") },
+    { "deu_latf", N_("German (Fraktur)") },
+    { "div", N_("Dhivehi") },
+    { "dzo", N_("Dzongkha") },
+    { "ell", N_("Greek") },
+    { "eng", N_("English") },
+    { "enm", N_("Middle English") },
+    { "epo", N_("Esperanto") },
+    { "est", N_("Estonian") },
+    { "eus", N_("Basque") },
+    { "fao", N_("Faroese") },
+    { "fas", N_("Persian") },
+    { "fil", N_("Filipino") },
+    { "fin", N_("Finnish") },
+    { "fra", N_("French") },
+    { "frm", N_("Middle French") },
+    { "fry", N_("Western Frisian") },
+    { "gla", N_("Scottish Gaelic") },
+    { "gle", N_("Irish") },
+    { "glg", N_("Galician") },
+    { "grc", N_("Ancient Greek") },
+    { "guj", N_("Gujarati") },
+    { "hat", N_("Haitian Creole") },
+    { "heb", N_("Hebrew") },
+    { "hin", N_("Hindi") },
+    { "hrv", N_("Croatian") },
+    { "hun", N_("Hungarian") },
+    { "hye", N_("Armenian") },
+    { "iku", N_("Inuktitut") },
+    { "ind", N_("Indonesian") },
+    { "isl", N_("Icelandic") },
+    { "ita", N_("Italian") },
+    { "ita_old", N_("Italian (old)") },
+    { "jav", N_("Javanese") },
+    { "jpn", N_("Japanese") },
+    { "jpn_vert", N_("Japanese (vertical)") },
+    { "kan", N_("Kannada") },
+    { "kat", N_("Georgian") },
+    { "kat_old", N_("Georgian (old)") },
+    { "kaz", N_("Kazakh") },
+    { "khm", N_("Khmer") },
+    { "kir", N_("Kyrgyz") },
+    { "kmr", N_("Kurdish (Kurmanji)") },
+    { "kor", N_("Korean") },
+    { "kor_vert", N_("Korean (vertical)") },
+    { "lao", N_("Lao") },
+    { "lat", N_("Latin") },
+    { "lav", N_("Latvian") },
+    { "lit", N_("Lithuanian") },
+    { "ltz", N_("Luxembourgish") },
+    { "mal", N_("Malayalam") },
+    { "mar", N_("Marathi") },
+    { "mkd", N_("Macedonian") },
+    { "mlt", N_("Maltese") },
+    { "mon", N_("Mongolian") },
+    { "mri", N_("Maori") },
+    { "msa", N_("Malay") },
+    { "mya", N_("Burmese") },
+    { "nep", N_("Nepali") },
+    { "nld", N_("Dutch") },
+    { "nor", N_("Norwegian") },
+    { "oci", N_("Occitan") },
+    { "ori", N_("Odia") },
+    { "pan", N_("Punjabi") },
+    { "pol", N_("Polish") },
+    { "por", N_("Portuguese") },
+    { "pus", N_("Pashto") },
+    { "que", N_("Quechua") },
+    { "ron", N_("Romanian") },
+    { "rus", N_("Russian") },
+    { "san", N_("Sanskrit") },
+    { "sin", N_("Sinhala") },
+    { "slk", N_("Slovak") },
+    { "slv", N_("Slovenian") },
+    { "snd", N_("Sindhi") },
+    { "spa", N_("Spanish") },
+    { "spa_old", N_("Spanish (old)") },
+    { "sqi", N_("Albanian") },
+    { "srp", N_("Serbian") },
+    { "srp_latn", N_("Serbian (Latin)") },
+    { "sun", N_("Sundanese") },
+    { "swa", N_("Swahili") },
+    { "swe", N_("Swedish") },
+    { "syr", N_("Syriac") },
+    { "tam", N_("Tamil") },
+    { "tat", N_("Tatar") },
+    { "tel", N_("Telugu") },
+    { "tgk", N_("Tajik") },
+    { "tha", N_("Thai") },
+    { "tir", N_("Tigrinya") },
+    { "ton", N_("Tongan") },
+    { "tur", N_("Turkish") },
+    { "uig", N_("Uyghur") },
+    { "ukr", N_("Ukrainian") },
+    { "urd", N_("Urdu") },
+    { "uzb", N_("Uzbek") },
+    { "uzb_cyrl", N_("Uzbek (Cyrillic)") },
+    { "vie", N_("Vietnamese") },
+    { "yid", N_("Yiddish") },
+    { "yor", N_("Yoruba") },
+});
+
 void ScreenshotTool::SyncRuntimeFromConfig()
 {
-    m_inputs.ocr_path  = g_config->File.ocr_path;
-    m_inputs.ocr_model = g_config->File.ocr_model;
+    // The language last picked in the text tools, unless ocr-language changed since
+    const std::string& last = g_cache->GetValue<std::string>(CacheEntry::OcrLanguage, "", true);
+    const bool use_last   = !last.empty() && g_cache->GetValue<std::string>(CacheEntry::OcrLanguageDefault, "", true) ==
+                                                 g_config->File.ocr_language;
+    m_inputs.ocr_language = use_last ? last : g_config->File.ocr_language;
+    m_inputs.ocr_path     = use_last ? g_cache->GetValue<std::string>(CacheEntry::OcrLanguageFolder, "", true) : "";
     RefreshOcrModels();
+    if (use_last && m_inputs.ocr_path.empty())
+    {
+        m_inputs.ocr_language = g_config->File.ocr_language;
+        RefreshOcrModels();
+    }
 
     m_inputs.ann_font               = g_config->File.fonts.empty() ? "" : g_config->File.fonts[0];
     m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string();
@@ -944,38 +1081,50 @@ void ScreenshotTool::RefreshOcrModels()
 {
     ErrorContext<OcrError>& ectx = m_ocr_errors;
 
-    if (m_inputs.ocr_path == m_last_scanned_ocr_path)
+    // Scanned every time, so languages installed while the tray runs show up on the next capture
+    m_ocr_folders = g_config->GetOcrFolders();
+    m_ocr_languages.clear();
+    for (const std::string& folder : m_ocr_folders)
     {
-        ectx.Clear(OcrError::NeedToScanDir);
+        const size_t    first = m_ocr_languages.size();
+        std::error_code ec;
+        for (const fs::directory_entry& entry :
+             fs::directory_iterator(folder, fs::directory_options::skip_permission_denied, ec))
+        {
+            // osd and equ are for page orientation and equations, not languages
+            const std::string code = entry.path().stem().string();
+            if (entry.path().extension() != ".traineddata" || code == "osd" || code == "equ")
+                continue;
+
+            const auto name = std::ranges::find(OCR_LANGUAGE_NAMES, code, [](const auto& n) { return n.first; });
+            m_ocr_languages.push_back(
+                { .code   = code,
+                  .folder = folder,
+                  .label  = name != OCR_LANGUAGE_NAMES.end() ? fmt::format("{} ({})", _(name->second), code) : code });
+        }
+        std::ranges::sort(
+            m_ocr_languages.begin() + static_cast<ptrdiff_t>(first), m_ocr_languages.end(), {}, &ocr_language_t::label);
+    }
+
+    if (m_ocr_languages.empty())
+    {
+        m_inputs.ocr_path.clear();
+        ectx.Set(OcrError::InvalidPath);
         return;
     }
+    ectx.Clear(OcrError::InvalidPath);
 
-    m_ocr_models_list.clear();
-    if (fs::exists(m_inputs.ocr_path))
-    {
-        for (const auto& entry : fs::recursive_directory_iterator(
-                 m_inputs.ocr_path,
-                 fs::directory_options::follow_directory_symlink | fs::directory_options::skip_permission_denied))
-            if (entry.path().extension() == ".traineddata")
-                m_ocr_models_list.push_back(entry.path().stem().string());
-    }
-    std::ranges::sort(m_ocr_models_list);
-
-    m_last_scanned_ocr_path = m_inputs.ocr_path;
-    ectx.Clear(OcrError::NeedToScanDir);
-
-    if (m_ocr_models_list.empty())
-    {
-        ectx.Set(OcrError::InvalidPath, _("Doesn't exist or is empty"));
-    }
+    // Keep the folder it was picked from while that still has it, else the first folder that does
+    auto it = std::ranges::find_if(m_ocr_languages, [&](const ocr_language_t& l) {
+        return l.code == m_inputs.ocr_language && l.folder == m_inputs.ocr_path;
+    });
+    if (it == m_ocr_languages.end())
+        it = std::ranges::find(m_ocr_languages, m_inputs.ocr_language, &ocr_language_t::code);
+    m_inputs.ocr_path = it != m_ocr_languages.end() ? it->folder : "";
+    if (m_inputs.ocr_path.empty())
+        ectx.Set(OcrError::InvalidModel);
     else
-    {
-        ectx.Clear(OcrError::InvalidPath);
-        if (std::ranges::find(m_ocr_models_list, m_inputs.ocr_model) == m_ocr_models_list.end())
-            ectx.Set(OcrError::InvalidModel);
-        else
-            ectx.Clear(OcrError::InvalidModel);
-    }
+        ectx.Clear(OcrError::InvalidModel);
 }
 
 std::vector<std::pair<HandleHovered, ImVec2>> ScreenshotTool::GetSelectionHandles(const selection_info_t& sel) const
@@ -1196,11 +1345,14 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
 {
     ErrorContext<OcrError>& ectx = m_ocr_errors;
 
-    const Result<>& configure_res = m_ocr_api.Configure(m_inputs.ocr_path.c_str(), m_inputs.ocr_model.c_str());
+    const Result<>& configure_res =
+        m_inputs.ocr_path.empty()
+            ? Result<>(Err(i18n::tr_fmt("No OCR language folder has '{}'", m_inputs.ocr_language)))
+            : m_ocr_api.Configure(m_inputs.ocr_path.c_str(), m_inputs.ocr_language.c_str());
     if (!configure_res.ok())
     {
         spdlog::error("Failed to load the OCR model '{}' from '{}': {}",
-                      m_inputs.ocr_model,
+                      m_inputs.ocr_language,
                       m_inputs.ocr_path,
                       configure_res.error_v());
         ectx.Set(OcrError::FailedToOCR, configure_res.error_v());

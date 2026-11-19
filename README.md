@@ -431,7 +431,7 @@ systemd.user.sessionVariables = {
 };
 ```
 >[!Note]
->The home-manager solution requires systemd. If `echo $TESSDATA_PREFIX` returns a valid path but OCR still fails, check `ocr-path` in your config file.
+>The home-manager solution requires systemd. If `echo $TESSDATA_PREFIX` returns a valid path but OCR still fails, check `ocr-folders` and `ocr-language` in your config file.
 
 ### Still broken?
 

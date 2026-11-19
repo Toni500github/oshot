@@ -1,7 +1,6 @@
 #include "text_extraction.hpp"
 
 #include <algorithm>
-#include <cstdlib>
 #include <filesystem>
 #include <set>
 #include <sstream>
@@ -14,6 +13,7 @@
 #include "common.hpp"
 #include "config.hpp"
 #include "fmt/format.h"
+#include "fmt/ranges.h"
 #include "screen_capture.hpp"
 #include "utf8.h"
 #include "util/image.hpp"
@@ -102,14 +102,15 @@ static double cer(const std::u32string_view want, const std::u32string_view got)
 }
 
 // Load a model into test_ocr(), or skip the test if it isn't installed.
-// TESSDATA_PREFIX picks the models folder, else the one oshot defaults to
+// It's looked for where oshot looks, TESSDATA_PREFIX first
 static void use_model(const std::string& model)
 {
-    const char*        env  = std::getenv("TESSDATA_PREFIX");
-    const std::string& path = env && *env ? std::string(env) : g_config->File.ocr_path;
+    const std::vector<std::string> paths = g_config->GetOcrFolders();
 
-    if (!fs::exists(fs::path(path) / (model + ".traineddata")))
-        SKIP("No " << model << ".traineddata in '" << path << "' (set TESSDATA_PREFIX)");
+    const std::string& path = find_ocr_language_folder(paths, model);
+    if (path.empty())
+        SKIP("No " << model << ".traineddata in '" << fmt::format("{}", fmt::join(paths, "', '"))
+                   << "' (set TESSDATA_PREFIX)");
 
     const Result<>& res = test_ocr().Configure(path.c_str(), model.c_str());
     if (!res.ok())

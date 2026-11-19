@@ -111,9 +111,10 @@ public:
         // image-out-ext as written in the config, and parsed
         std::pair<std::string, ImageExt> image_out_type = { "png", ImageExt::PNG };
 
-        std::string              ocr_path        = get_default_ocr_path();
+        // ocr-folders: the folders whose OCR languages the text tools list
+        std::vector<std::string> ocr_folders     = { get_default_ocr_path() };
         std::string              ocr_get_repo    = "tesseract-ocr/tessdata";
-        std::string              ocr_model       = "eng";
+        std::string              ocr_language    = "eng";
         std::string              theme_file_path = "theme.toml";
         std::string              image_out_fmt   = "oshot_{:%F_%H-%M}";
         int                      delay           = 0;
@@ -208,6 +209,12 @@ public:
      * @param filename The config file path
      **/
     void LoadConfigFile(const std::string& filename);
+
+    /**
+     * Get the folders to look for OCR languages in: ocr-folders, each once, after the
+     * TESSDATA_PREFIX folder unless config-over-env is on
+     **/
+    [[nodiscard]] std::vector<std::string> GetOcrFolders() const;
 
     /**
      * Copy the OCR models shipped with the app into models_dir, skipping existing ones

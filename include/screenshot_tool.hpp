@@ -198,7 +198,6 @@ enum class OcrError : std::uint8_t
 {
     InvalidModel,
     InvalidPath,
-    NeedToScanDir,
     FailedToOCR,
     COUNT
 };
@@ -269,8 +268,8 @@ struct annotation_t
 // StartWindow() sets it with designated initializers, so keep the field order
 struct inputs_results_t
 {
-    std::string  ocr_path;
-    std::string  ocr_model;
+    std::string  ocr_path;  // the folder ocr_language is loaded from
+    std::string  ocr_language;
     std::string  ocr_download_repo;
     std::string  ocr_model_downloaded_path;  // where the OCR model downloader saves models
     float        ocr_seconds = 0.0f;         // how long the last OCR took
@@ -287,6 +286,14 @@ struct inputs_results_t
     // The OCR and barcode text from before the plugins' text transformers ran
     std::string ocr_original;
     std::string barcode_original;
+};
+
+// An OCR language in the Language combo
+struct ocr_language_t
+{
+    std::string code;    // e.g. "ita"
+    std::string folder;  // the one of m_ocr_folders it's in
+    std::string label;   // e.g. "Italian (ita)"
 };
 
 // A decoded code in the text tools' table
@@ -684,8 +691,8 @@ private:
     // Text buffers by ID, see GetImGuiIDTexts()
     std::unordered_map<std::string, std::string*> m_imgui_id_texts;
 
-    // The ocr_path RefreshOcrModels() last scanned
-    std::string m_last_scanned_ocr_path;
+    // The folders RefreshOcrModels() last scanned, from Config::GetOcrFolders()
+    std::vector<std::string> m_ocr_folders;
 
     // The last input or KeepDrawing(), see GetIdleTimeout()
     std::chrono::steady_clock::time_point m_last_activity;
@@ -709,7 +716,7 @@ private:
     ImGuiTextFilter                 m_code_filter;
     std::shared_ptr<ocr_download_t> m_ocr_download;
     std::future<size_t>             m_size_estimate;  // encoded size of the selection, for its label
-    std::vector<std::string>        m_ocr_models_list;
+    std::vector<ocr_language_t>     m_ocr_languages;
     ErrorContext<OcrError>          m_ocr_errors;
     ErrorContext<BarcodeError>      m_barcode_errors;
     ErrorContext<OcrDownloadError>  m_download_errors;

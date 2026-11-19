@@ -352,14 +352,20 @@ int run_without_overlay()
     std::vector<std::string> outputs;
     if (rt.extract_text)
     {
+        const std::string&             lang    = g_config->File.ocr_language;
+        const std::vector<std::string> folders = g_config->GetOcrFolders();
+        const std::string&             folder  = find_ocr_language_folder(folders, lang);
+        if (folder.empty())
+        {
+            spdlog::error("No OCR language folder has '{}', looked in: {}", lang, fmt::join(folders, ", "));
+            return EXIT_FAILURE;
+        }
+
         OcrAPI          ocr;
-        const Result<>& configured = ocr.Configure(g_config->File.ocr_path.c_str(), g_config->File.ocr_model.c_str());
+        const Result<>& configured = ocr.Configure(folder.c_str(), lang.c_str());
         if (!configured.ok())
         {
-            spdlog::error("Failed to load the OCR model '{}' from '{}': {}",
-                          g_config->File.ocr_model,
-                          g_config->File.ocr_path,
-                          configured.error_v());
+            spdlog::error("Failed to load the OCR language '{}' from '{}': {}", lang, folder, configured.error_v());
             return EXIT_FAILURE;
         }
 

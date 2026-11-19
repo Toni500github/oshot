@@ -35,7 +35,7 @@ Use the config file at \fIPATH\fR
 .TP
 .BR \-O ", " \-\-override " \fIOPTION\fR"
 Override a config option, for example
-\fB"delay=200"\fR, \fB"default.ocr-model='jpn'"\fR or
+\fB"delay=200"\fR, \fB"default.ocr-language='jpn'"\fR or
 \fB"fonts=['/path/to/font.ttf']"\fR.
 .TP
 .BR \-d ", " \-\-delay " \fIMILLIS\fR"
@@ -90,9 +90,8 @@ already in the tray, unless the \fBallow\-multiple\-trays\fR option is on.
 .SH ENVIRONMENT
 .TP
 .B TESSDATA_PREFIX
-Directory with the Tesseract \fI.traineddata\fR models.
-Takes precedence over the \fBocr\-path\fR config option, unless
-\fBconfig\-over\-env\fR is enabled.
+Directory with the Tesseract \fI.traineddata\fR models, looked in before the
+\fBocr\-folders\fR config option, unless \fBconfig\-over\-env\fR is enabled.
 .TP
 .B __GLX_VENDOR_LIBRARY_NAME
 The GLX vendor library for the overlay's OpenGL window on X11.

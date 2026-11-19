@@ -156,7 +156,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
     const bool is_downloading = m_ocr_download && m_ocr_download->running.load();
 
     ImGui::SetNextWindowSize(font_relative(40, 0), ImGuiCond_FirstUseEver);  // 0 = auto height
-    if (ImGui::Begin(_("Download OCR Model###ocr_download_window"), &open, ImGuiWindowFlags_NoSavedSettings))
+    if (ImGui::Begin(_("Download OCR Language###ocr_download_window"), &open, ImGuiWindowFlags_NoSavedSettings))
     {
         // Lock all inputs while a download is in flight
         if (is_downloading)
@@ -170,7 +170,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
 
         ImGui::Spacing();
 
-        ImGui::SeparatorText(_("Model"));
+        ImGui::SeparatorText(_("Language"));
         ImGui::TextDisabled("%s", _("Language code (e.g eng, fra, deu, chi_sim)"));
         ImGui::SetNextItemWidth(-1);
         if (ImGui::InputText("##ocr_model_to_download", &model_to_get))
@@ -346,8 +346,6 @@ void ScreenshotTool::DrawDownloadOCRWindow()
                     spdlog::debug("Downloaded the OCR model '{}'", model_to_get);
                     ectx.Clear(OcrDownloadError::FailedToDownload);
                     has_downloaded = true;
-                    // Rescan, so the new model is in the Model list
-                    m_last_scanned_ocr_path.clear();
                     RefreshOcrModels();
                 }
                 m_ocr_download.reset();
@@ -361,16 +359,19 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         {
             ImGui::TextColored(theme::color(AppCol::Success), "%s", _("Downloaded successfully!"));
 
-            // The Model list only shows the OCR path's models, often a system folder oshot can't write to
             std::error_code ec;
-            if (!fs::equivalent(m_inputs.ocr_path, m_inputs.ocr_model_downloaded_path, ec))
+            if (std::ranges::none_of(m_ocr_folders, [&](const std::string& p) {
+                    return fs::equivalent(p, m_inputs.ocr_model_downloaded_path, ec);
+                }))
             {
-                ImGui::TextWrapped("%s",
-                                   _("The OCR path is another folder, so the model isn't in the Model list yet."));
-                if (ImGui::Button(_("Use this folder")))
+                ImGui::TextWrapped(
+                    "%s", _("This folder isn't one of the language folders, so the language isn't listed yet."));
+                if (ImGui::Button(_("Add to the language folders")))
                 {
-                    m_inputs.ocr_path  = m_inputs.ocr_model_downloaded_path;
-                    m_inputs.ocr_model = model_to_get;
+                    g_config->File.ocr_folders.push_back(m_inputs.ocr_model_downloaded_path);
+                    g_config->GenerateConfig(g_config->GetConfigPath(), true);
+                    m_inputs.ocr_language = model_to_get;
+                    m_inputs.ocr_path     = m_inputs.ocr_model_downloaded_path;
                     RefreshOcrModels();
                     refit = true;
                 }
