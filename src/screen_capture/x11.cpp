@@ -126,9 +126,10 @@ Result<capture_result_t> capture_full_screen_x11()
         return capture_full_screen_portal();
     }
 
-    result.data = ximage_to_rgba(image, capture.w, capture.h);
-    result.w    = capture.w;
-    result.h    = capture.h;
+    result.data    = ximage_to_rgba(image, capture.w, capture.h);
+    result.w       = capture.w;
+    result.h       = capture.h;
+    result.backend = "XGetImage";
 
     XDestroyImage(image);
     XCloseDisplay(display);

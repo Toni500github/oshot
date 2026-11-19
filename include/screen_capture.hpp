@@ -56,6 +56,9 @@ struct capture_result_t
     // Every monitor (grim, the portal), to be cropped with crop_to_display()
     bool whole_desktop = false;
 
+    // The backend that took it, for the log
+    const char* backend = nullptr;
+
     [[nodiscard]] std::span<const uint8_t> view() const { return data; }
     std::span<uint8_t>                     view() { return data; }
 };

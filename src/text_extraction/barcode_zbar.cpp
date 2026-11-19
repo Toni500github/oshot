@@ -26,12 +26,15 @@
 #include <zbar.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "fmt/ranges.h"
 #include "screen_capture.hpp"
+#include "spdlog/spdlog.h"
 #include "text_extraction.hpp"
 #include "util/image.hpp"
 #include "util/result.hpp"
@@ -99,6 +102,7 @@ Result<barcode_result_t> BarcodeAPI::ExtractTextsCapture(const capture_result_t&
     if (cap.view().empty() || cap.w <= 0 || cap.h <= 0)
         return Err("Image is empty");
 
+    const auto           start = std::chrono::steady_clock::now();
     barcode_result_t     ret;
     std::vector<uint8_t> gray(size_t(cap.w) * cap.h);
 
@@ -133,5 +137,11 @@ Result<barcode_result_t> BarcodeAPI::ExtractTextsCapture(const capture_result_t&
     if (ret.datas.empty())
         return Err("No QR code or barcode found");
 
+    spdlog::debug(
+        "Barcode scan of {}x{} found {} in {} ms",
+        cap.w,
+        cap.h,
+        ret.symbologies,
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
     return Ok(std::move(ret));
 }

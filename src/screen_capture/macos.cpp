@@ -118,8 +118,9 @@ Result<capture_result_t> capture_full_screen_macos()
     if (!rgba)
         return Err("Failed to decode screenshot PNG: {}", STBI_ERROR);
 
-    result.w = w;
-    result.h = h;
+    result.w       = w;
+    result.h       = h;
+    result.backend = "screencapture";
     result.data.assign(rgba, rgba + size_t(w) * h * 4);
     stbi_image_free(rgba);
 

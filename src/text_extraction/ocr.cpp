@@ -33,6 +33,7 @@
 #include <array>
 #include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
@@ -165,6 +166,7 @@ Result<> OcrAPI::Configure(const char* data_path, const char* model, tesseract::
         m_initialized = false;
     }
 
+    spdlog::debug("Loading the OCR model '{}' from '{}'", model, data_path);
     if (!init_engine(*m_api, data_path, model, oem))
         return Err("Failed to Init OCR engine");
 
@@ -1044,6 +1046,7 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
         return Err(fmt::format(
             "Image buffer too small: got {} bytes, need {} ({}x{} × 4)", cap.view().size(), required, cap.w, cap.h));
 
+    const auto         start = std::chrono::steady_clock::now();
     std::vector<rgb_t> px(size_t(cap.w) * cap.h);
     for (size_t i = 0; i < px.size(); ++i)
         px[i] = opaque_rgb(cap.view().data() + (i * 4));
@@ -1059,7 +1062,8 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
         return first;
     ocr_result_t best = std::move(first.get());
 
-    if (unsure(best))
+    const bool busy = unsure(best);
+    if (busy)
     {
         // One engine per core, up to a few, each holding the model. Kept until End(), for the next OCR
         if (!m_pool)
@@ -1076,5 +1080,15 @@ Result<ocr_result_t> OcrAPI::ExtractTextCapture(const capture_result_t& cap)
     if (best.data.empty())
         return Err(fmt::format("No text recognized (PSM: {}, {}x{} px)", best.psm_str, cap.w, cap.h));
 
+    spdlog::debug(
+        "OCR of {}x{}: {} bytes, {} words, confidence {}, PSM {}, {} in {} ms",
+        cap.w,
+        cap.h,
+        best.data.size(),
+        best.words.size(),
+        best.confidence,
+        best.psm_str,
+        busy ? fmt::format("{} engines", m_pool->Size()) : "1 engine",
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
     return Ok(std::move(best));
 }

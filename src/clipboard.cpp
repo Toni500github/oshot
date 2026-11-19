@@ -39,6 +39,7 @@
 #include "config.hpp"
 #include "platform.hpp"
 #include "screen_capture.hpp"
+#include "spdlog/spdlog.h"
 #include "util/image.hpp"
 #include "util/paths.hpp"
 #include "util/result.hpp"
@@ -66,6 +67,7 @@ Result<int> start_linux_copy(SessionType session, const std::string& mime_type)
         return Err("{} not found in PATH, please install it to enable clipboard support", tool);
 
     signal(SIGPIPE, SIG_IGN);
+    spdlog::debug("Copying {} with {}", mime_type, tool);
 
     std::array<int, 2> copy_pipe;
     if (pipe(copy_pipe.data()) == -1)
@@ -90,7 +92,8 @@ Result<int> start_linux_copy(SessionType session, const std::string& mime_type)
             execvp(tool, const_cast<char* const*>(args.data()));
         }
 
-        exit(-1);
+        // Not exit(), which would run oshot's exit handlers in this copy of the process
+        _exit(127);
     }
 
     close(copy_pipe[0]);
@@ -113,6 +116,7 @@ Result<int> start_linux_copy(SessionType session, const std::string& mime_type)
 
 Result<> Clipboard::CopyText(const std::string& text)
 {
+    spdlog::debug("Copying {} bytes of text", text.size());
     if (m_session != SessionType::Windows && m_session != SessionType::MacOS)
     {
         const char*        mime = is_wayland_session(m_session) ? "text/plain;charset=utf-8" : "UTF8_STRING";
@@ -143,6 +147,7 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap, ImageExt ext)
 {
     if (cap.w <= 0 || cap.h <= 0)
         return Err("Image size is empty");
+    spdlog::debug("Copying a {}x{} image", cap.w, cap.h);
 
     if (m_session != SessionType::Windows && m_session != SessionType::MacOS)
     {

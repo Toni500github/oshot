@@ -239,7 +239,7 @@ Process::id_type Process::open(const std::function<void()> &function) noexcept {
 Process::id_type Process::open(const std::vector<string_type> &arguments, const string_type &path, const environment_type *environment) noexcept {
   return open([this, &arguments, &path, &environment] {
     if(arguments.empty())
-      exit(127);
+      _exit(127);
 
     std::vector<const char *> argv_ptrs;
 
@@ -258,7 +258,7 @@ Process::id_type Process::open(const std::vector<string_type> &arguments, const 
 
     if(!path.empty()) {
       if(chdir(path.c_str()) != 0)
-        exit(1);
+        _exit(1);
     }
 
     if(!environment)

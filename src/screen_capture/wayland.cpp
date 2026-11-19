@@ -124,6 +124,7 @@ Result<capture_result_t> capture_full_screen_wayland()
     result.w             = w;
     result.h             = h;
     result.whole_desktop = true;
+    result.backend       = "grim";
     result.data.assign(rgba, rgba + (size_t(w) * h * 4));
     stbi_image_free(rgba);
 
@@ -324,5 +325,6 @@ Result<capture_result_t> capture_full_screen_portal()
     unlink(st.png_path.c_str());
 
     st.cap.whole_desktop = true;
+    st.cap.backend       = "the xdg-desktop-portal";
     return Ok(std::move(st.cap));
 }

@@ -1197,6 +1197,10 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
     const Result<>& configure_res = m_ocr_api.Configure(m_inputs.ocr_path.c_str(), m_inputs.ocr_model.c_str());
     if (!configure_res.ok())
     {
+        spdlog::error("Failed to load the OCR model '{}' from '{}': {}",
+                      m_inputs.ocr_model,
+                      m_inputs.ocr_path,
+                      configure_res.error_v());
         ectx.Set(OcrError::FailedToOCR, configure_res.error_v());
 #ifndef DISABLE_PLUGINS
         NotifyPluginsOfOcr(nullptr);
@@ -1211,6 +1215,7 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
         // Don't leave the previous selection's text under the error, where Copy Text would still copy it
         m_inputs.ocr_results = {};
         m_inputs.ocr_original.clear();
+        spdlog::debug("OCR: {}", result.error_v());
         ectx.Set(OcrError::FailedToOCR, result.error_v());
 #ifndef DISABLE_PLUGINS
         NotifyPluginsOfOcr(nullptr);
@@ -1242,6 +1247,7 @@ void ScreenshotTool::RunBarcodeScan(const capture_result_t& img)
         m_selected_code = -1;
         m_inputs.barcode_text.clear();
         m_inputs.barcode_original.clear();
+        spdlog::debug("Barcode: {}", scan.error_v());
         ectx.Set(BarcodeError::FailedToScan, scan.error_v());
 #ifndef DISABLE_PLUGINS
         for (auto& [id, rt] : g_plugins)

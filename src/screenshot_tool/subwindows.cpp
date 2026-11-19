@@ -42,6 +42,7 @@
 #include "config.hpp"
 #include "fmt/chrono.h"
 #include "fmt/format.h"
+#include "fmt/ranges.h"
 #include "helpers.hpp"
 #include "i18n.hpp"
 #include "imgui/imgui.h"
@@ -232,6 +233,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
                                           fmt::format(
                                               "{}/{}.traineddata", m_inputs.ocr_model_downloaded_path, model_to_get) };
 
+            spdlog::debug("Running: {}", fmt::join(cmd, " "));
             m_ocr_download = std::make_shared<ocr_download_t>();
 
             std::thread([cmd = std::move(cmd), dl = m_ocr_download]() mutable {
@@ -331,6 +333,8 @@ void ScreenshotTool::DrawDownloadOCRWindow()
                         std::scoped_lock g(m_ocr_download->err_mutex);
                         err = std::move(m_ocr_download->err);
                     }
+                    spdlog::error(
+                        "curl exited with code {} downloading the OCR model '{}': {}", code, model_to_get, err);
                     ectx.Set(OcrDownloadError::FailedToDownload,
                              i18n::tr_fmt("Failed to download '{}' to '{}':\n{}",
                                           model_to_get,
@@ -339,6 +343,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
                 }
                 else
                 {
+                    spdlog::debug("Downloaded the OCR model '{}'", model_to_get);
                     ectx.Clear(OcrDownloadError::FailedToDownload);
                     has_downloaded = true;
                     // Rescan, so the new model is in the Model list

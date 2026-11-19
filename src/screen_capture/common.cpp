@@ -29,6 +29,7 @@
 #include <SDL3/SDL_video.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -42,6 +43,7 @@
 #include "backends.hpp"
 #include "platform.hpp"
 #include "screen_capture.hpp"
+#include "spdlog/spdlog.h"
 #include "util.hpp"
 #include "util/result.hpp"
 
@@ -63,19 +65,30 @@ std::string create_temp_png()
 
 Result<capture_result_t> capture_full_screen(SessionType session)
 {
+    const auto               start = std::chrono::steady_clock::now();
+    Result<capture_result_t> res   = Err("Unknown platform");
     switch (session)
     {
 #if OSHOT_FREEDESKTOP
-        case SessionType::X11:     return capture_full_screen_x11();
-        case SessionType::Wayland: return capture_full_screen_wayland();
-        case SessionType::KDE:     return capture_full_screen_kde();
+        case SessionType::X11:     res = capture_full_screen_x11(); break;
+        case SessionType::Wayland: res = capture_full_screen_wayland(); break;
+        case SessionType::KDE:     res = capture_full_screen_kde(); break;
 #elif OSHOT_WINDOWS
-        case SessionType::Windows: return capture_full_screen_windows();
+        case SessionType::Windows: res = capture_full_screen_windows(); break;
 #elif OSHOT_MACOS
-        case SessionType::MacOS: return capture_full_screen_macos();
+        case SessionType::MacOS: res = capture_full_screen_macos(); break;
 #endif
-        default: return Err("Unknown platform");
+        default: break;
     }
+
+    if (res.ok())
+        spdlog::debug(
+            "Captured {}x{} with {} in {} ms",
+            res.get().w,
+            res.get().h,
+            res.get().backend ? res.get().backend : "an unnamed backend",
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
+    return res;
 }
 
 bool is_wayland_session(const SessionType session)

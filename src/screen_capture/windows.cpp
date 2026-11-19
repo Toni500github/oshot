@@ -93,8 +93,9 @@ Result<capture_result_t> capture_full_screen_windows_fallback()
 
     debug("GDI fallback capture: monitor {}x{}+{}+{}", width, height, origin_x, origin_y);
 
-    result.w = width;
-    result.h = height;
+    result.w       = width;
+    result.h       = height;
+    result.backend = "GDI";
     result.data.resize(size_t(width) * height * 4);
 
     // Get Device Contexts
@@ -378,8 +379,9 @@ Result<capture_result_t> capture_full_screen_windows()
     const uint32_t width  = desc.Width;
     const uint32_t height = desc.Height;
 
-    result.w = int(width);
-    result.h = int(height);
+    result.w       = int(width);
+    result.h       = int(height);
+    result.backend = "DXGI";
     result.data.resize(size_t(width) * height * 4);
 
     if (desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM || desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)

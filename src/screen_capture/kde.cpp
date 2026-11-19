@@ -256,7 +256,9 @@ Result<capture_result_t> capture_full_screen_kwin()
         return Err("The KWin screenshot pipe ended after {} of {} bytes", got, raw.size());
 
     // A screen is opaque, so alpha is 255 in every format (and premultiplying changes nothing)
-    capture_result_t out{ .data = std::vector<uint8_t>(size_t(w) * h * 4), .w = int(w), .h = int(h) };
+    capture_result_t out{
+        .data = std::vector<uint8_t>(size_t(w) * h * 4), .w = int(w), .h = int(h), .backend = "KWin's ScreenShot2"
+    };
     for (guint32 y = 0; y < h; ++y)
     {
         const uint8_t* src = raw.data() + size_t(y) * stride;
@@ -315,8 +317,9 @@ Result<capture_result_t> capture_full_screen_spectacle()
     if (!rgba)
         return Err("Failed to read PNG: {}", STBI_ERROR);
 
-    result.w = w;
-    result.h = h;
+    result.w       = w;
+    result.h       = h;
+    result.backend = "spectacle";
     result.data.assign(rgba, rgba + size_t(w) * h * 4);
     stbi_image_free(rgba);
 
