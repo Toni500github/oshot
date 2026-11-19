@@ -409,7 +409,7 @@ constexpr bool is_big_endian = true;
 constexpr bool is_big_endian = false;
 #endif
 
-inline auto bswap64(uint64_t x) noexcept -> uint64_t {
+inline auto zmij_bswap64(uint64_t x) noexcept -> uint64_t {
 #if FMT_ZMIJ_HAS_BUILTIN(__builtin_bswap64) || FMT_ZMIJ_GNUC_BUILTINS
   return __builtin_bswap64(x);
 #elif FMT_ZMIJ_MSC_VER

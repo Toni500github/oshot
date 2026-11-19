@@ -118,7 +118,7 @@ FMT_ZMIJ_INLINE auto select(uint64_t condition, int64_t true_value,
 }
 
 using zmij::detail::bigint;
-using zmij::detail::bswap64;
+using zmij::detail::zmij_bswap64;
 using zmij::detail::clz;
 using zmij::detail::compute_dec_exp;
 using zmij::detail::compute_exp_shift;
@@ -596,7 +596,7 @@ inline auto count_trailing_nonzeros(uint64_t x) noexcept -> int {
   // high bit is unused we can avoid the zero check by shifting the
   // datum left by one and inserting a sentinel bit at the end. This can
   // be faster than the automatically inserted range check.
-  if (is_big_endian) x = bswap64(x);
+  if (is_big_endian) x = zmij_bswap64(x);
   // Use size_t for native arithmetic.
   return int((size_t(70) - size_t(clz((x << 1) | 1))) / 8);
 }
@@ -832,7 +832,7 @@ struct bcd_result {
     uint64_t a_b_c_d_e_f_g_h =
         ab_cd_ef_gh + neg10_u32 * (((ab_cd_ef_gh * div10_sig) >> div10_exp) &
                                    0xf000f000f000f);
-    uint64_t bcd = is_big_endian ? a_b_c_d_e_f_g_h : bswap64(a_b_c_d_e_f_g_h);
+    uint64_t bcd = is_big_endian ? a_b_c_d_e_f_g_h : zmij_bswap64(a_b_c_d_e_f_g_h);
     return {bcd, count_trailing_nonzeros(bcd)};
   }
 
@@ -854,7 +854,7 @@ struct bcd_result {
   uint64_t unshuffled_bcd = uint64_t(
       _mm_cvtsi128_si64(to_bcd_4x4(_mm_set_epi64x(0, int64_t(abcd_efgh)), *d)));
   int len = unshuffled_bcd ? 8 - ctz(unshuffled_bcd) / 8 : 0;
-  return {bswap64(unshuffled_bcd), len};
+  return {zmij_bswap64(unshuffled_bcd), len};
 #elif FMT_ZMIJ_USE_SSE
   // Evaluate the 4-digit limbs and arrange them such that we get a result which
   // is in the correct order.
@@ -959,7 +959,7 @@ FMT_ZMIJ_INLINE auto to_digits<32>(uint64_t value, const data& d) noexcept
   __m128i bcd_xmm = to_bcd_4x4(_mm_set_epi64x(0, int64_t(abcd_efgh)), d);
   uint64_t unshuffled_bcd = uint64_t(_mm_cvtsi128_si64(bcd_xmm));
   int len = unshuffled_bcd ? 8 - ctz(unshuffled_bcd) / 8 : 0;
-  return {bcd_xmm, bswap64(unshuffled_bcd) + zeros, len};
+  return {bcd_xmm, zmij_bswap64(unshuffled_bcd) + zeros, len};
 #elif FMT_ZMIJ_USE_NEON
   // Inline to_bcd8's NEON body so we can return the unshuffled vector too;
   // the exponential-notation path uses it to skip the simd->gpr->bswap->simd
@@ -972,7 +972,7 @@ FMT_ZMIJ_INLINE auto to_digits<32>(uint64_t value, const data& d) noexcept
   uint64_t unshuffled_bcd =
       vget_lane_u64(vreinterpret_u64_u8(vget_low_u8(unshuffled)), 0);
   int len = unshuffled_bcd ? 8 - ctz(unshuffled_bcd) / 8 : 0;
-  return {unshuffled, bswap64(unshuffled_bcd) + zeros, len};
+  return {unshuffled, zmij_bswap64(unshuffled_bcd) + zeros, len};
 #else
   (void)d;
   auto result = to_bcd8(value);
@@ -1439,7 +1439,7 @@ auto write(char* buffer, Float value) noexcept -> char* {
   if (exp_string_table::enable) {
     uint64_t exp_data = d->exp_strings.data[dec_exp + exp_string_table::offset];
     int len = int(exp_data >> 56);
-    if (is_big_endian) exp_data = bswap64(exp_data);
+    if (is_big_endian) exp_data = zmij_bswap64(exp_data);
     memcpy(buffer, &exp_data, traits::max_exponent10 >= 100 ? 8 : 4);
     return buffer + len;
   }
