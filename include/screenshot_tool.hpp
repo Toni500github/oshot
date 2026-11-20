@@ -45,7 +45,6 @@
 #include <string>
 #include <string_view>
 #include <thread>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -183,6 +182,24 @@ enum class CurrentAction : std::uint8_t
     IsDrawing,
     IsColorPicking,
     IsTextPlacing,
+    COUNT
+};
+
+// The overlay's on/off state, in ScreenshotTool::m_flags. Start() resets it for each capture
+enum class CaptureFlag : std::uint8_t
+{
+    ToolbarFits,          // all the toolbar buttons fit around the selection
+    AnnPopupPlaced,       // the annotation settings popup was placed with last frame's size
+    FocusTextInput,       // focus the text input on its next frame
+    WrapText,             // wrap the lines of the OCR and barcode text boxes
+    PopupOpen,            // a menu or popup was open at the end of the last frame, see RenderOverlay()
+    ItemActive,           // an item was active at the end of the last frame
+    Esc,                  // this frame's Esc, until a sub-window or RenderOverlay() uses it
+    FinalImageRequested,  // set by RequestFinalImage(), until OnCleanFrame()
+
+    // The text tools show the text from before the plugins' transformers
+    ShowOcrOriginal,
+    ShowBarcodeOriginal,
     COUNT
 };
 
@@ -399,7 +416,17 @@ struct GeneralContext
 
     void Clear(Enum e) { flags.reset(idx(e)); }
 
+    void Toggle(Enum e) { flags.flip(idx(e)); }
+
     [[nodiscard]] bool Has(Enum e) const { return flags.test(idx(e)); }
+
+    // Clears the flag, returning whether it was set
+    bool Take(Enum e)
+    {
+        const bool was = Has(e);
+        Clear(e);
+        return was;
+    }
 };
 
 // GeneralContext of errors, each with its message
@@ -434,10 +461,10 @@ public:
     ScreenshotTool(StateManager&& state) : m_plugin_manager(std::move(state), {}, /*is_cli=*/false) {}
     ~ScreenshotTool()
     {
-        if (m_install_thread.joinable())
-            m_install_thread.join();
-        if (m_index_thread.joinable())
-            m_index_thread.join();
+        if (m_install.thread.joinable())
+            m_install.thread.join();
+        if (m_index.thread.joinable())
+            m_index.thread.join();
     }
 #endif
 
@@ -479,19 +506,19 @@ public:
     // Returns false if it failed, then the overlay stays open so the user can try again
     void SetOnComplete(std::function<bool(SavingOp, const capture_result_t&, ImageExt)> cb)
     {
-        m_on_complete = std::move(cb);
+        m_backend.on_complete = std::move(cb);
     }
 
     // Reads a region (in screenshot pixels) of the frame the backend just rendered
-    void SetReadPixels(std::function<capture_result_t(const region_t&)> fn) { m_read_pixels = std::move(fn); }
+    void SetReadPixels(std::function<capture_result_t(const region_t&)> fn) { m_backend.read_pixels = std::move(fn); }
 
     // The overlay window, or nullptr once the backend destroys it
-    void SetWindow(SDL_Window* window) { m_window = window; }
+    void SetWindow(SDL_Window* window) { m_backend.window = window; }
 
     // The overlay window, nullptr without an overlay
-    [[nodiscard]] SDL_Window* GetWindow() const { return m_window; }
+    [[nodiscard]] SDL_Window* GetWindow() const { return m_backend.window; }
 
-    void SetOnCancel(const std::function<void()>& cb) { m_on_cancel = cb; }
+    void SetOnCancel(const std::function<void()>& cb) { m_backend.on_cancel = cb; }
 
     // ------------------------------
     // Frame read-back
@@ -503,7 +530,7 @@ public:
     // for OnCleanFrame() to read back. Such a frame isn't presented
     [[nodiscard]] bool WantsCleanFrame() const
     {
-        return IsCompleted() || m_pending_scan != ScanType::kNone || m_final_image_requested;
+        return IsCompleted() || m_pending_scan != ScanType::kNone || m_flags.Has(CaptureFlag::FinalImageRequested);
     }
 
     // Called by the backend once the frame WantsCleanFrame() asked for has been rendered. Reads
@@ -511,7 +538,7 @@ public:
     void OnCleanFrame();
 
     // Read back the active region with its annotations on the next frame, for request_final_image()
-    void RequestFinalImage() { m_final_image_requested = true; }
+    void RequestFinalImage() { m_flags.Set(CaptureFlag::FinalImageRequested); }
 
     // Whether RequestFinalImage() can work now (an image is shown and something is selected)
     [[nodiscard]] bool CanReadFinalImage() const;
@@ -527,16 +554,16 @@ public:
     [[nodiscard]] double GetIdleTimeout();
 
     // Draw continuously for a moment, e.g. after the window was shown again. UI thread only
-    void KeepDrawing() { m_last_activity = std::chrono::steady_clock::now(); }
+    void KeepDrawing() { m_idle.last_activity = std::chrono::steady_clock::now(); }
 
     // Draw the next frame without waiting for input. Any thread, see wake_overlay()
-    void RequestRedraw() { m_redraw_requested = true; }
+    void RequestRedraw() { m_idle.redraw_requested = true; }
 
     // ------------------------------
     // Getters
     // ------------------------------
     // Top-left corner of the screenshot on screen (it's drawn centered)
-    [[nodiscard]] ImVec2 GetImageOrigin() const { return m_image_origin; }
+    [[nodiscard]] ImVec2 GetImageOrigin() const { return m_image_rect.Min; }
 
     // Screenshot pixels per screen unit, above 1 on a scaled (HiDPI) output
     [[nodiscard]] float GetImageScale() const { return m_image_scale; }
@@ -547,8 +574,10 @@ public:
     // The selection in screenshot pixels, or the whole screenshot without one
     [[nodiscard]] region_t GetActiveRegion() const;
 
-    // Text buffers plugins read and write by ID (OSHOT_TEXT_OCR, OSHOT_TEXT_BARCODE)
-    auto& GetImGuiIDTexts() { return m_imgui_id_texts; }
+#ifndef DISABLE_PLUGINS
+    // The text buffer plugins read and write by ID (OSHOT_TEXT_OCR, OSHOT_TEXT_BARCODE), nullptr for another ID
+    [[nodiscard]] std::string* GetTextBuffer(std::string_view id);
+#endif
 
     [[nodiscard]] bool IsActive() const { return m_state != ToolState::Idle; }
     [[nodiscard]] bool IsCompleted() const { return m_completed_op != SavingOp::kNone; }
@@ -613,6 +642,11 @@ private:
         selection_rect_t drag_start_selection;
         ImVec2           drag_start_mouse;
 
+        // Main selection only: the selection and state from before the drag, which Esc puts back.
+        // drag_start_selection moves when a handle crosses the opposite edge
+        selection_rect_t before_drag;
+        ToolState        state_before_drag = ToolState::Selecting;
+
         selection_info_t(const bool b, const InputOwner o, const ToolState r, const ToolState i)
             : is_ann(b), main_input_owner(o), resizing_state(r), idle_state(i)
         {}
@@ -622,12 +656,15 @@ private:
     // Screenshot
     // ------------------------------
     // Where the screenshot is drawn (centered), in screen units. See UpdateWindowBg()
-    ImVec2 m_image_origin;
-    ImVec2 m_image_end;
+    ImRect m_image_rect;
 
-    // The whole-desktop capture while CropAndUseDisplay() may still pick another display
-    capture_result_t m_desktop;
-    SDL_DisplayID    m_desktop_crop = 0;
+    // The whole-desktop capture while CropAndUseDisplay() may still pick another display, and the display it's
+    // cropped to now
+    struct
+    {
+        capture_result_t image;
+        SDL_DisplayID    crop = 0;
+    } m_desktop;
 
     capture_result_t m_screenshot;
     ImTextureRef     m_texture_id;
@@ -639,6 +676,7 @@ private:
     ToolState                     m_state       = ToolState::Idle;
     InputOwner                    m_input_owner = InputOwner::kNone;
     GeneralContext<CurrentAction> m_current_actions;
+    GeneralContext<CaptureFlag>   m_flags;
 
     selection_info_t m_main_sel{ false, InputOwner::Selection, ToolState::Resizing, ToolState::Selected };
     selection_info_t m_anno_sel{ true, InputOwner::AnnSelection, ToolState::Selected, ToolState::Selected };
@@ -653,14 +691,13 @@ private:
     // The selected annotation as it was when the drag started, which every frame of the drag starts from
     annotation_t m_ann_drag_start;
 
-    // The main selection and state from before its drag, which Esc puts back. drag_start_selection moves when a
-    // handle crosses the opposite edge
-    selection_rect_t m_sel_before_drag;
-    ToolState        m_state_before_drag = ToolState::Selecting;
-
-    // The annotation a (double-)click would focus, outlined while hovered, and what to tell about it
-    std::optional<size_t> m_hovered_annotation;
-    const char*           m_hover_hint = nullptr;
+    // The annotation a (double-)click would focus, in m_annotations, outlined while hovered, and what to tell about it
+    struct hover_t
+    {
+        size_t      annotation;
+        const char* hint;
+    };
+    std::optional<hover_t> m_hover;
 
     // A row (or column) of toolbar buttons outside a border of the selection, centered on it. Ring 0 is next to
     // the selection, each further ring one button further out
@@ -674,13 +711,8 @@ private:
     // From UpdateAnnsToolbarPos(), in the order the buttons go
     std::vector<toolbar_row_t> m_toolbar_rows;
 
-    // All the toolbar buttons fit around the selection
-    bool m_fill_tools_complete{};
-
-    // The open annotation settings popup's size last frame, to place it before Begin(), and whether that was the
-    // size it had been placed with
+    // The open annotation settings popup's size last frame, to place it before Begin()
     ImVec2 m_ann_popup_size{};
-    bool   m_ann_popup_placed = false;
 
     std::vector<annotation_t>                      m_annotations;
     annotation_t                                   m_current_annotation;
@@ -692,9 +724,6 @@ private:
     // While IsTextPlacing: the m_annotations index of the text being edited, which isn't drawn meanwhile
     std::optional<size_t> m_edited_text;
 
-    // Focus the text input on its next frame
-    bool m_focus_text_input = false;
-
     // A new ID for each text typed or edited, or ImGui would put the last one's text into the next
     unsigned m_text_input_id = 0;
 
@@ -704,32 +733,22 @@ private:
     // Set by RequestScan(), until OnCleanFrame()
     ScanType m_pending_scan = ScanType::kNone;
 
-    // Text buffers by ID, see GetImGuiIDTexts()
-    std::unordered_map<std::string, std::string*> m_imgui_id_texts;
-
     // The folders RefreshOcrModels() last scanned, from Config::GetOcrFolders()
     std::vector<std::string> m_ocr_folders;
-
-    // The last input or KeepDrawing(), see GetIdleTimeout()
-    std::chrono::steady_clock::time_point m_last_activity;
-    ImU32                                 m_last_input_event_id = 0;
-    std::atomic<bool>                     m_redraw_requested    = false;
 
     OcrAPI           m_ocr_api;
     BarcodeAPI       m_barcode_api;
     inputs_results_t m_inputs;
-    int              m_selected_code = -1;    // the code whose whole text the table shows, or -1
-    bool             m_wrap_text     = true;  // wrap the lines of the OCR and barcode text boxes
 
-    // The text tools show the text from before the plugins' transformers
-    bool m_show_ocr_original     = false;
-    bool m_show_barcode_original = false;
+    // The decoded codes the table shows, each once, built by RunBarcodeScan()
+    struct
+    {
+        std::vector<code_row_t> rows;
+        float                   rows_width = 0.0f;  // the Data column's width, which the rows are wrapped to
+        ImGuiTextFilter         filter;
+        int                     selected = -1;  // the row whose whole text the table shows, or -1
+    } m_code_table;
 
-    // The decoded codes the table shows, each once, built by RunBarcodeScan(). Their lines are wrapped
-    // to m_code_rows_width, the Data column's width
-    std::vector<code_row_t>         m_code_rows;
-    float                           m_code_rows_width = 0.0f;
-    ImGuiTextFilter                 m_code_filter;
     std::shared_ptr<ocr_download_t> m_ocr_download;
     std::future<size_t>             m_size_estimate;  // encoded size of the selection, for its label
     std::vector<ocr_language_t>     m_ocr_languages;
@@ -744,15 +763,16 @@ private:
     GeneralContext<SubWindow>      m_show_window;
     std::map<std::string, ImFont*> m_font_cache;
 
-    // A menu or popup was open, or an item active, at the end of the last frame, see RenderOverlay()
-    bool m_popup_open  = false;
-    bool m_item_active = false;
-
-    // This frame's Esc, until a sub-window or RenderOverlay() uses it
-    bool m_esc = false;
-
     // The last Esc that didn't quit
     double m_last_esc_time = -1.0;
+
+    // What GetIdleTimeout() decides from: the last input or KeepDrawing(), and RequestRedraw()
+    struct
+    {
+        std::chrono::steady_clock::time_point last_activity;
+        ImU32                                 last_input_event_id = 0;
+        std::atomic<bool>                     redraw_requested    = false;
+    } m_idle;
 
     // ------------------------------
     // Completion and backend callbacks
@@ -760,13 +780,14 @@ private:
     // Set by RequestComplete(), until OnCleanFrame()
     SavingOp m_completed_op = SavingOp::kNone;
 
-    // Set by RequestFinalImage(), until OnCleanFrame()
-    bool m_final_image_requested = false;
-
-    std::function<void()>                                            m_on_cancel;
-    std::function<bool(SavingOp, const capture_result_t&, ImageExt)> m_on_complete;
-    std::function<capture_result_t(const region_t&)>                 m_read_pixels;
-    SDL_Window*                                                      m_window = nullptr;
+    // From the Set* functions
+    struct
+    {
+        std::function<void()>                                            on_cancel;
+        std::function<bool(SavingOp, const capture_result_t&, ImageExt)> on_complete;
+        std::function<capture_result_t(const region_t&)>                 read_pixels;
+        SDL_Window*                                                      window = nullptr;
+    } m_backend;
 
 #ifndef DISABLE_PLUGINS
     // ------------------------------
@@ -774,25 +795,28 @@ private:
     // ------------------------------
     PluginManager m_plugin_manager;
 
-    // The install window's source field
-    std::string m_install_source;
+    // The last plugin task (StartPluginTask()) and the install windows
+    struct
+    {
+        std::string                             source;  // the install window's source field
+        std::shared_ptr<plugin_install_state_t> state;   // shared with `thread`
+        std::vector<install_node_t>             events;  // the status window's tree, built from state's events
+        std::thread                             thread;
+    } m_install;
 
-    // The running plugin task (StartPluginTask()), shared with m_install_thread
-    std::shared_ptr<plugin_install_state_t> m_install_state;
-
-    // The status window's tree, built from m_install_state's events
-    std::vector<install_node_t> m_install_events;
+    // The plugin index for the Browse plugins window
+    struct
+    {
+        std::shared_ptr<plugin_index_state_t> state = std::make_shared<plugin_index_state_t>();
+        std::thread                           thread;
+        ImGuiTextFilter                       filter;
+    } m_index;
 
     // The selection plugins were last told about, see NotifyPluginsOfSelection()
     region_t m_plugin_selection;
 
     // The textures of the plugins' toolbar icons, by plugin ID and action ID. Deleted by Cancel()
     std::map<std::pair<std::string, int32_t>, ImTextureRef> m_plugin_icons;
-
-    std::shared_ptr<plugin_index_state_t> m_index_state = std::make_shared<plugin_index_state_t>();
-    std::thread                           m_install_thread;
-    std::thread                           m_index_thread;
-    ImGuiTextFilter                       m_index_filter;
 #endif
 
     // ------------------------------
@@ -816,7 +840,7 @@ private:
     // ------------------------------
     // State updates
     // ------------------------------
-    // Centers the screenshot in the viewport by setting m_image_origin, m_image_end and m_image_scale
+    // Centers the screenshot in the viewport by setting m_image_rect and m_image_scale
     void UpdateWindowBg();
 
     // Spreads the toolbar buttons over the selection's borders
@@ -897,7 +921,7 @@ private:
     // from before the transformers) isn't empty, and Copy copies the text shown
     void DrawOutputButtons(const std::string& text,
                            const std::string& original,
-                           bool&              show_original,
+                           CaptureFlag        show_original,
                            const char*        copy_label,
                            bool               show_wrap);
 
@@ -930,7 +954,7 @@ private:
     // ------------------------------
     // Plugins
     // ------------------------------
-    // Downloads the plugin index into m_index_state, on m_index_thread
+    // Downloads the plugin index into m_index.state, on m_index.thread
     void FetchIndexAsync();
 
     // Runs a PluginManager operation (install, update, uninstall) on a worker

@@ -460,10 +460,10 @@ void ScreenshotTool::DrawDarkOverlay()
     const ImU32  dark_color = theme::color(AppCol::SelectionDim).to_abgr();
 
     // Above, below, left and right of the selection
-    draw_list->AddRectFilled(m_image_origin, ImVec2(m_image_end.x, r.Min.y), dark_color);
-    draw_list->AddRectFilled(ImVec2(m_image_origin.x, r.Max.y), m_image_end, dark_color);
-    draw_list->AddRectFilled(ImVec2(m_image_origin.x, r.Min.y), r.GetBL(), dark_color);
-    draw_list->AddRectFilled(r.GetTR(), ImVec2(m_image_end.x, r.Max.y), dark_color);
+    draw_list->AddRectFilled(m_image_rect.Min, ImVec2(m_image_rect.Max.x, r.Min.y), dark_color);
+    draw_list->AddRectFilled(ImVec2(m_image_rect.Min.x, r.Max.y), m_image_rect.Max, dark_color);
+    draw_list->AddRectFilled(ImVec2(m_image_rect.Min.x, r.Min.y), r.GetBL(), dark_color);
+    draw_list->AddRectFilled(r.GetTR(), ImVec2(m_image_rect.Max.x, r.Max.y), dark_color);
 }
 
 void ScreenshotTool::DrawAnnotations()
@@ -626,20 +626,20 @@ void ScreenshotTool::DrawAnnotationResizeBorder()
 {
     ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
 
-    if (m_hovered_annotation && *m_hovered_annotation < m_annotations.size())
+    if (m_hover && m_hover->annotation < m_annotations.size())
     {
-        const ImRect box = GetAnnotationHandleBox(m_annotations[*m_hovered_annotation]);
-        if (&m_annotations[*m_hovered_annotation] != m_current_annotation_resize)
+        const ImRect box = GetAnnotationHandleBox(m_annotations[m_hover->annotation]);
+        if (&m_annotations[m_hover->annotation] != m_current_annotation_resize)
         {
             rgba_t color = theme::color(AppCol::SelectionBorder);
             color.a /= 2;
             draw_list->AddRect(box.Min, box.Max, color.to_abgr(), 0.0f, 1.0f, ImDrawFlags_None);
         }
 
-        if (m_hover_hint)
+        if (const char* hint = m_hover->hint)
         {
             const ImVec2 pad(6.0f, 3.0f);
-            const ImVec2 text_size = ImGui::CalcTextSize(m_hover_hint);
+            const ImVec2 text_size = ImGui::CalcTextSize(hint);
             const ImVec2 display   = ImGui::GetIO().DisplaySize;
             ImVec2       pos(box.Min.x, box.Max.y + 4.0f);
             if (pos.y + text_size.y + pad.y * 2.0f > display.y)
@@ -649,7 +649,7 @@ void ScreenshotTool::DrawAnnotationResizeBorder()
             const ImVec2 end(pos.x + text_size.x + pad.x * 2.0f, pos.y + text_size.y + pad.y * 2.0f);
             draw_list->AddRectFilled(pos, end, theme::color(AppCol::SizeLabelBg).to_abgr(), 4.0f);
             draw_list->AddRect(pos, end, theme::color(AppCol::SizeLabelBorder).to_abgr(), 4.0f);
-            draw_list->AddText(pos + pad, theme::color(AppCol::SizeLabelText).to_abgr(), m_hover_hint);
+            draw_list->AddText(pos + pad, theme::color(AppCol::SizeLabelText).to_abgr(), hint);
         }
     }
 
@@ -669,7 +669,7 @@ void ScreenshotTool::DrawAnnotationSettingsPopup(const ToolType tool, const Sele
     if (ImGui::IsPopupOpen("##ann_settings"))
     {
         const ImVec2 btn     = GetToolButtonSize();
-        const bool   rings   = m_fill_tools_complete && !g_config->File.old_toolbar_pos;
+        const bool   rings   = m_flags.Has(CaptureFlag::ToolbarFits) && !g_config->File.old_toolbar_pos;
         const ImVec2 out     = GetToolbarRingOffset(rings ? m_toolbar_rows.back().ring : 0);
         const ImVec2 display = ImGui::GetIO().DisplaySize;
 
@@ -680,7 +680,7 @@ void ScreenshotTool::DrawAnnotationSettingsPopup(const ToolType tool, const Sele
 
         // Off screen while its size isn't known yet, or it would show in the wrong place for a frame
         ImVec2 pos(-display.x - m_ann_popup_size.x, -display.y - m_ann_popup_size.y);
-        if (m_ann_popup_placed)
+        if (m_flags.Has(CaptureFlag::AnnPopupPlaced))
             pos = toolbar_popup_pos(
                 ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()), avoid, side, m_ann_popup_size);
         else
@@ -696,8 +696,8 @@ void ScreenshotTool::DrawAnnotationSettingsPopup(const ToolType tool, const Sele
         return;
 
     const ImVec2 popup_size = ImGui::GetWindowSize();
-    m_ann_popup_placed      = popup_size.x == m_ann_popup_size.x && popup_size.y == m_ann_popup_size.y;
-    m_ann_popup_size        = popup_size;
+    m_flags.Set(CaptureFlag::AnnPopupPlaced, popup_size.x == m_ann_popup_size.x && popup_size.y == m_ann_popup_size.y);
+    m_ann_popup_size = popup_size;
 
     float&     thickness = m_tool_thickness[idx(tool)];
     const bool is_text   = tool == ToolType::Text;
@@ -829,13 +829,13 @@ void ScreenshotTool::DrawAnnotationToolbar()
     auto has_text_tools_button = [](const toolbar_row_t& row) {
         return std::ranges::find(row.tools, ToolType::ToggleTextTools) != row.tools.end();
     };
-    if (m_fill_tools_complete &&
+    if (m_flags.Has(CaptureFlag::ToolbarFits) &&
         std::ranges::any_of(m_toolbar_rows, has_text_tools_button) == m_show_window.Has(SubWindow::MainTextTools))
         UpdateAnnsToolbarPos();
 
     const size_t n_plugins = CountPluginToolbarButtons();
 
-    if (m_fill_tools_complete && !g_config->File.old_toolbar_pos)
+    if (m_flags.Has(CaptureFlag::ToolbarFits) && !g_config->File.old_toolbar_pos)
     {
         for (size_t i = 0; i < m_toolbar_rows.size(); ++i)
         {
@@ -976,12 +976,12 @@ void ScreenshotTool::DrawMenuItems()
 
 void ScreenshotTool::DrawOutputButtons(const std::string& text,
                                        const std::string& original,
-                                       bool&              show_original,
+                                       const CaptureFlag  show_original,
                                        const char*        copy_label,
                                        const bool         show_wrap)
 {
     if (original.empty())
-        show_original = false;
+        m_flags.Clear(show_original);
 
     const float spacing    = ImGui::GetStyle().ItemSpacing.x;
     const char* wrap_label = _("Wrap");
@@ -995,22 +995,22 @@ void ScreenshotTool::DrawOutputButtons(const std::string& text,
         width += ui::ButtonWidth({ orig_label }) + spacing;
     ui::AlignRight(width);
 
-    auto toggle = [](const char* label, bool& on, const char* tooltip) {
-        push_secondary_button_colors(on);
+    auto toggle = [this](const char* label, const CaptureFlag flag, const char* tooltip) {
+        push_secondary_button_colors(m_flags.Has(flag));
         if (ImGui::Button(label))
-            on = !on;
+            m_flags.Toggle(flag);
         ImGui::PopStyleColor(4);
         ImGui::SetItemTooltip("%s", tooltip);
         ImGui::SameLine();
     };
     if (show_wrap)
-        toggle(wrap_label, m_wrap_text, _("Wrap the lines that are wider than the text box"));
+        toggle(wrap_label, CaptureFlag::WrapText, _("Wrap the lines that are wider than the text box"));
     if (!original.empty())
         toggle(orig_label,
                show_original,
                _("Show the text as it was read, before the plugins' text transformers changed it"));
 
-    const std::string& shown = show_original ? original : text;
+    const std::string& shown = m_flags.Has(show_original) ? original : text;
     ImGui::BeginDisabled(shown.empty());
     push_secondary_button_colors();
     CreateCopyTextButton(shown, copy_label, ImVec2(copy_w, 0.0f), false);
@@ -1192,12 +1192,12 @@ void ScreenshotTool::DrawOcrTools()
         RequestScan(ScanType::Ocr);
     ImGui::EndDisabled();
 
-    DrawOutputButtons(m_inputs.ocr_results.data, m_inputs.ocr_original, m_show_ocr_original, _("Copy"), true);
+    DrawOutputButtons(m_inputs.ocr_results.data, m_inputs.ocr_original, CaptureFlag::ShowOcrOriginal, _("Copy"), true);
     ShowIfError(ectx, OcrError::FailedToOCR);
 
     const ocr_result_t& res      = m_inputs.ocr_results;
     const bool          scanned  = res.confidence >= 0;
-    const bool          original = m_show_ocr_original;
+    const bool          original = m_flags.Has(CaptureFlag::ShowOcrOriginal);
     std::string&        text     = original ? m_inputs.ocr_original : m_inputs.ocr_results.data;
 
     std::string stats;
@@ -1229,7 +1229,7 @@ void ScreenshotTool::DrawOcrTools()
     draw_output_text(original ? "##ocr_original" : "##" OSHOT_TEXT_OCR,
                      text,
                      !original && g_config->File.allow_out_edit,
-                     m_wrap_text,
+                     m_flags.Has(CaptureFlag::WrapText),
                      scanned ? _("No text found. Try another model or layout")
                              : _("Select an area and press Extract Text to read its text"),
                      height);
@@ -1258,37 +1258,38 @@ void ScreenshotTool::DrawBarcodeTable(float height)
     const ImGuiStyle&             style = ImGui::GetStyle();
     const std::vector<barcode_t>& codes = m_inputs.barcode_scan_result.codes;
 
-    if (m_code_rows.empty())
+    if (m_code_table.rows.empty())
     {
-        m_selected_code = -1;
+        m_code_table.selected = -1;
         draw_output_hint(m_inputs.barcode_scanned
                              ? _("No QR codes or barcodes found")
                              : _("Select an area and press Decode to read its QR codes and barcodes"),
                          ImVec2(ImGui::GetContentRegionAvail().x, height));
         return;
     }
-    if (std::cmp_greater_equal(m_selected_code, m_code_rows.size()))
-        m_selected_code = -1;
+    if (std::cmp_greater_equal(m_code_table.selected, m_code_table.rows.size()))
+        m_code_table.selected = -1;
 
     // --- Filter, once the list gets long ---
-    const bool filtering = m_code_rows.size() > 10;
+    const bool filtering = m_code_table.rows.size() > 10;
     if (filtering)
     {
-        ui::SearchBox(m_code_filter, "##code_filter", _("Filter the codes by their text or type"));
+        ui::SearchBox(m_code_table.filter, "##code_filter", _("Filter the codes by their text or type"));
         height -= ImGui::GetFrameHeightWithSpacing();
     }
 
     std::vector<size_t> shown;
-    for (size_t i = 0; i < m_code_rows.size(); ++i)
+    for (size_t i = 0; i < m_code_table.rows.size(); ++i)
     {
-        const barcode_t& code = codes[m_code_rows[i].code];
-        if (!filtering || ui::PassFilter(m_code_filter, { code.data, code.type }))
+        const barcode_t& code = codes[m_code_table.rows[i].code];
+        if (!filtering || ui::PassFilter(m_code_table.filter, { code.data, code.type }))
             shown.push_back(i);
     }
 
     // The clicked code's whole text goes under the table, up to 6 lines before it scrolls
-    const barcode_t* selected = m_selected_code >= 0 ? &codes[m_code_rows[size_t(m_selected_code)].code] : nullptr;
-    float            full_h   = 0.0f;
+    const barcode_t* selected =
+        m_code_table.selected >= 0 ? &codes[m_code_table.rows[size_t(m_code_table.selected)].code] : nullptr;
+    float full_h = 0.0f;
     if (selected)
     {
         const float wrap = ImGui::GetContentRegionAvail().x - style.FramePadding.x * 2.0f - style.ScrollbarSize;
@@ -1311,14 +1312,14 @@ void ScreenshotTool::DrawBarcodeTable(float height)
 
         // Each row's data, wrapped to the Data column and cut to 3 lines, again only when the column's width changes
         auto wrap_rows = [&](const float width) {
-            if (width == m_code_rows_width)
+            if (width == m_code_table.rows_width)
                 return;
-            m_code_rows_width = width;
+            m_code_table.rows_width = width;
 
             ImFont*     font       = ImGui::GetFont();
             const float font_size  = ImGui::GetFontSize();
             const float ellipsis_w = ImGui::CalcTextSize("…").x;
-            for (code_row_t& row : m_code_rows)
+            for (code_row_t& row : m_code_table.rows)
             {
                 const std::string& data = codes[row.code].data;
                 const char*        p    = data.data();
@@ -1360,10 +1361,10 @@ void ScreenshotTool::DrawBarcodeTable(float height)
         };
 
         // Before the table exists (the first frame) the Data column's width is estimated from the other columns
-        if (m_code_rows_width <= 0.0f)
+        if (m_code_table.rows_width <= 0.0f)
         {
             float type_w = 0.0f;
-            for (const code_row_t& row : m_code_rows)
+            for (const code_row_t& row : m_code_table.rows)
                 type_w = std::max(type_w, ui::TagWidth(codes[row.code].type.c_str()));
             wrap_rows(std::max(
                 ImGui::GetContentRegionAvail().x - type_w - copy_w - style.CellPadding.x * 6.0f - style.ScrollbarSize,
@@ -1387,7 +1388,7 @@ void ScreenshotTool::DrawBarcodeTable(float height)
 
             for (const size_t i : shown)
             {
-                const code_row_t& row   = m_code_rows[i];
+                const code_row_t& row   = m_code_table.rows[i];
                 const barcode_t&  code  = codes[row.code];
                 const float       row_h = std::max(ImGui::GetFrameHeight(), text_box_height(float(row.lines)));
 
@@ -1403,7 +1404,7 @@ void ScreenshotTool::DrawBarcodeTable(float height)
                 // The whole row can be clicked, under its tag, text and button. The selected one is tinted with
                 // the accent, so it stands out from the row colors
                 const ImVec2 cell        = ImGui::GetCursorPos();
-                const bool   is_selected = std::cmp_equal(m_selected_code, i);
+                const bool   is_selected = std::cmp_equal(m_code_table.selected, i);
                 ImVec4       accent      = ImGui::GetStyleColorVec4(ImGuiCol_Button);
                 accent.w *= 0.35f;
                 ImGui::PushStyleColor(ImGuiCol_Header, accent);
@@ -1411,7 +1412,7 @@ void ScreenshotTool::DrawBarcodeTable(float height)
                                       is_selected,
                                       ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap,
                                       ImVec2(0.0f, row_h)))
-                    m_selected_code = is_selected ? -1 : int(i);
+                    m_code_table.selected = is_selected ? -1 : int(i);
                 ImGui::PopStyleColor();
                 if (ImGui::BeginItemTooltip())
                 {
@@ -1473,7 +1474,7 @@ void ScreenshotTool::DrawBarDecodeTools()
         g_config->File.allow_out_edit || (!m_inputs.barcode_text.empty() && m_inputs.barcode_text != payloads);
 
     DrawOutputButtons(
-        m_inputs.barcode_text, m_inputs.barcode_original, m_show_barcode_original, _("Copy all"), show_text);
+        m_inputs.barcode_text, m_inputs.barcode_original, CaptureFlag::ShowBarcodeOriginal, _("Copy all"), show_text);
     ShowIfError(m_barcode_errors, BarcodeError::FailedToScan);
 
     std::string stats;
@@ -1501,11 +1502,11 @@ void ScreenshotTool::DrawBarDecodeTools()
 
     if (show_text)
     {
-        const bool original = m_show_barcode_original;
+        const bool original = m_flags.Has(CaptureFlag::ShowBarcodeOriginal);
         draw_output_text(original ? "##barcode_original" : "##" OSHOT_TEXT_BARCODE,
                          original ? m_inputs.barcode_original : m_inputs.barcode_text,
                          !original && g_config->File.allow_out_edit,
-                         m_wrap_text,
+                         m_flags.Has(CaptureFlag::WrapText),
                          "",
                          text_h);
     }

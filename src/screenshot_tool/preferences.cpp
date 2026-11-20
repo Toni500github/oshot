@@ -38,6 +38,7 @@
 #include <span>
 #include <system_error>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -1622,7 +1623,7 @@ void ScreenshotTool::DrawPreferencesWindow()
 #ifndef DISABLE_PLUGINS
     static std::vector<std::pair<std::string, bool>> transformers;  // the chain as Preferences shows it until saved
     // state.toml can't be written while a plugin task uses it on its worker thread
-    const bool plugin_busy = m_install_state && m_install_state->running;
+    const bool plugin_busy = m_install.state && m_install.state->running;
 #endif
 
     if (!m_show_window.Has(SubWindow::Preferences))
@@ -1733,7 +1734,7 @@ void ScreenshotTool::DrawPreferencesWindow()
         return false;
     };
 
-    ui::Window win(m_show_window, m_esc, SubWindow::Preferences, _("Preferences###preferences_window"), { 40, 34 });
+    ui::Window win(m_show_window, m_flags, SubWindow::Preferences, _("Preferences###preferences_window"), { 40, 34 });
     if (win)
     {
         // [x] or Esc closes it, or asks first if there are unsaved changes.

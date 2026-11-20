@@ -88,10 +88,10 @@ Result<> ScreenshotTool::Start()
     m_current_actions           = {};
     m_pending_scan              = ScanType::kNone;
     m_completed_op              = SavingOp::kNone;
-    m_final_image_requested     = false;
-    m_popup_open                = false;
-    m_item_active               = false;
     m_last_esc_time             = -1.0;
+    m_flags                     = {};
+    m_flags.Set(CaptureFlag::WrapText);
+    m_hover.reset();
     m_annotations.clear();
 
     if (!g_config->Runtime.source_file.empty())
@@ -152,14 +152,10 @@ Result<> ScreenshotTool::StartWindow()
                  .ocr_original              = "",
                  .barcode_original          = "" };
 
-    m_selected_code = -1;
     m_current_color = (rgba_t(g_cache->GetValue(CacheEntry::AnnColor, Colors::RED.to_rgba())));
     m_state         = ToolState::Selecting;
-    m_imgui_id_texts.insert_or_assign(OSHOT_TEXT_OCR, &m_inputs.ocr_results.data);
-    m_imgui_id_texts.insert_or_assign(OSHOT_TEXT_BARCODE, &m_inputs.barcode_text);
     m_show_window.Set(SubWindow::MainTextTools, g_config->File.show_text_tools);
-    m_code_rows.clear();
-    m_code_filter.Clear();
+    m_code_table = {};
 
     SyncRuntimeFromConfig();
 
@@ -215,8 +211,10 @@ void ScreenshotTool::RenderOverlay()
 
     // One Esc does one thing. ImGui's NewFrame() already used it to close a menu or popup or to leave the active item,
     // e.g. a text field, and the text being typed and the color picker handle their own
-    m_esc = ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !m_popup_open && !m_item_active &&
-            !m_current_actions.HasAny(CurrentAction::IsTextPlacing, CurrentAction::IsColorPicking);
+    m_flags.Set(CaptureFlag::Esc,
+                ImGui::IsKeyPressed(ImGuiKey_Escape, false) &&
+                    !m_flags.HasAny(CaptureFlag::PopupOpen, CaptureFlag::ItemActive) &&
+                    !m_current_actions.HasAny(CurrentAction::IsTextPlacing, CurrentAction::IsColorPicking));
 
     // Overlay window
     ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -233,7 +231,7 @@ void ScreenshotTool::RenderOverlay()
     if (ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest)
         ImGui::GetBackgroundDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest, nullptr);
 
-    ImGui::GetBackgroundDrawList()->AddImage(m_texture_id, m_image_origin, m_image_end);
+    ImGui::GetBackgroundDrawList()->AddImage(m_texture_id, m_image_rect.Min, m_image_rect.Max);
 
     if (ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear)
         ImGui::GetBackgroundDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
@@ -395,19 +393,20 @@ void ScreenshotTool::RenderOverlay()
 
     HandleShortcutsInput();
 
-    m_popup_open  = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
-    m_item_active = ImGui::IsAnyItemActive();
+    m_flags.Set(CaptureFlag::PopupOpen,
+                ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
+    m_flags.Set(CaptureFlag::ItemActive, ImGui::IsAnyItemActive());
 
     // Unless a sub-window took it, Esc cancels a drag, deselects the annotation or drops the tool, and only then quits.
     // A quick second press is a habit, not a quit
-    if (m_esc)
+    if (m_flags.Has(CaptureFlag::Esc))
     {
         if (m_input_owner == InputOwner::Selection)
         {
-            m_main_sel.selection       = m_sel_before_drag;
+            m_main_sel.selection       = m_main_sel.before_drag;
             m_main_sel.dragging_handle = HandleHovered::kNone;
             m_input_owner              = InputOwner::kNone;
-            m_state                    = m_state_before_drag;
+            m_state                    = m_main_sel.state_before_drag;
             UpdateAnnsToolbarPos();
         }
         else if (m_current_actions.Has(CurrentAction::IsDrawing))
@@ -448,8 +447,8 @@ void ScreenshotTool::Cancel()
     // Only our references, the fonts themselves stay in ImGui's atlas
     m_font_cache.clear();
 
-    if (m_on_cancel)
-        m_on_cancel();
+    if (m_backend.on_cancel)
+        m_backend.on_cancel();
 }
 
 void ScreenshotTool::EndCapture()
@@ -513,26 +512,25 @@ Result<> ScreenshotTool::CropAndUseDisplay(const SDL_DisplayID display, const bo
             m_screenshot.whole_desktop = false;
             return Ok();
         }
-        m_desktop      = std::move(m_screenshot);
-        m_desktop_crop = 0;
+        m_desktop = { .image = std::move(m_screenshot), .crop = 0 };
     }
-    if (m_desktop.data.empty())
+    if (m_desktop.image.data.empty())
         return Ok();
 
-    if (display != m_desktop_crop)
+    if (display != m_desktop.crop)
     {
-        Result<capture_result_t> cropped = crop_to_display(m_desktop, display);
+        Result<capture_result_t> cropped = crop_to_display(m_desktop.image, display);
         if (!cropped.ok())
         {
             // Show every monitor rather than nothing
             if (m_screenshot.data.empty())
-                m_screenshot = std::move(m_desktop);
+                m_screenshot = std::move(m_desktop.image);
             m_screenshot.whole_desktop = false;
             m_desktop                  = {};
             return Err("Failed to crop the capture to the overlay's display: {}", cropped.error_v());
         }
         m_screenshot   = std::move(cropped.get());
-        m_desktop_crop = display;
+        m_desktop.crop = display;
         spdlog::debug("Cropped the desktop to {}: {}x{}", SDL_GetDisplayName(display), m_screenshot.w, m_screenshot.h);
 
         // Before StartWindow() there's no texture yet
@@ -562,8 +560,7 @@ void ScreenshotTool::ResetSelection()
     m_main_sel.selection            = {};
     m_main_sel.drag_start_selection = {};
     m_main_sel.drag_start_mouse     = {};
-    m_image_origin                  = {};
-    m_image_end                     = {};
+    m_image_rect                    = {};
 }
 
 // ------------------------------
@@ -574,16 +571,16 @@ double ScreenshotTool::GetIdleTimeout()
 {
     // ImGui numbers the input events the backend queues, so a new number means input since the last frame
     const ImU32 event_id = ImGui::GetCurrentContext()->InputEventsNextEventId;
-    if (std::exchange(m_last_input_event_id, event_id) != event_id)
+    if (std::exchange(m_idle.last_input_event_id, event_id) != event_id)
         KeepDrawing();
 
     // 1 s is long enough for hover effects, tooltip delays and the smooth animations to finish after input.
     // A download changes the screen by itself
-    if (WantsCleanFrame() || m_redraw_requested.exchange(false) ||
-        std::chrono::steady_clock::now() - m_last_activity < 1s || (m_ocr_download && m_ocr_download->running))
+    if (WantsCleanFrame() || m_idle.redraw_requested.exchange(false) ||
+        std::chrono::steady_clock::now() - m_idle.last_activity < 1s || (m_ocr_download && m_ocr_download->running))
         return 0.0;
 #ifndef DISABLE_PLUGINS
-    if (m_install_state && m_install_state->running)
+    if (m_install.state && m_install.state->running)
         return 0.0;
     for (auto& [id, rt] : g_plugins)
     {
@@ -618,7 +615,7 @@ void wake_overlay()
 
 void ScreenshotTool::OnCleanFrame()
 {
-    const capture_result_t& img = m_read_pixels ? m_read_pixels(GetActiveRegion()) : GetFinalImage();
+    const capture_result_t& img = m_backend.read_pixels ? m_backend.read_pixels(GetActiveRegion()) : GetFinalImage();
 
     const ScanType scan = std::exchange(m_pending_scan, ScanType::kNone);
     if (scan == ScanType::Ocr)
@@ -627,7 +624,7 @@ void ScreenshotTool::OnCleanFrame()
         RunBarcodeScan(img);
 
 #ifndef DISABLE_PLUGINS
-    if (std::exchange(m_final_image_requested, false))
+    if (m_flags.Take(CaptureFlag::FinalImageRequested))
         for (auto& [id, rt] : g_plugins)
             rt.DeliverFinalImage(img);
 #endif
@@ -638,7 +635,7 @@ void ScreenshotTool::OnCleanFrame()
 
     // If it failed or the save dialog was canceled, keep the selection and annotations for another try. Not with
     // --instant-copy/--instant-save, which would request it again every frame
-    const bool done = !m_on_complete || m_on_complete(op, img, g_config->File.image_out_type.second);
+    const bool done = !m_backend.on_complete || m_backend.on_complete(op, img, g_config->File.image_out_type.second);
     if (done || g_config->Runtime.instant_copy_save != SavingOp::kNone)
         m_state = ToolState::Idle;
 }
@@ -706,10 +703,10 @@ region_t ScreenshotTool::GetActiveRegion() const
     const auto& s     = m_main_sel.selection;
     const float k     = m_image_scale;  // screen units -> screenshot pixels
 
-    const int x0 = int(std::round(std::clamp((s.get_x() - m_image_origin.x) * k, 0.0f, img_w)));
-    const int y0 = int(std::round(std::clamp((s.get_y() - m_image_origin.y) * k, 0.0f, img_h)));
-    const int x1 = int(std::round(std::clamp((s.get_right() - m_image_origin.x) * k, 0.0f, img_w)));
-    const int y1 = int(std::round(std::clamp((s.get_bottom() - m_image_origin.y) * k, 0.0f, img_h)));
+    const int x0 = int(std::round(std::clamp((s.get_x() - m_image_rect.Min.x) * k, 0.0f, img_w)));
+    const int y0 = int(std::round(std::clamp((s.get_y() - m_image_rect.Min.y) * k, 0.0f, img_h)));
+    const int x1 = int(std::round(std::clamp((s.get_right() - m_image_rect.Min.x) * k, 0.0f, img_w)));
+    const int y1 = int(std::round(std::clamp((s.get_bottom() - m_image_rect.Min.y) * k, 0.0f, img_h)));
 
     return region_t{ .x = x0, .y = y0, .w = x1 - x0, .h = y1 - y0 };
 }
@@ -729,7 +726,7 @@ Result<ImTextureRef> ScreenshotTool::CreateTexture(ImTextureID tex, std::span<co
     if (tex)
         SDL_DestroyTexture(sdl_texture(tex));
 
-    SDL_Renderer* renderer = SDL_GetRenderer(m_window);
+    SDL_Renderer* renderer = SDL_GetRenderer(m_backend.window);
     if (!renderer)
         return Err("the overlay has no renderer");
 
@@ -832,15 +829,12 @@ void ScreenshotTool::UpdateWindowBg()
         float(m_screenshot.h) / m_image_scale
     );
 
-    m_image_origin = ImVec2(
+    m_image_rect.Min = ImVec2(
         vp->Pos.x + std::floor((vp->Size.x - image_size.x) * 0.5f),
         vp->Pos.y + std::floor((vp->Size.y - image_size.y) * 0.5f)
     );
 
-    m_image_end = ImVec2(
-        m_image_origin.x + image_size.x,
-        m_image_origin.y + image_size.y
-    );
+    m_image_rect.Max = m_image_rect.Min + image_size;
     // clang-format on
 }
 
@@ -921,7 +915,7 @@ void ScreenshotTool::UpdateAnnsToolbarPos()
         }
     }
 
-    m_fill_tools_complete = next == tools.size();
+    m_flags.Set(CaptureFlag::ToolbarFits, next == tools.size());
 }
 
 void ScreenshotTool::ClampSelectionToImage(selection_info_t& sel)
@@ -931,15 +925,16 @@ void ScreenshotTool::ClampSelectionToImage(selection_info_t& sel)
     // When it's moved, push it back whole instead of shrinking it
     if (sel.dragging_handle == HandleHovered::Move)
     {
-        s.translate(std::max(m_image_origin.x - s.get_x(), 0.0f) + std::min(m_image_end.x - s.get_right(), 0.0f),
-                    std::max(m_image_origin.y - s.get_y(), 0.0f) + std::min(m_image_end.y - s.get_bottom(), 0.0f));
+        const ImRect& img = m_image_rect;
+        s.translate(std::max(img.Min.x - s.get_x(), 0.0f) + std::min(img.Max.x - s.get_right(), 0.0f),
+                    std::max(img.Min.y - s.get_y(), 0.0f) + std::min(img.Max.y - s.get_bottom(), 0.0f));
         return;
     }
 
     for (ImVec2* p : { &s.start, &s.end })
     {
-        p->x = std::clamp(p->x, m_image_origin.x, m_image_end.x);
-        p->y = std::clamp(p->y, m_image_origin.y, m_image_end.y);
+        p->x = std::clamp(p->x, m_image_rect.Min.x, m_image_rect.Max.x);
+        p->y = std::clamp(p->y, m_image_rect.Min.y, m_image_rect.Max.y);
     }
 }
 
@@ -1088,7 +1083,7 @@ void ScreenshotTool::SyncRuntimeFromConfig()
     m_inputs.ann_font               = g_config->File.fonts.empty() ? "" : g_config->File.fonts[0];
     m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string();
 
-    SDL_SetRenderVSync(SDL_GetRenderer(m_window), int(g_config->File.enable_vsync));
+    SDL_SetRenderVSync(SDL_GetRenderer(m_backend.window), int(g_config->File.enable_vsync));
 }
 
 void ScreenshotTool::RefreshOcrModels()
@@ -1232,7 +1227,7 @@ void ScreenshotTool::UpdateCursor(const selection_info_t& sel)
     else if (m_state == ToolState::Selected || m_state == ToolState::Resizing)
     {
         // Inside the selection, for moving it
-        if (sel.selection.rect().Contains(ImGui::GetMousePos()) || m_hovered_annotation)
+        if (sel.selection.rect().Contains(ImGui::GetMousePos()) || m_hover)
             ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         else
             ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
@@ -1339,7 +1334,7 @@ ImVec2 ScreenshotTool::GetToolbarRingOffset(const size_t ring)
 
 void ScreenshotTool::RequestScan(ScanType type)
 {
-    if (g_config->File.render_anns && !m_annotations.empty() && m_read_pixels)
+    if (g_config->File.render_anns && !m_annotations.empty() && m_backend.read_pixels)
     {
         m_pending_scan = type;
         return;
@@ -1406,10 +1401,10 @@ void ScreenshotTool::RunBarcodeScan(const capture_result_t& img)
     m_inputs.barcode_seconds       = std::chrono::duration<float>(std::chrono::steady_clock::now() - start).count();
     if (!scan.ok())
     {
-        // m_code_rows index into the codes, so they go with them
+        // m_code_table.rows index into the codes, so they go with them
         m_inputs.barcode_scan_result = {};
-        m_code_rows.clear();
-        m_selected_code = -1;
+        m_code_table.rows.clear();
+        m_code_table.selected = -1;
         m_inputs.barcode_text.clear();
         m_inputs.barcode_original.clear();
         spdlog::debug("Barcode: {}", scan.error_v());
@@ -1425,17 +1420,17 @@ void ScreenshotTool::RunBarcodeScan(const capture_result_t& img)
     ectx.Clear(BarcodeError::FailedToScan);
     m_inputs.barcode_scan_result = std::move(scan.get());
     m_inputs.barcode_scanned     = true;
-    m_selected_code              = -1;
+    m_code_table.selected        = -1;
 
     // Each code once, in the order they were found, for the text tools' table
     const std::vector<barcode_t>& found = m_inputs.barcode_scan_result.codes;
-    m_code_rows.clear();
-    m_code_rows_width = 0.0f;
+    m_code_table.rows.clear();
+    m_code_table.rows_width = 0.0f;
     for (size_t i = 0; i < found.size(); ++i)
-        if (std::ranges::none_of(m_code_rows, [&](const code_row_t& row) {
+        if (std::ranges::none_of(m_code_table.rows, [&](const code_row_t& row) {
                 return found[row.code].type == found[i].type && found[row.code].data == found[i].data;
             }))
-            m_code_rows.push_back({ .code = i, .text = {}, .lines = 0 });
+            m_code_table.rows.push_back({ .code = i, .text = {}, .lines = 0 });
 
     m_inputs.barcode_text.clear();
     for (const std::string& data : m_inputs.barcode_scan_result.datas)

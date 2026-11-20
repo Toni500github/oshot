@@ -372,19 +372,12 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
     // Inside the main selection a click moves it, so an annotation there takes a double-click
     const bool in_main = m_main_sel.selection.rect().Contains(mouse_pos);
 
-    m_hovered_annotation.reset();
-    m_hover_hint = nullptr;
+    m_hover.reset();
     if (next && next != ann)
-    {
-        m_hovered_annotation = size_t(next - m_annotations.data());
-        if (in_main)
-            m_hover_hint = _("Double-click to select");
-    }
+        m_hover = hover_t{ .annotation = size_t(next - m_annotations.data()),
+                           .hint       = in_main ? _("Double-click to select") : nullptr };
     else if (next && next->type == ToolType::Text)
-    {
-        m_hovered_annotation = size_t(next - m_annotations.data());
-        m_hover_hint         = _("Double-click to edit");
-    }
+        m_hover = hover_t{ .annotation = size_t(next - m_annotations.data()), .hint = _("Double-click to edit") };
 
     const bool double_click = can_pick && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
     if (double_click && ann && next == ann && ann->type == ToolType::Text)
@@ -469,8 +462,8 @@ void ScreenshotTool::HandleShortcutsInput()
 
     if (ImGui::Shortcut(ImGuiKey_A | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
     {
-        m_main_sel.selection.start = m_image_origin;
-        m_main_sel.selection.end   = m_image_end;
+        m_main_sel.selection.start = m_image_rect.Min;
+        m_main_sel.selection.end   = m_image_rect.Max;
         m_state                    = ToolState::Selected;
         UpdateAnnsToolbarPos();
     }
@@ -510,9 +503,9 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && m_input_owner != sel.main_input_owner)
     {
-        m_input_owner       = sel.main_input_owner;
-        m_sel_before_drag   = sel.selection;
-        m_state_before_drag = m_state;
+        m_input_owner         = sel.main_input_owner;
+        sel.before_drag       = sel.selection;
+        sel.state_before_drag = m_state;
 
         // Resizing from a handle
         if (sel.handle_hover != HandleHovered::kNone)
@@ -653,7 +646,7 @@ void ScreenshotTool::HandleAnnotationInput()
                 m_current_annotation.start = mouse_pos;
                 m_current_annotation.end   = m_current_annotation.start;
                 m_current_actions.Set(CurrentAction::IsTextPlacing);
-                m_focus_text_input = true;
+                m_flags.Set(CaptureFlag::FocusTextInput);
                 ++m_text_input_id;
             }
         }
@@ -695,7 +688,7 @@ void ScreenshotTool::HandleAnnotationInput()
 
                 // Asked again until it takes, since the click that opened it focuses the overlay at the end of the
                 // frame
-                if (m_focus_text_input)
+                if (m_flags.Has(CaptureFlag::FocusTextInput))
                     ImGui::SetKeyboardFocusHere();
 
                 ImGui::PushFont(font, ann.thickness);
@@ -711,13 +704,14 @@ void ScreenshotTool::HandleAnnotationInput()
                     input_size,
                     ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CtrlEnterForNewLine |
                         ImGuiInputTextFlags_NoHorizontalScroll |
-                        (m_focus_text_input ? ImGuiInputTextFlags_CallbackAlways : ImGuiInputTextFlags_None),
+                        (m_flags.Has(CaptureFlag::FocusTextInput) ? ImGuiInputTextFlags_CallbackAlways
+                                                                  : ImGuiInputTextFlags_None),
                     caret_to_end);
                 ImGui::PopID();
                 ImGui::PopFont();
                 input_rect = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
                 if (ImGui::IsItemActive())
-                    m_focus_text_input = false;
+                    m_flags.Clear(CaptureFlag::FocusTextInput);
             }
 
             // The keys, below the input in the selection size label's colors so they read on any image
@@ -749,7 +743,7 @@ void ScreenshotTool::HandleAnnotationInput()
                 CommitTextAnnotation();
             }
             // Not the Esc that closed the settings popup
-            else if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !m_popup_open)
+            else if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !m_flags.Has(CaptureFlag::PopupOpen))
             {
                 m_current_annotation = {};
                 m_edited_text.reset();
@@ -864,7 +858,7 @@ void ScreenshotTool::EditTextAnnotation(const size_t i)
     m_state        = ToolState::Selected;
     DeselectAnnotation();
     m_current_actions.Set(CurrentAction::IsTextPlacing);
-    m_focus_text_input = true;
+    m_flags.Set(CaptureFlag::FocusTextInput);
     ++m_text_input_id;
 }
 
@@ -874,8 +868,8 @@ void ScreenshotTool::HandleColorPickerInput()
     ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 
     const ImVec2& mouse_pos = ImGui::GetMousePos();
-    const int     px        = int((mouse_pos.x - m_image_origin.x) * m_image_scale);
-    const int     py        = int((mouse_pos.y - m_image_origin.y) * m_image_scale);
+    const int     px        = int((mouse_pos.x - m_image_rect.Min.x) * m_image_scale);
+    const int     py        = int((mouse_pos.y - m_image_rect.Min.y) * m_image_scale);
 
     const bool in_image = px >= 0 && px < m_screenshot.w && py >= 0 && py < m_screenshot.h;
 

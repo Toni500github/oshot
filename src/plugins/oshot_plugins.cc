@@ -342,12 +342,11 @@ static bool get_text(oshot_ctx_t* ctx, const char* id, oshot_str_t* out)
     if (!id || !out || !ui_thread_check(ctx, "get_text"))
         return false;
 
-    auto& texts = g_ss_tool.GetImGuiIDTexts();
-    auto  it    = texts.find(id);
-    if (it == texts.end())
+    const std::string* text = g_ss_tool.GetTextBuffer(id);
+    if (!text)
         return false;
 
-    *out = str_new(*it->second);
+    *out = str_new(*text);
     return out->p != nullptr;
 }
 
@@ -356,16 +355,15 @@ static bool set_text(oshot_ctx_t* ctx, const char* id, oshot_str_t value)
     if (!id || !ui_thread_check(ctx, "set_text"))
         return false;
 
-    auto& texts = g_ss_tool.GetImGuiIDTexts();
-    auto  it    = texts.find(id);
-    if (it == texts.end())
+    std::string* text = g_ss_tool.GetTextBuffer(id);
+    if (!text)
     {
         spdlog::error(
             "{}: set_text(): unknown text id '{}' (use OSHOT_TEXT_OCR or OSHOT_TEXT_BARCODE)", rt_of(ctx).id, id);
         return false;
     }
 
-    it->second->assign(to_string(value));
+    text->assign(to_string(value));
     return true;
 }
 

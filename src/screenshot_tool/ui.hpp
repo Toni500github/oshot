@@ -41,6 +41,7 @@
 #include "util/color.hpp"
 
 enum class SubWindow : std::uint8_t;
+enum class CaptureFlag : std::uint8_t;
 template <typename Enum>
 struct GeneralContext;
 
@@ -133,18 +134,18 @@ class Window
 public:
     /**
      * @param shown The flags of the shown sub-windows
-     * @param esc This frame's unused Esc, which closes the window while it's focused
+     * @param capture The capture's flags, whose unused Esc closes the window while it's focused
      * @param id This window's flag
      * @param title The title, with a ### ID so a translation doesn't lose its size and place
      * @param size The first size in font sizes (FontRelative()). A 0 height fits the contents
      * @param flags Added to ImGuiWindowFlags_NoSavedSettings
      **/
-    Window(GeneralContext<SubWindow>& shown,
-           bool&                      esc,
-           SubWindow                  id,
-           const char*                title,
-           ImVec2                     size,
-           ImGuiWindowFlags           flags = 0);
+    Window(GeneralContext<SubWindow>&   shown,
+           GeneralContext<CaptureFlag>& capture,
+           SubWindow                    id,
+           const char*                  title,
+           ImVec2                       size,
+           ImGuiWindowFlags             flags = 0);
     ~Window();
 
     Window(const Window&)            = delete;
