@@ -26,27 +26,26 @@
 #ifndef _UTIL_WINDOW_HPP_
 #define _UTIL_WINDOW_HPP_
 
-// The overlay window's functions, registered by the graphics backend
+// The overlay window, for the code that runs while it's open
 
 #include "platform.hpp"
+
+struct SDL_Window;
 
 // ------------------------------
 // Functions
 // ------------------------------
 
 /**
- * Register the window functions of the graphics backend (main_tool_*), so oshot_common can call them
- * @param minimize_fn Minimizes the overlay, e.g. when a link opens in the browser
- * @param hide_fn Hides the overlay while a modal dialog is open, see hide_window()
- * @param show_fn Shows the overlay again after hide_fn
- * @param dialog_parent_fn Returns the overlay's native window, see dialog_parent_window(). May be nullptr
+ * Set the overlay's window, or nullptr once it's gone. The calling thread becomes the only one that may touch it
+ * @param window Has a renderer, which ScreenshotTool draws with
  **/
-void register_window_callbacks(void (*minimize_fn)(),
-                               bool (*hide_fn)(),
-                               void (*show_fn)(),
-                               void* (*dialog_parent_fn)());
+void set_overlay_window(SDL_Window* window);
 
-/* Minimize the overlay window, if a backend registered one */
+/* The overlay's window, nullptr off its thread or without an overlay */
+SDL_Window* overlay_window();
+
+/* Minimize the overlay window, if there's one */
 void minimize_window();
 
 /**
@@ -64,6 +63,9 @@ void show_window();
  * @return nullptr off the overlay's thread, without an overlay, or where owning isn't supported
  **/
 void* dialog_parent_window();
+
+/* Make the overlay draw its next frame now instead of waiting for input. Any thread */
+void wake_overlay();
 
 #if OSHOT_MACOS
 /**

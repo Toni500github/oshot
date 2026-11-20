@@ -63,6 +63,7 @@
 #include "util/image.hpp"
 #include "util/paths.hpp"
 #include "util/result.hpp"
+#include "util/window.hpp"
 #ifndef DISABLE_PLUGINS
 #  include "plugin.hpp"
 #endif
@@ -440,15 +441,8 @@ void ScreenshotTool::RenderOverlay()
 
 void ScreenshotTool::Cancel()
 {
+    spdlog::info("Canceled screenshot");
     m_state = ToolState::Idle;
-
-    ReleaseTextures();
-
-    // Only our references, the fonts themselves stay in ImGui's atlas
-    m_font_cache.clear();
-
-    if (m_backend.on_cancel)
-        m_backend.on_cancel();
 }
 
 void ScreenshotTool::EndCapture()
@@ -576,8 +570,8 @@ double ScreenshotTool::GetIdleTimeout()
 
     // 1 s is long enough for hover effects, tooltip delays and the smooth animations to finish after input.
     // A download changes the screen by itself
-    if (WantsCleanFrame() || m_idle.redraw_requested.exchange(false) ||
-        std::chrono::steady_clock::now() - m_idle.last_activity < 1s || (m_ocr_download && m_ocr_download->running))
+    if (WantsCleanFrame() || std::chrono::steady_clock::now() - m_idle.last_activity < 1s ||
+        (m_ocr_download && m_ocr_download->running))
         return 0.0;
 #ifndef DISABLE_PLUGINS
     if (m_install.state && m_install.state->running)
@@ -595,27 +589,42 @@ double ScreenshotTool::GetIdleTimeout()
     return ImGui::GetIO().WantTextInput ? 0.25 : 0.5;
 }
 
-static std::atomic<void (*)()> wake_overlay_fn{ nullptr };
-
-void register_wake_overlay(void (*fn)())
-{
-    wake_overlay_fn = fn;
-}
-
-void wake_overlay()
-{
-    g_ss_tool.RequestRedraw();
-    if (void (*fn)() = wake_overlay_fn.load())
-        fn();
-}
-
 // ------------------------------
 // Frame read-back
 // ------------------------------
 
 void ScreenshotTool::OnCleanFrame()
 {
-    const capture_result_t& img = m_backend.read_pixels ? m_backend.read_pixels(GetActiveRegion()) : GetFinalImage();
+    // The active region of the frame just rendered. The region is in screenshot pixels and the image's origin in
+    // screen units, and on a scaled output the render target has m_image_scale pixels per unit
+    const region_t   region = GetActiveRegion();
+    const SDL_Rect   rect{ .x = region.x + int(std::lround(m_image_rect.Min.x * m_image_scale)),
+                           .y = region.y + int(std::lround(m_image_rect.Min.y * m_image_scale)),
+                           .w = region.w,
+                           .h = region.h };
+    capture_result_t img;
+
+    // The target's format depends on the driver (ARGB8888 on most of them). RGBA32 is RGBA in memory on any
+    // endianness
+    SDL_Surface* raw  = SDL_RenderReadPixels(SDL_GetRenderer(overlay_window()), &rect);
+    SDL_Surface* rgba = raw ? SDL_ConvertSurface(raw, SDL_PIXELFORMAT_RGBA32) : nullptr;
+    SDL_DestroySurface(raw);
+    if (rgba)
+    {
+        // Rows can be padded (pitch), so copy them one by one
+        const size_t row = size_t(rgba->w) * 4;
+        img              = { .data = std::vector<uint8_t>(row * rgba->h), .w = rgba->w, .h = rgba->h };
+        for (int y = 0; y < rgba->h; ++y)
+            std::memcpy(img.data.data() + (size_t(y) * row),
+                        static_cast<const uint8_t*>(rgba->pixels) + (size_t(y) * rgba->pitch),
+                        row);
+        SDL_DestroySurface(rgba);
+    }
+    else
+    {
+        spdlog::error("Failed to read the frame back: {}", SDL_GetError());
+        img = GetFinalImage();
+    }
 
     const ScanType scan = std::exchange(m_pending_scan, ScanType::kNone);
     if (scan == ScanType::Ocr)
@@ -633,9 +642,17 @@ void ScreenshotTool::OnCleanFrame()
     if (op == SavingOp::kNone)
         return;
 
-    // If it failed or the save dialog was canceled, keep the selection and annotations for another try. Not with
-    // --instant-copy/--instant-save, which would request it again every frame
-    const bool done = !m_backend.on_complete || m_backend.on_complete(op, img, g_config->File.image_out_type.second);
+    // dialog::create() keeps an error in front of the overlay
+    const Result<bool>& saved = save_image(op, img, g_config->File.image_out_type.second);
+    if (!saved.ok() && op == SavingOp::Clipboard)
+        dialog::error("Failed to copy the image: {}", saved.error_v());
+    else if (!saved.ok())
+        dialog::error("Failed to save as {}: {}", g_config->File.image_out_type.first, saved.error_v());
+
+    // If it failed or the save dialog was canceled (false), keep the selection and annotations for another try.
+    // Not with --instant-copy/--instant-save, which would request it again every frame
+    const bool done = saved.ok() && saved.get();
+    m_flags.Set(CaptureFlag::ImageCopied, done && op == SavingOp::Clipboard);
     if (done || g_config->Runtime.instant_copy_save != SavingOp::kNone)
         m_state = ToolState::Idle;
 }
@@ -726,7 +743,7 @@ Result<ImTextureRef> ScreenshotTool::CreateTexture(ImTextureID tex, std::span<co
     if (tex)
         SDL_DestroyTexture(sdl_texture(tex));
 
-    SDL_Renderer* renderer = SDL_GetRenderer(m_backend.window);
+    SDL_Renderer* renderer = SDL_GetRenderer(overlay_window());
     if (!renderer)
         return Err("the overlay has no renderer");
 
@@ -752,8 +769,11 @@ Result<ImTextureRef> ScreenshotTool::CreateTexture(ImTextureID tex, std::span<co
     return Ok(ref);
 }
 
-void ScreenshotTool::ReleaseTextures()
+void ScreenshotTool::EndWindow()
 {
+    // Only our references, the fonts themselves go with ImGui's context
+    m_font_cache.clear();
+
     const auto destroy = [](ImTextureRef& tex) {
         if (tex._TexID)
             SDL_DestroyTexture(sdl_texture(tex._TexID));
@@ -1083,7 +1103,7 @@ void ScreenshotTool::SyncRuntimeFromConfig()
     m_inputs.ann_font               = g_config->File.fonts.empty() ? "" : g_config->File.fonts[0];
     m_inputs.resolved_ann_font_path = get_font_path(m_inputs.ann_font).string();
 
-    SDL_SetRenderVSync(SDL_GetRenderer(m_backend.window), int(g_config->File.enable_vsync));
+    SDL_SetRenderVSync(SDL_GetRenderer(overlay_window()), int(g_config->File.enable_vsync));
 }
 
 void ScreenshotTool::RefreshOcrModels()
@@ -1334,7 +1354,7 @@ ImVec2 ScreenshotTool::GetToolbarRingOffset(const size_t ring)
 
 void ScreenshotTool::RequestScan(ScanType type)
 {
-    if (g_config->File.render_anns && !m_annotations.empty() && m_backend.read_pixels)
+    if (g_config->File.render_anns && !m_annotations.empty())
     {
         m_pending_scan = type;
         return;

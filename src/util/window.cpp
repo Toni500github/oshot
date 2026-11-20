@@ -25,6 +25,13 @@
 
 #include "util/window.hpp"
 
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_properties.h>
+#include <SDL3/SDL_video.h>
+
+#include <atomic>
+#include <thread>
+
 #include "platform.hpp"
 
 #if OSHOT_MACOS
@@ -33,40 +40,68 @@
 #  include <CoreServices/CoreServices.h>
 #endif
 
-// Defined and registered in src/main_tool_* source files
-namespace main_tool
-{
-void (*minimize_fn)()       = nullptr;
-bool (*hide_fn)()           = nullptr;
-void (*show_fn)()           = nullptr;
-void* (*dialog_parent_fn)() = nullptr;
-}  // namespace main_tool
+static std::atomic<SDL_Window*>     overlay{ nullptr };
+static std::atomic<std::thread::id> overlay_thread;
 
-void register_window_callbacks(void (*minimize_fn)(), bool (*hide_fn)(), void (*show_fn)(), void* (*dialog_parent_fn)())
+void set_overlay_window(SDL_Window* window)
 {
-    main_tool::minimize_fn      = minimize_fn;
-    main_tool::hide_fn          = hide_fn;
-    main_tool::show_fn          = show_fn;
-    main_tool::dialog_parent_fn = dialog_parent_fn;
+    overlay_thread = std::this_thread::get_id();
+    overlay        = window;
+}
+
+SDL_Window* overlay_window()
+{
+    SDL_Window* window = overlay;
+    return window && std::this_thread::get_id() == overlay_thread.load() ? window : nullptr;
 }
 
 void minimize_window()
 {
-    if (main_tool::minimize_fn)
-        main_tool::minimize_fn();
+    if (SDL_Window* window = overlay_window())
+        SDL_MinimizeWindow(window);
 }
+
 bool hide_window()
 {
-    return main_tool::hide_fn && main_tool::hide_fn();
+    SDL_Window* window = overlay_window();
+    if (!window || (SDL_GetWindowFlags(window) & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)))
+        return false;
+
+    // Unmap it rather than minimize it, since SDL doesn't restore a minimized fullscreen window on Windows,
+    // sway ignores minimize requests, and macOS's minimize animation never finishes under the modal loop
+    SDL_HideWindow(window);
+    SDL_PumpEvents();
+    return true;
 }
+
 void show_window()
 {
-    if (main_tool::show_fn)
-        main_tool::show_fn();
+    if (SDL_Window* window = overlay_window())
+    {
+        SDL_ShowWindow(window);
+        SDL_RaiseWindow(window);
+        // A dialog from OnCleanFrame() (the save dialog) returns in a frame that isn't presented
+        wake_overlay();
+    }
 }
+
 void* dialog_parent_window()
 {
-    return main_tool::dialog_parent_fn ? main_tool::dialog_parent_fn() : nullptr;
+#if OSHOT_WINDOWS
+    if (SDL_Window* window = overlay_window())
+        return SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+#endif
+    return nullptr;
+}
+
+void wake_overlay()
+{
+    // Wakes the frame loop from SDL_WaitEventTimeout(). Without an overlay nothing waits, and SDL may be quit
+    if (!overlay.load())
+        return;
+    SDL_Event event{};
+    event.type = SDL_EVENT_USER;
+    SDL_PushEvent(&event);
 }
 
 #if OSHOT_MACOS

@@ -37,7 +37,6 @@
 #include "util.hpp"
 #include "util/dialogs.hpp"
 #include "util/fonts.hpp"
-#include "util/image.hpp"
 #include "util/paths.hpp"
 #include "util/result.hpp"
 #include "util/window.hpp"
@@ -53,23 +52,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <future>
-#include <memory>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <utility>
-#include <vector>
 
 void apply_imgui_theme();
 void reload_theme_if_changed();
-
-// The thread run_main_tool() runs on, the only one that may touch the window
-static std::thread::id window_thread;
-
-static bool on_overlay_thread()
-{
-    return g_ss_tool.GetWindow() && std::this_thread::get_id() == window_thread;
-}
 
 static bool on_wayland()
 {
@@ -77,119 +65,11 @@ static bool on_wayland()
     return driver && strcmp(driver, "wayland") == 0;
 }
 
-static void minimize_window_()
-{
-    if (on_overlay_thread())
-        SDL_MinimizeWindow(g_ss_tool.GetWindow());
-}
-
-static bool hide_window_()
-{
-    SDL_Window* window = g_ss_tool.GetWindow();
-    if (!on_overlay_thread() || (SDL_GetWindowFlags(window) & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)))
-        return false;
-
-    // Unmap it rather than minimize it, since SDL doesn't restore a minimized fullscreen window on Windows,
-    // sway ignores minimize requests, and macOS's minimize animation never finishes under the modal loop
-    SDL_HideWindow(window);
-    SDL_PumpEvents();
-    return true;
-}
-
-static void show_window_()
-{
-    if (!on_overlay_thread())
-        return;
-
-    SDL_Window* window = g_ss_tool.GetWindow();
-    SDL_ShowWindow(window);
-    SDL_RaiseWindow(window);
-    g_ss_tool.KeepDrawing();  // repaint right away, the dialog's input wasn't ours
-}
-
-static void* dialog_parent_()
-{
-#if OSHOT_WINDOWS
-    if (on_overlay_thread())
-        return SDL_GetPointerProperty(
-            SDL_GetWindowProperties(g_ss_tool.GetWindow()), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
-#endif
-    return nullptr;
-}
-
 int run_main_tool()
 {
     SDL_Window*   window   = nullptr;
     SDL_Renderer* renderer = nullptr;
-    bool          close    = false;  // set once the overlay is canceled or done
-    bool          copied   = false;  // the overlay closed after copying the image
-
-    window_thread = std::this_thread::get_id();
-    register_window_callbacks(minimize_window_, hide_window_, show_window_, dialog_parent_);
-
-    g_ss_tool.SetOnCancel([&]() {
-        spdlog::info("Canceled screenshot");
-        SDL_SetRenderVSync(renderer, false);
-        close = true;
-    });
-    g_ss_tool.SetReadPixels([&](const region_t& region) -> capture_result_t {
-        // region is in screenshot pixels and the origin in screen units. On a scaled
-        // output the render target has GetImageScale() pixels per screen unit
-        const ImVec2   o = g_ss_tool.GetImageOrigin();
-        const float    k = g_ss_tool.GetImageScale();
-        const SDL_Rect rect{ .x = region.x + int(std::lround(o.x * k)),
-                             .y = region.y + int(std::lround(o.y * k)),
-                             .w = region.w,
-                             .h = region.h };
-
-        SDL_Surface* raw = SDL_RenderReadPixels(renderer, &rect);
-        if (!raw)
-        {
-            spdlog::error("SDL_RenderReadPixels() failed: {}", SDL_GetError());
-            return g_ss_tool.GetFinalImage();
-        }
-
-        // The target's format depends on the driver (ARGB8888 on most of them).
-        // RGBA32 is RGBA in memory on any endianness
-        SDL_Surface* rgba = SDL_ConvertSurface(raw, SDL_PIXELFORMAT_RGBA32);
-        SDL_DestroySurface(raw);
-        if (!rgba)
-        {
-            spdlog::error("SDL_ConvertSurface() failed: {}", SDL_GetError());
-            return g_ss_tool.GetFinalImage();
-        }
-
-        // Rows can be padded (pitch), so copy them one by one
-        const size_t               row = size_t(rgba->w) * 4;
-        std::vector<unsigned char> pixels(row * rgba->h);
-        for (int y = 0; y < rgba->h; ++y)
-            std::memcpy(pixels.data() + (size_t(y) * row),
-                        static_cast<const unsigned char*>(rgba->pixels) + (size_t(y) * rgba->pitch),
-                        row);
-
-        capture_result_t out{ .data = std::move(pixels), .w = rgba->w, .h = rgba->h };
-        SDL_DestroySurface(rgba);
-        return out;
-    });
-    g_ss_tool.SetOnComplete([&](SavingOp op, const capture_result_t& img, ImageExt ext) {
-        const Result<bool>& saved = save_image(op, img, ext);
-        if (!saved.ok())
-        {
-            // The overlay stays open, and dialog::create() keeps the error in front of it
-            if (op == SavingOp::Clipboard)
-                dialog::error("Failed to copy the image: {}", saved.error_v());
-            else
-                dialog::error("Failed to save as {}: {}", g_config->File.image_out_type.first, saved.error_v());
-            return false;
-        }
-        if (!saved.get())  // the save dialog was canceled, so go back to the overlay
-            return false;
-
-        SDL_SetRenderVSync(renderer, false);
-        close  = true;
-        copied = op == SavingOp::Clipboard;
-        return true;
-    });
+    bool          close    = false;
 
     // oshot's own signal handlers (main.cpp) also quit the tray
     SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
@@ -247,7 +127,7 @@ int run_main_tool()
 
     // Undoes the setup so far, then shows the error
     const auto fail = [&](const dialog::located_fmt_t fmt, const std::string_view error) {
-        g_ss_tool.SetWindow(nullptr);
+        set_overlay_window(nullptr);
         if (renderer)
             SDL_DestroyRenderer(renderer);
         if (window)
@@ -315,7 +195,6 @@ int run_main_tool()
     {
         window   = kept.window;
         renderer = kept.renderer;
-        SDL_SetRenderVSync(renderer, true);  // closing the last overlay turned it off
     }
     else
 #endif
@@ -355,7 +234,7 @@ int run_main_tool()
             return fail("Failed to start capture: {}", started.error_v());
     }
 
-    g_ss_tool.SetWindow(window);
+    set_overlay_window(window);
     const auto use_display = [](const SDL_DisplayID id, const bool keep_desktop) {
         if (const SDL_DisplayMode* m = SDL_GetDesktopDisplayMode(id))
         {
@@ -413,13 +292,6 @@ int run_main_tool()
         close = true;
     }
 
-    // Wakes the frame loop from SDL_WaitEventTimeout(), from any thread
-    register_wake_overlay([] {
-        SDL_Event event{};
-        event.type = SDL_EVENT_USER;
-        SDL_PushEvent(&event);
-    });
-
     bool clean_frame = false;
     // app_quitting() covers tray Quit and signals received while capturing
     while (!close && g_ss_tool.IsActive() && !app_quitting())
@@ -468,6 +340,10 @@ int run_main_tool()
 
         g_ss_tool.RenderOverlay();
 
+        // Closing without waiting for the vblank, against an exit lag on some Windows machines
+        if (!g_ss_tool.IsActive())
+            SDL_SetRenderVSync(renderer, false);
+
         // Rendering
         ImGui::Render();
         // ImGui's SDL_Renderer backend scales only the clip rects, so let SDL scale everything, or a scaled
@@ -500,8 +376,6 @@ int run_main_tool()
         }
     }
 
-    register_wake_overlay(nullptr);
-
     // Cleanup
     ImGui_ImplSDLRenderer3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
@@ -509,7 +383,7 @@ int run_main_tool()
 
     // On X11 xclip dies with BadWindow if SDL's window is gone before it answers SDL's format request, and
     // the copy goes with it. The tray keeps the window, elsewhere wait for the answer before SDL_Quit()
-    if (OSHOT_FREEDESKTOP && copied && !g_is_systray && !on_wayland())
+    if (OSHOT_FREEDESKTOP && g_ss_tool.ImageCopied() && !g_is_systray && !on_wayland())
     {
         const Uint64 deadline = SDL_GetTicks() + 500;
         SDL_Event    event;
@@ -518,9 +392,8 @@ int run_main_tool()
                 break;
     }
 
-    // The textures belong to the renderer
-    g_ss_tool.ReleaseTextures();
-    g_ss_tool.SetWindow(nullptr);
+    g_ss_tool.EndWindow();
+    set_overlay_window(nullptr);
 #if OSHOT_MACOS
     if (kept.window == window)
     {

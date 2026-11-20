@@ -66,8 +66,6 @@ class StateManager;
 struct plugin_runtime_t;
 #endif
 
-struct SDL_Window;
-
 // Annotation tools and toolbar buttons, in toolbar order.
 // UpdateAnnsToolbarPos() expects SaveImage to be the last button
 enum class ToolType : std::uint8_t
@@ -196,6 +194,7 @@ enum class CaptureFlag : std::uint8_t
     ItemActive,           // an item was active at the end of the last frame
     Esc,                  // this frame's Esc, until a sub-window or RenderOverlay() uses it
     FinalImageRequested,  // set by RequestFinalImage(), until OnCleanFrame()
+    ImageCopied,          // the overlay closed after copying the image
 
     // The text tools show the text from before the plugins' transformers
     ShowOcrOriginal,
@@ -450,9 +449,8 @@ struct ErrorContext : public GeneralContext<Enum>
     [[nodiscard]] const std::string& Get(Enum e) const { return texts[idx(e)]; }
 };
 
-// The overlay: selection, annotations, toolbar, text tools and the other windows.
-// Backend-agnostic: main_tool_* owns the window and the textures, and talks to it
-// through the Set* callbacks
+// The overlay: selection, annotations, toolbar, text tools and the other windows. run_main_tool() owns the
+// window and its renderer (see overlay_window()) and drives the frame loop
 // NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding): one instance, and the members are grouped by topic
 class ScreenshotTool
 {
@@ -481,7 +479,7 @@ public:
     // Draws a frame of the overlay and handles its input
     void RenderOverlay();
 
-    // Ends the capture, freeing the textures and calling the SetOnCancel() callback
+    // Ends the capture. The frame loop stops after this frame
     void Cancel();
 
     // Frees the OCR engine. Must run before the process exits, see OcrAPI::End()
@@ -500,31 +498,14 @@ public:
     Result<> CropAndUseDisplay(SDL_DisplayID display, bool keep_desktop);
 
     // ------------------------------
-    // Backend setters
-    // ------------------------------
-    // Called by OnCleanFrame() with what to do, the active region with its annotations, and the image format.
-    // Returns false if it failed, then the overlay stays open so the user can try again
-    void SetOnComplete(std::function<bool(SavingOp, const capture_result_t&, ImageExt)> cb)
-    {
-        m_backend.on_complete = std::move(cb);
-    }
-
-    // Reads a region (in screenshot pixels) of the frame the backend just rendered
-    void SetReadPixels(std::function<capture_result_t(const region_t&)> fn) { m_backend.read_pixels = std::move(fn); }
-
-    // The overlay window, or nullptr once the backend destroys it
-    void SetWindow(SDL_Window* window) { m_backend.window = window; }
-
-    // The overlay window, nullptr without an overlay
-    [[nodiscard]] SDL_Window* GetWindow() const { return m_backend.window; }
-
-    void SetOnCancel(const std::function<void()>& cb) { m_backend.on_cancel = cb; }
-
-    // ------------------------------
     // Frame read-back
     // ------------------------------
-    // Saves or copies the selection once OnCleanFrame() reads back the next frame
+    // Saves or copies the selection once OnCleanFrame() reads back the next frame. The overlay closes once it
+    // worked, and stays open after an error or a canceled save dialog
     void RequestComplete(SavingOp op) { m_completed_op = op; }
+
+    // Whether the overlay closed after copying the image
+    [[nodiscard]] bool ImageCopied() const { return m_flags.Has(CaptureFlag::ImageCopied); }
 
     // Whether the next frame must be drawn with only the screenshot and the annotations,
     // for OnCleanFrame() to read back. Such a frame isn't presented
@@ -533,7 +514,7 @@ public:
         return IsCompleted() || m_pending_scan != ScanType::kNone || m_flags.Has(CaptureFlag::FinalImageRequested);
     }
 
-    // Called by the backend once the frame WantsCleanFrame() asked for has been rendered. Reads
+    // Called by the frame loop once the frame WantsCleanFrame() asked for has been rendered. Reads
     // the active region from it for the pending scan, save/copy and plugins' request_final_image()
     void OnCleanFrame();
 
@@ -547,27 +528,15 @@ public:
     // Idle rendering
     // ------------------------------
     /**
-     * How long the backend may wait for input before drawing the next frame, so an untouched
+     * How long the frame loop may wait for input before drawing the next frame, so an untouched
      * overlay doesn't redraw at the refresh rate. Call it before polling the window's events
      * @return Seconds to wait for an event, 0 to draw right away
      **/
     [[nodiscard]] double GetIdleTimeout();
 
-    // Draw continuously for a moment, e.g. after the window was shown again. UI thread only
-    void KeepDrawing() { m_idle.last_activity = std::chrono::steady_clock::now(); }
-
-    // Draw the next frame without waiting for input. Any thread, see wake_overlay()
-    void RequestRedraw() { m_idle.redraw_requested = true; }
-
     // ------------------------------
     // Getters
     // ------------------------------
-    // Top-left corner of the screenshot on screen (it's drawn centered)
-    [[nodiscard]] ImVec2 GetImageOrigin() const { return m_image_rect.Min; }
-
-    // Screenshot pixels per screen unit, above 1 on a scaled (HiDPI) output
-    [[nodiscard]] float GetImageScale() const { return m_image_scale; }
-
     // A copy of the active region of the screenshot, without annotations
     capture_result_t GetFinalImage();
 
@@ -588,9 +557,9 @@ public:
     // Uploads RGBA pixels to a new texture of the overlay's renderer, destroying `tex` first
     Result<ImTextureRef> CreateTexture(ImTextureID tex, std::span<const uint8_t> data, int w, int h);
 
-    // Destroys the screenshot, toolbar and plugin icon textures. The backend calls it before
-    // destroying its renderer, which owns them
-    void ReleaseTextures();
+    // Frees what belongs to the overlay's renderer and ImGui context (the screenshot, toolbar and plugin icon
+    // textures, and the cached fonts). Called before the renderer is destroyed
+    void EndWindow();
 
     // Fonts by path, added to the atlas the first time and drawn at any size. Returns the default font for a
     // file that can't be loaded
@@ -668,7 +637,7 @@ private:
 
     capture_result_t m_screenshot;
     ImTextureRef     m_texture_id;
-    float            m_image_scale = 1.0f;
+    float            m_image_scale = 1.0f;  // screenshot pixels per screen unit, above 1 on a scaled output
 
     // ------------------------------
     // Selection
@@ -766,28 +735,18 @@ private:
     // The last Esc that didn't quit
     double m_last_esc_time = -1.0;
 
-    // What GetIdleTimeout() decides from: the last input or KeepDrawing(), and RequestRedraw()
+    // The last input or KeepDrawing(), see GetIdleTimeout()
     struct
     {
         std::chrono::steady_clock::time_point last_activity;
         ImU32                                 last_input_event_id = 0;
-        std::atomic<bool>                     redraw_requested    = false;
     } m_idle;
 
     // ------------------------------
-    // Completion and backend callbacks
+    // Completion
     // ------------------------------
     // Set by RequestComplete(), until OnCleanFrame()
     SavingOp m_completed_op = SavingOp::kNone;
-
-    // From the Set* functions
-    struct
-    {
-        std::function<void()>                                            on_cancel;
-        std::function<bool(SavingOp, const capture_result_t&, ImageExt)> on_complete;
-        std::function<capture_result_t(const region_t&)>                 read_pixels;
-        SDL_Window*                                                      window = nullptr;
-    } m_backend;
 
 #ifndef DISABLE_PLUGINS
     // ------------------------------
@@ -818,6 +777,9 @@ private:
     // The textures of the plugins' toolbar icons, by plugin ID and action ID. Deleted by Cancel()
     std::map<std::pair<std::string, int32_t>, ImTextureRef> m_plugin_icons;
 #endif
+
+    // Draw continuously for a moment, e.g. after input
+    void KeepDrawing() { m_idle.last_activity = std::chrono::steady_clock::now(); }
 
     // ------------------------------
     // Input
@@ -997,15 +959,6 @@ private:
 };
 
 extern ScreenshotTool g_ss_tool;
-
-/**
- * Set how wake_overlay() wakes the backend's frame loop, or nullptr once it can't anymore
- * @param fn Pushes an event to the frame loop's SDL event queue
- **/
-void register_wake_overlay(void (*fn)());
-
-/* Make the overlay draw its next frame now instead of waiting for input. Any thread */
-void wake_overlay();
 
 // Files dropped on the window, picked up by the path field under the cursor
 extern std::deque<std::string> g_dropped_paths;

@@ -69,6 +69,7 @@
 #include "util/dialogs.hpp"
 #include "util/paths.hpp"
 #include "util/result.hpp"
+#include "util/window.hpp"
 
 #if !OSHOT_WINDOWS
 #  include <unistd.h>

@@ -684,7 +684,7 @@ void ScreenshotTool::DrawAnnotationSettingsPopup(const ToolType tool, const Sele
             pos = toolbar_popup_pos(
                 ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()), avoid, side, m_ann_popup_size);
         else
-            RequestRedraw();
+            wake_overlay();
         ImGui::SetNextWindowPos(pos);
     }
 
