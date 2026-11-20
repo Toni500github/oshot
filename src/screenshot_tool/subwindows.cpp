@@ -24,7 +24,6 @@
  */
 
 #include <algorithm>
-#include <cfloat>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -47,8 +46,6 @@
 #include "i18n.hpp"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
-#include "platform.hpp"
-#include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "spdlog/spdlog.h"
@@ -68,12 +65,11 @@
 
 void ScreenshotTool::DrawAboutWindow()
 {
-    bool open = m_show_window.Has(SubWindow::About);
-    if (!open)
+    if (!m_show_window.Has(SubWindow::About))
         return;
 
-    ImGui::SetNextWindowSize(font_relative(27, 19), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin(_("About###about_window"), &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings))
+    ui::Window win(m_show_window, SubWindow::About, _("About###about_window"), { 27, 19 }, ImGuiWindowFlags_NoCollapse);
+    if (win)
     {
         const char* text_display;
         const float window_width  = ImGui::GetWindowSize().x;
@@ -127,18 +123,15 @@ void ScreenshotTool::DrawAboutWindow()
             minimize_window();
 
         if (ImGui::Button(_("Close")))
-            open = false;
+            win.Close();
     }
-    ImGui::End();
-    m_show_window.Set(SubWindow::About, open);
 }
 
 void ScreenshotTool::DrawDownloadOCRWindow()
 {
     ErrorContext<OcrDownloadError>& ectx = m_download_errors;
 
-    bool open = m_show_window.Has(SubWindow::OcrDownload);
-    if (!open)
+    if (!m_show_window.Has(SubWindow::OcrDownload))
         return;
 
     static bool        has_downloaded = false;
@@ -155,12 +148,11 @@ void ScreenshotTool::DrawDownloadOCRWindow()
 
     const bool is_downloading = m_ocr_download && m_ocr_download->running.load();
 
-    ImGui::SetNextWindowSize(font_relative(40, 0), ImGuiCond_FirstUseEver);  // 0 = auto height
-    if (ImGui::Begin(_("Download OCR Language###ocr_download_window"), &open, ImGuiWindowFlags_NoSavedSettings))
+    ui::Window win(m_show_window, SubWindow::OcrDownload, _("Download OCR Language###ocr_download_window"), { 40, 0 });
+    if (win)
     {
         // Lock all inputs while a download is in flight
-        if (is_downloading)
-            ImGui::BeginDisabled();
+        ImGui::BeginDisabled(is_downloading);
 
         ImGui::SeparatorText(_("Source"));
         ImGui::TextDisabled("%s", _("GitHub repository containing Tesseract '.traineddata' models"));
@@ -180,7 +172,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
 
         ImGui::SeparatorText(_("Destination"));
         ImGui::SetNextItemWidth(-1);
-        draw_input_text_folder(
+        ui::InputFolder(
             "",
             "##ocr_download_path",
             [&] {
@@ -194,8 +186,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
             m_inputs.ocr_model_downloaded_path);
         ShowIfError(ectx, OcrDownloadError::InvalidPath);
 
-        if (is_downloading)
-            ImGui::EndDisabled();
+        ImGui::EndDisabled();
 
         // URL preview when both fields are filled
         if (!m_inputs.ocr_download_repo.empty() && !model_to_get.empty())
@@ -216,8 +207,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         // A failed download can be retried as it is, e.g. after a network error
         const bool can_download = !m_ocr_download && fields_filled && !ectx.Has(OcrDownloadError::InvalidPath);
 
-        if (!can_download)
-            ImGui::BeginDisabled();
+        ImGui::BeginDisabled(!can_download);
 
         if (ImGui::Button(_("Download"), ImVec2(-1, 0)))
         {
@@ -283,8 +273,7 @@ void ScreenshotTool::DrawDownloadOCRWindow()
             }).detach();
         }
 
-        if (!can_download)
-            ImGui::EndDisabled();
+        ImGui::EndDisabled();
 
         // Tooltip on the disabled button explaining why
         if (!can_download && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
@@ -382,15 +371,11 @@ void ScreenshotTool::DrawDownloadOCRWindow()
         if (refit)
             ImGui::SetWindowSize(ImVec2(ImGui::GetWindowWidth(), 0.0f));
     }
-    ImGui::End();
-
-    m_show_window.Set(SubWindow::OcrDownload, open);
 }
 
 void ScreenshotTool::DrawLogsWindow()
 {
-    bool open = m_show_window.Has(SubWindow::Logs);
-    if (!open || !g_imgui_log_sink)
+    if (!m_show_window.Has(SubWindow::Logs) || !g_imgui_log_sink)
         return;
 
     auto level_color = [](spdlog::level::level_enum lvl) {
@@ -426,8 +411,8 @@ void ScreenshotTool::DrawLogsWindow()
     static bool                          autoscroll = true;
     static spdlog::log_clock::time_point cleared_before{};  // "soft clear" marker
 
-    ImGui::SetNextWindowSize(font_relative(43, 31), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin(_("Logs###logs_window"), &open, ImGuiWindowFlags_NoSavedSettings))
+    ui::Window win(m_show_window, SubWindow::Logs, _("Logs###logs_window"), { 43, 31 });
+    if (win)
     {
         // --- Toolbar ---
         // The log lines and their level tags stay English, like the log file
@@ -439,7 +424,7 @@ void ScreenshotTool::DrawLogsWindow()
         ImGui::SameLine();
         ImGui::Checkbox(_("Auto-scroll"), &autoscroll);
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(button_width({ level_tag(spdlog::level::critical) }) + ImGui::GetFrameHeight());
+        ImGui::SetNextItemWidth(ui::ButtonWidth({ level_tag(spdlog::level::critical) }) + ImGui::GetFrameHeight());
         if (ImGui::BeginCombo("##min_level", level_tag(min_level)))
         {
             for (int i = spdlog::level::trace; i < spdlog::level::off; ++i)
@@ -454,8 +439,7 @@ void ScreenshotTool::DrawLogsWindow()
             ImGui::EndCombo();
         }
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(200);
-        text_filter.DrawWithHint(_("Filter"), nullptr);
+        ui::SearchBox(text_filter, "##log_filter", _("Filter"), ImGui::GetFontSize() * 12.5f);
 
         ImGui::Separator();
 
@@ -514,7 +498,4 @@ void ScreenshotTool::DrawLogsWindow()
 
         ImGui::EndChild();
     }
-    ImGui::End();
-
-    m_show_window.Set(SubWindow::Logs, open);
 }

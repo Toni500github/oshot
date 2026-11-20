@@ -12,8 +12,11 @@ add_executable(
     hotkey.cpp
     screen_capture.cpp
     text_extraction.cpp
+    ui.cpp
     util.cpp
 )
+# ui.hpp is private to the screenshot tool
+target_include_directories(oshot_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/screenshot_tool)
 # oshotpm's code is only in plugin builds
 if(NOT DISABLE_PLUGINS)
     target_sources(

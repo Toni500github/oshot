@@ -26,12 +26,12 @@
 #include <algorithm>
 #include <array>
 #include <cfloat>
-#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <utility>
 #include <vector>
@@ -109,7 +109,7 @@ static bool ui_blocks_selection()
 static float dist_to_segment(const ImVec2& p, const ImVec2& a, const ImVec2& b)
 {
     const ImVec2 c = ImLineClosestPoint(a, b, p);
-    return std::sqrt(ImLengthSqr(ImVec2(p.x - c.x, p.y - c.y)));
+    return std::sqrt(ImLengthSqr(p - c));
 }
 
 std::vector<annotation_t*> ScreenshotTool::GetAnnotationsAt(const ImVec2& pos)
@@ -121,15 +121,14 @@ std::vector<annotation_t*> ScreenshotTool::GetAnnotationsAt(const ImVec2& pos)
     const float     dpi   = ImGui::GetIO().DisplayFramebufferScale.x;
 
     // Last drawn is on top
-    for (auto it = m_annotations.rbegin(); it != m_annotations.rend(); ++it)
+    for (annotation_t& ann : std::views::reverse(m_annotations))
     {
-        const annotation_t& ann   = *it;
-        const float         t     = ann.thickness * dpi;
-        const float         reach = t * 0.5f + slack;
-        const ImVec2        p1(ann.start.x, ann.start.y);
-        const ImVec2        p2(ann.end.x, ann.end.y);
-        const float         dist_p1 = std::sqrt(ImLengthSqr(ImVec2(pos.x - p1.x, pos.y - p1.y)));
-        const float         radius  = std::sqrt(ImLengthSqr(ImVec2(p2.x - p1.x, p2.y - p1.y)));
+        const float  t       = ann.thickness * dpi;
+        const float  reach   = t * 0.5f + slack;
+        const ImVec2 p1      = ann.start;
+        const ImVec2 p2      = ann.end;
+        const float  dist_p1 = std::sqrt(ImLengthSqr(pos - p1));
+        const float  radius  = std::sqrt(ImLengthSqr(p2 - p1));
 
         bool hit = false;
         switch (ann.type)
@@ -138,8 +137,7 @@ std::vector<annotation_t*> ScreenshotTool::GetAnnotationsAt(const ImVec2& pos)
 
             case ToolType::Arrow:
                 // The head is 6t long and 4t wide at its base
-                hit = dist_to_segment(pos, p1, p2) <= reach ||
-                      ImLengthSqr(ImVec2(pos.x - p2.x, pos.y - p2.y)) <= ImPow(t * 3.0f + slack, 2.0f);
+                hit = dist_to_segment(pos, p1, p2) <= reach || ImLengthSqr(pos - p2) <= ImPow(t * 3.0f + slack, 2.0f);
                 break;
 
             case ToolType::Rectangle:
@@ -160,11 +158,9 @@ std::vector<annotation_t*> ScreenshotTool::GetAnnotationsAt(const ImVec2& pos)
 
             case ToolType::Pencil:
                 if (ann.points.size() == 1)
-                    hit = std::sqrt(ImLengthSqr(ImVec2(pos.x - ann.points[0].x, pos.y - ann.points[0].y))) <= reach;
+                    hit = std::sqrt(ImLengthSqr(pos - ann.points[0])) <= reach;
                 for (size_t i = 1; i < ann.points.size() && !hit; ++i)
-                    hit = dist_to_segment(pos,
-                                          ImVec2(ann.points[i - 1].x, ann.points[i - 1].y),
-                                          ImVec2(ann.points[i].x, ann.points[i].y)) <= reach;
+                    hit = dist_to_segment(pos, ann.points[i - 1], ann.points[i]) <= reach;
                 break;
 
             default:  // RectangleFilled, Text
@@ -177,7 +173,7 @@ std::vector<annotation_t*> ScreenshotTool::GetAnnotationsAt(const ImVec2& pos)
         }
 
         if (hit)
-            under.push_back(&*it);
+            under.push_back(&ann);
     }
 
     // Then the outlines it's inside, smallest first, so a shape drawn inside a bigger one comes before it
@@ -188,12 +184,11 @@ std::vector<annotation_t*> ScreenshotTool::GetAnnotationsAt(const ImVec2& pos)
             std::ranges::find(under, &ann) != under.end())
             continue;
 
-        const ImRect bbox     = GetAnnotationBBox(ann);
-        const float  radius   = bbox.GetWidth() * 0.5f;
-        const ImVec2 center   = bbox.GetCenter();
-        const bool   contains = ann.type == ToolType::Rectangle
-                                    ? bbox.Contains(pos)
-                                    : ImLengthSqr(ImVec2(pos.x - center.x, pos.y - center.y)) <= radius * radius;
+        const ImRect bbox   = GetAnnotationBBox(ann);
+        const float  radius = bbox.GetWidth() * 0.5f;
+        const ImVec2 center = bbox.GetCenter();
+        const bool   contains =
+            ann.type == ToolType::Rectangle ? bbox.Contains(pos) : ImLengthSqr(pos - center) <= radius * radius;
         if (contains)
             inside.push_back(&ann);
     }
@@ -219,8 +214,8 @@ void ScreenshotTool::ApplyAnnotationDrag()
     selection_info_t&   sel  = m_anno_sel;
 
     const ImVec2& mouse_pos = ImGui::GetMousePos();
-    const point_t delta     = { .x = mouse_pos.x - sel.drag_start_mouse.x, .y = mouse_pos.y - sel.drag_start_mouse.y };
-    const auto    offset    = [&](const point_t& p) { return point_t{ .x = p.x + delta.x, .y = p.y + delta.y }; };
+    const ImVec2  delta     = mouse_pos - sel.drag_start_mouse;
+    const auto    offset    = [&](const ImVec2& p) { return p + delta; };
 
     switch (sel.dragging_handle)
     {
@@ -261,7 +256,7 @@ void ScreenshotTool::ApplyAnnotationDrag()
     const float diag_sq = diag_x * diag_x + diag_y * diag_y;
     const float diag_scale =
         diag_sq > 0.0f ? ((diag_x + delta.x) * diag_x + (diag_y + delta.y) * diag_y) / diag_sq : 1.0f;
-    const point_t anchor = { .x = moves_left ? from.end.x : from.start.x, .y = moves_top ? from.end.y : from.start.y };
+    const ImVec2 anchor(moves_left ? from.end.x : from.start.x, moves_top ? from.end.y : from.start.y);
 
     switch (ann.type)
     {
@@ -291,8 +286,8 @@ void ScreenshotTool::ApplyAnnotationDrag()
                                    : to.start.y + std::copysign(side, to_h) * 0.5f;
             }
 
-            ann.start = { .x = cx, .y = cy };
-            ann.end   = { .x = cx + side * 0.5f, .y = cy };
+            ann.start = ImVec2(cx, cy);
+            ann.end   = ImVec2(cx + side * 0.5f, cy);
             break;
         }
 
@@ -306,18 +301,18 @@ void ScreenshotTool::ApplyAnnotationDrag()
             const float k    = size / orig.thickness;
 
             ann.thickness = size;
-            ann.start     = { .x = moves_left ? anchor.x - from_w * k : anchor.x,
-                              .y = moves_top ? anchor.y - from_h * k : anchor.y };
+            ann.start =
+                ImVec2(moves_left ? anchor.x - from_w * k : anchor.x, moves_top ? anchor.y - from_h * k : anchor.y);
             break;
         }
 
         default:  // Rectangle, RectangleFilled, Pencil
         {
-            const auto map = [&](const point_t& p) {
-                return point_t{ .x = from_w > 0.0f ? to.start.x + (p.x - from.start.x) * to_w / from_w
-                                                   : p.x + to.start.x - from.start.x,
-                                .y = from_h > 0.0f ? to.start.y + (p.y - from.start.y) * to_h / from_h
-                                                   : p.y + to.start.y - from.start.y };
+            const auto map = [&](const ImVec2& p) {
+                return ImVec2(
+                    from_w > 0.0f ? to.start.x + (p.x - from.start.x) * to_w / from_w : p.x + to.start.x - from.start.x,
+                    from_h > 0.0f ? to.start.y + (p.y - from.start.y) * to_h / from_h
+                                  : p.y + to.start.y - from.start.y);
             };
             ann.start = map(orig.start);
             ann.end   = map(orig.end);
@@ -478,8 +473,8 @@ void ScreenshotTool::HandleShortcutsInput()
 
     if (ImGui::Shortcut(ImGuiKey_A | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal))
     {
-        m_main_sel.selection.start = point_t{ .x = m_image_origin.x, .y = m_image_origin.y };
-        m_main_sel.selection.end   = point_t{ .x = m_image_end.x, .y = m_image_end.y };
+        m_main_sel.selection.start = m_image_origin;
+        m_main_sel.selection.end   = m_image_end;
         m_state                    = ToolState::Selected;
         UpdateAnnsToolbarPos();
     }
@@ -525,7 +520,7 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
         if (sel.handle_hover != HandleHovered::kNone)
         {
             // HandleResizeInput() expects start <= end
-            NormalizeSelection(sel);
+            sel.selection.normalize();
             sel.dragging_handle      = sel.handle_hover;
             sel.drag_start_mouse     = mouse_pos;
             sel.drag_start_selection = sel.selection;
@@ -534,7 +529,7 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
         // Moving the selection
         else if (sel.selection.rect().Contains(mouse_pos))
         {
-            NormalizeSelection(sel);
+            sel.selection.normalize();
             sel.dragging_handle      = HandleHovered::Move;
             sel.drag_start_mouse     = mouse_pos;
             sel.drag_start_selection = sel.selection;
@@ -543,7 +538,7 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
         // A new selection
         else
         {
-            sel.selection.start = { .x = mouse_pos.x, .y = mouse_pos.y };
+            sel.selection.start = mouse_pos;
             sel.selection.end   = sel.selection.start;
             m_state             = ToolState::Selecting;
         }
@@ -554,7 +549,7 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
         if (m_state == sel.resizing_state)
             HandleResizeInput(sel);
         else  // ToolState::Selecting
-            sel.selection.end = { .x = mouse_pos.x, .y = mouse_pos.y };
+            sel.selection.end = mouse_pos;
 
         ClampSelectionToImage(sel);
     }
@@ -569,7 +564,7 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
         if (sel.selection.get_width() >= min_size && sel.selection.get_height() >= min_size)
             m_state = sel.idle_state;
 
-        NormalizeSelection(sel);
+        sel.selection.normalize();
         UpdateAnnsToolbarPos();
     }
 }
@@ -577,38 +572,23 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
 void ScreenshotTool::HandleResizeInput(selection_info_t& sel)
 {
     const ImVec2& mouse_pos = ImGui::GetMousePos();
-    const ImVec2  delta(mouse_pos.x - sel.drag_start_mouse.x, mouse_pos.y - sel.drag_start_mouse.y);
+    const ImVec2  delta     = mouse_pos - sel.drag_start_mouse;
 
-    switch (sel.dragging_handle)
-    {
-        case HandleHovered::TopLeft:
-            sel.selection.start.x = sel.drag_start_selection.start.x + delta.x;
-            sel.selection.start.y = sel.drag_start_selection.start.y + delta.y;
-            break;
-        case HandleHovered::TopRight:
-            sel.selection.end.x   = sel.drag_start_selection.end.x + delta.x;
-            sel.selection.start.y = sel.drag_start_selection.start.y + delta.y;
-            break;
-        case HandleHovered::BottomLeft:
-            sel.selection.start.x = sel.drag_start_selection.start.x + delta.x;
-            sel.selection.end.y   = sel.drag_start_selection.end.y + delta.y;
-            break;
-        case HandleHovered::BottomRight:
-            sel.selection.end.x = sel.drag_start_selection.end.x + delta.x;
-            sel.selection.end.y = sel.drag_start_selection.end.y + delta.y;
-            break;
-        case HandleHovered::Top:    sel.selection.start.y = sel.drag_start_selection.start.y + delta.y; break;
-        case HandleHovered::Bottom: sel.selection.end.y = sel.drag_start_selection.end.y + delta.y; break;
-        case HandleHovered::Left:   sel.selection.start.x = sel.drag_start_selection.start.x + delta.x; break;
-        case HandleHovered::Right:  sel.selection.end.x = sel.drag_start_selection.end.x + delta.x; break;
-        case HandleHovered::Move:
-            sel.selection.start.x = sel.drag_start_selection.start.x + delta.x;
-            sel.selection.start.y = sel.drag_start_selection.start.y + delta.y;
-            sel.selection.end.x   = sel.drag_start_selection.end.x + delta.x;
-            sel.selection.end.y   = sel.drag_start_selection.end.y + delta.y;
-            break;
-        default: break;
-    }
+    // The edges the dragged handle moves, all four for Move
+    using enum HandleHovered;
+    const HandleHovered h     = sel.dragging_handle;
+    const auto          moves = [h](const HandleHovered a, const HandleHovered b, const HandleHovered c) {
+        return h == a || h == b || h == c || h == Move;
+    };
+    const selection_rect_t& from = sel.drag_start_selection;
+    if (moves(Left, TopLeft, BottomLeft))
+        sel.selection.start.x = from.start.x + delta.x;
+    if (moves(Right, TopRight, BottomRight))
+        sel.selection.end.x = from.end.x + delta.x;
+    if (moves(Top, TopLeft, TopRight))
+        sel.selection.start.y = from.start.y + delta.y;
+    if (moves(Bottom, BottomLeft, BottomRight))
+        sel.selection.end.y = from.end.y + delta.y;
 
     // Don't flip with annotations
     if (sel.is_ann)
@@ -672,7 +652,7 @@ void ScreenshotTool::HandleAnnotationInput()
             {
                 m_current_annotation       = {};
                 m_current_annotation.type  = ToolType::Text;
-                m_current_annotation.start = { .x = mouse_pos.x, .y = mouse_pos.y };
+                m_current_annotation.start = mouse_pos;
                 m_current_annotation.end   = m_current_annotation.start;
                 m_current_actions.Set(CurrentAction::IsTextPlacing);
                 m_focus_text_input = true;
@@ -698,52 +678,49 @@ void ScreenshotTool::HandleAnnotationInput()
             const float  lines     = float(std::ranges::count(ann.text, '\n') + 1);
             const ImVec2 input_size(text_size.x + ann.thickness + pad.x * 2.0f, lines * ann.thickness + pad.y * 2.0f);
 
-            // Placed so the text lines up with where it's drawn once added
-            ImGui::SetNextWindowPos(ImVec2(ann.start.x - pad.x, ann.start.y - pad.y));
-            ImGui::SetNextWindowBgAlpha(0.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, pad);
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
-            ImGui::PushStyleColor(ImGuiCol_FrameBg, 0x00000000_rgba);
-            ImGui::PushStyleColor(ImGuiCol_Border, theme::color(AppCol::SelectionBorder));
-            ImGui::PushStyleColor(ImGuiCol_Text, ann.color.to_abgr());
-            // The input has its own border, and the keyboard focus would add the nav cursor's around it
-            ImGui::PushStyleColor(ImGuiCol_NavCursor, 0x00000000_rgba);
+            bool   entered;
+            ImRect input_rect;
+            {
+                ui::ScopedStyle style;
+                style.Var(ImGuiStyleVar_WindowPadding, ImVec2(0, 0))
+                    .Var(ImGuiStyleVar_FramePadding, pad)
+                    .Var(ImGuiStyleVar_FrameBorderSize, 1.0f)
+                    .Color(ImGuiCol_FrameBg, 0x00000000_rgba)
+                    .Color(ImGuiCol_Border, theme::color(AppCol::SelectionBorder))
+                    .Color(ImGuiCol_Text, ann.color.to_abgr())
+                    // The input has its own border, and the keyboard focus would add the nav cursor's around it
+                    .Color(ImGuiCol_NavCursor, 0x00000000_rgba);
 
-            ImGui::Begin("##text_ann_input_win",
-                         nullptr,
-                         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                             ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
-                             ImGuiWindowFlags_NoScrollbar);
+                // Placed so the text lines up with where it's drawn once added
+                ImGui::SetNextWindowBgAlpha(0.0f);
+                const ui::OverlayWindow win("##text_ann_input_win", ann.start - pad);
 
-            // Asked again until it takes, since the click that opened it focuses the overlay at the end of the frame
-            if (m_focus_text_input)
-                ImGui::SetKeyboardFocusHere();
+                // Asked again until it takes, since the click that opened it focuses the overlay at the end of the
+                // frame
+                if (m_focus_text_input)
+                    ImGui::SetKeyboardFocusHere();
 
-            ImGui::PushFont(font, ann.thickness);
-            ImGui::PushID(int(m_text_input_id));
-            // An edited text gets the caret at its end, not its start
-            auto caret_to_end = [](ImGuiInputTextCallbackData* data) {
-                data->CursorPos = data->SelectionStart = data->SelectionEnd = data->BufTextLen;
-                return 0;
-            };
-            const bool entered = ImGui::InputTextMultiline(
-                "##text_ann_input_text",
-                &ann.text,
-                input_size,
-                ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CtrlEnterForNewLine |
-                    ImGuiInputTextFlags_NoHorizontalScroll |
-                    (m_focus_text_input ? ImGuiInputTextFlags_CallbackAlways : ImGuiInputTextFlags_None),
-                caret_to_end);
-            ImGui::PopID();
-            ImGui::PopFont();
-            const ImRect input_rect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-            if (ImGui::IsItemActive())
-                m_focus_text_input = false;
-
-            ImGui::End();
-            ImGui::PopStyleColor(4);
-            ImGui::PopStyleVar(3);
+                ImGui::PushFont(font, ann.thickness);
+                ImGui::PushID(int(m_text_input_id));
+                // An edited text gets the caret at its end, not its start
+                auto caret_to_end = [](ImGuiInputTextCallbackData* data) {
+                    data->CursorPos = data->SelectionStart = data->SelectionEnd = data->BufTextLen;
+                    return 0;
+                };
+                entered = ImGui::InputTextMultiline(
+                    "##text_ann_input_text",
+                    &ann.text,
+                    input_size,
+                    ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CtrlEnterForNewLine |
+                        ImGuiInputTextFlags_NoHorizontalScroll |
+                        (m_focus_text_input ? ImGuiInputTextFlags_CallbackAlways : ImGuiInputTextFlags_None),
+                    caret_to_end);
+                ImGui::PopID();
+                ImGui::PopFont();
+                input_rect = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+                if (ImGui::IsItemActive())
+                    m_focus_text_input = false;
+            }
 
             // The keys, below the input in the selection size label's colors so they read on any image
             const char*  hint = _("Enter: add  Shift+Enter: new line  Esc: cancel");
@@ -756,22 +733,18 @@ void ScreenshotTool::HandleAnnotationInput()
                 hint_pos.y = input_rect.Min.y - 4.0f - hint_size.y;
             hint_pos.x = std::clamp(hint_pos.x, 0.0f, std::max(0.0f, display.x - hint_size.x));
 
-            ImGui::SetNextWindowPos(hint_pos);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, hint_pad);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-            ImGui::PushStyleColor(ImGuiCol_WindowBg, theme::color(AppCol::SizeLabelBg));
-            ImGui::PushStyleColor(ImGuiCol_Border, theme::color(AppCol::SizeLabelBorder));
-            ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::SizeLabelText));
-            ImGui::Begin("##text_ann_hint",
-                         nullptr,
-                         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove |
-                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize |
-                             ImGuiWindowFlags_NoFocusOnAppearing);
-            ImGui::TextUnformatted(hint);
-            ImGui::End();
-            ImGui::PopStyleColor(3);
-            ImGui::PopStyleVar(3);
+            {
+                ui::ScopedStyle style;
+                style.Var(ImGuiStyleVar_WindowPadding, hint_pad)
+                    .Var(ImGuiStyleVar_WindowRounding, 4.0f)
+                    .Var(ImGuiStyleVar_WindowBorderSize, 1.0f)
+                    .Color(ImGuiCol_WindowBg, theme::color(AppCol::SizeLabelBg))
+                    .Color(ImGuiCol_Border, theme::color(AppCol::SizeLabelBorder))
+                    .Color(ImGuiCol_Text, theme::color(AppCol::SizeLabelText));
+                const ui::OverlayWindow win(
+                    "##text_ann_hint", hint_pos, ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoFocusOnAppearing);
+                ImGui::TextUnformatted(hint);
+            }
 
             if (entered)
             {
@@ -793,7 +766,7 @@ void ScreenshotTool::HandleAnnotationInput()
     {
         m_current_actions.Set(CurrentAction::IsDrawing);
         m_current_annotation.type      = m_current_tool;
-        m_current_annotation.start     = { .x = mouse_pos.x, .y = mouse_pos.y };
+        m_current_annotation.start     = mouse_pos;
         m_current_annotation.end       = m_current_annotation.start;
         m_current_annotation.color     = m_current_color;
         m_current_annotation.thickness = m_tool_thickness[idx(m_current_tool)];
@@ -815,18 +788,18 @@ void ScreenshotTool::HandleAnnotationInput()
 
     if (m_current_actions.Has(CurrentAction::IsDrawing) && ImGui::IsMouseDown(ImGuiMouseButton_Left))
     {
-        m_current_annotation.end = { .x = mouse_pos.x, .y = mouse_pos.y };
+        m_current_annotation.end = mouse_pos;
 
         if (m_current_tool == ToolType::Pencil)
         {
             // Add a point only if it's more than 2px from the last one
             if (!m_current_annotation.points.empty())
             {
-                const point_t& last = m_current_annotation.points.back();
-                float          dx   = mouse_pos.x - last.x;
-                float          dy   = mouse_pos.y - last.y;
+                const ImVec2& last = m_current_annotation.points.back();
+                float         dx   = mouse_pos.x - last.x;
+                float         dy   = mouse_pos.y - last.y;
                 if (dx * dx + dy * dy > 4.0f)
-                    m_current_annotation.points.push_back({ .x = mouse_pos.x, .y = mouse_pos.y });
+                    m_current_annotation.points.push_back(mouse_pos);
             }
         }
     }
@@ -842,7 +815,7 @@ void ScreenshotTool::HandleAnnotationInput()
         // A drag sizes the bubble, a click places one of the default size
         if (m_current_tool == ToolType::CounterBubble && !should_add)
         {
-            m_current_annotation.end = { .x = m_current_annotation.start.x + 20.0f, .y = m_current_annotation.start.y };
+            m_current_annotation.end = ImVec2(m_current_annotation.start.x + 20.0f, m_current_annotation.start.y);
             should_add               = true;
         }
         if (should_add)
@@ -930,98 +903,92 @@ void ScreenshotTool::HandleColorPickerInput()
     if (win_y + k_win_size + k_approx_info_h > display.y)
         win_y = mouse_pos.y - k_offset - k_win_size - k_approx_info_h;
 
-    ImGui::SetNextWindowPos(ImVec2(win_x, win_y));
-    ImGui::SetNextWindowBgAlpha(0.9f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(k_padding, k_padding));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
-    ImGui::Begin("##color_loupe",
-                 nullptr,
-                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs |
-                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize);
-    ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
-
-    if (!in_image)
     {
-        ImGui::TextDisabled("%s", _("Outside of the image"));
-    }
-    else
-    {
-        // Sample the pixel under the cursor
-        const size_t off = (size_t(py) * m_screenshot.w + px) * 4;
-        const rgba_t c   = load_rgba(m_screenshot.data.data() + off);
+        ui::ScopedStyle style;
+        style.Var(ImGuiStyleVar_WindowPadding, ImVec2(k_padding, k_padding)).Var(ImGuiStyleVar_WindowRounding, 6.0f);
+        ImGui::SetNextWindowBgAlpha(0.9f);
+        const ui::OverlayWindow win("##color_loupe", ImVec2(win_x, win_y), ImGuiWindowFlags_NoInputs);
+        ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
 
-        // UVs of the zoomed region
-        const float half_src_px_x = (k_loupe_px / k_zoom) * 0.5f / float(m_screenshot.w);
-        const float half_src_px_y = (k_loupe_px / k_zoom) * 0.5f / float(m_screenshot.h);
-        const float uv_cx         = (float(px) + 0.5f) / float(m_screenshot.w);
-        const float uv_cy         = (float(py) + 0.5f) / float(m_screenshot.h);
-
-        const ImVec2 uv_min(uv_cx - half_src_px_x, uv_cy - half_src_px_y);
-        const ImVec2 uv_max(uv_cx + half_src_px_x, uv_cy + half_src_px_y);
-
-        ImGuiPlatformIO& platform_io  = ImGui::GetPlatformIO();
-        ImDrawList*      dl           = ImGui::GetWindowDrawList();
-        const ImVec2&    loupe_origin = ImGui::GetCursorScreenPos();
-
-        if (platform_io.DrawCallback_SetSamplerNearest)
-            dl->AddCallback(platform_io.DrawCallback_SetSamplerNearest, nullptr);
-
-        // Draw the magnified image
-        ImGui::Image(m_texture_id, ImVec2(k_loupe_px, k_loupe_px), uv_min, uv_max);
-
-        if (platform_io.DrawCallback_SetSamplerLinear)
-            dl->AddCallback(platform_io.DrawCallback_SetSamplerLinear, nullptr);
-
-        // Crosshair
-        const ImVec2    ctr = ImVec2(loupe_origin.x + k_loupe_px * 0.5f, loupe_origin.y + k_loupe_px * 0.5f);
-        constexpr float arm = 10.0f;
-        constexpr float gap = 3.0f;  // gap around the center dot
-
-        // Shadow lines for contrast on any background
-        dl->AddLine(ImVec2(ctr.x - arm, ctr.y), ImVec2(ctr.x - gap, ctr.y), shadow_color, 1.5f);
-        dl->AddLine(ImVec2(ctr.x + gap, ctr.y), ImVec2(ctr.x + arm, ctr.y), shadow_color, 1.5f);
-        dl->AddLine(ImVec2(ctr.x, ctr.y - arm), ImVec2(ctr.x, ctr.y - gap), shadow_color, 1.5f);
-        dl->AddLine(ImVec2(ctr.x, ctr.y + gap), ImVec2(ctr.x, ctr.y + arm), shadow_color, 1.5f);
-        // White lines on top
-        dl->AddLine(ImVec2(ctr.x - arm, ctr.y), ImVec2(ctr.x - gap, ctr.y), white_lines_color, 1.0f);
-        dl->AddLine(ImVec2(ctr.x + gap, ctr.y), ImVec2(ctr.x + arm, ctr.y), white_lines_color, 1.0f);
-        dl->AddLine(ImVec2(ctr.x, ctr.y - arm), ImVec2(ctr.x, ctr.y - gap), white_lines_color, 1.0f);
-        dl->AddLine(ImVec2(ctr.x, ctr.y + gap), ImVec2(ctr.x, ctr.y + arm), white_lines_color, 1.0f);
-        // Center dot, filled with the hovered color so it's always visible
-        dl->AddCircleFilled(ctr, gap - 0.5f, c.to_abgr());
-        dl->AddCircle(ctr, gap - 0.5f, (0xffffffC8_rgba).to_abgr(), 12, 1.0f);
-
-        // Outline around the entire loupe image
-        dl->AddRect(loupe_origin,
-                    ImVec2(loupe_origin.x + k_loupe_px, loupe_origin.y + k_loupe_px),
-                    (0x505050DC_rgba).to_abgr(),
-                    2.0f,
-                    1.5f,
-                    ImDrawFlags_None);
-
-        ImGui::Spacing();
-        ImGui::ColorButton("##loupe_swatch", c, ImGuiColorEditFlags_NoPicker, ImVec2(32, 32));
-        ImGui::SameLine();
-        ImGui::BeginGroup();
-        ImGui::Text("#%02X%02X%02X", c.r, c.g, c.b);
-        ImGui::TextColored(Colors::RED, "%-3d ", c.r);
-        ImGui::SameLine();
-        ImGui::TextColored(Colors::GREEN, "%-3d ", c.g);
-        ImGui::SameLine();
-        ImGui::TextColored(Colors::BLUE, "%-3d", c.b);
-        ImGui::EndGroup();
-
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        if (!in_image)
         {
-            m_current_color = c;
-            g_cache->SetValue(CacheEntry::AnnColor, m_current_color.to_rgba());
-            m_current_actions.Clear(CurrentAction::IsColorPicking);
+            ImGui::TextDisabled("%s", _("Outside of the image"));
+        }
+        else
+        {
+            // Sample the pixel under the cursor
+            const size_t off = (size_t(py) * m_screenshot.w + px) * 4;
+            const rgba_t c   = load_rgba(m_screenshot.data.data() + off);
+
+            // UVs of the zoomed region
+            const float half_src_px_x = (k_loupe_px / k_zoom) * 0.5f / float(m_screenshot.w);
+            const float half_src_px_y = (k_loupe_px / k_zoom) * 0.5f / float(m_screenshot.h);
+            const float uv_cx         = (float(px) + 0.5f) / float(m_screenshot.w);
+            const float uv_cy         = (float(py) + 0.5f) / float(m_screenshot.h);
+
+            const ImVec2 uv_min(uv_cx - half_src_px_x, uv_cy - half_src_px_y);
+            const ImVec2 uv_max(uv_cx + half_src_px_x, uv_cy + half_src_px_y);
+
+            ImGuiPlatformIO& platform_io  = ImGui::GetPlatformIO();
+            ImDrawList*      dl           = ImGui::GetWindowDrawList();
+            const ImVec2&    loupe_origin = ImGui::GetCursorScreenPos();
+
+            if (platform_io.DrawCallback_SetSamplerNearest)
+                dl->AddCallback(platform_io.DrawCallback_SetSamplerNearest, nullptr);
+
+            // Draw the magnified image
+            ImGui::Image(m_texture_id, ImVec2(k_loupe_px, k_loupe_px), uv_min, uv_max);
+
+            if (platform_io.DrawCallback_SetSamplerLinear)
+                dl->AddCallback(platform_io.DrawCallback_SetSamplerLinear, nullptr);
+
+            // Crosshair
+            const ImVec2    ctr = ImVec2(loupe_origin.x + k_loupe_px * 0.5f, loupe_origin.y + k_loupe_px * 0.5f);
+            constexpr float arm = 10.0f;
+            constexpr float gap = 3.0f;  // gap around the center dot
+
+            // Shadow lines for contrast on any background
+            dl->AddLine(ImVec2(ctr.x - arm, ctr.y), ImVec2(ctr.x - gap, ctr.y), shadow_color, 1.5f);
+            dl->AddLine(ImVec2(ctr.x + gap, ctr.y), ImVec2(ctr.x + arm, ctr.y), shadow_color, 1.5f);
+            dl->AddLine(ImVec2(ctr.x, ctr.y - arm), ImVec2(ctr.x, ctr.y - gap), shadow_color, 1.5f);
+            dl->AddLine(ImVec2(ctr.x, ctr.y + gap), ImVec2(ctr.x, ctr.y + arm), shadow_color, 1.5f);
+            // White lines on top
+            dl->AddLine(ImVec2(ctr.x - arm, ctr.y), ImVec2(ctr.x - gap, ctr.y), white_lines_color, 1.0f);
+            dl->AddLine(ImVec2(ctr.x + gap, ctr.y), ImVec2(ctr.x + arm, ctr.y), white_lines_color, 1.0f);
+            dl->AddLine(ImVec2(ctr.x, ctr.y - arm), ImVec2(ctr.x, ctr.y - gap), white_lines_color, 1.0f);
+            dl->AddLine(ImVec2(ctr.x, ctr.y + gap), ImVec2(ctr.x, ctr.y + arm), white_lines_color, 1.0f);
+            // Center dot, filled with the hovered color so it's always visible
+            dl->AddCircleFilled(ctr, gap - 0.5f, c.to_abgr());
+            dl->AddCircle(ctr, gap - 0.5f, (0xffffffC8_rgba).to_abgr(), 12, 1.0f);
+
+            // Outline around the entire loupe image
+            dl->AddRect(loupe_origin,
+                        ImVec2(loupe_origin.x + k_loupe_px, loupe_origin.y + k_loupe_px),
+                        (0x505050DC_rgba).to_abgr(),
+                        2.0f,
+                        1.5f,
+                        ImDrawFlags_None);
+
+            ImGui::Spacing();
+            ImGui::ColorButton("##loupe_swatch", c, ImGuiColorEditFlags_NoPicker, ImVec2(32, 32));
+            ImGui::SameLine();
+            ImGui::BeginGroup();
+            ImGui::Text("#%02X%02X%02X", c.r, c.g, c.b);
+            ImGui::TextColored(Colors::RED, "%-3d ", c.r);
+            ImGui::SameLine();
+            ImGui::TextColored(Colors::GREEN, "%-3d ", c.g);
+            ImGui::SameLine();
+            ImGui::TextColored(Colors::BLUE, "%-3d", c.b);
+            ImGui::EndGroup();
+
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+            {
+                m_current_color = c;
+                g_cache->SetValue(CacheEntry::AnnColor, m_current_color.to_rgba());
+                m_current_actions.Clear(CurrentAction::IsColorPicking);
+            }
         }
     }
-
-    ImGui::End();
-    ImGui::PopStyleVar();
-    ImGui::PopStyleVar();
 
     // A precise mark under the cursor, which stays visible outside the loupe
     {

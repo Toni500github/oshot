@@ -184,9 +184,9 @@ static ImVec2 toolbar_row_pos(const selection_rect_t& sel,
     const float centered_y = sel.get_y() + (sel.get_height() - length) * 0.5f;
     switch (border)
     {
-        case SelectionBorder::Bottom: return { centered_x, sel.get_y() + sel.get_height() + out.y };
+        case SelectionBorder::Bottom: return { centered_x, sel.get_bottom() + out.y };
         case SelectionBorder::Top:    return { centered_x, sel.get_y() - out.y - btn.y };
-        case SelectionBorder::Right:  return { sel.get_x() + sel.get_width() + out.x, centered_y };
+        case SelectionBorder::Right:  return { sel.get_right() + out.x, centered_y };
         default:                      return { sel.get_x() - out.x - btn.x, centered_y };
     }
 }
@@ -197,10 +197,7 @@ static void begin_toolbar_window(const char* name, const ImVec2& pos)
     ImGui::SetNextWindowPos(pos);
     // The overlay leaves no window padding, so the border would clip the buttons' outer pixel and rounding
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::Begin(name,
-                 nullptr,
-                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                     ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::Begin(name, nullptr, ui::kOverlayFlags | ImGuiWindowFlags_NoBackground);
     ImGui::PopStyleVar();
 }
 
@@ -227,8 +224,7 @@ static void draw_output_hint(const char* hint, const ImVec2& size)
     const ImU32  col = ImGui::GetColorU32(ImGuiCol_TextDisabled);
 
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
-    draw_list->AddRectFilled(
-        min, ImVec2(min.x + size.x, min.y + size.y), ImGui::GetColorU32(ImGuiCol_FrameBg), style.FrameRounding);
+    draw_list->AddRectFilled(min, min + size, ImGui::GetColorU32(ImGuiCol_FrameBg), style.FrameRounding);
 
     float y = std::round(min.y + (size.y - font_size * float(lines.size())) * 0.5f);
     for (const std::string_view line : lines)
@@ -295,9 +291,7 @@ static std::string join_stats(std::initializer_list<std::string> parts)
 
 static void draw_stats(const std::string& stats)
 {
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    ImGui::TextWrapped("%s", stats.c_str());
-    ImGui::PopStyleColor();
+    ui::TextWrappedColored(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), "%s", stats.c_str());
 }
 
 // The height draw_stats() takes, with the spacing under it
@@ -315,21 +309,12 @@ static std::string duration_str(const float seconds)
     return seconds < 0.001f ? "<1 ms" : fmt::format("{:.0f} ms", seconds * 1000.0f);
 }
 
-void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
-                                          const float       sel_x,
-                                          const float       sel_y,
-                                          const float       sel_w,
-                                          const float       sel_h)
+void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel, const ImRect& r)
 {
     ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
 
     // Draw selection border
-    draw_list->AddRect(ImVec2(sel_x, sel_y),
-                       ImVec2(sel_x + sel_w, sel_y + sel_h),
-                       theme::color(AppCol::SelectionBorder).to_abgr(),
-                       0.0f,
-                       1.0f,
-                       ImDrawFlags_None);
+    draw_list->AddRect(r.Min, r.Max, theme::color(AppCol::SelectionBorder).to_abgr(), 0.0f, 1.0f, ImDrawFlags_None);
 
     // Draw handles
     constexpr float handle_draw = 2.0f;
@@ -362,7 +347,8 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
     {
         // Drawn every frame, and fmt's buffer keeps a label this short on the stack
         fmt::memory_buffer str;
-        fmt::format_to(std::back_inserter(str), "{:.0f}x{:.0f}+{:.0f}+{:.0f}", sel_w, sel_h, sel_x, sel_y);
+        fmt::format_to(
+            std::back_inserter(str), "{:.0f}x{:.0f}+{:.0f}+{:.0f}", r.GetWidth(), r.GetHeight(), r.Min.x, r.Min.y);
         if (g_config->File.image_out_size_fmt != "off")
         {
             static size_t           estimated_size = 0;
@@ -413,45 +399,36 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel,
         constexpr float kMargin   = 3.0f;  // gap between selection corner and the label
 
         const ImVec2 win_size(str_size.x + kPaddingX * 2.0f, str_size.y + kPaddingY * 2.0f);
-        const ImVec2 win_pos((sel_x + sel_w) - win_size.x - kMargin, (sel_y + sel_h) - win_size.y - kMargin);
+        const ImVec2 win_pos(r.Max.x - win_size.x - kMargin, r.Max.y - win_size.y - kMargin);
 
-        ImGui::SetNextWindowPos(win_pos);
+        ui::ScopedStyle style;
+        style.Var(ImGuiStyleVar_WindowRounding, 4.0f)
+            .Var(ImGuiStyleVar_WindowPadding, ImVec2(kPaddingX, kPaddingY))
+            .Var(ImGuiStyleVar_WindowBorderSize, 1.0f)
+            .Color(ImGuiCol_WindowBg, theme::color(AppCol::SizeLabelBg))
+            .Color(ImGuiCol_Border, theme::color(AppCol::SizeLabelBorder))
+            .Color(ImGuiCol_Text, theme::color(AppCol::SizeLabelText));
+
         ImGui::SetNextWindowSize(win_size);
-
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kPaddingX, kPaddingY));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, theme::color(AppCol::SizeLabelBg));
-        ImGui::PushStyleColor(ImGuiCol_Border, theme::color(AppCol::SizeLabelBorder));
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::SizeLabelText));
-
-        if (ImGui::Begin("##selection_size_window",
-                         nullptr,
-                         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs |
-                             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
-                             ImGuiWindowFlags_AlwaysAutoResize))
+        if (const ui::OverlayWindow win("##selection_size_window", win_pos, ImGuiWindowFlags_NoInputs); win)
             ImGui::TextUnformatted(str.begin(), str.end());
-        ImGui::End();
-
-        ImGui::PopStyleColor(3);
-        ImGui::PopStyleVar(3);
     }
 }
 
-void ScreenshotTool::CreateCopyTextButton(const std::string&     text_copy,
-                                          const std::string_view label1,
-                                          const ImVec2&          size,
-                                          const bool             show_error)
+void ScreenshotTool::CreateCopyTextButton(const std::string& text_copy,
+                                          const char*        label1,
+                                          const ImVec2&      size,
+                                          const bool         show_error)
 {
     ErrorContext<GeneralError>& ectx = m_general_errors;
 
     // Each button says "Copied!" on its own, e.g. the ones in the rows of a table
     ImGuiStorage* storage = ImGui::GetStateStorage();
     ImGui::PushID("##copy_armed");
-    const ImGuiID key = ImGui::GetID(label1.data(), label1.data() + label1.size());
+    const ImGuiID key = ImGui::GetID(label1);
     ImGui::PopID();
     bool armed = storage->GetBool(key);
-    if (create_timed_button(label1, _("Copied!"), armed, size))
+    if (ui::TimedButton(label1, _("Copied!"), armed, size))
     {
         const Result<>& res = g_clipboard.CopyText(text_copy);
         if (res.ok())
@@ -479,25 +456,18 @@ void ScreenshotTool::DrawDarkOverlay()
 {
     ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
 
-    const float sel_x = m_main_sel.selection.get_x();
-    const float sel_y = m_main_sel.selection.get_y();
-    const float sel_w = m_main_sel.selection.get_width();
-    const float sel_h = m_main_sel.selection.get_height();
-
-    const ImU32 dark_color = theme::color(AppCol::SelectionDim).to_abgr();
+    const ImRect r          = m_main_sel.selection.rect();
+    const ImU32  dark_color = theme::color(AppCol::SelectionDim).to_abgr();
 
     // Above, below, left and right of the selection
-    draw_list->AddRectFilled(m_image_origin, ImVec2(m_image_end.x, sel_y), dark_color);
-    draw_list->AddRectFilled(ImVec2(m_image_origin.x, sel_y + sel_h), m_image_end, dark_color);
-    draw_list->AddRectFilled(ImVec2(m_image_origin.x, sel_y), ImVec2(sel_x, sel_y + sel_h), dark_color);
-    draw_list->AddRectFilled(ImVec2(sel_x + sel_w, sel_y), ImVec2(m_image_end.x, sel_y + sel_h), dark_color);
+    draw_list->AddRectFilled(m_image_origin, ImVec2(m_image_end.x, r.Min.y), dark_color);
+    draw_list->AddRectFilled(ImVec2(m_image_origin.x, r.Max.y), m_image_end, dark_color);
+    draw_list->AddRectFilled(ImVec2(m_image_origin.x, r.Min.y), r.GetBL(), dark_color);
+    draw_list->AddRectFilled(r.GetTR(), ImVec2(m_image_end.x, r.Max.y), dark_color);
 }
 
 void ScreenshotTool::DrawAnnotations()
 {
-    static_assert(sizeof(point_t) == sizeof(ImVec2) && alignof(point_t) == alignof(ImVec2),
-                  "point_t and ImVec2 layout mismatch");
-
     ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
     const float dpi       = ImGui::GetIO().DisplayFramebufferScale.x;
 
@@ -555,7 +525,7 @@ void ScreenshotTool::DrawAnnotations()
         const float step_sq = step * step;
         const int   segs    = r < 4.0f ? 8 : 0;  // 0 = ImGui picks based on radius
 
-        ImVec2 last(ann.points[0].x, ann.points[0].y);
+        ImVec2 last = ann.points[0];
         draw_list->AddCircleFilled(last, r, col, segs);
 
         for (size_t i = 1; i < ann.points.size(); ++i)
@@ -580,13 +550,13 @@ void ScreenshotTool::DrawAnnotations()
         }
 
         // make sure the stroke ends exactly where the mouse ended
-        const ImVec2 end(ann.points.back().x, ann.points.back().y);
+        const ImVec2 end = ann.points.back();
         if (end.x != last.x || end.y != last.y)
             draw_list->AddCircleFilled(end, r, col, segs);
     };
 
     auto draw_arrow = [&](const annotation_t& ann, const ImVec2& p1, const ImVec2& p2, const float t) {
-        ImVec2 v(p2.x - p1.x, p2.y - p1.y);
+        ImVec2 v   = p2 - p1;
         float  len = std::sqrt(v.x * v.x + v.y * v.y);
         if (len < 1.0f)
             return;
@@ -611,9 +581,9 @@ void ScreenshotTool::DrawAnnotations()
     };
 
     auto draw_annotation = [&](const annotation_t& ann) {
-        const ImVec2 p1(ann.start.x, ann.start.y);
-        const ImVec2 p2(ann.end.x, ann.end.y);
-        const float  t = ann.thickness * dpi;
+        const ImVec2 p1 = ann.start;
+        const ImVec2 p2 = ann.end;
+        const float  t  = ann.thickness * dpi;
 
         switch (ann.type)
         {
@@ -649,12 +619,7 @@ void ScreenshotTool::DrawAnnotations()
 
 void ScreenshotTool::DrawSelectionBorder()
 {
-    const float sel_x = m_main_sel.selection.get_x();
-    const float sel_y = m_main_sel.selection.get_y();
-    const float sel_w = m_main_sel.selection.get_width();
-    const float sel_h = m_main_sel.selection.get_height();
-
-    DrawASelectionBorder(m_main_sel, sel_x, sel_y, sel_w, sel_h);
+    DrawASelectionBorder(m_main_sel, m_main_sel.selection.rect());
 }
 
 void ScreenshotTool::DrawAnnotationResizeBorder()
@@ -684,8 +649,7 @@ void ScreenshotTool::DrawAnnotationResizeBorder()
             const ImVec2 end(pos.x + text_size.x + pad.x * 2.0f, pos.y + text_size.y + pad.y * 2.0f);
             draw_list->AddRectFilled(pos, end, theme::color(AppCol::SizeLabelBg).to_abgr(), 4.0f);
             draw_list->AddRect(pos, end, theme::color(AppCol::SizeLabelBorder).to_abgr(), 4.0f);
-            draw_list->AddText(
-                ImVec2(pos.x + pad.x, pos.y + pad.y), theme::color(AppCol::SizeLabelText).to_abgr(), m_hover_hint);
+            draw_list->AddText(pos + pad, theme::color(AppCol::SizeLabelText).to_abgr(), m_hover_hint);
         }
     }
 
@@ -694,7 +658,7 @@ void ScreenshotTool::DrawAnnotationResizeBorder()
         return;
 
     const ImRect box = GetAnnotationHandleBox(*ann);
-    DrawASelectionBorder(m_anno_sel, box.Min.x, box.Min.y, box.GetWidth(), box.GetHeight());
+    DrawASelectionBorder(m_anno_sel, box);
 }
 
 void ScreenshotTool::DrawAnnotationSettingsPopup(const ToolType tool, const SelectionBorder side)
@@ -710,11 +674,9 @@ void ScreenshotTool::DrawAnnotationSettingsPopup(const ToolType tool, const Sele
         const ImVec2 display = ImGui::GetIO().DisplaySize;
 
         // The selection and every ring of its toolbar
-        const selection_rect_t& sel = m_main_sel.selection;
-        const ImRect            avoid(sel.get_x() - out.x - btn.x,
-                                      sel.get_y() - out.y - btn.y,
-                                      sel.get_x() + sel.get_width() + out.x + btn.x,
-                                      sel.get_y() + sel.get_height() + out.y + btn.y);
+        const selection_rect_t& sel   = m_main_sel.selection;
+        ImRect                  avoid = sel.rect();
+        avoid.Expand(out + btn);
 
         // Off screen while its size isn't known yet, or it would show in the wrong place for a frame
         ImVec2 pos(-display.x - m_ann_popup_size.x, -display.y - m_ann_popup_size.y);
@@ -761,7 +723,7 @@ void ScreenshotTool::DrawAnnotationSettingsPopup(const ToolType tool, const Sele
                        "drag-and-drop"));
             constexpr SDL_DialogFileFilter filter{ .name = N_("Fonts"), .pattern = "ttf;otf;ttc" };
             ImGui::PushItemWidth(-FLT_MIN);
-            draw_input_text_file(
+            ui::InputFile(
                 "",
                 "##font_path_ann_settings",
                 filter,
@@ -890,7 +852,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
             // Kept on the stack since it's drawn every frame and is too long for std::string's inline buffer
             std::array<char, 32> name{};
             fmt::format_to_n(name.data(), name.size() - 1, "##annotation_toolbar_n{}", i);
-            begin_toolbar_window(name.data(), ImVec2(pos.x - style.WindowPadding.x, pos.y - style.WindowPadding.y));
+            begin_toolbar_window(name.data(), pos - style.WindowPadding);
 
             for (const ToolType tool : row.tools)
                 draw_button(tool, row.border, horizontal);
@@ -911,7 +873,7 @@ void ScreenshotTool::DrawAnnotationToolbar()
     const float toolbar_w = n * (btn.x + style.ItemSpacing.x) - style.ItemSpacing.x + style.WindowPadding.x * 2.0f;
     const float toolbar_h = btn.y + style.WindowPadding.y * 2.0f;
 
-    const float below_y   = sel.get_y() + sel.get_height() + TOOLBAR_OFFSET;
+    const float below_y   = sel.get_bottom() + TOOLBAR_OFFSET;
     const float above_y   = sel.get_y() - TOOLBAR_OFFSET - toolbar_h;
     float       toolbar_y = below_y;
     if (below_y + toolbar_h > display.y)
@@ -1024,14 +986,14 @@ void ScreenshotTool::DrawOutputButtons(const std::string& text,
     const float spacing    = ImGui::GetStyle().ItemSpacing.x;
     const char* wrap_label = _("Wrap");
     const char* orig_label = _("Original");
-    const float copy_w     = button_width({ copy_label, _("Copied!") });
+    const float copy_w     = ui::ButtonWidth({ copy_label, _("Copied!") });
 
     float width = copy_w;
     if (show_wrap)
-        width += button_width({ wrap_label }) + spacing;
+        width += ui::ButtonWidth({ wrap_label }) + spacing;
     if (!original.empty())
-        width += button_width({ orig_label }) + spacing;
-    align_right(width);
+        width += ui::ButtonWidth({ orig_label }) + spacing;
+    ui::AlignRight(width);
 
     auto toggle = [](const char* label, bool& on, const char* tooltip) {
         push_secondary_button_colors(on);
@@ -1057,9 +1019,9 @@ void ScreenshotTool::DrawOutputButtons(const std::string& text,
 
     if (m_general_errors.Has(GeneralError::FailedToCopyText))
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::Error));
-        ImGui::TextWrapped(_("Failed to copy text: %s"), m_general_errors.Get(GeneralError::FailedToCopyText).c_str());
-        ImGui::PopStyleColor();
+        ui::TextWrappedColored(theme::color(AppCol::Error),
+                               _("Failed to copy text: %s"),
+                               m_general_errors.Get(GeneralError::FailedToCopyText).c_str());
     }
 }
 
@@ -1110,8 +1072,7 @@ void ScreenshotTool::DrawOcrTools()
                 }
 
                 ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F);
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                filter.DrawWithHint("##Filter", nullptr);
+                ui::SearchBox(filter, "##Filter", _("Filter"));
                 // Esc would only leave the filter, so one press closes the list
                 if (ImGui::IsItemDeactivated() && ImGui::IsKeyPressed(ImGuiKey_Escape))
                     ImGui::CloseCurrentPopup();
@@ -1188,9 +1149,8 @@ void ScreenshotTool::DrawOcrTools()
     // --- Suggestions ---
     if (invalid_path)
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::Error));
-        ImGui::TextWrapped("%s", _("No OCR languages (.traineddata) found in the language folders."));
-        ImGui::PopStyleColor();
+        ui::TextWrappedColored(
+            theme::color(AppCol::Error), "%s", _("No OCR languages (.traineddata) found in the language folders."));
         if (ImGui::Button(_("Download languages...")))
             m_show_window.Set(SubWindow::OcrDownload);
         ImGui::SameLine();
@@ -1314,12 +1274,7 @@ void ScreenshotTool::DrawBarcodeTable(float height)
     const bool filtering = m_code_rows.size() > 10;
     if (filtering)
     {
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        if (ImGui::InputTextWithHint("##code_filter",
-                                     _("Filter the codes by their text or type"),
-                                     m_code_filter.InputBuf,
-                                     IM_ARRAYSIZE(m_code_filter.InputBuf)))
-            m_code_filter.Build();
+        ui::SearchBox(m_code_filter, "##code_filter", _("Filter the codes by their text or type"));
         height -= ImGui::GetFrameHeightWithSpacing();
     }
 
@@ -1327,7 +1282,7 @@ void ScreenshotTool::DrawBarcodeTable(float height)
     for (size_t i = 0; i < m_code_rows.size(); ++i)
     {
         const barcode_t& code = codes[m_code_rows[i].code];
-        if (!filtering || m_code_filter.PassFilter(code.data.c_str()) || m_code_filter.PassFilter(code.type.c_str()))
+        if (!filtering || ui::PassFilter(m_code_filter, { code.data, code.type }))
             shown.push_back(i);
     }
 
@@ -1352,7 +1307,7 @@ void ScreenshotTool::DrawBarcodeTable(float height)
     else
     {
         const char* copy_label = _("Copy");
-        const float copy_w     = button_width({ copy_label, _("Copied!") });
+        const float copy_w     = ui::ButtonWidth({ copy_label, _("Copied!") });
 
         // Each row's data, wrapped to the Data column and cut to 3 lines, again only when the column's width changes
         auto wrap_rows = [&](const float width) {
@@ -1409,7 +1364,7 @@ void ScreenshotTool::DrawBarcodeTable(float height)
         {
             float type_w = 0.0f;
             for (const code_row_t& row : m_code_rows)
-                type_w = std::max(type_w, tag_width(codes[row.code].type.c_str()));
+                type_w = std::max(type_w, ui::TagWidth(codes[row.code].type.c_str()));
             wrap_rows(std::max(
                 ImGui::GetContentRegionAvail().x - type_w - copy_w - style.CellPadding.x * 6.0f - style.ScrollbarSize,
                 50.0f));
@@ -1475,7 +1430,7 @@ void ScreenshotTool::DrawBarcodeTable(float height)
                 }
 
                 ImGui::SetCursorPos(cell);
-                draw_tag(code.type.c_str(), theme::color(AppCol::Tag), ImGui::GetFrameHeight());
+                ui::Tag(code.type.c_str(), theme::color(AppCol::Tag), ImGui::GetFrameHeight());
 
                 ImGui::TableSetColumnIndex(1);
                 ImGui::SetCursorPosY(ImGui::GetCursorPosY() + style.FramePadding.y);

@@ -50,7 +50,6 @@
 #include "i18n.hpp"
 #include "imgui/imgui.h"
 #include "imgui/imgui_internal.h"
-#include "platform.hpp"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "spdlog/spdlog.h"
@@ -218,10 +217,6 @@ void ScreenshotTool::RenderOverlay()
     const bool disable_esc = m_current_actions.HasAny(CurrentAction::IsTextPlacing, CurrentAction::IsColorPicking) ||
                              subwindow_shown || m_current_annotation_resize;
 
-    static constexpr int minimal_win_flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
-                                             ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoResize |
-                                             ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                                             ImGuiWindowFlags_NoBackground;
     // Overlay window
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
@@ -253,32 +248,27 @@ void ScreenshotTool::RenderOverlay()
         return;
     }
 
-    if (m_main_sel.selection.get_width() == 0 || m_main_sel.selection.get_height() == 0)
+    if (m_main_sel.selection.is_empty())
     {
-        static ImVec2 hint_display;
-        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), center_cond(hint_display), ImVec2(0.5f, 0.5f));
-        ImGui::Begin("##select_area", nullptr, minimal_win_flags);
+        const ui::OverlayWindow win("##select_area",
+                                    ImGui::GetMainViewport()->GetCenter(),
+                                    ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground,
+                                    ImVec2(0.5f, 0.5f));
         ImGui::TextColored(theme::color(AppCol::HintSelect), "%s", _("Select an area"));
         ImGui::TextColored(theme::color(AppCol::HintFull), "%s", _("Press Save/Copy for the full screenshot"));
         ImGui::TextColored(theme::color(AppCol::HintSelectAll),
                            "%s",
                            i18n::tr_fmt("{}+A for whole image selection", SHORTCUT_MOD).c_str());
-        ImGui::End();
     }
 
     if (IsActive())
     {
         if (m_main_sel.selection.get_x() > 30 && m_main_sel.selection.get_y() > 30)
         {
-            ImGui::SetNextWindowPos(ImVec2(0, 0));
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(3, 2));
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(0, 0));
-            ImGui::Begin("##frame_rate",
-                         nullptr,
-                         minimal_win_flags & ~(ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize));
+            ui::ScopedStyle style;
+            style.Var(ImGuiStyleVar_WindowPadding, ImVec2(3, 2)).Var(ImGuiStyleVar_WindowMinSize, ImVec2(0, 0));
+            const ui::OverlayWindow win("##frame_rate", ImVec2(0, 0), ImGuiWindowFlags_NoInputs);
             ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-            ImGui::End();
-            ImGui::PopStyleVar(2);
         }
 
         DrawAnnotations();
@@ -342,13 +332,13 @@ void ScreenshotTool::RenderOverlay()
         constexpr float         margin    = 60.0f;
         const float             display_w = ImGui::GetIO().DisplaySize.x;
         const selection_rect_t& sel       = m_main_sel.selection;
-        const ImRect sel_rect(sel.get_x(), sel.get_y(), sel.get_x() + sel.get_width(), sel.get_y() + sel.get_height());
-        const bool   right  = display_w - sel_rect.Max.x > sel_rect.Min.x;
-        const bool   covers = last_rect && last_rect->Overlaps(sel_rect);
+        const ImRect            sel_rect  = sel.rect();
+        const bool              right     = display_w - sel_rect.Max.x > sel_rect.Min.x;
+        const bool              covers    = last_rect && last_rect->Overlaps(sel_rect);
         ImGui::SetNextWindowPos(right ? ImVec2(display_w - margin, margin) : ImVec2(margin, margin),
                                 covers ? ImGuiCond_Always : ImGuiCond_FirstUseEver,
                                 right ? ImVec2(1.0f, 0.0f) : ImVec2(0.0f, 0.0f));
-        ImGui::SetNextWindowSize(font_relative(22, 0), ImGuiCond_FirstUseEver);  // 0 = auto height
+        ImGui::SetNextWindowSize(ui::FontRelative(22, 0), ImGuiCond_FirstUseEver);  // 0 = auto height
         ImGui::Begin(text_tools_name, &open, ImGuiWindowFlags_MenuBar);
 
         DrawMenuItems();
@@ -665,7 +655,7 @@ bool ScreenshotTool::CanReadFinalImage() const
 
 region_t ScreenshotTool::GetActiveRegion() const
 {
-    bool has_selection = m_main_sel.selection.get_width() > 0 && m_main_sel.selection.get_height() > 0;
+    bool has_selection = !m_main_sel.selection.is_empty();
 
     if (!has_selection)
     {
@@ -680,8 +670,8 @@ region_t ScreenshotTool::GetActiveRegion() const
 
     const int x0 = int(std::round(std::clamp((s.get_x() - m_image_origin.x) * k, 0.0f, img_w)));
     const int y0 = int(std::round(std::clamp((s.get_y() - m_image_origin.y) * k, 0.0f, img_h)));
-    const int x1 = int(std::round(std::clamp((s.get_x() + s.get_width() - m_image_origin.x) * k, 0.0f, img_w)));
-    const int y1 = int(std::round(std::clamp((s.get_y() + s.get_height() - m_image_origin.y) * k, 0.0f, img_h)));
+    const int x1 = int(std::round(std::clamp((s.get_right() - m_image_origin.x) * k, 0.0f, img_w)));
+    const int y1 = int(std::round(std::clamp((s.get_bottom() - m_image_origin.y) * k, 0.0f, img_h)));
 
     return region_t{ .x = x0, .y = y0, .w = x1 - x0, .h = y1 - y0 };
 }
@@ -862,8 +852,8 @@ void ScreenshotTool::UpdateAnnsToolbarPos()
         const ImVec2 out = GetToolbarRingOffset(ring);
 
         std::array<bool, idx(SelectionBorder::COUNT)> on_screen{};
-        on_screen[idx(SelectionBorder::Bottom)] = sel.get_y() + sel.get_height() + out.y + btn.y <= display.y;
-        on_screen[idx(SelectionBorder::Right)]  = sel.get_x() + sel.get_width() + out.x + btn.x <= display.x;
+        on_screen[idx(SelectionBorder::Bottom)] = sel.get_bottom() + out.y + btn.y <= display.y;
+        on_screen[idx(SelectionBorder::Right)]  = sel.get_right() + out.x + btn.x <= display.x;
         on_screen[idx(SelectionBorder::Top)]    = sel.get_y() - out.y - btn.y >= 0.0f;
         on_screen[idx(SelectionBorder::Left)]   = sel.get_x() - out.x - btn.x >= 0.0f;
         if (std::ranges::none_of(on_screen, std::identity{}))
@@ -896,14 +886,6 @@ void ScreenshotTool::UpdateAnnsToolbarPos()
     m_fill_tools_complete = next == tools.size();
 }
 
-void ScreenshotTool::NormalizeSelection(selection_info_t& sel)
-{
-    if (sel.selection.start.x > sel.selection.end.x)
-        std::swap(sel.selection.start.x, sel.selection.end.x);
-    if (sel.selection.start.y > sel.selection.end.y)
-        std::swap(sel.selection.start.y, sel.selection.end.y);
-}
-
 void ScreenshotTool::ClampSelectionToImage(selection_info_t& sel)
 {
     selection_rect_t& s = sel.selection;
@@ -911,18 +893,12 @@ void ScreenshotTool::ClampSelectionToImage(selection_info_t& sel)
     // When it's moved, push it back whole instead of shrinking it
     if (sel.dragging_handle == HandleHovered::Move)
     {
-        const float dx =
-            std::max(m_image_origin.x - s.get_x(), 0.0f) + std::min(m_image_end.x - (s.get_x() + s.get_width()), 0.0f);
-        const float dy =
-            std::max(m_image_origin.y - s.get_y(), 0.0f) + std::min(m_image_end.y - (s.get_y() + s.get_height()), 0.0f);
-        s.start.x += dx;
-        s.end.x += dx;
-        s.start.y += dy;
-        s.end.y += dy;
+        s.translate(std::max(m_image_origin.x - s.get_x(), 0.0f) + std::min(m_image_end.x - s.get_right(), 0.0f),
+                    std::max(m_image_origin.y - s.get_y(), 0.0f) + std::min(m_image_end.y - s.get_bottom(), 0.0f));
         return;
     }
 
-    for (point_t* p : { &s.start, &s.end })
+    for (ImVec2* p : { &s.start, &s.end })
     {
         p->x = std::clamp(p->x, m_image_origin.x, m_image_end.x);
         p->y = std::clamp(p->y, m_image_origin.y, m_image_end.y);
@@ -1131,30 +1107,27 @@ std::vector<std::pair<HandleHovered, ImVec2>> ScreenshotTool::GetSelectionHandle
 {
     const annotation_t* ann = sel.is_ann ? m_current_annotation_resize : nullptr;
     if (ann && (ann->type == ToolType::Line || ann->type == ToolType::Arrow))
-        return { { HandleHovered::LineStart, ImVec2(ann->start.x, ann->start.y) },
-                 { HandleHovered::LineEnd, ImVec2(ann->end.x, ann->end.y) } };
+        return { { HandleHovered::LineStart, ann->start }, { HandleHovered::LineEnd, ann->end } };
 
-    const float sel_x = sel.selection.get_x();
-    const float sel_y = sel.selection.get_y();
-    const float sel_w = sel.selection.get_width();
-    const float sel_h = sel.selection.get_height();
+    const ImRect r = sel.selection.rect();
 
     // Corners first, they win where handles overlap
     std::vector<std::pair<HandleHovered, ImVec2>> handles = {
-        { HandleHovered::TopLeft, ImVec2(sel_x, sel_y) },
-        { HandleHovered::TopRight, ImVec2(sel_x + sel_w, sel_y) },
-        { HandleHovered::BottomLeft, ImVec2(sel_x, sel_y + sel_h) },
-        { HandleHovered::BottomRight, ImVec2(sel_x + sel_w, sel_y + sel_h) },
+        { HandleHovered::TopLeft, r.GetTL() },
+        { HandleHovered::TopRight, r.GetTR() },
+        { HandleHovered::BottomLeft, r.GetBL() },
+        { HandleHovered::BottomRight, r.GetBR() },
     };
 
     // Text scales with its font size, which only the corners change
     if (!ann || ann->type != ToolType::Text)
     {
+        const ImVec2 c = r.GetCenter();
         handles.insert(handles.end(),
-                       { { HandleHovered::Top, ImVec2(sel_x + sel_w / 2, sel_y) },
-                         { HandleHovered::Bottom, ImVec2(sel_x + sel_w / 2, sel_y + sel_h) },
-                         { HandleHovered::Left, ImVec2(sel_x, sel_y + sel_h / 2) },
-                         { HandleHovered::Right, ImVec2(sel_x + sel_w, sel_y + sel_h / 2) } });
+                       { { HandleHovered::Top, ImVec2(c.x, r.Min.y) },
+                         { HandleHovered::Bottom, ImVec2(c.x, r.Max.y) },
+                         { HandleHovered::Left, ImVec2(r.Min.x, c.y) },
+                         { HandleHovered::Right, ImVec2(r.Max.x, c.y) } });
     }
     return handles;
 }
@@ -1270,16 +1243,16 @@ ImRect ScreenshotTool::GetAnnotationBBox(const annotation_t& ann) const
                 ImFontAtlasBuildMain(ImGui::GetIO().Fonts);
             const ImVec2 size = font ? font->CalcTextSizeA(ann.thickness, FLT_MAX, 0.0f, ann.text.c_str())
                                      : ImGui::CalcTextSize(ann.text.c_str());
-            return { ann.start.x, ann.start.y, ann.start.x + size.x, ann.start.y + size.y };
+            return { ann.start, ann.start + size };
         }
 
         case ToolType::Pencil:
         {
             if (ann.points.empty())
-                return { ann.start.x, ann.start.y, ann.start.x, ann.start.y };
-            ImVec2 min(ann.points.front().x, ann.points.front().y);
+                return { ann.start, ann.start };
+            ImVec2 min = ann.points.front();
             ImVec2 max = min;
-            for (const point_t& p : ann.points)
+            for (const ImVec2& p : ann.points)
             {
                 min.x = std::min(min.x, p.x);
                 min.y = std::min(min.y, p.y);

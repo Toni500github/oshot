@@ -88,15 +88,10 @@ static void draw_capability_tags(const std::map<std::string, std::string>& capab
                             : capability == "files"     ? _("Uses your files")
                             : capability == "processes" ? _("Runs programs")
                                                         : capability.c_str();
-        draw_tag(label, theme::color(AppCol::TagWarning));
+        ui::Tag(label, theme::color(AppCol::TagWarning));
         ImGui::SetItemTooltip(
             "%s\n\n%s", reason.c_str(), _("According to its author. oshot can't check or limit what plugins do."));
     }
-}
-
-static float button_width(const char* label)
-{
-    return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2;
 }
 
 void ScreenshotTool::FetchIndexAsync()
@@ -250,7 +245,7 @@ void ScreenshotTool::NotifyPluginsOfOcr(const ocr_result_t* res)
 void ScreenshotTool::NotifyPluginsOfSelection()
 {
     // Selected and not being dragged (a drag owns the input until the mouse is released)
-    const bool has_selection = m_main_sel.selection.get_width() > 0 && m_main_sel.selection.get_height() > 0;
+    const bool has_selection = !m_main_sel.selection.is_empty();
     if (m_state != ToolState::Selected || m_input_owner == InputOwner::Selection || !has_selection)
         return;
 
@@ -392,13 +387,12 @@ void ScreenshotTool::DrawPluginReports()
     if (lines.empty())
         return;
 
-    constexpr float margin  = 10.0f;
-    const ImVec2    display = ImGui::GetIO().DisplaySize;
-    ImGui::SetNextWindowPos(ImVec2(display.x - margin, display.y - margin), ImGuiCond_Always, ImVec2(1.0f, 1.0f));
-    ImGui::Begin("##plugin_reports",
-                 nullptr,
-                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
-                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove);
+    constexpr float         margin  = 10.0f;
+    const ImVec2            display = ImGui::GetIO().DisplaySize;
+    const ui::OverlayWindow win("##plugin_reports",
+                                ImVec2(display.x - margin, display.y - margin),
+                                ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav,
+                                ImVec2(1.0f, 1.0f));
     // Above the text tools when they reach the corner, without taking the focus from them
     ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
 
@@ -424,7 +418,7 @@ void ScreenshotTool::DrawPluginReports()
         {
             // A negative fraction makes ImGui animate it as unknown
             const float fraction = r.fraction < 0.0f ? -1.0f * float(ImGui::GetTime()) : r.fraction;
-            ImGui::ProgressBar(fraction, font_relative(16, 0), r.text.empty() ? nullptr : r.text.c_str());
+            ImGui::ProgressBar(fraction, ui::FontRelative(16, 0), r.text.empty() ? nullptr : r.text.c_str());
         }
         else
         {
@@ -438,7 +432,7 @@ void ScreenshotTool::DrawPluginReports()
             {
                 const auto key        = std::make_pair(rt->id, r.action);
                 bool       line_armed = armed && copied == key;
-                if (create_timed_button(_("Copy"), _("Copied!"), line_armed))
+                if (ui::TimedButton(_("Copy"), _("Copied!"), line_armed))
                 {
                     const Result<>& res = g_clipboard.CopyText(r.copyable);
                     copied              = key;
@@ -447,7 +441,7 @@ void ScreenshotTool::DrawPluginReports()
                         spdlog::error("Failed to copy {}'s result: {}", rt->id, res.error_v());
                 }
                 else if (copied == key)
-                    armed = line_armed;  // cleared by create_timed_button() once its time is up
+                    armed = line_armed;  // cleared by ui::TimedButton() once its time is up
                 ImGui::SameLine();
             }
             if (ImGui::SmallButton(_("Close")))
@@ -460,14 +454,12 @@ void ScreenshotTool::DrawPluginReports()
         ImGui::PopID();
         ImGui::PopID();
     }
-    ImGui::End();
 }
 
 void ScreenshotTool::DrawManagePluginsWindow()
 {
     static bool was_open = false;
-    bool        open     = m_show_window.Has(SubWindow::ManagePlugins);
-    if (!open)
+    if (!m_show_window.Has(SubWindow::ManagePlugins))
     {
         was_open = false;
         return;
@@ -480,14 +472,12 @@ void ScreenshotTool::DrawManagePluginsWindow()
         m_plugin_manager.GetStateManager().Reload();
     was_open = true;
 
-    ImGui::SetNextWindowSize(font_relative(48, 37), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin(_("Manage plugins###manage_plugins_window"), &open, ImGuiWindowFlags_NoSavedSettings))
+    ui::Window win(m_show_window, SubWindow::ManagePlugins, _("Manage plugins###manage_plugins_window"), { 48, 37 });
+    if (win)
     {
         if (busy)
         {
             ImGui::TextDisabled("%s", _("Working, see the Plugins status window. This list refreshes once it's done."));
-            ImGui::End();
-            m_show_window.Set(SubWindow::ManagePlugins, open);
             return;
         }
 
@@ -500,11 +490,10 @@ void ScreenshotTool::DrawManagePluginsWindow()
         if (ImGui::Button(_("Check for updates")))
             StartPluginTask(_("Updating plugins"), [](PluginManager& pm) { return pm.UpdateAll(); });
 
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::TextMuted));
-        ImGui::TextWrapped("%s",
-                           _("Changes apply the next time oshot starts. If oshot runs in the tray, quit it from the "
-                             "tray menu first."));
-        ImGui::PopStyleColor();
+        ui::TextWrappedColored(theme::color(AppCol::TextMuted),
+                               "%s",
+                               _("Changes apply the next time oshot starts. If oshot runs in the tray, quit it from "
+                                 "the tray menu first."));
         ImGui::Separator();
         ImGui::Spacing();
 
@@ -542,8 +531,7 @@ void ScreenshotTool::DrawManagePluginsWindow()
                 else if (!repo.git_hash.empty())
                     ImGui::TextDisabled(_("Commit %.7s"), repo.git_hash.c_str());
 
-                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
-                                     button_width(_("Uninstall all")));
+                ui::AlignRight(ui::ButtonWidth(_("Uninstall all")), false);
                 if (ImGui::Button(_("Uninstall all")))
                 {
                     const auto count  = long(repo.plugins.size());
@@ -586,8 +574,8 @@ void ScreenshotTool::DrawManagePluginsWindow()
                         tag     = loaded ? _("Enabled") : _("Not loaded");
                         tag_col = loaded ? AppCol::TagSuccess : AppCol::TagNeutral;
                     }
-                    align_right(tag_width(tag));
-                    draw_tag(tag, theme::color(tag_col));
+                    ui::AlignRight(ui::TagWidth(tag));
+                    ui::Tag(tag, theme::color(tag_col));
 
                     if (!plugin.description.empty())
                         ImGui::TextWrapped("%s", plugin.description.c_str());
@@ -600,7 +588,7 @@ void ScreenshotTool::DrawManagePluginsWindow()
                         for (const std::string& license : plugin.licenses)
                         {
                             ImGui::SameLine();
-                            draw_tag(license.c_str(), theme::color(AppCol::Tag));
+                            ui::Tag(license.c_str(), theme::color(AppCol::Tag));
                         }
                     }
                     draw_capability_tags(plugin.capabilities, /*same_line=*/!plugin.licenses.empty());
@@ -613,24 +601,20 @@ void ScreenshotTool::DrawManagePluginsWindow()
                                             _("Not loaded: restart oshot, or see View Logs if it failed to load"));
 
                     const char* toggle_label = plugin.enabled ? _("Disable") : _("Enable");
-                    align_right(button_width(toggle_label) + button_width(_("Uninstall")) +
-                                ImGui::GetStyle().ItemSpacing.x);
+                    ui::AlignRight(ui::ButtonWidth(toggle_label) + ui::ButtonWidth(_("Uninstall")) +
+                                   ImGui::GetStyle().ItemSpacing.x);
                     if (ImGui::Button(toggle_label))
                     {
                         toggle_id = plugin.id;
                         toggle_to = !plugin.enabled;
                     }
                     ImGui::SameLine();
-                    ImGui::PushStyleColor(ImGuiCol_Button, theme::color(AppCol::Danger));
-                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, theme::color(AppCol::DangerHovered));
-                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, theme::color(AppCol::DangerActive));
-                    if (ImGui::Button(_("Uninstall")))
+                    if (ui::DangerButton(_("Uninstall")))
                     {
                         pending_uninstall = plugin.id;
                         pending_label     = fmt::format("'{}' ({})", plugin.name, plugin.id);
                         request_confirm   = true;
                     }
-                    ImGui::PopStyleColor(3);
 
                     ImGui::EndChild();
                     ImGui::PopStyleColor(2);
@@ -653,38 +637,26 @@ void ScreenshotTool::DrawManagePluginsWindow()
         if (request_confirm)
             ImGui::OpenPopup(_("Uninstall?###plugin_uninstall_confirm"));
 
-        if (ImGui::BeginPopupModal(
-                _("Uninstall?###plugin_uninstall_confirm"), nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        if (ui::BeginModal(_("Uninstall?###plugin_uninstall_confirm")))
         {
             ImGui::Text(_("Uninstall %s?"), pending_label.c_str());
             ImGui::TextUnformatted(_("Their settings are deleted too."));
-            ImGui::Spacing();
-
-            if (ImGui::Button(_("Cancel")))
-                ImGui::CloseCurrentPopup();
-            ImGui::SameLine();
-            ImGui::PushStyleColor(ImGuiCol_Button, theme::color(AppCol::Danger));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, theme::color(AppCol::DangerHovered));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, theme::color(AppCol::DangerActive));
-            if (ImGui::Button(_("Uninstall")))
+            enum : std::uint8_t
             {
+                Cancel,
+                Uninstall
+            };
+            if (ui::ModalButtons(ui::ModalEscape(_("Cancel")), ui::ModalDanger(_("Uninstall"))) == Uninstall)
                 StartPluginTask(i18n::tr_fmt("Uninstalling {}", pending_uninstall),
                                 [name = pending_uninstall](PluginManager& pm) { return pm.Uninstall(name); });
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::PopStyleColor(3);
             ImGui::EndPopup();
         }
     }
-    ImGui::End();
-
-    m_show_window.Set(SubWindow::ManagePlugins, open);
 }
 
 void ScreenshotTool::DrawBrowsePluginsWindow()
 {
-    bool open = m_show_window.Has(SubWindow::BrowsePlugins);
-    if (!open)
+    if (!m_show_window.Has(SubWindow::BrowsePlugins))
         return;
 
     // Downloaded the first time the window opens, then on Refresh
@@ -696,32 +668,29 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
     if (fetch)
         FetchIndexAsync();
 
-    ImGui::SetNextWindowSize(font_relative(49, 40), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin(_("Browse plugins###browse_plugins_window"), &open, ImGuiWindowFlags_NoSavedSettings))
+    ui::Window win(m_show_window, SubWindow::BrowsePlugins, _("Browse plugins###browse_plugins_window"), { 49, 40 });
+    if (win)
     {
         const bool busy = m_install_state && m_install_state->running;
 
         std::unique_lock lock(m_index_state->mutex);
         const bool       loading = m_index_state->loading;
 
-        if (loading)
-            ImGui::BeginDisabled();
+        ImGui::BeginDisabled(loading);
         fetch = ImGui::Button(_("Refresh"));
+        ImGui::EndDisabled();
         if (loading)
         {
-            ImGui::EndDisabled();
             ImGui::SameLine();
             ImGui::TextDisabled("%s", _("Downloading the plugin index..."));
         }
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        ImGui::InputTextWithHint("##index_filter", _("Search"), &m_index_filter);
+        ui::SearchBox(m_index_filter, "##index_filter", _("Search"));
 
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::TextMuted));
-        ImGui::TextWrapped("%s",
-                           _("Plugins listed in the oshot plugin index. Listed doesn't mean audited: plugins run with "
-                             "the same permissions as oshot, so only install the ones you trust."));
-        ImGui::PopStyleColor();
+        ui::TextWrappedColored(theme::color(AppCol::TextMuted),
+                               "%s",
+                               _("Plugins listed in the oshot plugin index. Listed doesn't mean audited: plugins run "
+                                 "with the same permissions as oshot, so only install the ones you trust."));
         if (!m_index_state->error.empty())
             ImGui::TextColored(theme::color(AppCol::Error), "%s", m_index_state->error.c_str());
         else if (m_index_state->stale)
@@ -729,9 +698,6 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
                 theme::color(AppCol::Warning), "%s", _("Offline: this is the last downloaded copy of the index."));
         ImGui::Separator();
         ImGui::Spacing();
-
-        std::string filter = m_index_filter;
-        std::ranges::transform(filter, filter.begin(), [](unsigned char c) { return std::tolower(c); });
 
         std::string install_id;
         bool        install_update = false;
@@ -743,13 +709,9 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
         {
             if (busy)
                 break;
-            if (!filter.empty())
-            {
-                std::string haystack = fmt::format("{} {} {} {}", p.id, p.name, p.description, fmt::join(p.tags, " "));
-                std::ranges::transform(haystack, haystack.begin(), [](unsigned char c) { return std::tolower(c); });
-                if (haystack.find(filter) == haystack.npos)
-                    continue;
-            }
+            if (!ui::PassFilter(m_index_filter,
+                                { p.id, p.name, p.description, fmt::format("{}", fmt::join(p.tags, " ")) }))
+                continue;
             ++shown;
 
             std::string            why;
@@ -783,12 +745,12 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
                     _("By %s"), fmt::format("{}", fmt::join(p.authors.empty() ? p.owners : p.authors, ", ")).c_str());
 
             if (!p.license.empty())
-                draw_tag(p.license.c_str(), theme::color(AppCol::Tag));
+                ui::Tag(p.license.c_str(), theme::color(AppCol::Tag));
             draw_capability_tags(p.capabilities, /*same_line=*/!p.license.empty());
             for (const std::string& tag : p.tags)
             {
                 ImGui::SameLine();
-                draw_tag(tag.c_str(), theme::color(AppCol::TagNeutral));
+                ui::Tag(tag.c_str(), theme::color(AppCol::TagNeutral));
             }
 
             if (!p.homepage.empty())
@@ -823,8 +785,7 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
             else if (installed && best && compare_versions(best->version, installed->version) > 0)
             {
                 const std::string label = i18n::tr_fmt("Update {} -> {}", installed->version, best->version);
-                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
-                                     button_width(label.c_str()));
+                ui::AlignRight(ui::ButtonWidth(label.c_str()), false);
                 if (ImGui::Button(label.c_str()))
                 {
                     install_id     = p.id;
@@ -834,8 +795,7 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
             else if (installed)
             {
                 const std::string label = i18n::tr_fmt("Installed {}", installed->version);
-                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
-                                     button_width(label.c_str()));
+                ui::AlignRight(ui::ButtonWidth(label.c_str()), false);
                 ImGui::BeginDisabled();
                 ImGui::Button(label.c_str());
                 ImGui::EndDisabled();
@@ -843,8 +803,7 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
             else if (best)
             {
                 const std::string label = i18n::tr_fmt("Install {}", best->version);
-                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
-                                     button_width(label.c_str()));
+                ui::AlignRight(ui::ButtonWidth(label.c_str()), false);
                 if (ImGui::Button(label.c_str()))
                     install_id = p.id;
             }
@@ -858,7 +817,7 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
 
         if (shown == 0 && !busy && !loading && m_index_state->error.empty())
             ImGui::TextDisabled("%s",
-                                m_index_filter.empty() ? _("The plugin index is empty.") : _("No plugin matches."));
+                                !m_index_filter.IsActive() ? _("The plugin index is empty.") : _("No plugin matches."));
 
         if (!install_id.empty())
         {
@@ -874,64 +833,53 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
         if (fetch)
             FetchIndexAsync();
     }
-    ImGui::End();
-
-    m_show_window.Set(SubWindow::BrowsePlugins, open);
 }
 
 void ScreenshotTool::DrawInstallPluginsWindow()
 {
-    bool open = m_show_window.Has(SubWindow::InstallPlugins);
-    if (!open)
+    if (!m_show_window.Has(SubWindow::InstallPlugins))
         return;
 
     const bool is_installing = m_install_state && m_install_state->running;
 
-    ImGui::SetNextWindowSize(font_relative(43, 17), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin(_("Install plugins###install_plugins_window"), &open, ImGuiWindowFlags_NoSavedSettings))
+    ui::Window win(m_show_window, SubWindow::InstallPlugins, _("Install plugins###install_plugins_window"), { 43, 17 });
+    if (win)
     {
         ImGui::TextWrapped(
             "%s",
             _("A git URL, a folder with an oshot-plugin.toml, or a prebuilt plugin archive (.zip, .tar.gz, .tar.xz). "
               "From git or a folder, the plugin is built on this computer, which needs git and its build tools."));
         ImGui::Spacing();
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::Error));
-        ImGui::TextWrapped(
-            "%s", _("Plugins run with the same permissions as oshot. Only install them from people you trust."));
-        ImGui::PopStyleColor();
+        ui::TextWrappedColored(
+            theme::color(AppCol::Error),
+            "%s",
+            _("Plugins run with the same permissions as oshot. Only install them from people you trust."));
         ImGui::Spacing();
 
-        if (is_installing)
-            ImGui::BeginDisabled();
+        ImGui::BeginDisabled(is_installing);
 
         constexpr SDL_DialogFileFilter filter{ .name = N_("Archives"), .pattern = "zip;tar.gz;tgz;tar.xz;txz" };
-        draw_input_text_file(_("Source"), "##install_source", filter, nullptr, m_install_source);
+        ui::InputFile(_("Source"), "##install_source", filter, nullptr, m_install_source);
 
         const bool can_install = !is_installing && !m_install_source.empty();
-        if (!can_install)
-            ImGui::BeginDisabled();
+        ImGui::BeginDisabled(!can_install);
         if (ImGui::Button(_("Install")))
             StartPluginTask(i18n::tr_fmt("Installing {}", m_install_source),
                             [source = m_install_source](PluginManager& pm) { return pm.Install(source); });
-        if (!can_install)
-            ImGui::EndDisabled();
+        ImGui::EndDisabled();
 
+        ImGui::EndDisabled();
         if (is_installing)
         {
-            ImGui::EndDisabled();
             ImGui::SameLine();
             ImGui::TextDisabled("%s", _("Working, see the status window..."));
         }
     }
-    ImGui::End();
-
-    m_show_window.Set(SubWindow::InstallPlugins, open);
 }
 
 void ScreenshotTool::DrawPluginInstallStatus()
 {
-    bool open = m_show_window.Has(SubWindow::PluginInstallStatus);
-    if (!open || !m_install_state)
+    if (!m_show_window.Has(SubWindow::PluginInstallStatus) || !m_install_state)
         return;
 
     // Move the worker's events into the tree. Nothing else changes m_install_events
@@ -982,8 +930,9 @@ void ScreenshotTool::DrawPluginInstallStatus()
         }
     }
 
-    ImGui::SetNextWindowSize(font_relative(43, 32), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin(_("Plugins###plugin_install_status_window"), &open, ImGuiWindowFlags_NoSavedSettings))
+    ui::Window win(
+        m_show_window, SubWindow::PluginInstallStatus, _("Plugins###plugin_install_status_window"), { 43, 32 });
+    if (win)
     {
         for (size_t i = 0; i < m_install_events.size(); i++)
         {
@@ -1037,40 +986,31 @@ void ScreenshotTool::DrawPluginInstallStatus()
         if (has_confirm)
             ImGui::OpenPopup(_("Confirm###plugin_install_confirm"));
 
-        const float confirm_width = font_relative(42, 0).x;
+        const float confirm_width = ui::FontRelative(42, 0).x;
         ImGui::SetNextWindowSizeConstraints({ confirm_width, 0.0f }, { confirm_width, FLT_MAX });
-        if (ImGui::BeginPopupModal(_("Confirm###plugin_install_confirm"),
-                                   nullptr,
-                                   ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
+        if (ui::BeginModal(_("Confirm###plugin_install_confirm"), ImGuiWindowFlags_NoCollapse))
         {
             std::scoped_lock lock(m_install_state->confirm_mutex);
             ImGui::TextWrapped("%s", m_install_state->confirm_prompt.c_str());
-            if (ImGui::Button(_("Yes")))
+            enum : std::uint8_t
             {
-                m_install_state->confirm_answer   = true;
+                Yes,
+                No
+            };
+            if (const int pressed = ui::ModalButtons(_("Yes"), ui::ModalEscape(_("No"))); pressed >= 0)
+            {
+                m_install_state->confirm_answer   = pressed == Yes;
                 m_install_state->confirm_answered = true;
                 m_install_state->confirm_cv.notify_all();
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::SameLine();
-            if (ImGui::Button(_("No")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false))
-            {
-                m_install_state->confirm_answer   = false;
-                m_install_state->confirm_answered = true;
-                m_install_state->confirm_cv.notify_all();
-                ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }
     }
-    ImGui::End();
 
     // Keep the window open while an install runs. Nothing would drain the worker's
     // events, and a pending confirm would wait forever with no popup to answer it
-    if (!open && m_install_state->running)
-        open = true;
-
-    m_show_window.Set(SubWindow::PluginInstallStatus, open);
+    if (m_install_state->running)
+        win.KeepOpen();
 }
 
 void ScreenshotTool::DrawEventIcon(plugin_install_event_t::Kind kind)

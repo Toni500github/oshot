@@ -322,7 +322,7 @@ else()
 endif()
 
 target_include_directories(imgui PUBLIC include/libs/imgui)
-target_compile_definitions(imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS)
+target_compile_definitions(imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS IMGUI_DEFINE_MATH_OPERATORS)
 target_link_libraries(imgui PUBLIC ${SDL3_TARGET})
 
 # ---- cimgui (C-ABI plugins only) ----
@@ -521,6 +521,7 @@ set(OSHOT_COMMON_SOURCES
     src/screenshot_tool/preferences.cpp
     src/screenshot_tool/subwindows.cpp
     src/screenshot_tool/theme.cpp
+    src/screenshot_tool/ui.cpp
     src/text_extraction/barcode_zbar.cpp
     src/text_extraction/ocr.cpp
     src/text_extraction/ocr_image.cpp

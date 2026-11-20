@@ -28,24 +28,14 @@
 
 // Shared by the src/screenshot_tool/*.cpp files
 
-#include <algorithm>
-#include <cmath>
 #include <cstdint>
-#include <filesystem>
-#include <functional>
-#include <initializer_list>
-#include <string>
-#include <string_view>
 
-#include "i18n.hpp"
 #include "imgui/imgui.h"
-#include "imgui/imgui_stdlib.h"
 #include "platform.hpp"
 #include "screenshot_tool.hpp"
+#include "theme.hpp"
+#include "ui.hpp"
 #include "util/color.hpp"
-#include "util/file_dialogs.hpp"
-#include "util/paths.hpp"
-#include "util/window.hpp"
 
 // ImGui's shortcuts use Cmd where they use Ctrl elsewhere
 #if OSHOT_MACOS
@@ -76,189 +66,20 @@ constexpr rgba_t::operator ImVec4() const
     return to_imvec4();
 }
 
-// ------------------------------
-// Helpers
-// ------------------------------
-
-// https://github.com/pthom/imgui/blob/808272622f52d2f36124629c29994d2a5a7eb2f2/imgui_demo.cpp#L273
-// A little (?) mark which shows a tooltip when hovered
-inline void HelpMarker(const char* desc)
+// Shows the error in the theme's error color if it's set, and returns whether it is
+template <typename Enum>
+bool ShowIfError(const ErrorContext<Enum>& ctx, Enum e)
 {
-    ImGui::TextDisabled("(?)");
-    if (ImGui::BeginItemTooltip())
-    {
-        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-        ImGui::TextUnformatted(desc);
-        ImGui::PopTextWrapPos();
-        ImGui::EndTooltip();
-    }
-}
-
-// A size in multiples of the font size, so windows fit the same text whatever the font
-inline ImVec2 font_relative(const float w, const float h)
-{
-    return { ImGui::GetFontSize() * w, ImGui::GetFontSize() * h };
-}
-
-// The width of a button that fits the widest of the labels, for a row of buttons of the same size
-inline float button_width(std::initializer_list<const char*> labels)
-{
-    float width = 0.0f;
-    for (const char* label : labels)
-        width = std::max(width, ImGui::CalcTextSize(label, nullptr, true).x);
-    return width + ImGui::GetStyle().FramePadding.x * 2.0f;
+    if (!ctx.Has(e))
+        return false;
+    ui::TextWrappedColored(theme::color(AppCol::Error), "%s", ctx.Get(e).c_str());
+    return true;
 }
 
 // Tools that draw a button in the toolbar
 constexpr bool has_toolbar_button(ToolType t)
 {
     return t != ToolType::kNone && t != ToolType::COUNT && t != ToolType::Logo;
-}
-
-inline void draw_input_text_path(const char*                  label,
-                                 const char*                  input_id,
-                                 const bool                   is_file,
-                                 const SDL_DialogFileFilter   filter,
-                                 const std::function<void()>& if_edited,
-                                 std::string&                 path,
-                                 ImGuiInputFlags              flags,
-                                 ImGuiInputTextCallback       callback  = nullptr,
-                                 void*                        user_data = nullptr)
-{
-    auto handle_drop = [&]() {
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && !g_dropped_paths.empty())
-        {
-            path = g_dropped_paths.back();
-            g_dropped_paths.clear();
-            if (if_edited)
-                if_edited();
-        }
-    };
-
-    const float button_size = ImGui::GetFrameHeight();
-    ImGui::PushItemWidth(ImGui::CalcItemWidth() - button_size);
-    if (ImGui::InputText(input_id, &path, flags, callback, user_data) && if_edited)
-        if_edited();
-    ImGui::PopItemWidth();
-    handle_drop();
-
-    ImGui::PushID(input_id);
-    ImGui::SameLine(0, 0);
-    if (ImGui::Button("...", ImVec2(button_size, button_size)))
-    {
-        const bool hidden = hide_window();
-
-        const fs::path default_path = path;
-
-        std::string start_path;
-        if (is_file && default_path.has_parent_path())
-        {
-            start_path = default_path.parent_path().string();
-            start_path += DIR_SEP;  // a trailing separator opens the folder itself
-        }
-
-        const std::optional<std::string>& dialog_path =
-            !is_file ? dialog::select_folder(_("Open folder")) : dialog::open_file(_("Open file"), start_path, filter);
-
-        if (hidden)
-            show_window();
-
-        if (dialog_path)
-        {
-            path = *dialog_path;
-            if (if_edited)
-                if_edited();
-        }
-    }
-    handle_drop();
-    ImGui::PopID();
-
-    if (*label)
-    {
-        ImGui::SameLine(0, 3);
-        ImGui::TextUnformatted(label);
-    }
-}
-
-inline void draw_input_text_file(const char*                  label,
-                                 const char*                  input_id,
-                                 const SDL_DialogFileFilter   filter,
-                                 const std::function<void()>& if_edited,
-                                 std::string&                 path,
-                                 ImGuiInputFlags              flags     = 0,
-                                 ImGuiInputTextCallback       callback  = nullptr,
-                                 void*                        user_data = nullptr)
-{
-    draw_input_text_path(label, input_id, true, filter, if_edited, path, flags, callback, user_data);
-}
-
-inline void draw_input_text_folder(const char*                  label,
-                                   const char*                  input_id,
-                                   const std::function<void()>& if_edited,
-                                   std::string&                 path,
-                                   ImGuiInputFlags              flags = 0)
-{
-    draw_input_text_path(label, input_id, false, {}, if_edited, path, flags);
-}
-
-inline bool create_timed_button(const std::string_view label1,
-                                const std::string_view label2,
-                                bool&                  armed,  // caller controls arming
-                                const ImVec2&          size       = ImVec2(0, 0),
-                                const float            delay_secs = 1.5f)
-{
-    static double press_time = 0.0f;
-
-    const double now = ImGui::GetTime();
-    if (armed && now - press_time > delay_secs)
-        armed = false;
-
-    if (ImGui::Button(!armed ? label1.data() : label2.data(), size))
-    {
-        press_time = now;
-        return true;  // caller decides whether to set armed=true
-    }
-    return false;
-}
-
-// ImGuiCond_Appearing, plus again whenever the display size changes (on Wayland
-// the overlay only becomes fullscreen after its first frame has been drawn)
-inline ImGuiCond center_cond(ImVec2& last_display)
-{
-    const ImVec2 display = ImGui::GetIO().DisplaySize;
-    if (display.x == last_display.x && display.y == last_display.y)
-        return ImGuiCond_Appearing;
-    last_display = display;
-    return ImGuiCond_Always;
-}
-
-// The width draw_tag() gives `label`
-inline float tag_width(const char* label)
-{
-    return ImGui::CalcTextSize(label).x + 12.0f;
-}
-
-// A small rounded label, e.g. a license or a status.
-// A `line_height` taller than the tag centers it on a line of that height, e.g. one of buttons
-inline void draw_tag(const char* label, const rgba_t col, const float line_height = 0.0f)
-{
-    const ImVec2 text_size = ImGui::CalcTextSize(label);
-    const ImVec2 pad(6.0f, 2.0f);
-    const ImVec2 size(text_size.x + pad.x * 2, text_size.y + pad.y * 2);
-    const float  offset = std::round(std::max(line_height - size.y, 0.0f) * 0.5f);
-    const ImVec2 p0(ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y + offset);
-
-    ImDrawList* draw_list = ImGui::GetWindowDrawList();
-    draw_list->AddRectFilled(p0, ImVec2(p0.x + size.x, p0.y + size.y), col.to_abgr(), 4.0f);
-    draw_list->AddText(ImVec2(p0.x + pad.x, p0.y + pad.y), Colors::WHITE.to_abgr(), label);
-
-    ImGui::Dummy(ImVec2(size.x, std::max(size.y, line_height)));
-}
-
-// Right-aligns the next item of width `w` on the current line
-inline void align_right(const float w)
-{
-    ImGui::SameLine(ImGui::GetContentRegionAvail().x - w + ImGui::GetCursorPosX());
 }
 
 #endif  // _SCREENSHOT_TOOL_HELPERS_HPP_

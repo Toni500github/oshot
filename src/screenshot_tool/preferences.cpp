@@ -55,11 +55,13 @@
 #include "theme.hpp"
 #include "util.hpp"
 #include "util/color.hpp"
+#include "util/file_dialogs.hpp"
 #include "util/fonts.hpp"
 #include "util/image.hpp"
 #include "util/paths.hpp"
 #include "util/result.hpp"
 #include "util/strings.hpp"
+#include "util/window.hpp"
 #ifndef DISABLE_PLUGINS
 #  include "plugin.hpp"
 #  include "state_manager.hh"
@@ -127,7 +129,7 @@ static void draw_hotkey_recorder(std::string& hotkey_str, bool window_just_opene
 
     ImGui::TextUnformatted(_("Global capture hotkey"));
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("System-wide shortcut that starts a capture while oshot is running in the tray.\n"
           "Click the button, then press the key combination. Click it again to cancel."));
 
@@ -258,15 +260,14 @@ static void draw_chip(const char* label, const bool on)
     const ImVec2      pad(style.FramePadding.x * 0.75f, style.FramePadding.y * 0.5f);
     const ImVec2      min = ImGui::GetCursorScreenPos();
     const ImVec2      max(min.x + text.x + pad.x * 2, min.y + text.y + pad.y * 2);
-    ImGui::Dummy(ImVec2(max.x - min.x, max.y - min.y));
+    ImGui::Dummy(max - min);
 
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     if (on)
         draw_list->AddRectFilled(min, max, ImGui::GetColorU32(ImGuiCol_Button), style.FrameRounding);
     else
         draw_list->AddRect(min, max, ImGui::GetColorU32(ImGuiCol_Border), style.FrameRounding);
-    draw_list->AddText(
-        ImVec2(min.x + pad.x, min.y + pad.y), ImGui::GetColorU32(on ? ImGuiCol_Text : ImGuiCol_TextDisabled), label);
+    draw_list->AddText(min + pad, ImGui::GetColorU32(on ? ImGuiCol_Text : ImGuiCol_TextDisabled), label);
 }
 
 // The card that shows a font: its path, the scripts it has and sample lines in it at `size`
@@ -283,19 +284,16 @@ static void draw_font_preview(const std::string& title,
     ImGui::SameLine();
     ImGui::TextDisabled("%s", role);
 
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     if (!path.empty())
-        ImGui::TextWrapped("%s", path.string().c_str());
-    ImGui::PopStyleColor();
+        ui::TextWrappedColored(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), "%s", path.string().c_str());
 
     if (!font)
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::color(AppCol::Error).to_imvec4());
-        ImGui::TextWrapped("%s",
-                           path.empty()
-                               ? _("Not found: not an existing file, nor a file in the system font folders")
-                               : _("Can't be loaded: only TrueType and OpenType fonts work (.ttf, .otf, .ttc)"));
-        ImGui::PopStyleColor();
+        ui::TextWrappedColored(theme::color(AppCol::Error),
+                               "%s",
+                               path.empty()
+                                   ? _("Not found: not an existing file, nor a file in the system font folders")
+                                   : _("Can't be loaded: only TrueType and OpenType fonts work (.ttf, .otf, .ttc)"));
         ImGui::EndChild();
         return;
     }
@@ -461,7 +459,7 @@ static void draw_preference_fonts(const bool window_just_opened)
 
     ImGui::Checkbox(_("Use the built-in font##config_builtin_font"), &g_config->File.builtin_font);
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("ImGui's ProggyClean, a small pixel font, instead of the system UI font.\n"
           "The fonts below still come first, and system fonts still fill in the characters it lacks."));
 
@@ -486,7 +484,7 @@ static void draw_preference_fonts(const bool window_just_opened)
         ImGui::TextDisabled("%s", _("default"));
     }
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("The size of all the text in oshot's windows, applied when saved. The preview below uses it.\n"
           "The default is the main font's own size, 16 px, or 13 px with the built-in font, "
           "which is blurry at any other size."));
@@ -587,8 +585,8 @@ static void draw_preference_fonts(const bool window_just_opened)
     }
     // Enter adds the highlighted suggestion, else the text. A file from "..." or a dropped one is added right away.
     // The input and its "..." button fill the line up to the Add font button (3 = the gap before the empty label)
-    ImGui::PushItemWidth(list_width - button_width({ _("Add font") }) - style.ItemSpacing.x - 3.0f);
-    draw_input_text_file(
+    ImGui::PushItemWidth(list_width - ui::ButtonWidth({ _("Add font") }) - style.ItemSpacing.x - 3.0f);
+    ui::InputFile(
         "",
         "##font_path",
         font_filter,
@@ -695,7 +693,7 @@ static void draw_preference_edit_config(const std::vector<ocr_language_t>& langu
 
     ImGui::TextUnformatted(_("Language"));
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("Applies the next time oshot starts, after saving.\n"
           "To add or test a translation, put its .po file in the locale folder of the config directory."));
     {
@@ -727,7 +725,7 @@ static void draw_preference_edit_config(const std::vector<ocr_language_t>& langu
     // --- OCR language folders ---
     ImGui::TextUnformatted(_("OCR language folders"));
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("The folders with the OCR languages (.traineddata). The text tools list the languages of each folder.\n"
           "Folders can be dropped on Add folder."));
     {
@@ -739,7 +737,7 @@ static void draw_preference_edit_config(const std::vector<ocr_language_t>& langu
         {
             ImGui::PushID(int(i));
             ImGui::PushItemWidth(width - remove_w - ImGui::GetStyle().ItemSpacing.x);
-            draw_input_text_folder("", "##ocr_folder", {}, folders[i]);
+            ui::InputFolder("", "##ocr_folder", {}, folders[i]);
             ImGui::PopItemWidth();
             ImGui::SameLine();
             if (ImGui::Button("x", ImVec2(remove_w, remove_w)))
@@ -774,7 +772,7 @@ static void draw_preference_edit_config(const std::vector<ocr_language_t>& langu
     // --- OCR language ---
     ImGui::TextUnformatted(_("Default OCR language"));
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("The language the text tools start with, from the first folder that has it. "
           "A language picked there is used instead, until this changes."));
     {
@@ -805,7 +803,7 @@ static void draw_preference_edit_config(const std::vector<ocr_language_t>& langu
     // --- Capture delay ---
     ImGui::TextUnformatted(_("Capture delay"));
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("Delay before acquiring a screenshot (milliseconds).\n"
           "Has no effect when opening an external image (e.g. -f flag)."));
     if (ImGui::InputInt("##config_delay", &g_config->File.delay, 5, 10))
@@ -815,10 +813,10 @@ static void draw_preference_edit_config(const std::vector<ocr_language_t>& langu
     // --- Theme settings ---
     ImGui::TextUnformatted(_("Default Theme file path"));
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("Full path to the theme file (theme.toml by default), or relative to the config directory. Supports "
           "drag-and-drop."));
-    draw_input_text_file("", "##config_theme_file_path", toml_filter, nullptr, g_config->File.theme_file_path);
+    ui::InputFile("", "##config_theme_file_path", toml_filter, nullptr, g_config->File.theme_file_path);
     if (!fs::exists(g_config->GetThemeFilePath()))
         ImGui::TextColored(
             theme::color(AppCol::Notice), "%s", _("File doesn't exist, fallback to default hardcoded theme"));
@@ -841,7 +839,7 @@ static void draw_preference_edit_config(const std::vector<ocr_language_t>& langu
 #if !OSHOT_MACOS  // always fullscreen there
     ImGui::Checkbox(_("Fullscreen window##config_fullscreen"), &g_config->File.fullscreen);
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("Makes the overlay a fullscreen window, which covers panels and taskbars and which "
           "the compositor leaves alone.\n"
           "Turn it off only if your window manager misbehaves with fullscreen windows. "
@@ -850,7 +848,7 @@ static void draw_preference_edit_config(const std::vector<ocr_language_t>& langu
 
     ImGui::Checkbox(_("Vertical sync (VSync)##config_vsync"), &g_config->File.enable_vsync);
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("Draws in step with your monitor's refresh rate, which looks smoother and draws no more "
           "frames than the monitor shows.\n"
           "Disable it if the overlay feels sluggish."));
@@ -859,14 +857,14 @@ static void draw_preference_edit_config(const std::vector<ocr_language_t>& langu
 
     ImGui::Checkbox(_("Allow more than one tray##config_allow_multi_tray"), &g_config->File.allow_multi_tray);
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("Lets 'oshot --tray' start another tray icon when one is already running, instead of exiting. "
           "Only the first tray registers the global hotkey.\n"
           "Takes effect on the next launch."));
 
     ImGui::Checkbox(_("Allow more than one overlay##config_allow_multi_overlay"), &g_config->File.allow_multi_overlay);
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("Lets a capture open while another overlay is already open, e.g. to take a screenshot of oshot itself. "
           "When disabled, the new capture is ignored, so holding or mashing the capture key opens just one overlay."));
 
@@ -875,32 +873,32 @@ static void draw_preference_edit_config(const std::vector<ocr_language_t>& langu
     ImGui::Checkbox(_("Prefer config variables over environment variables##config_pref_conf_to_env"),
                     &g_config->File.pref_conf_to_env);
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("Some systems, such as NixOS, point oshot to the OCR models from the package manager with environment "
           "variables like $TESSDATA_PREFIX. "
           "Enabling this makes the paths in the config file win over those variables."));
 
     ImGui::Checkbox(_("Consider annotations when scanning##config_render_anns"), &g_config->File.render_anns);
     ImGui::SameLine();
-    HelpMarker(_("When enabled, annotations are included in the region passed to the text extractor."));
+    ui::HelpMarker(_("When enabled, annotations are included in the region passed to the text extractor."));
 
     ImGui::Checkbox(_("Legacy toolbar placement##config_old_toolbar_pos"), &g_config->File.old_toolbar_pos);
     ImGui::SameLine();
-    HelpMarker(_("Put all the toolbar buttons on one line under the selection"));
+    ui::HelpMarker(_("Put all the toolbar buttons on one line under the selection"));
 
     ImGui::Checkbox(_("Anti-aliased toolbar icons##config_aa_icons"), &g_config->File.aa_icons);
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("Draw the toolbar icons with smooth edges. Disable it for pixel-perfect icons.\n"
           "Applies from the next capture."));
 
     ImGui::Checkbox((i18n::tr_fmt("Use {}+C to copy image", SHORTCUT_MOD) + "##config_ctrl_c_copy_img").c_str(),
                     &g_config->File.ctrl_c_copy_img);
     ImGui::SameLine();
-    HelpMarker(i18n::tr_fmt("Shortcut to use when copying the image selection.\n"
-                            "If disabled, the shortcut will be {}+SHIFT+C.",
-                            SHORTCUT_MOD)
-                   .c_str());
+    ui::HelpMarker(i18n::tr_fmt("Shortcut to use when copying the image selection.\n"
+                                "If disabled, the shortcut will be {}+SHIFT+C.",
+                                SHORTCUT_MOD)
+                       .c_str());
 
 #if OSHOT_HAS_GLOBAL_HOTKEY
     ImGui::Spacing();
@@ -936,7 +934,7 @@ static void draw_preference_edit_config(const std::vector<ocr_language_t>& langu
 
     ImGui::TextUnformatted(_("Size preview unit"));
     ImGui::SameLine();
-    HelpMarker(_("Unit used to show the selection's estimated file size next to the selection border"));
+    ui::HelpMarker(_("Unit used to show the selection's estimated file size next to the selection border"));
     if (ImGui::BeginCombo("##config_image_out_size_fmt", g_config->File.image_out_size_fmt.c_str()))
     {
         for (size_t i = 0; i < image_prev_units.size(); ++i)
@@ -959,7 +957,7 @@ static void draw_preference_edit_config(const std::vector<ocr_language_t>& langu
 
     ImGui::TextUnformatted(_("Output filename format"));
     ImGui::SameLine();
-    HelpMarker(_("The image extension is appended automatically. Uses {fmt} chrono specifiers."));
+    ui::HelpMarker(_("The image extension is appended automatically. Uses {fmt} chrono specifiers."));
     ImGui::Spacing();
 
     if (ImGui::InputText("##config_image_out_fmt", &g_config->File.image_out_fmt))
@@ -1143,7 +1141,7 @@ static void draw_plugin_settings(plugin_runtime_t& rt)
         if (s.help)
         {
             ImGui::SameLine();
-            HelpMarker(s.help);
+            ui::HelpMarker(s.help);
         }
         ImGui::PopID();
     }
@@ -1301,7 +1299,7 @@ static void draw_theme_editor()
         }
     }
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("Changes show right away. Save writes them to the theme file, Discard undoes them.\n"
           "Edits made to the theme file or its includes in a text editor show up on their own."));
 
@@ -1326,7 +1324,7 @@ static void draw_theme_editor()
     ImGui::SameLine();
     base_clicked |= ImGui::RadioButton(_("Light"), &base_idx, int(idx(ThemeBase::Light)));
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("The built-in colors the theme applies on top of.\n"
           "Switching drops the colors that only repeat the old theme's."));
     if (base_clicked && toe<ThemeBase>(base_idx) != ov.base)
@@ -1339,7 +1337,7 @@ static void draw_theme_editor()
 
     changed |= ImGui::Checkbox(_("Smooth animations"), &ov.smooth_animations);
     ImGui::SameLine();
-    HelpMarker(_("Progress bars glide to each new value instead of jumping."));
+    ui::HelpMarker(_("Progress bars glide to each new value instead of jumping."));
 
     ImGui::SeparatorText(_("Sizes"));
     if (ImGui::BeginTable("##sizes", 3, ImGuiTableFlags_SizingFixedFit))
@@ -1403,7 +1401,7 @@ static void draw_theme_editor()
 
     ImGui::SeparatorText(_("Palette"));
     ImGui::SameLine();
-    HelpMarker(
+    ui::HelpMarker(
         _("Named colors the colors below can use, so changing one changes all of them.\n"
           "Right-click a color's swatch to pick one. In the theme file they're written \"$name\", "
           "or \"$name/50\" for 50% opacity."));
@@ -1463,12 +1461,12 @@ static void draw_theme_editor()
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    HelpMarker(_("Letters, digits, '-' and '_'."));
+    ui::HelpMarker(_("Letters, digits, '-' and '_'."));
 
     ImGui::SeparatorText(_("Colors"));
 
     // The most used ImGui colors, unless "All ImGui colors" is on
-    static constexpr auto common = std::to_array<ImGuiCol>({
+    static constexpr auto  common = std::to_array<ImGuiCol>({
         ImGuiCol_Text,          ImGuiCol_TextDisabled,     ImGuiCol_WindowBg,
         ImGuiCol_ChildBg,       ImGuiCol_PopupBg,          ImGuiCol_Border,
         ImGuiCol_FrameBg,       ImGuiCol_FrameBgHovered,   ImGuiCol_FrameBgActive,
@@ -1479,11 +1477,10 @@ static void draw_theme_editor()
         ImGuiCol_HeaderHovered, ImGuiCol_HeaderActive,     ImGuiCol_Tab,
         ImGuiCol_TabHovered,    ImGuiCol_TabSelected,      ImGuiCol_PlotHistogram,
     });
-    static std::string    filter;
-    static bool           all_colors = false;
+    static ImGuiTextFilter filter;
+    static bool            all_colors = false;
 
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
-    ImGui::InputTextWithHint("##color_filter", _("Filter"), &filter);
+    ui::SearchBox(filter, "##color_filter", _("Filter"), ImGui::GetFontSize() * 12.0f);
     ImGui::SameLine();
     ImGui::Checkbox(_("All ImGui colors"), &all_colors);
     ImGui::SameLine();
@@ -1563,10 +1560,6 @@ static void draw_theme_editor()
         ImGui::PopID();
     };
 
-    const std::string needle  = str_tolower(filter);
-    const auto        matches = [&](const char* name) {
-        return needle.empty() || str_tolower(name).find(needle) != std::string::npos;
-    };
     const auto section_row = [](const char* label) {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
@@ -1588,7 +1581,7 @@ static void draw_theme_editor()
         {
             const auto  i    = all_colors ? ImGuiCol(n) : common[n];
             const char* name = ImGui::GetStyleColorName(i);
-            if (!matches(name))
+            if (!filter.PassFilter(name))
                 continue;
             const theme::resolved_t r = theme::resolve_imgui_color(name, *g_config);
             color_row(name, ov.colors, r, r.value ? r.value->to_imvec4() : base.Colors[i]);
@@ -1599,7 +1592,7 @@ static void draw_theme_editor()
         {
             const auto  col  = toe<AppCol>(n);
             const char* name = theme::app_color_name(col);
-            if (!matches(name))
+            if (!filter.PassFilter(name))
                 continue;
             const theme::resolved_t r = theme::resolve_app_color(col, *g_config);
             color_row(name, ov.oshot_colors, r, r.value.value_or(theme::base_app_color(ov.base, col)).to_imvec4());
@@ -1740,20 +1733,24 @@ void ScreenshotTool::DrawPreferencesWindow()
         return false;
     };
 
-    bool window_open = true;
-    ImGui::SetNextWindowSize(font_relative(40, 34), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin(_("Preferences###preferences_window"), &window_open, ImGuiWindowFlags_NoSavedSettings))
+    ui::Window win(m_show_window, SubWindow::Preferences, _("Preferences###preferences_window"), { 40, 34 });
+    if (win)
     {
         // [x] or Esc closes it, or asks first if there are unsaved changes.
         // OpenPopup() must be called between Begin() and End()
-        // While the unsaved changes prompt is open, Esc is its Cancel
-        if ((!window_open || ImGui::IsKeyPressed(ImGuiKey_Escape)) &&
-            !ImGui::IsPopupOpen(_("Unsaved changes###pref_unsaved")))
+        // An Esc while a popup is open is only for it, e.g. the unsaved changes prompt's Cancel
+        const bool esc = ImGui::IsKeyPressed(ImGuiKey_Escape) && !m_popup_open;
+        if ((win.Closing() || esc) && !ImGui::IsPopupOpen(_("Unsaved changes###pref_unsaved")))
         {
             if (prefs_modified())
+            {
+                win.KeepOpen();
                 ImGui::OpenPopup(_("Unsaved changes###pref_unsaved"));
+            }
             else
-                m_show_window.Clear(SubWindow::Preferences);
+            {
+                win.Close();
+            }
         }
 
         float tabs_width = ImGui::GetFontSize() * 8.0f;
@@ -1786,7 +1783,7 @@ void ScreenshotTool::DrawPreferencesWindow()
         ImGui::EndChild();
 
         const bool modified = prefs_modified();
-        if (modified && create_timed_button(_("Save##save_press"), _("Saved!"), armed))
+        if (modified && ui::TimedButton(_("Save##save_press"), _("Saved!"), armed))
         {
             save_current_tab();
             armed = true;
@@ -1800,54 +1797,45 @@ void ScreenshotTool::DrawPreferencesWindow()
         ImGui::EndGroup();
 
         // Confirmation modal
-        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-        if (ImGui::BeginPopupModal(_("Unsaved changes###pref_unsaved"), nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        if (ui::BeginModal(_("Unsaved changes###pref_unsaved")))
         {
             ImGui::TextUnformatted(_("You have unsaved changes. What would you like to do?"));
-            ImGui::Spacing();
-
-            const ImVec2 size(button_width({ _("Save & Close"), _("Discard"), _("Cancel") }), 0);
-            if (ImGui::Button(_("Save & Close"), size))
+            enum : std::uint8_t
             {
-                save_current_tab();
-                m_show_window.Clear(SubWindow::Preferences);
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::SameLine();
-            if (ImGui::Button(_("Discard"), size))
+                Save,
+                Discard
+            };
+            switch (ui::ModalButtons(_("Save & Close"), _("Discard"), ui::ModalEscape(_("Cancel"))))
             {
-                discard_current_tab();
-                m_show_window.Clear(SubWindow::Preferences);
-                ImGui::CloseCurrentPopup();
+                case Save:
+                    save_current_tab();
+                    win.Close();
+                    break;
+                case Discard:
+                    discard_current_tab();
+                    win.Close();
+                    break;
+                default: break;
             }
-            ImGui::SameLine();
-            // Not on the frame it opens, whose Esc is the one that opened it
-            if (ImGui::Button(_("Cancel"), size) ||
-                (!ImGui::IsWindowAppearing() && ImGui::IsKeyPressed(ImGuiKey_Escape, false)))
-            {
-                ImGui::CloseCurrentPopup();
-            }
-
             ImGui::EndPopup();
         }
 
-        if (ImGui::BeginPopupModal(
-                _("Theme file path is empty###theme_filepath_empty"), nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        if (ui::BeginModal(_("Theme file path is empty###theme_filepath_empty")))
         {
             ImGui::TextUnformatted(
                 _("Please set a theme file path like 'theme.toml' before saving theme changes.\n"
                   "Changes will be set temporarily for the current session."));
-            ImGui::Spacing();
-            if (ImGui::Button(_("OK"), ImVec2(std::max(ImGui::GetFontSize() * 6.0f, button_width({ _("OK") })), 0)))
-                ImGui::CloseCurrentPopup();
+            ui::ModalButtons(ui::ModalEscape(_("OK")));
             ImGui::EndPopup();
         }
     }
-    ImGui::End();
+    // A collapsed window can't ask about unsaved changes
+    else if (win.Closing() && prefs_modified())
+    {
+        win.KeepOpen();
+    }
 
     // Once closed, the next open starts fresh
-    if (!m_show_window.Has(SubWindow::Preferences))
-    {
+    if (win.Closing())
         s_prefs_open = false;
-    }
 }

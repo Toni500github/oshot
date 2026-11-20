@@ -135,7 +135,7 @@ int run_main_tool()
     g_ss_tool.SetReadPixels([&](const region_t& region) -> capture_result_t {
         // region is in screenshot pixels and the origin in screen units. On a scaled
         // output the render target has GetImageScale() pixels per screen unit
-        const point_t  o = g_ss_tool.GetImageOrigin();
+        const ImVec2   o = g_ss_tool.GetImageOrigin();
         const float    k = g_ss_tool.GetImageScale();
         const SDL_Rect rect{ .x = region.x + int(std::lround(o.x * k)),
                              .y = region.y + int(std::lround(o.y * k)),

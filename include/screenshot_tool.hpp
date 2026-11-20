@@ -31,9 +31,9 @@
 #include <atomic>
 #include <bitset>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cstdint>
-#include <cstdlib>
 #include <deque>
 #include <functional>
 #include <future>
@@ -214,38 +214,49 @@ enum class GeneralError : std::uint8_t
     COUNT,
 };
 
-struct point_t
-{
-    float x{};
-    float y{};
-};
-
 // A dragged rectangle. `start` is where the drag began, so it can be any corner, and the getters give the
 // normalized rectangle
 struct selection_rect_t
 {
-    point_t start;
-    point_t end;
+    ImVec2 start;
+    ImVec2 end;
 
     [[nodiscard]] float get_x() const { return std::min(start.x, end.x); }
     [[nodiscard]] float get_y() const { return std::min(start.y, end.y); }
+    [[nodiscard]] float get_right() const { return std::max(start.x, end.x); }
+    [[nodiscard]] float get_bottom() const { return std::max(start.y, end.y); }
     [[nodiscard]] float get_width() const { return std::abs(end.x - start.x); }
     [[nodiscard]] float get_height() const { return std::abs(end.y - start.y); }
+    [[nodiscard]] bool  is_empty() const { return start.x == end.x || start.y == end.y; }
 
-    [[nodiscard]] ImRect rect() const { return { get_x(), get_y(), get_x() + get_width(), get_y() + get_height() }; }
+    [[nodiscard]] ImRect rect() const { return { get_x(), get_y(), get_right(), get_bottom() }; }
 
-    static selection_rect_t from_rect(const ImRect& r)
+    // Makes `start` the top-left corner
+    void normalize()
     {
-        return { .start = { .x = r.Min.x, .y = r.Min.y }, .end = { .x = r.Max.x, .y = r.Max.y } };
+        if (start.x > end.x)
+            std::swap(start.x, end.x);
+        if (start.y > end.y)
+            std::swap(start.y, end.y);
     }
+
+    void translate(const float dx, const float dy)
+    {
+        start.x += dx;
+        end.x += dx;
+        start.y += dy;
+        end.y += dy;
+    }
+
+    static selection_rect_t from_rect(const ImRect& r) { return { .start = r.Min, .end = r.Max }; }
 };
 
 struct annotation_t
 {
     // Opposite corners. For circles and counter bubbles it's the center and a point
     // on the circle; for lines and arrows, the endpoints in drawing direction
-    point_t start;
-    point_t end;
+    ImVec2 start;
+    ImVec2 end;
 
     // Text tool, and the font file it's drawn with (empty for the interface font)
     std::string text;
@@ -255,10 +266,10 @@ struct annotation_t
     unsigned int count = 0;
 
     // Pencil tool
-    std::vector<point_t> points;
+    std::vector<ImVec2> points;
 
     // RGBA
-    rgba_t color = rgba_t(0xFF0000FF);
+    rgba_t color = Colors::RED;
 
     ToolType type      = ToolType::kNone;
     float    thickness = 3.0f;
@@ -525,7 +536,7 @@ public:
     // Getters
     // ------------------------------
     // Top-left corner of the screenshot on screen (it's drawn centered)
-    [[nodiscard]] const point_t GetImageOrigin() const { return { .x = m_image_origin.x, .y = m_image_origin.y }; }
+    [[nodiscard]] ImVec2 GetImageOrigin() const { return m_image_origin; }
 
     // Screenshot pixels per screen unit, above 1 on a scaled (HiDPI) output
     [[nodiscard]] float GetImageScale() const { return m_image_scale; }
@@ -769,25 +780,8 @@ private:
     std::shared_ptr<plugin_index_state_t> m_index_state = std::make_shared<plugin_index_state_t>();
     std::thread                           m_install_thread;
     std::thread                           m_index_thread;
-    std::string                           m_index_filter;
+    ImGuiTextFilter                       m_index_filter;
 #endif
-
-    // ------------------------------
-    // Errors
-    // ------------------------------
-    // Shows the error in red if it's set, and returns whether it is
-    template <typename Enum>
-    bool ShowIfError(const ErrorContext<Enum>& ctx, Enum e)
-    {
-        bool has = ctx.Has(e);
-        if (has)
-        {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0, 0, 1));
-            ImGui::TextWrapped("%s", ctx.Get(e).c_str());
-            ImGui::PopStyleColor();
-        }
-        return has;
-    }
 
     // ------------------------------
     // Input
@@ -821,9 +815,6 @@ private:
 
     // The plugins' toolbar buttons, drawn after SaveImage in its row
     [[nodiscard]] static size_t CountPluginToolbarButtons();
-
-    // Swaps the selection's start and end so start is the top-left corner
-    void NormalizeSelection(selection_info_t& sel);
 
     // Keeps the selection on the screenshot (around a smaller image opened with -f there's nothing to capture)
     void ClampSelectionToImage(selection_info_t& sel);
@@ -881,18 +872,14 @@ private:
     // Drawing
     // ------------------------------
     // Draws a selection's border and handles, for DrawAnnotationResizeBorder() and DrawSelectionBorder()
-    void DrawASelectionBorder(selection_info_t& sel,
-                              const float       sel_x,
-                              const float       sel_y,
-                              const float       sel_w,
-                              const float       sel_h);
+    void DrawASelectionBorder(selection_info_t& sel, const ImRect& r);
 
     // A button that copies `text_copy` and says "Copied!" for a moment.
     // Without `show_error`, the caller shows GeneralError::FailedToCopyText
-    void CreateCopyTextButton(const std::string&     text_copy,
-                              const std::string_view label1     = _("Copy Text"),
-                              const ImVec2&          size       = ImVec2(0, 0),
-                              bool                   show_error = true);
+    void CreateCopyTextButton(const std::string& text_copy,
+                              const char*        label1     = _("Copy Text"),
+                              const ImVec2&      size       = ImVec2(0, 0),
+                              bool               show_error = true);
 
     // The Wrap, Original and Copy buttons over an output, right-aligned. Original shows while `original` (the text
     // from before the transformers) isn't empty, and Copy copies the text shown
