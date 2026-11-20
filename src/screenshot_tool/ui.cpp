@@ -60,6 +60,7 @@ float ButtonWidth(std::initializer_list<const char*> labels)
 // ------------------------------
 
 Window::Window(GeneralContext<SubWindow>& shown,
+               bool&                      esc,
                const SubWindow            id,
                const char*                title,
                const ImVec2               size,
@@ -68,6 +69,11 @@ Window::Window(GeneralContext<SubWindow>& shown,
 {
     ImGui::SetNextWindowSize(FontRelative(size.x, size.y), ImGuiCond_FirstUseEver);
     m_visible = ImGui::Begin(title, &m_open, flags | ImGuiWindowFlags_NoSavedSettings);
+    if (esc && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
+    {
+        esc    = false;
+        m_open = false;
+    }
 }
 
 Window::~Window()

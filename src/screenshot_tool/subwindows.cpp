@@ -68,7 +68,8 @@ void ScreenshotTool::DrawAboutWindow()
     if (!m_show_window.Has(SubWindow::About))
         return;
 
-    ui::Window win(m_show_window, SubWindow::About, _("About###about_window"), { 27, 19 }, ImGuiWindowFlags_NoCollapse);
+    ui::Window win(
+        m_show_window, m_esc, SubWindow::About, _("About###about_window"), { 27, 19 }, ImGuiWindowFlags_NoCollapse);
     if (win)
     {
         const char* text_display;
@@ -148,7 +149,8 @@ void ScreenshotTool::DrawDownloadOCRWindow()
 
     const bool is_downloading = m_ocr_download && m_ocr_download->running.load();
 
-    ui::Window win(m_show_window, SubWindow::OcrDownload, _("Download OCR Language###ocr_download_window"), { 40, 0 });
+    ui::Window win(
+        m_show_window, m_esc, SubWindow::OcrDownload, _("Download OCR Language###ocr_download_window"), { 40, 0 });
     if (win)
     {
         // Lock all inputs while a download is in flight
@@ -411,7 +413,7 @@ void ScreenshotTool::DrawLogsWindow()
     static bool                          autoscroll = true;
     static spdlog::log_clock::time_point cleared_before{};  // "soft clear" marker
 
-    ui::Window win(m_show_window, SubWindow::Logs, _("Logs###logs_window"), { 43, 31 });
+    ui::Window win(m_show_window, m_esc, SubWindow::Logs, _("Logs###logs_window"), { 43, 31 });
     if (win)
     {
         // --- Toolbar ---

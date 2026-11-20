@@ -472,7 +472,8 @@ void ScreenshotTool::DrawManagePluginsWindow()
         m_plugin_manager.GetStateManager().Reload();
     was_open = true;
 
-    ui::Window win(m_show_window, SubWindow::ManagePlugins, _("Manage plugins###manage_plugins_window"), { 48, 37 });
+    ui::Window win(
+        m_show_window, m_esc, SubWindow::ManagePlugins, _("Manage plugins###manage_plugins_window"), { 48, 37 });
     if (win)
     {
         if (busy)
@@ -668,7 +669,8 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
     if (fetch)
         FetchIndexAsync();
 
-    ui::Window win(m_show_window, SubWindow::BrowsePlugins, _("Browse plugins###browse_plugins_window"), { 49, 40 });
+    ui::Window win(
+        m_show_window, m_esc, SubWindow::BrowsePlugins, _("Browse plugins###browse_plugins_window"), { 49, 40 });
     if (win)
     {
         const bool busy = m_install_state && m_install_state->running;
@@ -842,7 +844,8 @@ void ScreenshotTool::DrawInstallPluginsWindow()
 
     const bool is_installing = m_install_state && m_install_state->running;
 
-    ui::Window win(m_show_window, SubWindow::InstallPlugins, _("Install plugins###install_plugins_window"), { 43, 17 });
+    ui::Window win(
+        m_show_window, m_esc, SubWindow::InstallPlugins, _("Install plugins###install_plugins_window"), { 43, 17 });
     if (win)
     {
         ImGui::TextWrapped(
@@ -931,7 +934,7 @@ void ScreenshotTool::DrawPluginInstallStatus()
     }
 
     ui::Window win(
-        m_show_window, SubWindow::PluginInstallStatus, _("Plugins###plugin_install_status_window"), { 43, 32 });
+        m_show_window, m_esc, SubWindow::PluginInstallStatus, _("Plugins###plugin_install_status_window"), { 43, 32 });
     if (win)
     {
         for (size_t i = 0; i < m_install_events.size(); i++)

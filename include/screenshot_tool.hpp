@@ -653,6 +653,11 @@ private:
     // The selected annotation as it was when the drag started, which every frame of the drag starts from
     annotation_t m_ann_drag_start;
 
+    // The main selection and state from before its drag, which Esc puts back. drag_start_selection moves when a
+    // handle crosses the opposite edge
+    selection_rect_t m_sel_before_drag;
+    ToolState        m_state_before_drag = ToolState::Selecting;
+
     // The annotation a (double-)click would focus, outlined while hovered, and what to tell about it
     std::optional<size_t> m_hovered_annotation;
     const char*           m_hover_hint = nullptr;
@@ -739,8 +744,15 @@ private:
     GeneralContext<SubWindow>      m_show_window;
     std::map<std::string, ImFont*> m_font_cache;
 
-    // A menu or popup was open at the end of the last frame, see RenderOverlay()
-    bool m_popup_open = false;
+    // A menu or popup was open, or an item active, at the end of the last frame, see RenderOverlay()
+    bool m_popup_open  = false;
+    bool m_item_active = false;
+
+    // This frame's Esc, until a sub-window or RenderOverlay() uses it
+    bool m_esc = false;
+
+    // The last Esc that didn't quit
+    double m_last_esc_time = -1.0;
 
     // ------------------------------
     // Completion and backend callbacks

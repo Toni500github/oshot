@@ -90,6 +90,8 @@ Result<> ScreenshotTool::Start()
     m_completed_op              = SavingOp::kNone;
     m_final_image_requested     = false;
     m_popup_open                = false;
+    m_item_active               = false;
+    m_last_esc_time             = -1.0;
     m_annotations.clear();
 
     if (!g_config->Runtime.source_file.empty())
@@ -211,11 +213,10 @@ void ScreenshotTool::RenderOverlay()
         rt.RunUiTasks();
 #endif
 
-    const bool subwindow_shown = m_state == ToolState::Selected && m_show_window.Has(SubWindow::MainTextTools) &&
-                                 m_show_window.HasAny(SubWindow::OcrDownload, SubWindow::Preferences);
-    // With an annotation selected, Esc deselects it
-    const bool disable_esc = m_current_actions.HasAny(CurrentAction::IsTextPlacing, CurrentAction::IsColorPicking) ||
-                             subwindow_shown || m_current_annotation_resize;
+    // One Esc does one thing. ImGui's NewFrame() already used it to close a menu or popup or to leave the active item,
+    // e.g. a text field, and the text being typed and the color picker handle their own
+    m_esc = ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !m_popup_open && !m_item_active &&
+            !m_current_actions.HasAny(CurrentAction::IsTextPlacing, CurrentAction::IsColorPicking);
 
     // Overlay window
     ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -394,11 +395,48 @@ void ScreenshotTool::RenderOverlay()
 
     HandleShortcutsInput();
 
-    // ImGui's NewFrame() already closed the menu or popup open on this Esc, and that's all the Esc should do
-    const bool popup_was_open =
-        std::exchange(m_popup_open, ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !disable_esc && !popup_was_open)
-        Cancel();
+    m_popup_open  = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+    m_item_active = ImGui::IsAnyItemActive();
+
+    // Unless a sub-window took it, Esc cancels a drag, deselects the annotation or drops the tool, and only then quits.
+    // A quick second press is a habit, not a quit
+    if (m_esc)
+    {
+        if (m_input_owner == InputOwner::Selection)
+        {
+            m_main_sel.selection       = m_sel_before_drag;
+            m_main_sel.dragging_handle = HandleHovered::kNone;
+            m_input_owner              = InputOwner::kNone;
+            m_state                    = m_state_before_drag;
+            UpdateAnnsToolbarPos();
+        }
+        else if (m_current_actions.Has(CurrentAction::IsDrawing))
+        {
+            m_current_actions.Clear(CurrentAction::IsDrawing);
+            m_current_annotation = {};
+        }
+        else if (m_current_annotation_resize && m_anno_sel.dragging_handle != HandleHovered::kNone)
+        {
+            *m_current_annotation_resize = m_ann_drag_start;
+            m_anno_sel.dragging_handle   = HandleHovered::kNone;
+            m_input_owner                = InputOwner::kNone;
+        }
+        else if (m_current_annotation_resize)
+        {
+            DeselectAnnotation();
+        }
+        else if (m_current_tool != ToolType::kNone)
+        {
+            m_current_tool = ToolType::kNone;
+        }
+        else if (ImGui::GetTime() - m_last_esc_time >= 0.15)
+        {
+            Cancel();
+            return;
+        }
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+        m_last_esc_time = ImGui::GetTime();
 }
 
 void ScreenshotTool::Cancel()

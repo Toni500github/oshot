@@ -1733,14 +1733,12 @@ void ScreenshotTool::DrawPreferencesWindow()
         return false;
     };
 
-    ui::Window win(m_show_window, SubWindow::Preferences, _("Preferences###preferences_window"), { 40, 34 });
+    ui::Window win(m_show_window, m_esc, SubWindow::Preferences, _("Preferences###preferences_window"), { 40, 34 });
     if (win)
     {
         // [x] or Esc closes it, or asks first if there are unsaved changes.
         // OpenPopup() must be called between Begin() and End()
-        // An Esc while a popup is open is only for it, e.g. the unsaved changes prompt's Cancel
-        const bool esc = ImGui::IsKeyPressed(ImGuiKey_Escape) && !m_popup_open;
-        if ((win.Closing() || esc) && !ImGui::IsPopupOpen(_("Unsaved changes###pref_unsaved")))
+        if (win.Closing() && !ImGui::IsPopupOpen(_("Unsaved changes###pref_unsaved")))
         {
             if (prefs_modified())
             {

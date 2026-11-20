@@ -337,12 +337,8 @@ bool ScreenshotTool::HandleAnnotationSelectionInput()
 
     if (ann && !dragging)
     {
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
-        {
-            DeselectAnnotation();
-        }
-        else if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal) ||
-                 ImGui::Shortcut(ImGuiKey_Backspace, ImGuiInputFlags_RouteGlobal))
+        if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal) ||
+            ImGui::Shortcut(ImGuiKey_Backspace, ImGuiInputFlags_RouteGlobal))
         {
             m_annotations.erase(m_annotations.begin() + (ann - m_annotations.data()));
             DeselectAnnotation();
@@ -514,7 +510,9 @@ void ScreenshotTool::HandleSelectionInput(selection_info_t& sel)
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && m_input_owner != sel.main_input_owner)
     {
-        m_input_owner = sel.main_input_owner;
+        m_input_owner       = sel.main_input_owner;
+        m_sel_before_drag   = sel.selection;
+        m_state_before_drag = m_state;
 
         // Resizing from a handle
         if (sel.handle_hover != HandleHovered::kNone)
@@ -751,7 +749,7 @@ void ScreenshotTool::HandleAnnotationInput()
                 CommitTextAnnotation();
             }
             // Not the Esc that closed the settings popup
-            else if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !m_popup_open)
+            else if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !m_popup_open)
             {
                 m_current_annotation = {};
                 m_edited_text.reset();
@@ -997,7 +995,7 @@ void ScreenshotTool::HandleColorPickerInput()
         fg->AddCircleFilled(mouse_pos, 2.0f, Colors::WHITE.to_abgr());
     }
 
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || ImGui::IsKeyPressed(ImGuiKey_Escape, false))
     {
         m_current_actions.Clear(CurrentAction::IsColorPicking);
         ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
