@@ -27,6 +27,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <ctime>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -46,6 +47,7 @@
 #include "i18n.hpp"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
+#include "platform.hpp"
 #include "screenshot_tool.hpp"
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "spdlog/spdlog.h"
@@ -467,9 +469,18 @@ void ScreenshotTool::DrawLogsWindow()
         {
             for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
             {
-                const auto&        msg      = *shown[i];
-                auto               time_ms  = std::chrono::time_point_cast<std::chrono::milliseconds>(msg.time);
-                const std::string& time_fmt = fmt::format("{:%H:%M:%S}", time_ms);
+                const auto& msg = *shown[i];
+                // fmt formats a time_point as UTC, but the log file has local time
+                const std::time_t secs = spdlog::log_clock::to_time_t(msg.time);
+                std::tm           local{};
+#if OSHOT_WINDOWS
+                localtime_s(&local, &secs);
+#else
+                localtime_r(&secs, &local);
+#endif
+                const auto ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(msg.time.time_since_epoch()) % 1000;
+                const std::string& time_fmt = fmt::format("{:%H:%M:%S}.{:03}", local, ms.count());
 
                 ImGui::TextDisabled("%s", time_fmt.c_str());
                 ImGui::SameLine();

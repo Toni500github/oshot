@@ -242,6 +242,15 @@ TEST_CASE("OCR: memes and subtitles on busy backgrounds", "[ocr][stretch]")
     check_ocr_group("stretch_", 0.15);
 }
 
+// The first pass reads it right but unsure, so the line by line merge runs
+TEST_CASE("OCR: code with a brace on a line of its own", "[ocr][code]")
+{
+    use_model("eng");
+    const std::u32string& got = check_ocr("code_braces", 0.03);
+    CHECK(got.find(U"argv) { auto") != std::u32string::npos);
+    CHECK(got.find(U"cap->w, cap->h") != std::u32string::npos);
+}
+
 // The same text cropped with different margins must read the same
 TEST_CASE("OCR: the selection's margins don't change the text", "[ocr][jitter]")
 {

@@ -32,9 +32,11 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
@@ -195,7 +197,8 @@ public:
     }
 
     /**
-     * Write a string to a file. It's written to a temporary file first, then copied over `to`
+     * Write a string to a file. It's written to a temporary file next to `to` first, then renamed over it,
+     * so `to` is never left half-written
      * https://github.com/hyprwm/Hyprland/blob/2d2a5bebff72c73cd27db3b9e954b8fa2a7623e8/hyprpm/src/core/DataState.cpp#L24
      * @param str What to write
      * @param to The file path
@@ -203,15 +206,34 @@ public:
      **/
     bool SaveFile(const std::string& str, const std::string& to)
     {
-        const fs::path temp_state = (fs::temp_directory_path() / ".temp-cache");
-        std::ofstream  of(temp_state, std::ios::trunc);
-        if (!of.good())
-            return false;
+        std::error_code ec;
+        fs::path        temp = to;
+        // Unique per call, since a tray and a --gui process can save the same file at once
+        temp += ".tmp" + std::to_string(std::random_device{}());
 
-        of << str;
-        of.close();
+        {
+            std::ofstream of(temp, std::ios::trunc | std::ios::binary);
+            if (!of.good())
+                return false;
+            of << str;
+            of.close();
+            if (of.fail())
+            {
+                fs::remove(temp, ec);
+                return false;
+            }
+        }
 
-        return fs::copy_file(temp_state, to, fs::copy_options::overwrite_existing);
+        fs::rename(temp, to, ec);
+        if (ec)
+        {
+            // Some filesystems can't replace a file by renaming over it
+            ec.clear();
+            fs::copy_file(temp, to, fs::copy_options::overwrite_existing, ec);
+        }
+        std::error_code remove_ec;
+        fs::remove(temp, remove_ec);
+        return !ec;
     }
 
     /**

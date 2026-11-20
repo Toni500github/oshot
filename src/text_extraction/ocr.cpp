@@ -360,7 +360,8 @@ struct ocr_line_t
     float                   left = 0, top = 0, right = 0, bottom = 0;
     size_t                  sure       = 0;
     int                     confidence = 0;      // mean over its words
-    bool                    has_text   = false;  // a word of 2+ letters at sure_word, or of 1 at 85%
+    bool                    has_text   = false;  // a word of 2+ letters at sure_word, or of 1 or only brackets at 85%
+    bool                    from_order = false;  // of the best whole reading
 };
 
 // Add the lines of `r` to `lines`, moved by (dx, dy). `sep` goes between
@@ -375,6 +376,11 @@ static void add_lines(std::vector<ocr_line_t>& lines,
     // Any byte of a multibyte UTF-8 character counts, for the scripts that aren't ASCII,
     // so a single CJK character has enough
     const auto letter = [](unsigned char c) { return c >= 0x80 || std::isalnum(c); };
+    // Code has lines like "{" or "});", which have no letters but aren't background scraps
+    const auto brackets = [](std::string_view t) {
+        return t.find_first_of("{}[]()") != std::string_view::npos &&
+               t.find_first_not_of("{}[]();,") == std::string_view::npos;
+    };
 
     // Tesseract's text has a line per text line, with its own spacing (none
     // between CJK characters, but before a Latin word)
@@ -413,7 +419,8 @@ static void add_lines(std::vector<ocr_line_t>& lines,
             l.bottom = std::max(l.bottom, w.y + w.h);
             sum += w.confidence;
             const auto letters = std::ranges::count_if(w.text, letter);
-            l.has_text |= (w.confidence >= sure_word && letters >= 2) || (w.confidence >= 85 && letters >= 1);
+            l.has_text |= (w.confidence >= sure_word && letters >= 2) ||
+                          (w.confidence >= 85 && (letters >= 1 || brackets(w.text)));
             if (!own_texts && !l.words.empty())
                 l.text += sep;
             if (!own_texts)
@@ -436,8 +443,19 @@ static void add_lines(std::vector<ocr_line_t>& lines,
 // Lines keep the order of `order`, the best whole reading, since Tesseract's layout analysis knows columns and tables
 static ocr_result_t merge_lines(std::vector<ocr_line_t> lines, const ocr_result_t& order)
 {
-    std::ranges::stable_sort(lines, [](const ocr_line_t& a, const ocr_line_t& b) {
-        return a.sure != b.sure ? a.sure > b.sure : a.confidence > b.confidence;
+    std::vector<ocr_line_t> order_lines;
+    add_lines(order_lines, order, " ");
+    for (ocr_line_t l : order_lines)
+    {
+        l.from_order = true;
+        lines.push_back(std::move(l));
+    }
+
+    // A line of `order` only gives way to a reading with a quarter more sure text, since Tesseract reads a word it
+    // can't split surely at 0% even when it's right, and another pass misreading that line would win by a character
+    const auto rank = [](const ocr_line_t& l) { return l.sure * (l.from_order ? 5 : 4); };
+    std::ranges::stable_sort(lines, [&](const ocr_line_t& a, const ocr_line_t& b) {
+        return rank(a) != rank(b) ? rank(a) > rank(b) : a.confidence > b.confidence;
     });
 
     std::vector<ocr_line_t> taken;
@@ -459,8 +477,6 @@ static ocr_result_t merge_lines(std::vector<ocr_line_t> lines, const ocr_result_
 
     // Where each line goes: after the line of `order` it covers the most of.
     // One it doesn't cover goes after the last line that starts above it
-    std::vector<ocr_line_t> order_lines;
-    add_lines(order_lines, order, " ");
     const auto slot = [&](const ocr_line_t& l) {
         float  most = 0;
         size_t at   = order_lines.size();
