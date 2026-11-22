@@ -950,9 +950,11 @@ private:
     // The box in the overlay's corner with what report_progress() and report_result() said
     void DrawPluginReports();
 
-    // Let the user know about the risks of installing/using plugins.
-    // @param win If the user rejects to continue, close the window.
-    // @return wether the user accepted or rejected to continue.
+    /**
+     * Let the user know about the risks of installing/using plugins.
+     * @param win If the user rejects to continue, close the window.
+     * @return wether the user accepted or rejected to continue.
+     **/
     bool DrawPluginWarningModal(ui::Window& win);
 
     // Calls on_selection_changed() once the selection is done changing and differs

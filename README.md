@@ -469,7 +469,9 @@ No contribution is too small:
 
 AI-assisted pull requests are fine, as long as you understand the code and have tested it yourself.
 
-If oshot saves you time, starring the repo helps other people find it.
+If oshot saves you time, starring the repo helps other people find it. If you want to support it with money, you
+can donate on [Ko-fi](https://ko-fi.com/toni500) or [PayPal](https://www.paypal.me/toni512). oshot stays free either
+way.
 
 ## License
 
