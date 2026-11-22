@@ -45,6 +45,7 @@ enum class CacheEntry : uint8_t
     OcrLanguage,         // OCR language last picked in the text tools
     OcrLanguageFolder,   // the folder it was picked from
     OcrLanguageDefault,  // ocr-language when OcrLanguage was picked, so a changed ocr-language wins
+    KnowsPluginsRisk,    // the user accepted the risk of using plugins since they have the same perms as oshot
     COUNT
 };
 
@@ -80,11 +81,17 @@ protected:
     }
 
 private:
-    // Keys of the CacheEntry values, in the same order
+    // Keys of the CacheEntry values, in the same order (cuz C99 supports at index assign but not C++...)
+    // clang-format off
     static constexpr std::array<std::string_view, idx(CacheEntry::COUNT)> mk_cache_entries = {
-        "default-color-picker-color", "last-saved-dir", "last-ocr-language", "last-ocr-language-folder",
+        "default-color-picker-color",
+        "last-saved-dir",
+        "last-ocr-language",
+        "last-ocr-language-folder",
         "last-ocr-language-default",
+        "accepted-plugins-risks"
     };
+    // clang-format on
 
     static constexpr const char* mk_file_path = "cache.toml";
 

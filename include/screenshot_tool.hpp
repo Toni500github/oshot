@@ -64,6 +64,10 @@
 
 class StateManager;
 struct plugin_runtime_t;
+namespace ui
+{
+class Window;
+}
 #endif
 
 // Annotation tools and toolbar buttons, in toolbar order.
@@ -284,7 +288,7 @@ struct annotation_t
     // Pencil tool
     std::vector<ImVec2> points;
 
-    // RGBA
+    // RGBA not ABGR
     rgba_t color = Colors::RED;
 
     ToolType type      = ToolType::kNone;
@@ -945,6 +949,11 @@ private:
 
     // The box in the overlay's corner with what report_progress() and report_result() said
     void DrawPluginReports();
+
+    // Let the user know about the risks of installing/using plugins.
+    // @param win If the user rejects to continue, close the window.
+    // @return wether the user accepted or rejected to continue.
+    bool DrawPluginWarningModal(ui::Window& win);
 
     // Calls on_selection_changed() once the selection is done changing and differs
     // from what the plugins were last told

@@ -42,6 +42,7 @@
 #include <utility>
 #include <vector>
 
+#include "cache.hpp"
 #include "clipboard.hpp"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
@@ -465,6 +466,46 @@ void ScreenshotTool::DrawPluginReports()
     }
 }
 
+bool ScreenshotTool::DrawPluginWarningModal(ui::Window& win)
+{
+    if (g_cache->GetValue(CacheEntry::KnowsPluginsRisk, false))
+        return true;
+
+    const char* id = _("Accept plugins risks###accept_plugin_risk_modal");
+    if (!ImGui::IsPopupOpen(id))
+        ImGui::OpenPopup(id);
+
+    const float w = ui::FontRelative(32, 0).x;
+    ImGui::SetNextWindowSizeConstraints({ w, 0.0f }, { w, FLT_MAX });
+    if (ui::BeginModal(id))
+    {
+        ImGui::TextWrapped("%s", _("Plugins come with no guarantee of stability, availability or security."));
+        ImGui::Spacing();
+        ImGui::TextWrapped("%s",
+                           _("They run with the same permissions as oshot and are not sandboxed, so they can "
+                             "access your files or anything else without asking you."));
+        ImGui::Spacing();
+        ImGui::TextWrapped("%s",
+                           _("oshot and its developers are NOT RESPONSIBLE FOR ANY DAMAGE CAUSED BY PLUGINS. "
+                             "By continuing you accept the risks of using plugins from now on."));
+        ImGui::Spacing();
+        ImGui::TextUnformatted(_("Do you want to continue?"));
+
+        enum : std::uint8_t
+        {
+            No,
+            Yes
+        };
+        const int pressed = ui::ModalButtons(ui::ModalEscape(_("No")), ui::ModalDanger(_("Yes")));
+        if (pressed == Yes)
+            g_cache->SetValue(CacheEntry::KnowsPluginsRisk, true);
+        else if (pressed == No)
+            win.Close();
+        ImGui::EndPopup();
+    }
+    return g_cache->GetValue(CacheEntry::KnowsPluginsRisk, false);
+}
+
 void ScreenshotTool::DrawManagePluginsWindow()
 {
     static bool was_open = false;
@@ -485,6 +526,9 @@ void ScreenshotTool::DrawManagePluginsWindow()
         m_show_window, m_flags, SubWindow::ManagePlugins, _("Manage plugins###manage_plugins_window"), { 48, 37 });
     if (win)
     {
+        if (!DrawPluginWarningModal(win))
+            return;
+
         if (busy)
         {
             ImGui::TextDisabled("%s", _("Working, see the Plugins status window. This list refreshes once it's done."));
@@ -682,6 +726,9 @@ void ScreenshotTool::DrawBrowsePluginsWindow()
         m_show_window, m_flags, SubWindow::BrowsePlugins, _("Browse plugins###browse_plugins_window"), { 49, 40 });
     if (win)
     {
+        if (!DrawPluginWarningModal(win))
+            return;
+
         const bool busy = m_install.state && m_install.state->running;
 
         std::unique_lock lock(m_index.state->mutex);
@@ -857,6 +904,9 @@ void ScreenshotTool::DrawInstallPluginsWindow()
         m_show_window, m_flags, SubWindow::InstallPlugins, _("Install plugins###install_plugins_window"), { 43, 17 });
     if (win)
     {
+        if (!DrawPluginWarningModal(win))
+            return;
+
         ImGui::TextWrapped(
             "%s",
             _("A git URL, a folder with an oshot-plugin.toml, or a prebuilt plugin archive (.zip, .tar.gz, .tar.xz). "
@@ -949,6 +999,9 @@ void ScreenshotTool::DrawPluginInstallStatus()
                    { 43, 32 });
     if (win)
     {
+        if (!DrawPluginWarningModal(win))
+            return;
+
         for (size_t i = 0; i < m_install.events.size(); i++)
         {
             const install_node_t& node = m_install.events[i];

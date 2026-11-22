@@ -64,7 +64,7 @@ struct capture_result_t;
 using setting_value_t = std::variant<bool, int64_t, double, std::string>;
 
 // Mistakes in a plugin's UI code, each logged only once per plugin
-enum class UiWarning : uint32_t  // NOLINT
+enum class UiWarning : uint8_t
 {
     OutsideRender = 1 << 0,
     OffThread     = 1 << 1,
