@@ -66,7 +66,9 @@ of that; see [How does it compare?](#how-does-it-compare).
 
 <details>
 <summary>Another demo</summary>
+  
 https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
+
 </details>
 
 ## Features
@@ -134,10 +136,6 @@ so features such as uploading, translation or a different OCR engine could be bu
 yet: if you want to write one, see [Writing oshot plugins](docs/plugins.md), or
 [open an issue](https://github.com/Toni500github/oshot/issues) and I'll help. The plugin API is still experimental and
 can change between releases.
-
-Flameshot and ShareX are mature tools with a lot that oshot doesn't do (yet), and they are far more widely packaged.
-NormCap is focused on getting text into your clipboard. oshot is for when you want text and codes out of your screen,
-and sometimes an annotated screenshot, from one tool on any OS.
 
 ## Installation
 
@@ -411,12 +409,16 @@ pack instead (see [Windows](#windows)).
 
 <details>
 <summary><b>Linux: missing/mismatched runtime libraries</b></summary>
+
 Use the AppImage build.
+
 </details>
 
 <details>
 <summary><b>Linux: copying does nothing</b></summary>
+
 Install `xclip` (X11) or `wl-clipboard` (Wayland), see [Clipboard](#clipboard).
+
 </details>
 
 <details>
