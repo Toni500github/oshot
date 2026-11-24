@@ -5,9 +5,8 @@
 <h1 align="center">oshot</h1>
 
 <p align="center">
-<b>Screenshot tool for extracting text and QR codes</b><br>
-Select an area of your screen, then copy the text, QR code or barcode inside it.<br>
-Runs locally on Linux, BSD, Windows and macOS.
+  <b>Screenshot tool for extracting text and QR codes and more on the fly</b><br>
+  Same feeling and simplicity as Flameshot
 </p>
 
 <p align="center">
@@ -17,20 +16,35 @@ Runs locally on Linux, BSD, Windows and macOS.
   <img src="https://img.shields.io/github/actions/workflow/status/Toni500github/oshot/build.yml" />
 </p>
 
-<p align="center">
-  <a href="#installation">Install</a> ·
-  <a href="#why-oshot">Why oshot</a> ·
-  <a href="#how-does-it-compare">Compare</a> ·
-  <a href="#how-oshot-is-developed">How it's developed</a> ·
-  <a href="#contributing">Contributing</a>
-</p>
+<h4 align="center">
+  <a href="#installation">Install</a> |
+  <a href="#why-oshot">Why oshot</a> | 
+  <a href="#features">Features</a> |
+  <a href="#usage">Usage</a> |
+  <a href="#troubleshooting">Troubleshooting</a>
+</h4>
 
 <p align="center">
-  <img src="assets/demo.gif" width="800" />
+<img src="assets/demo.gif" width="90%" />
 </p>
 
-oshot v0.5.0 is in release candidates. The builds aren't code-signed, so Windows and macOS warn on first launch
-([what to do](#installation)).
+## Table of contents
+- [Why oshot?](#why-oshot)
+- [Features](#features)
+- [How does it compare?](#how-does-it-compare)
+- [Installation](#installation)
+  - [Windows](#windows)
+  - [macOS](#macos)
+  - [Linux](#linux) ([AUR](#arch-linux-aur), [Clipboard](#clipboard), [Wayland](#wayland),
+    [Capture shortcut](#capture-shortcut))
+- [Usage](#usage)
+- [Build from Source](#build-from-source)
+  - [Dependencies](#dependencies)
+  - [Build](#build)
+- [Troubleshooting](#troubleshooting)
+- [How oshot is developed](#how-oshot-is-developed)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Why oshot?
 
@@ -38,38 +52,31 @@ oshot v0.5.0 is in release candidates. The builds aren't code-signed, so Windows
   same selection.
 - **Copy what you can't select.** Error dialogs, videos, slides, images, and VMs or remote desktops that don't share
   the clipboard.
-- **The same tool on every desktop.** One overlay, the same keys and one config file on Linux (X11, and Wayland on
-  GNOME, KDE, Hyprland, Sway and others), Windows 10 and 11 and macOS 15+. On Wayland the release packages run
-  without XWayland.
+- **The same tool on every desktop.** One overlay, the same keys and one config file on Linux (X11, and Native Wayland on
+  GNOME, KDE, Hyprland, Sway and others), Windows 10 and 11 and macOS 15+.
 - **Scriptable.** `oshot --extract-text` and `oshot --extract-barcode` print what's on the screen, or in an image file,
   without opening the overlay. Add `--selection "$(slop)"` to read one region.
 - **Private by default.** Tesseract and ZBar run on your machine. oshot only goes online when you ask it to download an
-  OCR language or install a plugin.
+  OCR language or browse/install a plugin.
 - **Plugins, if you want them.** The `-plugins` builds load plugins through a plain C ABI, so they can be written in
   any language that can export C functions. The API is still experimental.
 
 oshot can't record the screen, upload captures or pin them. Flameshot and ShareX do some or all
 of that; see [How does it compare?](#how-does-it-compare).
 
-| Extract text | Decode QR codes and barcodes | Annotate |
-| :----------: | :--------------------------: | :------: |
-| ![OCR](assets/screenshots/ocr.png) | ![QR and barcode decoding](assets/screenshots/qr-barcode.png) | ![Annotations](assets/screenshots/annotations.png) |
-
 <details>
 <summary>Another demo</summary>
-
 https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
-
 </details>
 
 ## Features
 
 **Capture**
-- Region selection with resize handles, full-screen select (`Ctrl+A`) and capture delay
-- Multi-monitor support on X11, Wayland (KWin, screenshot portal or grim), Windows and macOS
+- Region selection with resize handles, full-image select (`Ctrl+A`) and capture delay
+- Multi-monitor support cross-platform
 - Tray mode with a global hotkey on Windows and macOS (on Linux, bind `oshot --gui` in your desktop settings)
-- Open existing images with `oshot -f <image>`
-- Fullscreen overlay that covers panels and taskbars
+- Open existing images with `oshot -f <image>` or from the tray
+- Fullscreen overlay that covers panels and taskbars (configurable)
 
 **Read**
 - OCR via Tesseract, with multiple languages and a layout setting (automatic, single word, single line or paragraph)
@@ -80,7 +87,7 @@ https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 **Annotate**
 - Arrow, line, rectangle, circle, filled shapes, numbered counters, text and freehand pencil
 - Color picker with zoom loupe, and undo
-- Copy or save the result as an image (`Ctrl+C` / `Ctrl+S`)
+- Copy or save the result as an image in PNG/JPEG/TGA/BMP
 
 **Customize**
 - Dark and light themes, customizable in a TOML theme file that reloads live and can include generated palettes (pywal, matugen), see [docs/theming.md](docs/theming.md)
@@ -96,45 +103,46 @@ https://github.com/user-attachments/assets/800f50b3-95a6-47c4-b9bd-5a90c35941b2
 
 ## How does it compare?
 
-|                       | oshot | [Flameshot](https://github.com/flameshot-org/flameshot) | [NormCap](https://github.com/dynobo/normcap) | [ShareX](https://github.com/ShareX/ShareX) |
-| --------------------- | :---: | :-------: | :-----: | :----: |
-| Annotation            | ✅ | ✅ | ❌ | ✅ |
-| OCR                   | ✅ | ❌ ([#702](https://github.com/flameshot-org/flameshot/issues/702)) | ✅ | ✅ |
-| QR / barcode decoding | ✅ | ❌ ([#511](https://github.com/flameshot-org/flameshot/issues/511)) | ✅ | ✅ |
-| Linux                 | ✅ | ✅ | ✅ | ❌ ([#6625](https://github.com/ShareX/ShareX/issues/6625)) |
+<sub>Compared as of October 2026. Please open an issue if something is out of date.</sub>
+
+|                       | oshot | [Flameshot] | [NormCap] | [ShareX] |
+| --------------------- | :---: | :---------: | :-------: | :------: |
+| Annotations           | ✅ | ✅ | ❌ | ✅ |
+| OCR                   | ✅ | ❌ ([#702]) | ✅ | ✅ |
+| QR / barcode decoding | ✅ | ❌ ([#511]) | ✅ | ✅ |
+| Linux                 | ✅ | ✅ | ✅ | ❌ ([#6625]) |
 | Windows               | ✅ | ✅ | ✅ | ✅ |
 | macOS                 | ✅¹ | ✅ | ✅ | ❌ |
 | Plugins               | ✅² | ❌ | ❌ | ❌ |
 | Pin captures to the screen | ❌ | ✅ | ❌ | ✅ |
-| Upload and share      | ❌ | ✅ | ❌ | ✅ |
+| Upload and share      | ❌³ | ✅ | ❌ | ✅ |
 | Screen recording      | ❌ | ❌ | ❌ | ✅ |
 | Distro packages / Flathub | AUR only | ✅ | ✅ | – |
 | Built with            | C++, Dear ImGui | C++, Qt | Python, Qt | C#, WinForms |
 
 <sub>¹ macOS 15 (Sequoia) or later. ² Only in the `-plugins` builds.</sub>
 
-Some of these gaps are long-standing requests. Flameshot users have asked for
-[OCR since 2020](https://github.com/flameshot-org/flameshot/issues/702) and for
-[QR code scanning since 2019](https://github.com/flameshot-org/flameshot/issues/511), and
-[Linux support for ShareX](https://github.com/ShareX/ShareX/issues/6625) has been requested since 2022. In oshot, OCR and
-QR/barcode decoding are built in on every platform.
+[Flameshot]: https://github.com/flameshot-org/flameshot
+[NormCap]: https://github.com/dynobo/normcap
+[ShareX]: https://github.com/ShareX/ShareX
+[#702]: https://github.com/flameshot-org/flameshot/issues/702
+[#511]: https://github.com/flameshot-org/flameshot/issues/511
+[#6625]: https://github.com/ShareX/ShareX/issues/6625
 
-Flameshot and ShareX are mature tools with a lot that oshot doesn't do (yet), and they are far more widely packaged.
-NormCap is focused on getting text into your clipboard. oshot is for when you want text and codes out of your screen,
-and sometimes an annotated screenshot, from one tool on any OS.
-
-Plugins can read the capture and the recognized text, replace the text output, draw their own UI and use the network,
+³ Plugins can read the capture and the recognized text, replace the text output, draw their own UI and use the network,
 so features such as uploading, translation or a different OCR engine could be built as plugins. None of these exist
 yet: if you want to write one, see [Writing oshot plugins](docs/plugins.md), or
 [open an issue](https://github.com/Toni500github/oshot/issues) and I'll help. The plugin API is still experimental and
 can change between releases.
 
-<sub>Compared as of October 2026. Spotted something out of date? Please open an issue.</sub>
+Flameshot and ShareX are mature tools with a lot that oshot doesn't do (yet), and they are far more widely packaged.
+NormCap is focused on getting text into your clipboard. oshot is for when you want text and codes out of your screen,
+and sometimes an annotated screenshot, from one tool on any OS.
 
 ## Installation
 
-Get the file for your system from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page.
-Each package also comes as a `-plugins` variant, which adds plugin support and the `oshotpm` plugin manager.
+Download from the [latest release](https://github.com/Toni500github/oshot/releases/latest) page.
+Each release comes with a `-plugins` variant, which adds plugin support and the `oshotpm` plugin manager.
 **If you don't use plugins, pick the file without `-plugins`.**
 
 ### Windows
@@ -146,13 +154,8 @@ Download the installer for your PC and run it:
 | `oshot-windows-x64-setup-<version>.exe` | Intel or AMD (most PCs) |
 | `oshot-windows-arm64-setup-<version>.exe` | ARM, e.g. Snapdragon (Windows 11) |
 
-- Installs for your user only by default (no admin prompt), with a Start Menu entry and an uninstaller.
-- Optionally starts oshot in the system tray when you sign in.
-- English OCR data is included. Downloaded models go to `%APPDATA%\oshot\models`.
-
 Press **Alt+Shift+S** anywhere to capture while oshot is in the tray. You can change it in Preferences.
-
-Prefer a portable copy? Download `oshot-windows-x64-<version>.zip` (or `-arm64-`), extract it anywhere and run `oshot.exe`.
+Prefer a portable copy? Download the portable zip tarball, extract it anywhere and just run `oshot.exe`.
 
 >[!NOTE]
 >The installer is not code-signed yet, so SmartScreen may warn on first run: click **More info → Run anyway**.
@@ -167,7 +170,8 @@ Download the `.dmg` that matches your Mac:
 | `oshot-macos-arm64-<version>.dmg` | Apple Silicon (M1 and newer) | macOS 15 (Sequoia) or later |
 | `oshot-macos-x86_64-<version>.dmg` | Intel | macOS 15 (Sequoia) or later |
 
-Older macOS versions aren't supported yet: some of the bundled libraries (Leptonica, ZBar and what they need) come from Homebrew, which builds them for the macOS of our build machines.
+>[!NOTE]
+>Older macOS versions aren't supported yet: some of the bundled libraries (Leptonica, ZBar and what they need) come from Homebrew, which builds them for the macOS of our build machines.
 
 1. Open the `.dmg` and drag **oshot** onto **Applications**.
 2. The app isn't notarized yet, so macOS blocks the first launch. Run this once in Terminal:
@@ -178,8 +182,6 @@ Older macOS versions aren't supported yet: some of the bundled libraries (Lepton
 3. Grant **Screen Recording** permission when asked (System Settings → Privacy & Security → Screen Recording), then reopen oshot.
 
 Press **Cmd+Shift+2** anywhere to capture while oshot is in the menu bar. You can change it in Preferences.
-
-English OCR data is included. Downloaded models go to `~/.config/oshot/models`.
 In the `-plugins` builds, the plugin manager is at `/Applications/oshot.app/Contents/MacOS/oshotpm`.
 
 ---
@@ -191,25 +193,27 @@ In the `-plugins` builds, the plugin manager is at `/Applications/oshot.app/Cont
 | `oshot-debian-package-<arch>-<version>.deb` | Debian, Ubuntu and derivatives |
 | `oshot-linux-x86_64-<version>.zip` | Built on Arch Linux, so it needs a glibc and libraries as new as Arch's (rolling distributions); the runtime libraries must be installed (see [Dependencies](#dependencies)) |
 
-`<arch>` is your CPU, as printed by `uname -m`: `x86_64` for Intel/AMD and `aarch64` for 64-bit ARM (the `.deb`s
-use Debian's names, `amd64` and `arm64`). Other architectures, including 32-bit ARM, can [build from source](#build-from-source).
-
 **AppImage**
 
 ```bash
-chmod +x oshot-$(uname -m)-*.AppImage
-./oshot-$(uname -m)-*.AppImage
+$ chmod +x oshot-*.AppImage
+$ ./oshot-*.AppImage
 ```
+
+<details>
+<summary>Using <code>oshotpm</code> from the <code>-plugins</code> AppImage</summary>
 
 The `oshot-<arch>-plugins-<version>.AppImage` also contains the `oshotpm` plugin manager. Plugins can be managed from
 the text tools window, or on the command line by passing `oshotpm` as the first argument:
 
 ```bash
-./oshot-$(uname -m)-plugins-*.AppImage oshotpm install https://github.com/user/repo
+./oshot-*-plugins-*.AppImage oshotpm install https://github.com/user/repo
 # or link it as oshotpm somewhere in your PATH
-ln -s "$PWD"/oshot-$(uname -m)-plugins-*.AppImage ~/.local/bin/oshotpm
+ln -s "$PWD"/oshot-*-plugins-*.AppImage ~/.local/bin/oshotpm
 oshotpm list
 ```
+
+</details>
 
 **Debian / Ubuntu**
 
@@ -240,15 +244,23 @@ text or image after oshot closes. Install the one for your session; the `.deb` r
 
 #### Wayland
 
-On GNOME and most other desktops, screenshots go through the desktop's screenshot portal (the first capture may ask for permission). On Sway, Hyprland, niri and other compositors with a screencopy protocol, oshot uses `grim` when it's installed, which is faster than the portal. On KDE Plasma, oshot asks KWin for the screenshot directly. Plasma 6.7 and older only allow that for an oshot installed with its desktop file (distribution packages, the .deb, `make install`), so other builds use Spectacle there, if it's installed, and else the portal, which takes longer (see [KDE Plasma: the overlay is slow to appear](#kde-plasma-the-overlay-is-slow-to-appear)). Where no screenshot portal is available (e.g. some Sway/Hyprland setups), `grim` is required.
+How the screenshot is taken depends on the desktop:
+
+- **GNOME and most other desktops:** screenshots go through the desktop's screenshot portal (the first capture may
+  ask for permission).
+- **KDE Plasma:** oshot asks KWin for the screenshot directly. Plasma 6.7 and older only allow that for an oshot
+  installed with its desktop file (distribution packages, the .deb, `make install`), so other builds use Spectacle
+  there, if it's installed, and else the portal, which takes longer (see "KDE Plasma: the overlay is slow to appear"
+  under [Troubleshooting](#troubleshooting)).
+- **No screenshot portal** (e.g. some Sway/Hyprland setups): install `grim`.
 
 oshot doesn't need XWayland. Capturing, copying and dialogs all talk to Wayland directly, and the
-overlay is a native Wayland window too. It works on compositors running without XWayland, such as Hyprland with
-XWayland disabled.
+overlay is a native Wayland window too.
 
 #### Capture shortcut
 
-On Linux, oshot doesn't register a global shortcut itself. Bind `oshot --gui` to a key in your desktop's keyboard settings (e.g. **Settings → Keyboard → Custom Shortcuts** on GNOME), or in your window manager's config, for example:
+On Linux, oshot doesn't register a global shortcut itself. Bind `oshot --gui` to a key in your desktop's keyboard
+settings (e.g. **Settings → Keyboard → Custom Shortcuts** on GNOME), or in your window manager's config, for example:
 
 ```ini
 # Hyprland
@@ -271,35 +283,22 @@ oshot --extract-barcode --instant-copy              # copy the QR codes/barcodes
 oshot --instant-copy --selection "$(slop)"          # copy a region picked with slop as an image
 ```
 
-### Keyboard shortcuts
-
-| Shortcut | Action |
-| -------------- | ----------------------- |
-| `Ctrl+C/S` | Copy/Save selection as image |
-| `Ctrl+A` | Select full image |
-| `Ctrl+Z` | Undo |
-| `Ctrl+G` | Toggle handles |
-| `Ctrl+E` | Toggle text editing |
-| `Esc` | Close |
-
-On macOS, use `Cmd` instead of `Ctrl`. With `ctrl-c-copy-img = false` in the config, copying the image moves to
-`Ctrl+Shift+C`.
-
 ## Build from source
 
 Requires a C++20 compiler.
 
 ### Dependencies
 
-**All platforms:** `SDL3` (3.2 or newer), `tesseract`, `leptonica`, `zbar`
+| Platform | Libraries |
+| -------- | --------- |
+| All | `sdl3`, `tesseract`, `leptonica`, `zbar`, `OpenGL` |
+| Linux / BSD | `libx11`, `libxrandr`, `gio-2.0`, `gtk+-3.0`, `dbus-1`, `fontconfig`, `wayland`, `wayland-protocols`, `libappindicator3` or `ayatana-appindicator3` |
+| macOS (frameworks) | `Cocoa`, `Metal`, `QuartzCore`, `CoreGraphics`, `IOKit`, `Carbon`, `UserNotifications` |
+| Windows | `d3d11`, `dxgi`, `shcore`, `ws2_32` |
 
-**Linux / BSD extras:** `libx11`, `gio-2.0`, `gtk+-3.0`, `dbus-1`, `fontconfig`, `libappindicator3` / `ayatana-appindicator3`, `wayland`
-
-**macOS frameworks:** `Cocoa`, `CoreGraphics`, `IOKit`, `Carbon`, `UserNotifications`
-
-**Windows:** `d3d11`, `dxgi`, `shcore`, `ws2_32`
-
-#### Ubuntu / Debian
+Install commands:
+<details>
+<summary><b>Ubuntu / Debian</b></summary>
 
 `libsdl3-dev` needs Ubuntu 25.04 or Debian 13. On older releases, leave it out and build SDL3 with
 `scripts/build_sdl3.sh` (it lists the headers it needs).
@@ -315,7 +314,10 @@ sudo apt-get install -y \
   libwayland-dev
 ```
 
-#### Arch Linux
+</details>
+
+<details>
+<summary><b>Arch Linux</b></summary>
 
 ```bash
 sudo pacman -S --needed \
@@ -328,7 +330,10 @@ sudo pacman -S --needed \
   wayland
 ```
 
-#### FreeBSD
+</details>
+
+<details>
+<summary><b>FreeBSD and other BSDs</b></summary>
 
 ```bash
 pkg install git cmake pkgconf gmake \
@@ -336,15 +341,22 @@ pkg install git cmake pkgconf gmake \
   libX11 mesa-libs wayland
 ```
 
-Other BSDs need the same libraries from their ports. FreeBSD is built in CI; the others aren't tested, so please report build errors.
+Other BSDs need the same libraries from their ports. FreeBSD is built in CI; the others aren't tested, so please
+report build errors.
 
-#### macOS (Homebrew)
+</details>
+
+<details>
+<summary><b>macOS (Homebrew)</b></summary>
 
 ```bash
 brew install cmake sdl3 tesseract leptonica zbar
 ```
 
-#### Windows (MSYS2 UCRT64)
+</details>
+
+<details>
+<summary><b>Windows (MSYS2 UCRT64)</b></summary>
 
 On Windows on ARM, use the CLANGARM64 environment instead, with the same packages named `mingw-w64-clang-aarch64-*`.
 
@@ -358,6 +370,8 @@ pacman -S --needed \
   mingw-w64-ucrt-x86_64-zbar
 ```
 
+</details>
+
 ### Build
 
 ```bash
@@ -369,9 +383,11 @@ sudo make install          # into /usr (/usr/local on the BSDs), or PREFIX=<dir>
 sudo make uninstall
 ```
 
-`make DISABLE_PLUGINS=1` builds without plugin support. Packagers can use `DESTDIR` with `make install`, or CMake directly; `-DOSHOT_INSTALL_LICENSEDIR=` changes or skips (empty) where the license goes.
+`make DISABLE_PLUGINS=1` builds without plugin support. Packagers can use `DESTDIR` with `make install`, or CMake
+directly; `-DOSHOT_INSTALL_LICENSEDIR=` changes or skips (empty) where the license goes.
 
-Or with CMake + Ninja:
+<details>
+<summary>Or with CMake + Ninja</summary>
 
 ```bash
 mkdir build && cd build
@@ -380,17 +396,31 @@ ninja
 ./oshot
 ```
 
+</details>
+
 ## Troubleshooting
 
-### Linux: missing/mismatched runtime libraries
+<details>
+<summary><b>Windows: flicker on launch / app fails to start</b></summary>
 
+Download [MesaForWindows.7z](https://downloads.fdossena.com/geth.php?r=mesa64-latest), extract `opengl32.dll` beside
+`oshot.exe`, and relaunch. This `opengl32.dll` is for x64 only; on Windows on ARM, install the [OpenCL and OpenGL Compatibility Pack][compat-pack]
+pack instead (see [Windows](#windows)).
+[compat-pack]: https://devblogs.microsoft.com/directx/announcing-the-opencl-and-opengl-compatibility-pack-for-windows-10-on-arm/
+</details>
+
+<details>
+<summary><b>Linux: missing/mismatched runtime libraries</b></summary>
 Use the AppImage build.
+</details>
 
-### Linux: copying does nothing
-
+<details>
+<summary><b>Linux: copying does nothing</b></summary>
 Install `xclip` (X11) or `wl-clipboard` (Wayland), see [Clipboard](#clipboard).
+</details>
 
-### KDE Plasma: the overlay is slow to appear
+<details>
+<summary><b>KDE Plasma: the overlay is slow to appear</b></summary>
 
 On Wayland with Plasma 6.7 or older, KWin only gives screenshots to programs it finds a desktop file for. Without
 one, the log has `The process is not authorized to take a screenshot` and oshot captures through Spectacle or the
@@ -409,7 +439,10 @@ sed "0,/^Exec=oshot/s||Exec=$(realpath build/release/oshot)|" assets/linux/oshot
 
 For a Nix `result`, use `$(realpath result)/bin/oshot` as the path. Plasma picks the file up after a few seconds.
 
-### NixOS: Tesseract can't find language data
+</details>
+
+<details>
+<summary><b>NixOS: Tesseract can't find language data</b></summary>
 
 `TESSDATA_PREFIX` must be set explicitly. If tesseract is in `environment.systemPackages`:
 
@@ -426,12 +459,14 @@ systemd.user.sessionVariables = {
     "TESSDATA_PREFIX" = "${pkgs.tesseract}/share/tessdata";
 };
 ```
->[!Note]
->The home-manager solution requires systemd. If `echo $TESSDATA_PREFIX` returns a valid path but OCR still fails, check `ocr-folders` and `ocr-language` in your config file.
+>[!NOTE]
+>The home-manager solution requires systemd. If `echo $TESSDATA_PREFIX` returns a valid path but OCR still fails,
+>check `ocr-path` in your config file.
 
-### Still broken?
+</details>
 
-Open an [issue](https://github.com/Toni500github/oshot/issues) with your OS version, the exact error message, and steps to reproduce.
+**Still broken?** Open an [issue](https://github.com/Toni500github/oshot/issues) with your OS version, the exact
+error message, and steps to reproduce.
 
 ## How oshot is developed
 
@@ -439,26 +474,23 @@ oshot is a solo project. I've been building it since December 2025 in whatever t
 A few people who use it daily have sent fixes, and the people in the r/unixporn Discord thread helped shape a lot of it,
 but most days it's just me. For now, at least: see [Contributing](#contributing).
 
-Up to v0.5.0-rc2, I wrote most of oshot myself. I used AI tools (ChatGPT, Claude, DeepSeek) when I was stuck on a bug,
+Up to v0.5.0-rc2, I wrote most of oshot myself. I used AI tools (mostly Claude) when I was stuck on a bug,
 to polish the UI or to fix my English, and the help from that Discord thread is the reason less of it is AI-generated
 than it would have been.
 
-Since then, with university taking most of my time, I've used Claude Code for most of the large work: packaging for
+Since then, I've used briefly Claude Code for most of the large work: packaging for
 every platform, cross-platform build fixes, the plugin system and the plugin index, global hotkeys and translations.
-Those parts are mostly AI-written.
+Those parts are mostly AI-written/assisted, with the intention of replacing them in the near future.
 
-Nothing ships without me reading it and running it. I test every change on Linux (X11 and Wayland), Windows and macOS,
+Nothing ships without me reading it and running it. I test every important change on Linux (X11 and Wayland), Windows and macOS,
 in VMs and on real hardware. I once nearly wrecked my school's monitor because a missing `glfwTerminate()` left it
 stuck at a broken resolution, so I take the "real hardware" part seriously. If something is broken, that's on me, not
-on a tool: [open an issue](https://github.com/Toni500github/oshot/issues) and I'll fix it.
+on a tool, so don't esitate to [open an issue](https://github.com/Toni500github/oshot/issues).
 
 ## Contributing
-Give oshot a shot, and if something bugs you, tell me. With one person behind it, every bug report and pull request
-makes a real difference, for me and for everyone else using it.
+Every bug report and pull request makes a real difference, for me and everyone else using oshot.
 
 No contribution is too small:
-- **Found a bug or a crash?** [Open an issue](https://github.com/Toni500github/oshot/issues), even if you aren't sure
-  it's a bug. A screenshot and your OS are often enough.
 - **Spotted a typo or a misplaced dot?** Send a pull request. Yes, really, a one-character fix is welcome.
 - **Missing a feature?** Open an issue first so we can talk about how it fits.
 - **Using oshot daily?** Tell me what annoys you. That feedback is what shaped most of oshot so far.
@@ -470,5 +502,4 @@ can donate on [Ko-fi](https://ko-fi.com/toni500) or [PayPal](https://www.paypal.
 way.
 
 ## License
-
 oshot is released under the [BSD 3-Clause License](LICENSE). Bundled third-party libraries keep their own licenses.
