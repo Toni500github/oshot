@@ -128,9 +128,13 @@ static ImGuiColorEditFlags ann_color_picker_flags()
 }
 
 // Where a popup of `size` for the toolbar button `btn` goes: lined up with the button, outside `avoid` (the
-// selection and its toolbar) on the button's `side` or else the first other side it fits on. If none, over the
-// selection next to the button
-static ImVec2 toolbar_popup_pos(const ImRect& btn, const ImRect& avoid, SelectionBorder side, const ImVec2& size)
+// selection and its toolbar) on the button's `side`, else over `sel` next to the button if that holds it, else the
+// first other side it fits on. If none, over `sel` next to the button anyway
+static ImVec2 toolbar_popup_pos(const ImRect&   btn,
+                                const ImRect&   sel,
+                                const ImRect&   avoid,
+                                SelectionBorder side,
+                                const ImVec2&   size)
 {
     static constexpr std::array<std::array<ImGuiDir, 4>, idx(SelectionBorder::COUNT)> order{ {
         { ImGuiDir_Down, ImGuiDir_Right, ImGuiDir_Left, ImGuiDir_Up },
@@ -157,13 +161,32 @@ static ImVec2 toolbar_popup_pos(const ImRect& btn, const ImRect& avoid, Selectio
         return dir == ImGuiDir_Up || dir == ImGuiDir_Down ? p.y + size.y <= display.y : p.x + size.x <= display.x;
     };
 
-    const std::array<ImGuiDir, 4>& dirs = order[idx(side)];
-    ImVec2                         pos  = outside(dirs.back(), btn);
-    for (const ImGuiDir dir : dirs)
+    const std::array<ImGuiDir, 4>& dirs   = order[idx(side)];
+    const ImGuiDir                 toward = dirs.back();
+
+    // Slid along the selection's edge. The selection and the button bound where it can go over the selection
+    const bool  vertical = toward == ImGuiDir_Up || toward == ImGuiDir_Down;
+    ImVec2      over     = outside(toward, btn);
+    float&      along    = vertical ? over.x : over.y;
+    const float lo       = vertical ? sel.Min.x : sel.Min.y;
+    const float room     = vertical ? sel.GetWidth() - size.x : sel.GetHeight() - size.y;
+    along                = std::clamp(along, lo, lo + std::max(0.0f, room));
+
+    ImRect hold = sel;
+    hold.Add(btn);
+    const bool holds = room >= 0.0f && hold.Contains(ImRect(over, over + size));
+
+    ImVec2 pos = outside(toward, btn);
+    for (size_t i = 0; i < dirs.size(); ++i)
     {
-        if (fits(dir, outside(dir, avoid)))
+        if (i == 1 && holds)
         {
-            pos = outside(dir, avoid);
+            pos = over;
+            break;
+        }
+        if (fits(dirs[i], outside(dirs[i], avoid)))
+        {
+            pos = outside(dirs[i], avoid);
             break;
         }
     }
@@ -682,7 +705,7 @@ void ScreenshotTool::DrawAnnotationSettingsPopup(const ToolType tool, const Sele
         ImVec2 pos(-display.x - m_ann_popup_size.x, -display.y - m_ann_popup_size.y);
         if (m_flags.Has(CaptureFlag::AnnPopupPlaced))
             pos = toolbar_popup_pos(
-                ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()), avoid, side, m_ann_popup_size);
+                ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()), sel.rect(), avoid, side, m_ann_popup_size);
         else
             wake_overlay();
         ImGui::SetNextWindowPos(pos);
