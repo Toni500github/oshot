@@ -25,13 +25,9 @@ Runs locally on Linux, BSD, Windows and macOS.
   <a href="#contributing">Contributing</a>
 </p>
 
-<!-- TODO: replace the video below with the demo GIF:
 <p align="center">
-  <img src="assets/screenshots/demo.gif" width="800"
-       alt="Selecting an error dialog and pasting its text into a terminal, then selecting a QR code on a web page and getting its link" />
+  <img src="assets/demo.gif" width="800" />
 </p>
--->
-https://github.com/user-attachments/assets/8367490a-f7b0-4320-86e9-8ef8764a56b5
 
 oshot v0.5.0 is in release candidates. The builds aren't code-signed, so Windows and macOS warn on first launch
 ([what to do](#installation)).
