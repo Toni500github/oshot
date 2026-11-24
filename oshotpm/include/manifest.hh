@@ -26,115 +26,170 @@
 #ifndef _MANIFEST_HH_
 #define _MANIFEST_HH_
 
+#include <cstdint>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "platform.hpp"
 #include "toml_api.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
+// Platform name in manifests: build-steps-<platform>, dependencies.<platform>, platforms
 #if OSHOT_LINUX
 #  define OSHOT_PLATFORM "linux"
+#elif defined(__FreeBSD__)
+#  define OSHOT_PLATFORM "freebsd"
+#elif defined(__OpenBSD__)
+#  define OSHOT_PLATFORM "openbsd"
+#elif defined(__NetBSD__)
+#  define OSHOT_PLATFORM "netbsd"
+#elif defined(__DragonFly__)
+#  define OSHOT_PLATFORM "dragonfly"
 #elif OSHOT_MACOS
 #  define OSHOT_PLATFORM "macos"
 #elif OSHOT_WINDOWS
 #  define OSHOT_PLATFORM "windows"
 #endif
 
-// Where a repo entry came from. Git-sourced repos live under a cache dir
-// oshotpm owns and can `git pull`/`git ls-remote` to check for updates.
-// Local ones (a folder someone pointed us at, or a prebuilt archive) have
-// no upstream to track: oshotpm never renames/deletes the source, and
-// UpdateRepos() skips them outright instead of guessing from git_hash being
-// empty.
+#if defined(__x86_64__) || defined(_M_X64)
+#  define OSHOT_ARCH "x86_64"
+#elif defined(__aarch64__) || defined(_M_ARM64)
+#  define OSHOT_ARCH "aarch64"
+#elif defined(__i386__) || defined(_M_IX86)
+#  define OSHOT_ARCH "i686"
+#elif defined(__arm__) || defined(_M_ARM)
+#  define OSHOT_ARCH "armv7"
+#elif defined(__riscv) && __riscv_xlen == 64
+#  define OSHOT_ARCH "riscv64"
+#elif defined(__powerpc64__)
+#  define OSHOT_ARCH "ppc64le"
+#elif defined(__s390x__)
+#  define OSHOT_ARCH "s390x"
+#else
+#  define OSHOT_ARCH "unknown"
+#endif
+
+// Key of a prebuilt library in a manifest, e.g. "linux-x86_64"
+#define OSHOT_TARGET OSHOT_PLATFORM "-" OSHOT_ARCH
+
+// Where a repo entry came from. Git repos live in oshotpm's cache and can be
+// fetched for updates, while local ones (a folder or a prebuilt archive) have no upstream
 enum class RepoSource : std::uint8_t
 {
     GitRepository,
-    LocalPlugin
+    LocalPlugin,
+    Index,  // the plugin index: its plugins are tracked one by one, by version
 };
 
+// A plugin, as declared in a manifest's [<plugin name>] table
 struct plugin_t
 {
-    // The plugin name.
-    // It must be conform to the function IsValidName()
+    // The plugin name, the manifest's table name. See Manifest::IsValidName()
     std::string name;
 
-    // The plugin ID.
-    // It must be conform to the function IsValidID()
+    // The plugin ID, the same as the one compiled into the library. See Manifest::IsValidID()
     std::string id;
 
-    // The plugin description.
-    std::string description;
-
-    // The plugin build directory,
-    // where we'll retrive the built plugin library.
+    // Source builds: the directory, relative to the repository, where the
+    // build steps leave the library. Exactly one library must be in it.
     std::string output_dir;
 
-    // The plugin SPDX Licenses Identifier (MIT, GPL-2.0, ...)
-    // Not valided.
+    // Prebuilt archives: library path per target ("linux-x86_64" -> "linux/libfoo.so")
+    std::map<std::string, std::string> prebuilt;
+
+    // SPDX license identifiers (MIT, GPL-2.0, ...). Not validated.
     std::vector<std::string> licenses;
 
-    // The state 'repositories.repo-name.plugins.library' field.
-    // NOTE: MUST be populated only by the state manager.
-    fs::path library;
-
-    // The plugin authors.
-    std::vector<std::string> authors;
-
-    // A list of commands to be executed for building the plugin.
-    // Kinda like a Makefile target instructions.
+    // Commands that build the plugin, already picked for this platform
+    // ("build-steps-<platform>" over "build-steps")
     std::vector<std::string> build_steps;
 
-    // Platforms that are supported by the plugin.
-    // Make it a string and put 'all' for being cross-platform.
+    // Platforms the plugin supports, or "all"
     std::vector<std::string> platforms;
+
+    // What the author says the plugin does on its own, and why: capability -> reason,
+    // from [<plugin name>.capabilities]. See capability_label(). Nothing checks it
+    std::map<std::string, std::string> capabilities;
+
+    // Only set for installed plugins, by StateManager
+    std::string repository;
+    std::string version;  // installed from the plugin index only
+    fs::path    library;
+    bool        enabled = true;
+
+    std::string              description;
+    std::vector<std::string> authors;
 };
 
+// A plugin repository, as described by its manifest (or its entry in state.toml once installed)
 struct manifest_t
 {
-    // The repository name.
-    // It must be conform to the function is_valid_name()
+    // The repository name. See Manifest::IsValidName()
     std::string name;
 
-    // The repository git url
+    // The repository's git URL or homepage
     std::string url;
 
-    // NOTE: INTERNAL ONLY
-    // The repository latest commit hash. Empty for a LocalPlugin source,
-    // and may also be empty for a GitRepository source if the git lookup
-    // wasn't possible (see Manifest::ParseManifest).
+    // The installed commit. Only for RepoSource::GitRepository
     std::string git_hash;
 
-    // NOTE: INTERNAL ONLY. Stamped by PluginManager (not by Manifest
-    // itself) once it knows how this manifest was obtained: Manifest has
-    // no way to tell "cloned by us" apart from "just a folder that happens
-    // to have a .git in it".
-    RepoSource source = RepoSource::GitRepository;
-
-    // An array of all the plugins that are declared in the manifest
-    std::vector<plugin_t> plugins;
-
-    // An array for storing the dependencies for 'all' and current platforms.
-    // first -> platform string name
-    // seconds -> platform dependencies vector names
+    // Packages needed to build the plugins here, for "all" and this platform.
+    // Only shown to the user, never installed.
     std::vector<std::string> dependencies;
+
+    RepoSource            source = RepoSource::GitRepository;
+    std::vector<plugin_t> plugins;
 };
 
 constexpr char const MANIFEST_NAME[] = "oshot-plugin.toml";  // NOLINT
 
+// Capabilities a manifest or the plugin index can declare (what a plugin does beyond oshot's API), each
+// with its reason, shown before installing. oshot can't enforce them, since plugins are native code, and
+// unknown names are shown as they are
+//   network     connects to the internet
+//   files       reads or writes files outside its own folder and oshot's cache
+//   processes   runs other programs
+
+/**
+ * Get a short label for a capability
+ * @param capability The capability, e.g. "network"
+ * @return e.g. "uses the internet", or the capability itself if unknown
+ **/
+std::string capability_label(const std::string_view capability);
+
+/**
+ * Describe what a plugin declares, for the install confirmation
+ * @param name The plugin name
+ * @param capabilities Its capabilities and their reasons
+ * @return e.g. "According to its author, 'foo':\n- connects to the internet: Downloads translations", or empty
+ **/
+std::string capabilities_notice(const std::string_view name, const std::map<std::string, std::string>& capabilities);
+
+// An oshot-plugin.toml
 class Manifest
 {
 public:
     Manifest(fs::path path);
 
-    [[nodiscard]] plugin_t GetPlugin(const std::string_view name) const;
-    Result<>               ParseManifest();
+    // Parses and validates the manifest into GetRepo(). Does nothing once it succeeded
+    Result<> ParseManifest();
+
+    // Letters, digits, '-', '_' and '=', 1-64 characters
+    static bool IsValidName(const std::string_view name);
+
+    // Lowercase letters, digits, '-', '_' and '.', at least one '.', 1-64
+    // characters, starting and ending with a letter or digit, no ".."
+    static bool IsValidID(const std::string_view id);
+
+    // Whether the plugin lists this platform, or "all", or none at all
+    static bool IsSupported(const plugin_t& plugin);
 
     [[nodiscard]] const manifest_t& GetRepo() const { return m_repo; }
     [[nodiscard]] bool              IsParsed() const { return m_is_parsed; }
-    static bool                     IsValidID(const std::string_view id);
-    static bool                     IsValidName(const std::string_view name);
 
 private:
     fs::path   m_path;
@@ -142,6 +197,9 @@ private:
     manifest_t m_repo;
 
     bool m_is_parsed{};
+
+    // Reads and validates the plugin table `name`
+    [[nodiscard]] Result<plugin_t> GetPlugin(const std::string_view name) const;
 };
 
-#endif  // !_MANIFEST_HH_;
+#endif  // !_MANIFEST_HH_

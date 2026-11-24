@@ -25,50 +25,55 @@
 
 #include "clipboard.hpp"
 
+#include <array>
+#include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+#include <span>
+#include <utility>
+#include <vector>
 
 #include "clip/clip.h"
 #include "config.hpp"
+#include "platform.hpp"
 #include "screen_capture.hpp"
+#include "spdlog/spdlog.h"
+#include "util/image.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
+#include "util/strings.hpp"
 
-#if OSHOT_LINUX
+#if !OSHOT_WINDOWS
+#  include <unistd.h>  // write() and close(), compiled in on every platform
+#endif
+#if OSHOT_FREEDESKTOP
+#  include <sys/types.h>
 #  include <sys/wait.h>
-#  include <unistd.h>
 
 #  include <csignal>
+#  include <thread>
 #endif
 
-// Starts wlcopy/xclip in the background, forgetting it.
-// Sets wlcopy_pid/xclip_pid, and returns an stdin pipe on success.
-Result<int> start_linux_copy(SessionType session, const std::string_view mime_type)
+// Starts wl-copy/xclip in the background and returns the write end of its stdin pipe.
+// The one started before exits by itself once this one takes the selection
+Result<int> start_linux_copy(SessionType session, const std::string& mime_type)
 {
-#if OSHOT_LINUX
-    static pid_t clip_pid = -1;
-
-    const char* tool = (session == SessionType::Wayland) ? "wl-copy" : "xclip";
+#if OSHOT_FREEDESKTOP
+    const bool  wayland = is_wayland_session(session);
+    const char* tool    = wayland ? "wl-copy" : "xclip";
     if (which(tool) == UNKNOWN)
         return Err("{} not found in PATH, please install it to enable clipboard support", tool);
 
     signal(SIGPIPE, SIG_IGN);
-
-    // stop if already launched wlcopy
-    if (clip_pid > 0)
-    {
-        kill(clip_pid, SIGINT);
-
-        // we need to do this on Linux, because the process will be defunct otherwise.
-        waitpid(clip_pid, nullptr, 0);
-
-        clip_pid = -1;
-    }
+    spdlog::debug("Copying {} with {}", mime_type, tool);
 
     std::array<int, 2> copy_pipe;
     if (pipe(copy_pipe.data()) == -1)
         return Err("Failed to open stdin pipe: {}", strerror(errno));
 
-    clip_pid = fork();
+    const pid_t clip_pid = fork();
 
     if (clip_pid == 0)
     {
@@ -76,18 +81,19 @@ Result<int> start_linux_copy(SessionType session, const std::string_view mime_ty
         dup2(copy_pipe[0], STDIN_FILENO);
         close(copy_pipe[0]);
 
-        if (session == SessionType::Wayland)
+        if (wayland)
         {
-            const char* args[] = { tool, "--foreground", "--type", mime_type.data(), nullptr };
-            execvp(tool, const_cast<char* const*>(args));
+            std::array<const char*, 5> args{ tool, "--foreground", "--type", mime_type.data(), nullptr };
+            execvp(tool, const_cast<char* const*>(args.data()));
         }
         else
         {
-            const char* args[] = { tool, "-selection", "clipboard", "-t", mime_type.data(), "-i", nullptr };
-            execvp(tool, const_cast<char* const*>(args));
+            std::array<const char*, 7> args{ tool, "-selection", "clipboard", "-t", mime_type.data(), "-i", nullptr };
+            execvp(tool, const_cast<char* const*>(args.data()));
         }
 
-        exit(-1);
+        // Not exit(), which would run oshot's exit handlers in this copy of the process
+        _exit(127);
     }
 
     close(copy_pipe[0]);
@@ -98,6 +104,10 @@ Result<int> start_linux_copy(SessionType session, const std::string_view mime_ty
         return Err("Failed to fork: {}", strerror(errno));
     }
 
+    // Reap it once it exits, or it stays defunct while the tray runs (xclip
+    // forks to the background and exits right away, wl-copy once replaced)
+    std::thread([clip_pid] { waitpid(clip_pid, nullptr, 0); }).detach();
+
     return Ok(copy_pipe[1]);
 #else
     return Err("wl-copy/xclip scheme is not supported on non-linux systems!");
@@ -106,9 +116,10 @@ Result<int> start_linux_copy(SessionType session, const std::string_view mime_ty
 
 Result<> Clipboard::CopyText(const std::string& text)
 {
-    if (m_session == SessionType::Wayland || m_session == SessionType::X11)
+    spdlog::debug("Copying {} bytes of text", text.size());
+    if (m_session != SessionType::Windows && m_session != SessionType::MacOS)
     {
-        const char*        mime = (m_session == SessionType::X11) ? "UTF8_STRING" : "text/plain;charset=utf-8";
+        const char*        mime = is_wayland_session(m_session) ? "text/plain;charset=utf-8" : "UTF8_STRING";
         const Result<int>& res  = start_linux_copy(m_session, mime);
         TRY(res);
 
@@ -116,10 +127,11 @@ Result<> Clipboard::CopyText(const std::string& text)
 
         if (write(fd, text.c_str(), text.size()) == -1)
         {
+            const int err = errno;  // close() may overwrite it
             close(fd);
-            if (errno == EPIPE)
+            if (err == EPIPE)
                 return Err("Failed to copy text: clipboard tool not found or exited unexpectedly");
-            return Err("Failed to copy text: {}", strerror(errno));
+            return Err("Failed to copy text: {}", strerror(err));
         }
 
         close(fd);
@@ -135,8 +147,9 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap, ImageExt ext)
 {
     if (cap.w <= 0 || cap.h <= 0)
         return Err("Image size is empty");
+    spdlog::debug("Copying a {}x{} image", cap.w, cap.h);
 
-    if (m_session == SessionType::Wayland || m_session == SessionType::X11)
+    if (m_session != SessionType::Windows && m_session != SessionType::MacOS)
     {
         const Result<int>& res =
             start_linux_copy(m_session, "image/" + str_tolower(g_config->File.image_out_type.first));
@@ -147,10 +160,11 @@ Result<> Clipboard::CopyImage(const capture_result_t& cap, ImageExt ext)
         const int fd = res.get();
         if (write(fd, reinterpret_cast<const char*>(png.data()), png.size()) == -1)
         {
+            const int err = errno;  // close() may overwrite it
             close(fd);
-            if (errno == EPIPE)
+            if (err == EPIPE)
                 return Err("Failed to copy image: clipboard tool not found or exited unexpectedly");
-            return Err("Failed to write image to stdin: {}", strerror(errno));
+            return Err("Failed to write image to stdin: {}", strerror(err));
         }
 
         close(fd);

@@ -1,0 +1,105 @@
+.TH OSHOTPM 1 "" "oshot" "User Commands"
+.SH NAME
+oshotpm \- plugin manager for oshot
+.SH SYNOPSIS
+.B oshotpm
+.RB [ \-h | \-V ]
+.I COMMAND
+.RI [ OPTIONS ]...
+.SH DESCRIPTION
+.B oshotpm
+installs, updates and removes plugins for
+.BR oshot (1).
+Plugins are shared libraries described by an \fIoshot\-plugin.toml\fR manifest.
+A \fIrepository\fR is everything one manifest describes; each plugin in it has an
+\fIID\fR like \fBio.github.user.plugin\fR.
+Changes apply the next time oshot starts.
+.SH COMMANDS
+.TP
+.BR search " [\fB\-v\fR] [\fIWORD\fR]..."
+List the plugins in the plugin index, or the ones matching every \fIWORD\fR.
+\fB\-v\fR adds every version, the owners, the license and the homepage.
+Exits with status 1 if \fIWORD\fRs are given and nothing matches them.
+.TP
+.BR install " [\fB\-f\fR] [\fB\-y\fR] \fISOURCE\fR..."
+Install the plugins from each \fISOURCE\fR: a plugin ID from the plugin index (its
+newest version that works here, prebuilt for this computer when available, checked
+against the index's SHA\-256), a git URL (cloned, then built with the manifest's
+build steps), a local folder with a manifest (built in place), or a prebuilt archive
+(\fI.zip\fR, \fI.tar.gz\fR/\fI.tgz\fR, \fI.tar.xz\fR/\fI.txz\fR).
+\fB\-f\fR, \fB\-\-force\fR reinstalls a repository that is already installed.
+\fB\-y\fR, \fB\-\-yes\fR answers every question with its default.
+.TP
+.BR update " [\fB\-y\fR]"
+Install newer versions of the plugins from the plugin index, warning about withdrawn
+ones, and fetch every repository installed from a git URL and rebuild the ones that
+changed. Plugins installed from a folder or an archive are updated by installing
+them again with \fB\-f\fR.
+.TP
+.BI uninstall " NAME" ...
+Uninstall the plugin with the ID \fINAME\fR, or the repository named \fINAME\fR with
+all its plugins. Their settings are deleted too.
+.TP
+.BI enable " PLUGIN" ...
+.TQ
+.BI disable " PLUGIN" ...
+Enable or disable plugins, given by ID or as \fIREPOSITORY\fB/\fIplugin name\fR.
+.TP
+.BR list " [\fB\-v\fR]"
+List the installed repositories and plugins; \fB\-v\fR adds authors, licenses,
+platforms and library paths.
+.TP
+.B gen\-manifest
+Write a commented template \fIoshot\-plugin.toml\fR in the current folder.
+.TP
+.BI help " [COMMAND]"
+Show the help of \fICOMMAND\fR.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print the help and exit.
+.TP
+.BR \-V ", " \-\-version
+Print the version and other information about the build.
+.SH ENVIRONMENT
+.TP
+.B OSHOT_SDK
+The plugin SDK (a folder with \fIinclude/oshot/oshot_plugin.h\fR) passed to plugin
+builds, instead of the one next to oshot.
+.TP
+.B OSHOT_PLUGIN_INDEX
+URL of the plugin index (any URL curl takes), instead of
+https://toni500github.github.io/oshot\-plugin\-index/index.toml.
+.TP
+.B NO_COLOR
+Don't color the output.
+.TP
+.BR XDG_CONFIG_HOME ", " XDG_CACHE_HOME
+Used instead of \fI~/.config\fR and \fI~/.cache\fR when set.
+.PP
+Each build step runs with \fBsh \-c\fR in the repository's root and gets
+\fB\%OSHOT_SDK\fR, \fB\%OSHOT_PLATFORM\fR, \fB\%OSHOT_ARCH\fR, \fB\%OSHOT_TARGET\fR
+(e.g. \fBlinux\-x86_64\fR) and \fB\%OSHOT_VERSION\fR in its environment.
+.SH FILES
+.TP
+.I ~/.config/oshot/plugins/
+Installed plugins, one folder per ID with the library and its \fIconfig.toml\fR.
+.TP
+.I ~/.config/oshot/plugins/state.toml
+What is installed.
+.TP
+.I ~/.cache/oshotpm/
+Clones of the repositories installed from git, and the last downloaded plugin index.
+.SH EXIT STATUS
+0 on success, 1 if anything failed.
+.SH EXAMPLES
+.nf
+oshotpm search translate
+oshotpm install io.github.user.translate
+oshotpm install https://github.com/user/oshot\-plugins
+oshotpm install ./my\-plugin
+oshotpm disable io.github.user.translate
+oshotpm uninstall oshot\-plugins
+.fi
+.SH SEE ALSO
+.BR oshot (1)

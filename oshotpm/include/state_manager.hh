@@ -26,10 +26,36 @@
 #ifndef _STATE_MANAGER_HH_
 #define _STATE_MANAGER_HH_
 
+#include <filesystem>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
 #include "manifest.hh"
 #include "toml_api.hpp"
-#include "util.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
 
+// The text transformer chain as state.toml's [text-transformers] stores it, by plugin ID
+struct text_transformers_t
+{
+    // The order they run in
+    std::vector<std::string> order;
+
+    // The ones switched off in Preferences, while their plugins stay enabled
+    std::vector<std::string> disabled;
+
+    bool operator==(const text_transformers_t&) const = default;
+};
+
+// state.toml: what's installed. One [repositories.<name>] table per source
+// (git URL, local folder or archive) and one [plugins."<id>"] table per
+// installed plugin, which points back at its repository. Also the order
+// of the text transformers, in [text-transformers].
+// Changes stay in memory until SaveState()
 class StateManager
 {
 public:
@@ -39,57 +65,56 @@ public:
     StateManager& operator=(const StateManager&) = delete;
     ~StateManager()                              = default;
 
-    Result<>                AddNewRepo(const manifest_t& repo);
-    Result<>                RemoveRepo(const std::string& repo);
-    std::vector<manifest_t> GetAllRepos() const;
+    // Re-reads state.toml, e.g. after oshotpm changed it while oshot runs
+    void Reload();
 
-    template <typename T>
-    Result<> UpdatePlugin(const std::string_view repo_name,
-                          const std::string_view plugin_name,
-                          const std::string_view key,
-                          T&&                    value);
+    // Grouped by repository, plugins sorted by ID
+    [[nodiscard]] const std::vector<manifest_t>& GetAllRepos() const;
 
-    const toml::table& GetState() const { return m_toml.GetTbl(); }
+    // Adds or replaces a plugin, keeping its enabled state if it was installed
+    void SetPlugin(const std::string& repo, const plugin_t& plugin, const std::string& library_file);
 
-    bool SaveState();
+    // Adds or replaces a repository, without its plugins
+    void SetRepo(const manifest_t& repo);
+
+    // Removes the repository and the plugins it installed
+    void RemoveRepo(const std::string_view name);
+
+    [[nodiscard]] std::optional<manifest_t> FindRepo(std::string_view name) const;
+    [[nodiscard]] std::optional<plugin_t>   FindPlugin(std::string_view id) const;
+
+    // The [text-transformers] table, empty lists if it's missing
+    [[nodiscard]] text_transformers_t GetTextTransformers() const;
+
+    // Replaces the [text-transformers] table, leaving out the IDs that aren't installed
+    void SetTextTransformers(const text_transformers_t& transformers);
+
+    // Removes the plugin, and its ID from [text-transformers]
+    void     RemovePlugin(const std::string_view id);
+    Result<> SetEnabled(const std::string_view id, bool enabled);
+    Result<> SaveState();
 
 private:
+    // GetAllRepos()'s result, rebuilt when m_is_changed
+    mutable std::vector<manifest_t> m_manifests_cache;
+    mutable bool                    m_is_changed{ true };
+
     const fs::path m_path{ get_config_dir() / "plugins" / "state.toml" };
     TomlAPI        m_toml;
 
-    mutable std::vector<manifest_t> m_manifests_cache;
-    mutable bool                    m_is_changed{ true };
+    toml::table& Repos() { return TomlAPI::EnsureTable(m_toml.GetTbl(), "repositories"); }
+    toml::table& Plugins() { return TomlAPI::EnsureTable(m_toml.GetTbl(), "plugins"); }
 };
 
-template <typename T>
-Result<> StateManager::UpdatePlugin(const std::string_view repo_name,
-                                    const std::string_view plugin_name,
-                                    const std::string_view key,
-                                    T&&                    value)
-{
-    auto* repo_plugins_arr = m_toml.GetTbl()["repositories"][repo_name]["plugins"].as_array();
-    if (!repo_plugins_arr)
-        return Err("Couldn't find an array of plugins from repository '{}'", repo_name);
-
-    bool found = false;
-    for (auto&& plugins_node : *repo_plugins_arr)
-    {
-        auto* plugin_tbl = plugins_node.as_table();
-        if (!plugin_tbl)
-            continue;
-        const std::string& name = TomlAPI(*plugin_tbl).GetValue<std::string>("name", UNKNOWN);
-        if (name != plugin_name)
-            continue;
-
-        (*plugin_tbl).insert_or_assign(key, std::forward<T>(value));
-        found = true;
-        break;
-    }
-
-    if (!found)
-        return Err("Couldn't find plugin '{}' in repository '{}' to update its state", plugin_name, repo_name);
-    m_is_changed = true;
-    return Ok();
-}
+/**
+ * Put the plugins that have a text transformer in the order the user saved.
+ * The saved order comes first, then the plugins missing from it, sorted by ID.
+ * IDs saved for plugins that aren't in `available` are skipped
+ * @param available The IDs of the plugins with a transformer
+ * @param saved What GetTextTransformers() returned
+ * @return Each ID with whether its transformer is on
+ **/
+std::vector<std::pair<std::string, bool>> arrange_text_transformers(std::span<const std::string> available,
+                                                                    const text_transformers_t&   saved);
 
 #endif

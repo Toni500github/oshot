@@ -47,20 +47,59 @@ main() {
         exit 1
     fi
 
-    download "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
-    download "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
-    chmod +x *.AppImage
+    ARCH="$(uname -m)"
+    case "$ARCH" in
+        amd64) ARCH=x86_64 ;;
+        arm64) ARCH=aarch64 ;;
+    esac
+
+    download "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${ARCH}.AppImage"
+    # AppImageKit is archived, appimagetool lives in its own repo now
+    download "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${ARCH}.AppImage"
+    chmod +x "linuxdeploy-${ARCH}.AppImage" "appimagetool-${ARCH}.AppImage"
 
     # The release binary
     check_file "$1"
+    BUILD_DIR="$(dirname "$1")"
 
+    rm -rf AppDir
     mkdir -p AppDir/usr/bin/
-    check_file oshot.png
-    check_file oshot.desktop
+    check_file assets/oshot.svg
+    check_file assets/linux/oshot-256.png
+    check_file assets/linux/oshot.desktop
+    check_file assets/linux/io.github.toni500github.oshot.metainfo.xml
 
+    # A plugin build links liboshot_common, so ship the plugin manager and libcimgui
+    # (which C plugins link against) inside the AppImage too
+    DEPLOY_ARGS=()
+    if readelf -d "$1" | grep -q 'liboshot_common'; then
+        check_file "$BUILD_DIR/oshotpm"
+        check_file "$BUILD_DIR/libcimgui.so.1"
+        cp -f "$BUILD_DIR/oshotpm" AppDir/usr/bin/
+        DEPLOY_ARGS+=(--executable AppDir/usr/bin/oshotpm --library "$BUILD_DIR/libcimgui.so.1")
+        # The plugin SDK (headers, find_package(oshot), pkg-config files): oshotpm
+        # passes usr/ as OSHOT_SDK to plugin builds
+        check_file "$BUILD_DIR/sdk/include/oshot/oshot_plugin.h"
+        check_file "$BUILD_DIR/sdk/lib/cmake/oshot/oshotConfig.cmake"
+        mkdir -p AppDir/usr/include AppDir/usr/lib
+        cp -rf "$BUILD_DIR/sdk/include/oshot" AppDir/usr/include/
+        cp -rf "$BUILD_DIR/sdk/lib/cmake" "$BUILD_DIR/sdk/lib/pkgconfig" AppDir/usr/lib/
+    fi
+
+    # "<AppImage> oshotpm ..." or a symlink named oshotpm runs the plugin manager.
+    # oshotpm finds the bundled libs through its RUNPATH, so the build steps it runs
+    # (git, sh, compilers) keep the host's LD_LIBRARY_PATH
     cat > AppDir/AppRun << 'EOF'
 #!/bin/sh
 HERE="$(dirname "$(readlink -f "$0")")"
+if [ -x "$HERE/usr/bin/oshotpm" ]; then
+    if [ "$(basename "${ARGV0:-$0}")" = oshotpm ]; then
+        exec "$HERE/usr/bin/oshotpm" "$@"
+    elif [ "$1" = oshotpm ]; then
+        shift
+        exec "$HERE/usr/bin/oshotpm" "$@"
+    fi
+fi
 export APPIMAGE_ORIG_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
 exec "$HERE/usr/bin/oshot" "$@"
@@ -68,18 +107,53 @@ EOF
     chmod +x AppDir/AppRun
 
     cp -f "$1" AppDir/usr/bin/
-    cp -f oshot.png AppDir/
-    cp -f oshot.desktop AppDir/
 
-    ./linuxdeploy-x86_64.AppImage \
+    # The SVG for desktops that scale icons, a 256px PNG for the AppImage's own icon
+    install -Dm644 assets/oshot.svg AppDir/usr/share/icons/hicolor/scalable/apps/oshot.svg
+    install -Dm644 assets/linux/oshot-256.png AppDir/usr/share/icons/hicolor/256x256/apps/oshot.png
+
+    # AppStream metadata, read by software centers and the AppImage catalog.
+    # appimagetool only checks <desktop file name>.appdata.xml and warns that it's
+    # missing, but renaming it would no longer match the component id
+    install -Dm644 assets/linux/io.github.toni500github.oshot.metainfo.xml -t AppDir/usr/share/metainfo/
+
+    install -Dm644 LICENSE -t AppDir/usr/share/licenses/oshot/
+    if [ -f "$BUILD_DIR/THIRD-PARTY-LICENSES" ]; then
+        install -Dm644 "$BUILD_DIR/THIRD-PARTY-LICENSES" -t AppDir/usr/share/licenses/oshot/
+    fi
+
+    ./linuxdeploy-${ARCH}.AppImage \
         --appdir AppDir \
         --executable AppDir/usr/bin/oshot \
-        --desktop-file AppDir/oshot.desktop \
-        --icon-file AppDir/oshot.png
+        "${DEPLOY_ARGS[@]}" \
+        --desktop-file assets/linux/oshot.desktop
+
+    # linuxdeploy prefers the SVG for the top-level icon, but .DirIcon (which
+    # appimagetool links to it) should be a PNG
+    rm -f AppDir/oshot.svg AppDir/oshot.png
+
+    # linuxdeploy leaves the binaries it was given unstripped
+    find AppDir/usr/bin AppDir/usr/lib -type f \( -name 'oshot*' -o -name 'lib*imgui.so*' -o -name 'liboshot_common.so*' \) \
+        -exec strip --strip-unneeded {} +
+    ln -s usr/share/icons/hicolor/256x256/apps/oshot.png AppDir/oshot.png
+
+    # With UPDATE_INFORMATION set (e.g. "gh-releases-zsync|user|repo|latest|app-*.AppImage.zsync"),
+    # embed it and write <output>.zsync next to the AppImage, for AppImageUpdate and similar tools
+    TOOL_ARGS=()
+    if [ -n "$UPDATE_INFORMATION" ]; then
+        TOOL_ARGS+=(-u "$UPDATE_INFORMATION")
+    fi
 
     # Use second argument as output name or default
-    OUTPUT_NAME="${2:-oshot-x86_64.AppImage}"
-    ./appimagetool-x86_64.AppImage AppDir "$OUTPUT_NAME"
+    OUTPUT_NAME="${2:-oshot-${ARCH}.AppImage}"
+    ARCH="$ARCH" ./appimagetool-${ARCH}.AppImage "${TOOL_ARGS[@]}" AppDir "$OUTPUT_NAME"
+
+    # appimagetool writes the .zsync into the current directory. It refers to the
+    # AppImage by this name, so neither can be renamed afterwards
+    ZSYNC="$(basename "$OUTPUT_NAME").zsync"
+    if [ -f "$ZSYNC" ] && [ "$(dirname "$OUTPUT_NAME")" != . ]; then
+        mv -f "$ZSYNC" "$(dirname "$OUTPUT_NAME")/"
+    fi
 
     echo "AppImage created: $OUTPUT_NAME"
 }

@@ -26,9 +26,15 @@
 #include "cache.hpp"
 
 #include <filesystem>
+#include <sstream>
 #include <string>
 
+#include "spdlog/spdlog.h"
 #include "util.hpp"
+#include "util/dialogs.hpp"
+#include "util/result.hpp"
+
+namespace fs = std::filesystem;
 
 Cache::Cache(const std::string& cache_dir) : m_cache_dir_path(cache_dir)
 {
@@ -57,14 +63,12 @@ void Cache::CreateFile()
     ss << m_tbl;
 
     if (!SaveFile(ss.str(), mk_file_path))
-        error("Failed to write cache entry at path '{}'", mk_file_path);
+        dialog::error("Failed to write cache entry at path '{}'", mk_file_path);
 }
 
 Result<> Cache::LoadCacheFile()
 {
-    // Since the filename (default.theme-file) will be likely
-    // related to relative path of the config directory, let's
-    // snapshot and switch to that directory.
+    // mk_file_path is relative to the cache directory
     CdGuard guard(m_cache_dir_path);
 
     return LoadFile(mk_file_path);

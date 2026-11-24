@@ -23,267 +23,60 @@
  *
  */
 
-#include <atomic>
-#include <condition_variable>
+#include <cerrno>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <deque>
+#include <exception>
 #include <filesystem>
-#include <fstream>
-#include <ios>
 #include <memory>
-#include <mutex>
+#include <string>
 #include <system_error>
-#include <thread>
 #include <utility>
+#include <vector>
 
 #include "cache.hpp"
 #include "platform.hpp"
 
-#if !OSHOT_WINDOWS
-#  include <netdb.h>
-#  include <netinet/in.h>
-#  include <sys/socket.h>
+#if OSHOT_WINDOWS
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
+// shellapi.h needs windows.h first
+
+#  include <process.h>
+#  include <shellapi.h>
+
+#  include "util/shared_object.hpp"
+#else
 #  include <unistd.h>
 #endif
 
+#include "app.hpp"
+#include "cli.hpp"
 #include "clipboard.hpp"
 #include "config.hpp"
-#include "fmt/base.h"
-#include "fmt/compile.h"
+#ifndef DISABLE_PLUGINS
+#  include "plugin.hpp"
+#endif
 #include "fmt/format.h"
-#include "getopt_port/getopt.h"
-#include "nvdialog/nvdialog_error.h"
-#include "oshot_png.h"
+#include "i18n.hpp"
 #include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
-#include "switch_fnv1a.hpp"
-#include "texts.hpp"
-#include "tinyfiledialogs.h"
-#include "tray.hpp"
+#include "spdlog/spdlog.h"
 #include "util.hpp"
+#include "util/diagnostics.hpp"
+#include "util/dialogs.hpp"
+#include "util/image.hpp"
+#include "util/paths.hpp"
 
-using namespace Tray;
-using namespace std::chrono_literals;
+static int oshot_main(int argc, char* argv[]);  // NOLINT
 
-// Avoid dragging glfw headers
-struct GLFWwindow;
-
-// [Win32] Our example includes a copy of glfw3.lib pre-compiled with VS2010 to maximize ease of testing and
-// compatibility with old VS compilers. To link with VS2010-era libraries, VS2015+ requires linking with
-// legacy_stdio_definitions.lib, which we do using this pragma. Your own project should not be affected, as you are
-// likely to link with a newer binary of GLFW that is adequate for your version of Visual Studio.
-#if defined(_MSC_VER) && (_MSC_VER >= 1900) && !defined(IMGUI_DISABLE_WIN32_FUNCTIONS)
-#  pragma comment(lib, "legacy_stdio_definitions")
-#endif
-
-// clang-format off
-// https://cfengine.com/blog/2021/optional-arguments-with-getopt-long/
-// because "--opt-arg arg" won't work
-// but "--opt-arg=arg" will
-#define OPTIONAL_ARGUMENT_IS_PRESENT \
-    ((optarg == NULL && optind < argc && argv[optind][0] != '-') \
-     ? (bool) (optarg = argv[optind++]) \
-     : (optarg != NULL))
-// clang-format on
-
-std::error_code ec;
-
-// Print the version and some other infos, then exit successfully
-static void version()
-{
-    fmt::print(FMT_COMPILE("{}"), version_infos);
-    fmt::print("\n");
-    std::exit(EXIT_SUCCESS);
-}
-
-// Print the args help menu, then exit with code depending if it's from invalid or -h arg
-static void help(bool invalid_opt = false)
-{
-    fmt::print(FMT_COMPILE("{}"), oshot_help);
-    fmt::print("\n");
-    std::exit(invalid_opt);
-}
-
-// clang-format off
-// NOLINTBEGIN
-// parseargs() but only for parsing the user config path trough args
-// and so we can directly construct Config
-static fs::path parse_config_path(int argc, char* argv[], const fs::path& configDir)
-{
-    int opt = 0;
-    int option_index = 0;
-    opterr = 0;
-    const char *optstring = "-C:";
-    static const struct option opts[] = {
-        {"config", required_argument, 0, 'C'},
-        {0,0,0,0}
-    };
-
-    while ((opt = getopt_long(argc, argv, optstring, opts, &option_index)) != -1)
-    {
-        switch (opt)
-        {
-            // skip errors or anything else
-            case 0:
-            case '?':
-                break;
-
-            case 'C':
-                if (!fs::exists(optarg))
-                    die("config file '{}' doesn't exist", optarg);
-                return optarg;
-        }
-    }
-
-    return configDir / "config.toml";
-}
-
-static bool parseargs(int argc, char* argv[], const fs::path& configFile)
-{
-    int opt = 0;
-    int option_index = 0;
-    opterr = 1; // re-enable since before we disabled for "invalid option" error
-    const char *optstring = "-Vhtgd:C:f:O:";
-    static const struct option opts[] = {
-        {"version", no_argument,       0, 'V'},
-        {"help",    no_argument,       0, 'h'},
-        {"tray",    no_argument,       0, 't'},
-        {"gui",     no_argument,       0, 'g'},
-        {"delay",   required_argument, 0, 'd'},
-        {"config",  required_argument, 0, 'C'},
-        {"source",  required_argument, 0, 'f'},
-        {"override",required_argument, 0, 'O'},
-
-        {"instant-save", no_argument,       0, "instant-save"_fnv1a16},
-        {"instant-copy", no_argument,       0, "instant-copy"_fnv1a16},
-        {"gen-config",   optional_argument, 0, "gen-config"_fnv1a16},
-
-        {0,0,0,0}
-    };
-
-    /* parse operation */
-    optind = 1;
-    while ((opt = getopt_long(argc, argv, optstring, opts, &option_index)) != -1)
-    {
-        switch (opt)
-        {
-            case 0:
-            case 'C':
-                break;
-            case '?':
-                help(EXIT_FAILURE); break;
-
-            case 'V':
-                version(); break;
-            case 'h':
-                help(); break;
-            case 'f':
-                g_config->Runtime.source_file = optarg; break;
-            case 'O':
-                g_config->OverrideOption(optarg); break;
-            case 'd':
-                g_config->OverrideOption("default.delay", std::atoi(optarg)); break;
-            case 't':
-                g_config->Runtime.only_launch_tray = true; break;
-            case 'g':
-                g_config->Runtime.only_launch_gui = true; break;
-
-            case "instant-save"_fnv1a16:
-                g_config->Runtime.instant_copy_save = SavingOp::File; break;
-            case "instant-copy"_fnv1a16:
-                g_config->Runtime.instant_copy_save = SavingOp::Clipboard; break;
-
-            case "gen-config"_fnv1a16:
-                if (OPTIONAL_ARGUMENT_IS_PRESENT)
-                    g_config->GenerateConfig(optarg);
-                else
-                    g_config->GenerateConfig(configFile.string());
-                exit(EXIT_SUCCESS);
-
-            default:
-                return false;
-        }
-    }
-
-    return true;
-}
-
-// clang-format on
-// NOLINTEND
-static std::mutex              mtx;
-static std::condition_variable cv;
-static std::atomic<bool>       quit{ false };
-static bool                    do_capture = false;
-static capture_result_t        pending_image;
-static bool                    do_copy_image = false;
-
-void exit_handler(int)
-{
-    static std::atomic_flag ran = ATOMIC_FLAG_INIT;
-    if (ran.test_and_set())
-        return;
-
-    quit.store(true);
-    cv.notify_all();
-#if !OSHOT_WINDOWS
-    if (g_sock > 0)
-        shutdown(g_sock, SHUT_RDWR);
-#endif
-    extern_glfwTerminate();
-    trayMaker.Exit();
-    fs::remove(fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid()));
-}
-void exit_handler_nc()
-{
-    exit_handler(0);
-}
-
-int run_main_tool();
-
-void glfw_error_callback(int i_error, const char* description)
-{
-    error("GLFW Error {}: {}", i_error, description);
-}
-
-void glfw_drop_callback(GLFWwindow*, int count, const char** paths)
-{
-    for (int i = 0; i < count; ++i)
-        g_dropped_paths.emplace_back(paths[i]);
-}
-
-void capture_worker()
-{
-    while (!quit.load())
-    {
-        // wait for command
-        std::unique_lock lk(mtx);
-        cv.wait(lk, [] { return quit.load() || do_capture || do_copy_image; });
-        if (quit.load())
-            break;
-
-        if (do_copy_image)
-        {
-            do_copy_image        = false;
-            capture_result_t img = std::move(pending_image);
-            lk.unlock();
-            MUST_OK(g_clipboard.CopyImage(img, g_config->File.image_out_type.second),
-                    spdlog::error("{}", _r.error_v()));
-            continue;
-        }
-
-        do_capture = false;
-        lk.unlock();
-        run_main_tool();
-    }
-}
-
-#if OSHOT_WINDOWS && !defined(WINDOWS_CMD)
+#if OSHOT_WINDOWS
 static std::string wide_to_utf8(const wchar_t* w)
 {
     if (!w)
@@ -297,89 +90,127 @@ static std::string wide_to_utf8(const wchar_t* w)
     return out;
 }
 
-static bool wants_cli_output(int argc, char** argv)
-{
-    for (int i = 1; i < argc; ++i)
-    {
-        const char* a = argv[i];
-        if (!a)
-            continue;
-
-        if (std::strcmp(a, "-h") == 0 || std::strcmp(a, "--help") == 0 || std::strcmp(a, "-V") == 0 ||
-            std::strcmp(a, "--version") == 0 || std::strcmp(a, "-l") == 0 || std::strcmp(a, "--list") == 0)
-            return true;
-    }
-    return false;
-}
-
+// A GUI-subsystem app has no console, so help/version/errors are shown as dialogs
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
-    int       argc  = 0;
-    wchar_t** wargv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    // Per-monitor DPI awareness before the first capture: SDL only sets it in
+    // SDL_Init(), so the first screenshot would otherwise see scaled monitor sizes
+    wchar_t system_dir[MAX_PATH]{};
+    GetSystemDirectoryW(system_dir, MAX_PATH);
+    const std::string sys32   = wide_to_utf8(system_dir) + DIR_SEP_STR;
+    bool              dpi_set = false;
 
-    std::vector<std::string> argv_storage;
-    std::vector<char*>       argv_ptrs;
-
-    if (wargv && argc > 0)
+    // Windows 10 1703+, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+    if (shared_object_t user32{ SDL_LoadObject((sys32 + "user32.dll").c_str()) })
     {
-        argv_storage.reserve(argc);
-        argv_ptrs.reserve(argc + 1);
+        using fn_t = BOOL(WINAPI*)(HANDLE);
+        if (auto fn = reinterpret_cast<fn_t>(SDL_LoadFunction(user32.get(), "SetProcessDpiAwarenessContext")))
+            dpi_set = fn(reinterpret_cast<HANDLE>(intptr_t(-4)));
+    }
 
-        for (int i = 0; i < argc; ++i)
-            argv_storage.push_back(wide_to_utf8(wargv[i]));
+    // Windows 8.1+, PROCESS_PER_MONITOR_DPI_AWARE
+    if (!dpi_set)
+    {
+        if (shared_object_t shcore{ SDL_LoadObject((sys32 + "shcore.dll").c_str()) })
+        {
+            using fn_t = HRESULT(WINAPI*)(int);
+            if (auto fn = reinterpret_cast<fn_t>(SDL_LoadFunction(shcore.get(), "SetProcessDpiAwareness")))
+                dpi_set = SUCCEEDED(fn(2));
+        }
+    }
 
-        for (auto& s : argv_storage)
-            argv_ptrs.push_back(s.data());
+    if (!dpi_set)
+        SetProcessDPIAware();
 
-        argv_ptrs.push_back(nullptr);
+    // stdout/stderr only exist when redirected, so otherwise write to the console oshot was started
+    // from, or to NUL, since fmt::print() throws on a missing stream
+    const auto has_stream = [](DWORD id) {
+        HANDLE h = GetStdHandle(id);
+        return h != nullptr && h != INVALID_HANDLE_VALUE;
+    };
+    const bool has_out    = has_stream(STD_OUTPUT_HANDLE);
+    const bool has_err    = has_stream(STD_ERROR_HANDLE);
+    const bool to_console = (!has_out || !has_err) && AttachConsole(ATTACH_PARENT_PROCESS);
+    FILE*      dummy      = nullptr;
+    if (!has_out)
+        freopen_s(&dummy, to_console ? "CONOUT$" : "NUL", "w", stdout);
+    if (!has_err)
+        freopen_s(&dummy, to_console ? "CONOUT$" : "NUL", "w", stderr);
 
+    // UTF-8 argv instead of the ANSI code page one
+    std::vector<std::string> args;
+    int                      wargc = 0;
+    if (wchar_t** wargv = CommandLineToArgvW(GetCommandLineW(), &wargc))
+    {
+        for (int i = 0; i < wargc; ++i)
+            args.push_back(wide_to_utf8(wargv[i]));
         LocalFree(wargv);
     }
-    else
-    {
-        static char argv0[] = "oshot";
-        argv_ptrs           = { argv0, nullptr };
-        argc                = 1;
-    }
+    if (args.empty())
+        args.emplace_back("oshot");
 
-    char** argv = argv_ptrs.data();
+    std::vector<char*> argv;
+    for (std::string& a : args)
+        argv.push_back(a.data());
+    argv.push_back(nullptr);
 
-    // If we need to show CLI output, try to attach to parent console first.
-    // This works when started from cmd.exe / powershell.
-    if (wants_cli_output(argc, argv))
-    {
-        if (!AttachConsole(ATTACH_PARENT_PROCESS))
-        {
-            // MSYS2/mintty often isn't a real Windows console -> attach fails.
-            // Allocate a console so stdout/stderr have somewhere to go.
-            AllocConsole();
-        }
-
-        FILE* dummy = nullptr;
-        freopen_s(&dummy, "CONOUT$", "w", stdout);
-        freopen_s(&dummy, "CONOUT$", "w", stderr);
-        freopen_s(&dummy, "CONIN$", "r", stdin);
-
-        // Line-buffer so help/version prints immediately
-        setvbuf(stdout, nullptr, _IOLBF, 0);
-        setvbuf(stderr, nullptr, _IOLBF, 0);
-    }
-
-    auto file = std::make_shared<spdlog::sinks::basic_file_sink_mt>("oshot.log", true);
+    return oshot_main(int(args.size()), argv.data());
+}
 #else
+// NOLINTNEXTLINE(bugprone-exception-escape): not caught on purpose, since with the tray running there's nothing to unwind to
 int main(int argc, char* argv[])
 {
-    const fs::path& log_path = fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid());
-    fs::create_directories(log_path.parent_path(), ec);
-    auto file = std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_path.string(), true);
+    return oshot_main(argc, argv);
+}
 #endif
 
+static int oshot_main(int argc, char* argv[])  // NOLINT
+{
+    // The crash handler starts oshot again with this, since the crashed process can't show a dialog
+    if (argc == 4 && std::strcmp(argv[1], CRASH_REPORT_ARG) == 0)
+    {
+        i18n::init("auto", {});
+        dialog::create(_("oshot crashed"),
+                       NVD_DIALOG_ERROR,
+                       i18n::tr_fmt("oshot crashed with {}.\n\nThe log file has the details:\n{}\n\n"
+                                    "Please report it at {} and attach the log file.",
+                                    argv[2],
+                                    argv[3],
+                                    ISSUES_URL));
+        return EXIT_FAILURE;
+    }
+
+    // Runs on every return. Left to the global destructors, g_ss_tool would go after Tesseract's static
+    // caches, and g_plugins after spdlog's registry, which a plugin's destroy() may still log to
+    struct ExitCleanup
+    {
+        ~ExitCleanup()
+        {
+#ifndef DISABLE_PLUGINS
+            unload_plugins();
+#endif
+            g_ss_tool.EndOcr();
+        }
+    } exit_cleanup;
+
+    std::error_code ec;
+
+    // Don't make it relative to the working directory, which is System32 when started at sign-in on Windows
+    const fs::path& log_path = fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid());
+    fs::create_directories(log_path.parent_path(), ec);
+    std::shared_ptr<spdlog::sinks::basic_file_sink_mt> file;
+    try
+    {
+        file = std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_path.string(), true);
+    }
+    catch (const std::exception& e)
+    {
+        fmt::println(stderr, "Failed to open log file {}: {}", log_path.string(), e.what());
+    }
+
 #if OSHOT_LINUX
-    // AppRun prepends bundled libs to LD_LIBRARY_PATH so the AppImage is self-contained.
-    // Child processes (zenity, grim, etc.) inherit it and resolve against the bundled
-    // (older) libs instead of the host's, causing symbol version mismatches.
-    // AppRun saves the original value here, restore it so that spawned system binaries
-    // use the host libs.
+    // AppRun prepends the bundled libs to LD_LIBRARY_PATH, and child processes (zenity, grim...) would load
+    // them instead of the host's and fail on symbol versions. Restore the value AppRun saved
     const char* orig = std::getenv("APPIMAGE_ORIG_LD_LIBRARY_PATH");
     if (orig)
         setenv("LD_LIBRARY_PATH", orig, 1);
@@ -387,39 +218,27 @@ int main(int argc, char* argv[])
         unsetenv("LD_LIBRARY_PATH");  // not running from AppImage, clear any stale value
 #endif
 
-    atexit(exit_handler_nc);
-    signal(SIGINT, exit_handler);
-    signal(SIGTERM, exit_handler);
-    signal(SIGABRT, exit_handler);
+    signal(SIGINT, on_quit_signal);
+    signal(SIGTERM, on_quit_signal);
 
-#if !OSHOT_WINDOWS
-    // Restore display then re-raise so the OS
-    // still generates a core dump.
-    signal(SIGSEGV, [](int sig) {
-        extern_glfwTerminate();  // restore display mode
-        signal(sig, SIG_DFL);    // reset to default
-        raise(sig);              // re-raise for core dump
-    });
-#endif
+    auto console = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+    auto imgui   = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(500);  // keep last 500 lines
+    std::vector<spdlog::sink_ptr> sinks = { console, imgui };
+    if (file)
+        sinks.push_back(file);
 
-    if (nvd_init() != 0)
-    {
-        fprintf(
-            stderr, "Failed to initialize nvdialog: %s\n", nvd_string_to_cstr(nvd_stringify_error(nvd_get_error())));
-        return -67;
-    }
-
-    auto           console = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    auto           imgui   = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(500);  // keep last 500 lines
-    spdlog::logger logger("oshot_logger", { console, file, imgui });
-    spdlog::set_default_logger(std::make_shared<spdlog::logger>(logger));
-    g_imgui_log_sink = imgui;
-
+    auto logger = std::make_shared<spdlog::logger>("oshot_logger", sinks.begin(), sinks.end());
     // [2026-03-10 17:24:07.593] [DEBUG] <col>message</col>
-    logger.set_pattern("[%Y-%m-%d %T.%e] [%l] %^%v%$");
-    logger.flush_on(spdlog::level::trace);
+    logger->set_pattern("[%Y-%m-%d %T.%e] [%l] %^%v%$");
+    logger->flush_on(spdlog::level::trace);
+    spdlog::set_default_logger(logger);
+    dialog::set_log_file(file ? file->filename() : std::string());
+    install_crash_handler(dialog::log_file());
 
-    g_clipboard.SetSession(get_session_type());
+    // Registered only now that spdlog's registry exists. Exit handlers run in reverse order, so it
+    // still exists in exit_handler_nc()
+    atexit(exit_handler_nc);
+    g_imgui_log_sink = std::move(imgui);
 
     const std::string& configDir      = get_config_dir().string();
     const std::string& cacheDir       = get_cache_dir().string();
@@ -428,143 +247,53 @@ int main(int argc, char* argv[])
 
     g_cache  = std::make_unique<Cache>(cacheDir);
     g_config = std::make_unique<Config>(configFile, configDir);
+    g_clipboard.SetSession(get_session_type());
     if (!parseargs(argc, argv, configFile))
         return EXIT_FAILURE;
 
-    g_config->LoadConfigFile(configFile);
+    const bool no_overlay = g_config->Runtime.extract_text || g_config->Runtime.extract_barcode ||
+                            (g_config->Runtime.selection && g_config->Runtime.instant_copy_save != SavingOp::kNone);
+    if (g_config->Runtime.selection && !no_overlay)
     {
-        fs::path p(g_config->File.theme_file_path);
-        if (fs::exists(p) && p.has_filename())
-            g_config->LoadThemeFile(p.string());
+        spdlog::error("--selection needs --extract-text, --extract-barcode, --instant-copy or --instant-save");
+        return EXIT_FAILURE;
     }
+
+    // stdout is for the extracted text, and the trace/debug logs would clutter a terminal or script
+    if (no_overlay)
+        console->set_level(spdlog::level::info);
+
+    g_config->LoadConfigFile(configFile);
+    // Even a missing one, so the overlay picks it up once it's created
+    g_config->LoadThemeFile(g_config->GetThemeFilePath());
+    i18n::init(g_config->File.language, configDir);
 
     spdlog::set_level(spdlog::level::debug);
 
-    logger.info("=== oshot starting ===");
-    logger.info("Log file path: {}", file->filename());
-    logger.flush();
-    spdlog::flush_every(1s);
+#if OSHOT_FREEDESKTOP
+    // Must run before SDL loads OpenGL (GLX) and before any thread is spawned,
+    // since setenv() isn't thread-safe against getenv() in other threads
+    constexpr const char* GLX_ENV = "__GLX_VENDOR_LIBRARY_NAME";
+    if (!g_config->File.glx_vendor.empty() &&
+        setenv(GLX_ENV, g_config->File.glx_vendor.c_str(), int(g_config->File.pref_conf_to_env)) != 0)
+        spdlog::warn("Failed to set {}: {}", GLX_ENV, std::strerror(errno));
 
-    const bool tray_lock_acquired = acquire_tray_lock();
+    const char* glx_env = std::getenv(GLX_ENV);
+    spdlog::debug("GLX vendor library: {}", glx_env ? glx_env : "not set");
+#endif
 
+    logger->info("=== oshot starting ===");
+    if (file)
+        logger->info("Log file path: {}", file->filename());
+    logger->debug("{}{}", version_infos, system_info());
+
+    if (no_overlay)
+        return run_without_overlay();
+
+    // Do this before taking the tray lock. Any number of --gui overlays can run at
+    // once, and an open one shouldn't keep a tray from starting
     if (g_config->Runtime.only_launch_gui)
-        return run_main_tool();
+        return run_capture();
 
-    if (g_config->Runtime.only_launch_tray)
-    {
-        if (!tray_lock_acquired)
-            return EXIT_FAILURE;
-
-        g_is_systray = true;
-    }
-    else
-    {
-        if (!tray_lock_acquired)
-            return run_main_tool();
-
-#if OSHOT_TOOL_ON_MAIN_THREAD
-        run_main_tool();
-#else
-        std::thread([&] { run_main_tool(); }).detach();
-#endif
-    }
-
-#if !OSHOT_TOOL_ON_MAIN_THREAD
-    // On macOS the tray loop polls do_capture on the main thread (required by
-    // AppKit), so capture_worker must not run, because it would call run_main_tool
-    // from a background thread and crash with NSInternalInconsistencyException.
-    std::thread worker(capture_worker);
-#endif
-
-    std::vector<TrayMenu*> menu;
-
-#if OSHOT_WINDOWS
-    TrayIcon tray = { "oshot.png", "oshot.ico", "oshot", menu };
-#else
-    // Basically create the icon.png in a temp directory and use
-    // that for the systray icon. idfc, it works
-    const fs::path& png_path = fs::temp_directory_path(ec) / "oshot.png";
-    std::ofstream   out(png_path.string(), std::ios::binary | std::ios::out | std::ios::trunc);
-
-    out.write(reinterpret_cast<const char*>(oshot_png), std::streamsize(oshot_png_len));
-    out.close();
-    TrayIcon tray = { .iconFilePng = png_path.string(), .iconFileIco = "oshot.ico", .tooltip = "oshot", .menu = menu };
-#endif
-
-    tray.menu.push_back(new TrayMenu{ .text        = "Capture",
-                                      .isEnabled   = true,
-                                      .isChecked   = false,
-                                      .hasCheckbox = false,
-                                      .onClicked =
-                                          [&](TrayMenu*) {
-#if OSHOT_TOOL_ON_MAIN_THREAD
-                                              run_main_tool();
-#else
-                                              std::lock_guard lk(mtx);
-                                              // only queue if not already queued
-                                              if (!do_capture)
-                                              {
-                                                  do_capture = true;
-                                                  cv.notify_all();
-                                              }
-#endif
-                                          },
-                                      .subMenu = {} });
-
-    tray.menu.push_back(new TrayMenu{
-        .text        = "Open Image",
-        .isEnabled   = true,
-        .isChecked   = false,
-        .hasCheckbox = false,
-        .onClicked =
-            [&](TrayMenu*) {
-                const std::array<const char*, 4> filters = { "*.png", "*.jpeg", "*.jpg", "*.bmp" };
-                const char* open_path = tinyfd_openFileDialog("Open Image",
-                                                              "",              // default path
-                                                              filters.size(),  // number of filter patterns
-                                                              filters.data(),  // file filters
-                                                              "Images",        // filter description
-                                                              false            // allow multiple selections
-                );
-
-#if OSHOT_TOOL_ON_MAIN_THREAD
-                run_main_tool();
-#else
-                std::lock_guard lk(mtx);
-                // only queue if not already queued
-                if (!do_capture)
-                {
-                    do_capture = true;
-                    cv.notify_all();
-                }
-#endif
-                if (open_path)
-                    g_config->Runtime.source_file = open_path;
-            },
-        .subMenu = {} });
-
-    tray.menu.push_back(new TrayMenu{ .text        = "Quit",
-                                      .isEnabled   = true,
-                                      .isChecked   = false,
-                                      .hasCheckbox = false,
-                                      .onClicked   = [&](TrayMenu*) { exit_handler(0); },
-                                      .subMenu     = {} });
-
-    if (trayMaker.Initialize(&tray))
-    {
-        while (trayMaker.Loop(true))
-        {
-        }
-    }
-    else
-    {
-        die("Systray initialization failed");
-    }
-
-    // Quitted the tray
-#if !OSHOT_TOOL_ON_MAIN_THREAD
-    worker.join();
-#endif
-
-    return EXIT_SUCCESS;
+    return run_tray();
 }

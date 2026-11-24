@@ -1,0 +1,10 @@
+Installation
+Download the release
+archive and extract
+it anywhere. No
+root is required.
+Usage
+Press the hotkey to
+select an area. The
+text is copied to
+the clipboard.

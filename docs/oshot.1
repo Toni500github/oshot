@@ -1,0 +1,147 @@
+.TH OSHOT 1 "" "oshot" "User Commands"
+.SH NAME
+oshot \- screenshot overlay that extracts text and scans QR codes and barcodes
+.SH SYNOPSIS
+.B oshot
+.RI [ OPTIONS ]...
+.SH DESCRIPTION
+.B oshot
+captures the screen and opens an overlay to select a region of it.
+The selection can be read with Tesseract OCR, scanned for QR codes and
+barcodes with ZBar, annotated, and copied to the clipboard or saved.
+.PP
+Without options, oshot captures the screen, opens the overlay and then
+stays in the system tray. If another oshot is already in the tray, it only
+captures.
+.PP
+Builds with plugin support also load plugins, which are managed in the text
+tools window or with
+.BR oshotpm (1).
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print the help and exit.
+.TP
+.BR \-V ", " \-\-version
+Print the version and other information about the build.
+.TP
+.BR \-f ", " \-\-source " \fIPATH\fR"
+Use the image at \fIPATH\fR instead of capturing the screen.
+Use \fB\-\fR to read the image from standard input.
+.TP
+.BR \-C ", " \-\-config " \fIPATH\fR"
+Use the config file at \fIPATH\fR
+(default: \fI~/.config/oshot/config.toml\fR).
+.TP
+.BR \-O ", " \-\-override " \fIOPTION\fR"
+Override a config option, for example
+\fB"delay=200"\fR, \fB"default.ocr-language='jpn'"\fR or
+\fB"fonts=['/path/to/font.ttf']"\fR.
+.TP
+.BR \-d ", " \-\-delay " \fIMILLIS\fR"
+Wait \fIMILLIS\fR milliseconds before capturing the screen.
+Has no effect with \fB\-f\fR.
+.TP
+.BR \-\-instant\-copy ", " \-\-instant\-save [=\fIDIR\fR]
+Copy or save the selection as soon as it is made. With \fIDIR\fR, save it
+there without asking, named after the \fBimage-out-fmt\fR option; \fIDIR\fR is
+created if it doesn't exist. An existing file is never replaced: the name gets
+a "_2", "_3"... suffix instead.
+.TP
+.B \-\-extract\-text
+Print the text of the screenshot, or of the \fB\-f\fR image, recognized with OCR,
+without opening the overlay. With \fB\-\-instant\-copy\fR, copy it to the
+clipboard instead. Exits with status 1 if no text is found.
+.TP
+.B \-\-extract\-barcode
+Like \fB\-\-extract\-text\fR, for QR codes and barcodes: prints the content of
+each one found, one per line.
+.TP
+.BR \-\-selection " \fIREGION\fR"
+Use only \fIREGION\fR of the screenshot or image, in its pixels, given as
+\fIW\fRx\fIH\fR+\fIX\fR+\fIY\fR (as printed by
+.BR slop (1))
+or "\fIX\fR,\fIY\fR \fIW\fRx\fIH\fR" (as printed by
+.BR slurp (1)).
+Needs \fB\-\-extract\-text\fR, \fB\-\-extract\-barcode\fR, \fB\-\-instant\-copy\fR
+or \fB\-\-instant\-save\fR, and skips the overlay. \fB\-\-instant\-save\fR then
+saves without asking, to \fIDIR\fR or else the folder an image was last saved
+to (by default the Pictures folder), and prints the file's path.
+.PP
+These options are meant for scripts: they never open a window, dialog or
+notification, print errors on stderr, and exit with status 1 on failure.
+.TP
+.BR \-\-gen\-config " [\fIPATH\fR]"
+Generate the default config file at \fIPATH\fR, or at the default location
+if omitted. Asks before overwriting.
+.TP
+.BR \-\-gen\-theme " [\fIPATH\fR]"
+Generate the default theme file at \fIPATH\fR, or where the
+\fBtheme\-file\fR option points if omitted. Asks before overwriting.
+.TP
+.BR \-g ", " \-\-gui
+Only capture and open the overlay, without the system tray.
+Bind this to a key in the desktop or window manager settings to get a
+capture shortcut.
+.TP
+.BR \-t ", " \-\-tray
+Only start in the system tray, without capturing. Exits if another oshot is
+already in the tray, unless the \fBallow\-multiple\-trays\fR option is on.
+.SH ENVIRONMENT
+.TP
+.B TESSDATA_PREFIX
+Directory with the Tesseract \fI.traineddata\fR models, looked in before the
+\fBocr\-folders\fR config option, unless \fBconfig\-over\-env\fR is enabled.
+.TP
+.B __GLX_VENDOR_LIBRARY_NAME
+The GLX vendor library for the overlay's OpenGL window on X11.
+Takes precedence over the \fBglx\-vendor\fR config option, unless
+\fBconfig\-over\-env\fR is enabled.
+.TP
+.BR LANGUAGE ", " LC_ALL ", " LC_MESSAGES ", " LANG
+The interface language, read in this order when the \fBlanguage\fR config
+option is \fB"auto"\fR.
+.TP
+.BR XDG_CONFIG_HOME ", " XDG_CACHE_HOME
+Used instead of \fI~/.config\fR and \fI~/.cache\fR when set.
+.TP
+.B OSHOT_PLUGIN_INDEX
+URL of the plugin index the Browse Plugins window downloads, as for
+.BR oshotpm (1).
+.SH FILES
+.TP
+.I ~/.config/oshot/config.toml
+The config file.
+.TP
+.I ~/.config/oshot/theme.toml
+The theme file, or the one the \fBtheme\-file\fR option names.
+.TP
+.I ~/.config/oshot/locale/
+Translations (\fIcode\fB.po\fR files) that replace or add to the built-in ones.
+.TP
+.I ~/.config/oshot/plugins/
+Installed plugins, in builds with plugin support.
+.TP
+.I ~/.cache/oshot/cache.toml
+Values remembered between runs, such as the folder an image was last saved to.
+.TP
+.I $TMPDIR/oshot_<pid>.log
+The log of each run (\fI/tmp\fR when \fBTMPDIR\fR isn't set).
+.SH NOTES
+On Wayland the screen is captured through KWin on KDE Plasma
+.RB "(then " spectacle (1),
+then the portal),
+.BR grim (1)
+on compositors with a screencopy protocol (Sway, Hyprland, niri) when it is
+installed, and the desktop's screenshot portal elsewhere. Before Plasma 6.8, KWin only answers an oshot
+installed with its desktop file. Copying to the clipboard needs
+.BR wl\-copy (1)
+on Wayland and
+.BR xclip (1)
+on X11.
+.SH SEE ALSO
+.BR oshotpm (1),
+.BR tesseract (1),
+.BR zbarimg (1)
+.PP
+https://github.com/Toni500github/oshot

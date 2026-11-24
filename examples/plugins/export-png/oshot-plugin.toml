@@ -1,0 +1,18 @@
+[repository]
+name = "oshot-example-export-png"
+url = "https://github.com/Toni500github/oshot/tree/main/examples/plugins/export-png"
+
+[dependencies]
+all = ["cmake", "a C compiler"]
+
+[export-png]
+id = "io.github.toni500github.export-png"
+description = "Saves the annotated selection as a PNG in the plugin's folder, an example plugin"
+authors = ["Toni500github"]
+licenses = ["Unlicense"]
+platforms = ["all"]
+build-steps = [
+    "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
+    "cmake --build build --config Release",
+]
+output-dir = "build/out"

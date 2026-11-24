@@ -26,88 +26,147 @@
 #ifndef _TEXT_EXTRACTION_HPP_
 #define _TEXT_EXTRACTION_HPP_
 
-#include <leptonica/allheaders.h>
-#include <tesseract/baseapi.h>
-#include <zbar.h>
+#include <tesseract/publictypes.h>
 
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
-#include "screen_capture.hpp"
-#include "util.hpp"
+#include "util/result.hpp"
 
 // ------------------------------
 // OCR (tesseract img2text)
 // ------------------------------
+// A word Tesseract read, with its box in the pixels of the image that was read
+struct ocr_word_t
+{
+    std::string text;
+    float       x = 0, y = 0, w = 0, h = 0;
+    int         confidence = 0;
+
+    // Text line and block, counted from 0 over the whole result
+    int line  = 0;
+    int block = 0;
+};
+
 struct ocr_result_t
 {
-    std::string data;
-    int         confidence = -1;  // 0..100
+    // Mean word confidence, 0..100, or -1 if nothing was read yet
+    int confidence = -1;
+
+    // The tesseract::PageSegMode the text was read with, and its name
     int         psm;
     std::string psm_str;
+
+    std::string data;
+
+    std::vector<ocr_word_t> words;
 };
+
+namespace tesseract
+{
+class TessBaseAPI;
+}
+struct capture_result_t;
+class OcrEnginePool;
 
 class OcrAPI
 {
 public:
-    OcrAPI() : m_api(std::make_unique<tesseract::TessBaseAPI>()) {};
+    OcrAPI();
     ~OcrAPI();
 
     // non-copyable (Tesseract is stateful)
     OcrAPI(const OcrAPI&)            = delete;
     OcrAPI& operator=(const OcrAPI&) = delete;
 
-    Result<>             Configure(const char*              data_path,
-                                   const char*              model,
-                                   tesseract::OcrEngineMode oem = tesseract::OEM_LSTM_ONLY);
+    /**
+     * (Re)initialize the engine with a model. Does nothing if it already uses it
+     * @param data_path The directory with the .traineddata models
+     * @param model The model name, e.g. "eng" for eng.traineddata
+     * @param oem The engine mode
+     **/
+    Result<> Configure(const char*              data_path,
+                       const char*              model,
+                       tesseract::OcrEngineMode oem = tesseract::OEM_LSTM_ONLY);
+
+    /**
+     * Read the text in an image, after preparing it for Tesseract (scaled, padded,
+     * dark text on white). Configure() must have succeeded first
+     * @param cap The RGBA image
+     **/
     Result<ocr_result_t> ExtractTextCapture(const capture_result_t& cap);
+
+    /**
+     * Free the engines and their model, so the next Configure() loads it again.
+     * Call it before the process exits, because Tesseract's static caches are
+     * destroyed before a global OcrAPI and ending it after them aborts
+     **/
+    void End();
 
 private:
     struct ocr_config_t
     {
-        std::string path;
-        std::string model;
+        std::string              path;
+        std::string              model;
+        tesseract::OcrEngineMode oem;
 
         bool operator==(const ocr_config_t&) const = default;
     };
 
-    struct PixDeleter
-    {
-        void operator()(PIX* pix) const
-        {
-            if (pix)
-                pixDestroy(&pix);
-        }
-    };
-
-    using PixPtr  = std::unique_ptr<PIX, PixDeleter>;
-    using TextPtr = std::unique_ptr<char, void (*)(char*)>;
+    // What the engine was last initialized with
+    std::optional<ocr_config_t> m_config;
 
     std::unique_ptr<tesseract::TessBaseAPI> m_api;
-    std::optional<ocr_config_t>             m_config;
     bool                                    m_initialized = false;
+
+    // More engines with the same model, for text on a busy background. Made by
+    // the first OCR that needs them
+    std::unique_ptr<OcrEnginePool> m_pool;
 };
 
 // ------------------------------
-// Zbar (QR/Bar Codes)
+// Barcodes (QR and bar codes)
 // ------------------------------
-struct zbar_result_t
+// A decoded code, with the box around its location points in the pixels of the scanned image
+struct barcode_t
 {
-    std::vector<std::string>             datas;        // decoded payload
-    std::unordered_map<std::string, int> symbologies;  // e.g. "QRCODE", "EAN-13", ...
+    std::string type;  // e.g. "QR-Code", "EAN-13"
+    std::string data;
+    float       x = 0, y = 0, w = 0, h = 0;
 };
 
-class ZbarAPI
+struct barcode_result_t
+{
+    std::vector<std::string>             datas;        // decoded payloads, without duplicates
+    std::unordered_map<std::string, int> symbologies;  // how many of each, e.g. "QRCODE", "EAN-13", ...
+    std::vector<barcode_t>               codes;        // every code found, duplicates included
+};
+
+// The backend (ZBar) is chosen at build time and stays out of this header
+class BarcodeAPI
 {
 public:
-    ZbarAPI();
+    // Every symbology is enabled
+    BarcodeAPI();
+    ~BarcodeAPI();
 
-    Result<zbar_result_t> ExtractTextsCapture(const capture_result_t& cap);
-    bool                  SetConfig(zbar::zbar_symbol_type_e zbar_code, int enable);
+    BarcodeAPI(const BarcodeAPI&)            = delete;
+    BarcodeAPI& operator=(const BarcodeAPI&) = delete;
+
+    /**
+     * Decode the QR codes and barcodes in an image. Also tries the inverted image
+     * (light codes on dark) and, for small images, a 2x upscale
+     * @param cap The RGBA image
+     **/
+    Result<barcode_result_t> ExtractTextsCapture(const capture_result_t& cap);
 
 private:
-    zbar::ImageScanner m_scanner;
+    // The backend's state, defined in its source file
+    struct scanner_t;
+    std::unique_ptr<scanner_t> m_scanner;
 };
 
 #endif  // !_TEXT_EXTRACTION_HPP_

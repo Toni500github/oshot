@@ -23,348 +23,363 @@
  *
  */
 
+// The oshot_host_t table every plugin gets in init(). Plugins only reach
+// oshot through these functions, with their oshot_ctx_t telling which plugin
+// is calling. Nothing here is exported for them to link against
+
+#include <algorithm>
+#include <atomic>
+#include <cctype>
+#include <cfloat>
+#include <chrono>
+#include <cmath>
+#include <condition_variable>
+#include <csignal>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <thread>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "cache.hpp"
+#include "clipboard.hpp"
+#include "config.hpp"
 #include "fmt/format.h"
-#include "oshot_plugin.h"
+#include "imgui.h"
+#include "imgui_stdlib.h"
+#include "nvdialog/nvdialog_error.h"
+#include "nvdialog/nvdialog_notification.h"
+#include "platform.hpp"
 #include "plugin.hpp"
+#include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
-#include "util.hpp"
+#include "spdlog/spdlog.h"
+#include "tiny-process-library/process.hpp"
+#include "toml_api.hpp"
+#include "util/dialogs.hpp"
+#include "util/paths.hpp"
+#include "util/result.hpp"
+#include "util/window.hpp"
 
-static size_t toml_get_array(const toml::array* arr, oshot_value_t** out, size_t max)
+#if !OSHOT_WINDOWS
+#  include <unistd.h>
+#endif
+
+using namespace std::chrono_literals;
+
+static plugin_runtime_t& rt_of(oshot_ctx_t* ctx)
 {
-    if (!arr)
-        return 0;
-
-    size_t i = 0;
-    for (const toml::node& el : *arr)
-    {
-        if (i == max)
-            break;
-
-        oshot_value_t& val = *out[i];
-        switch (el.type())
-        {
-            case toml::node_type::string:
-                val.kind = OSValueKind::OSHOT_VAL_STRING;
-                val.s    = oshot_str_new(el.as_string()->get().c_str(), el.as_string()->get().length());
-                break;
-
-            case toml::node_type::boolean:
-                val.kind = OSValueKind::OSHOT_VAL_BOOL;
-                val.b    = el.as_boolean()->get();
-                break;
-
-            case toml::node_type::integer:
-                val.kind = OSValueKind::OSHOT_VAL_INT64;
-                val.i    = el.as_integer()->get();
-                break;
-
-            case toml::node_type::floating_point:
-                val.kind = OSValueKind::OSHOT_VAL_DOUBLE;
-                val.d    = el.as_floating_point()->get();
-                break;
-
-            default: continue;  // unsupported TOML type: skip, don't consume a slot
-        }
-        i++;
-    }
-
-    return i;
-}
-
-static std::string prefixed_key(const char* key)
-{
-    return g_current_plugin->config_prefix + key;
-}
-
-static void set_toml_value(TomlAPI* api, const char* key, const oshot_value_t* val)
-{
-    if (val->kind < OSHOT_VAL_STRING || val->kind > OSHOT_VAL_DOUBLE)
-    {
-        oshot_error(oshot_str_borrow("Failed to set toml value: unknown kind"));
-        return;
-    }
-
-    switch (val->kind)
-    {
-        case OSValueKind::OSHOT_VAL_STRING:
-            if (!val->s.p)
-                oshot_error(oshot_str_borrow("Failed to set toml value: string has null pointer"));
-            else
-                api->SetValue<std::string>(key, std::string(val->s.p, val->s.len));
-            break;
-
-        case OSValueKind::OSHOT_VAL_INT64:  api->SetValue<int64_t>(key, val->i); break;
-        case OSValueKind::OSHOT_VAL_DOUBLE: api->SetValue<double>(key, val->d); break;
-        case OSValueKind::OSHOT_VAL_BOOL:   api->SetValue<bool>(key, val->b); break;
-    }
+    return *reinterpret_cast<plugin_runtime_t*>(ctx);
 }
 
 /* ------------------------------------------------------------------
- * ABI / identity
+ * Strings
  * ------------------------------------------------------------------ */
-uint32_t oshot_get_abi_version()
+static oshot_str_t str_new(const char* str, size_t len)
 {
-    return OSHOT_API_VERSION;
-}
-
-oshot_str_t oshot_get_plugin_data_dir()
-{
-    const fs::path& p = g_current_plugin->data_dir;
-    if (!fs::exists(p))
-        return oshot_str_borrow(nullptr);
-
-    return oshot_str_new(p.string().c_str(), p.string().length());
-}
-
-/* ------------------------------------------------------------------
- * oshot_str_t lifecycle
- * ------------------------------------------------------------------ */
-oshot_str_t oshot_str_new(const char* str, size_t len)
-{
-    oshot_str_t r;
-    r.p = reinterpret_cast<char*>(malloc(len));
-    if (r.p)
-        memcpy(const_cast<char*>(r.p), str, len);
-    r.len = r.p ? len : 0;
+    oshot_str_t r{ .p = nullptr, .len = 0 };
+    char*       buf = static_cast<char*>(std::malloc(len + 1));
+    if (!buf)
+        return r;
+    if (str && len)
+        std::memcpy(buf, str, len);
+    buf[len] = '\0';
+    r.p      = buf;
+    r.len    = len;
     return r;
 }
 
-void oshot_str_free(oshot_str_t* str)
+static oshot_str_t str_new(const std::string& s)
 {
-    free((void*)str->p);
+    return str_new(s.data(), s.size());
+}
+
+static void str_free(oshot_str_t* str)
+{
+    if (!str)
+        return;
+    std::free(const_cast<char*>(str->p));
     str->p   = nullptr;
     str->len = 0;
 }
 
-void oshot_value_array_free(oshot_value_t* arr, size_t n)
+static void value_array_free(oshot_value_t* arr, size_t n)
 {
-    for (size_t i = 0; i < n; ++i)
-        if (arr[i].kind == OSValueKind::OSHOT_VAL_STRING)
-            oshot_str_free(&arr[i].s);
+    for (size_t i = 0; arr && i < n; ++i)
+        if (arr[i].kind == OSHOT_VAL_STRING)
+            str_free(&arr[i].s);
+}
+
+static std::string to_string(oshot_str_t s)
+{
+    return s.p ? std::string(s.p, s.len) : std::string();
 }
 
 /* ------------------------------------------------------------------
- * Logging
+ * Any thread
  * ------------------------------------------------------------------ */
-void oshot_log(const OSLogLevel lvl, oshot_str_t str)
+static void host_log(oshot_ctx_t* ctx, oshot_log_level_t lvl, oshot_str_t msg)
 {
-    const std::string& out = fmt::format("{}: {}", g_current_plugin->plugin->id, std::string_view(str.p, str.len));
+    const std::string_view text(msg.p ? msg.p : "", msg.p ? msg.len : 0);
+    const std::string&     id = rt_of(ctx).id;
     switch (lvl)
     {
-        case OSLogLevel::OSHOT_LOG_DEBUG: spdlog::debug("{}", out); break;
-        case OSLogLevel::OSHOT_LOG_INFO:  spdlog::info("{}", out); break;
-        case OSLogLevel::OSHOT_LOG_WARN:  spdlog::warn("{}", out); break;
-        case OSLogLevel::OSHOT_LOG_ERROR: spdlog::error("{}", out); break;
+        case OSHOT_LOG_DEBUG: spdlog::debug("{}: {}", id, text); break;
+        case OSHOT_LOG_INFO:  spdlog::info("{}: {}", id, text); break;
+        case OSHOT_LOG_WARN:  spdlog::warn("{}: {}", id, text); break;
+        default:              spdlog::error("{}: {}", id, text); break;
     }
 }
 
-void oshot_debug(oshot_str_t str)
+static oshot_str_t get_data_dir(oshot_ctx_t* ctx)
 {
-    oshot_log(OSLogLevel::OSHOT_LOG_DEBUG, str);
+    return str_new(rt_of(ctx).dir.string());
 }
 
-void oshot_error(oshot_str_t str)
+static void run_on_ui_thread(oshot_ctx_t* ctx, void (*fn)(void*), void* user)
 {
-    oshot_log(OSLogLevel::OSHOT_LOG_ERROR, str);
+    if (!fn)
+        return;
+    plugin_runtime_t& rt = rt_of(ctx);
+    {
+        std::scoped_lock lock(rt.tasks_mutex);
+        rt.tasks.emplace_back([fn, user] { fn(user); });
+    }
+    wake_overlay();  // the tasks run at the start of the next frame
 }
 
-void oshot_warn(oshot_str_t str)
+static void request_redraw(oshot_ctx_t*)
 {
-    oshot_log(OSLogLevel::OSHOT_LOG_WARN, str);
-}
-
-void oshot_info(oshot_str_t str)
-{
-    oshot_log(OSLogLevel::OSHOT_LOG_INFO, str);
-}
-
-/* ------------------------------------------------------------------
- * Config
- * ------------------------------------------------------------------ */
-
-// ---------------------
-// Getter
-// ---------------------
-template <typename T>
-static T get_config_value(const char* key, const T& fallback)
-{
-    return g_current_plugin->config.GetValue(key, fallback);
-}
-
-oshot_str_t oshot_config_get_string(const char* key, oshot_str_t fallback)
-{
-    const std::string& str = get_config_value(key, std::string(fallback.p, fallback.len));
-    return oshot_str_new(str.c_str(), str.length());
-}
-
-bool oshot_config_get_bool(const char* key, bool fallback)
-{
-    return get_config_value<bool>(key, fallback);
-}
-
-int64_t oshot_config_get_int64(const char* key, int64_t fallback)
-{
-    return get_config_value<int64_t>(key, fallback);
-}
-
-double oshot_config_get_double(const char* key, double fallback)
-{
-    return get_config_value<double>(key, fallback);
-}
-
-size_t oshot_config_get_array(const char* key, oshot_value_t** out, size_t max)
-{
-    return toml_get_array(g_current_plugin->config.GetValueArray(key), out, max);
-}
-
-// ---------------------
-// Setter
-// ---------------------
-template <typename T>
-static void set_config_value(const char* key, const T& val)
-{
-    g_current_plugin->config.SetValue(key, val);
-}
-
-void oshot_config_set_string(const char* key, oshot_str_t val)
-{
-    set_config_value(key, std::string(val.p, val.len));
-}
-
-void oshot_config_set_bool(const char* key, bool val)
-{
-    set_config_value<bool>(key, val);
-}
-
-void oshot_config_set_int64(const char* key, int64_t val)
-{
-    set_config_value<int64_t>(key, val);
-}
-
-void oshot_config_set_double(const char* key, double val)
-{
-    set_config_value<double>(key, val);
-}
-
-void oshot_config_set_value(const char* key, const oshot_value_t* val)
-{
-    set_toml_value(&g_current_plugin->config, key, val);
+    wake_overlay();
 }
 
 /* ------------------------------------------------------------------
- * Cache
+ * UI thread only
  * ------------------------------------------------------------------ */
 
-// ---------------------
-// Getter
-// ---------------------
+// Logs and returns false when called from the wrong thread, instead of racing the UI
+static bool ui_thread_check(oshot_ctx_t* ctx, const char* func)
+{
+    if (on_plugin_ui_thread())
+        return true;
+    spdlog::error("{}: {}() called outside the UI thread, ignored. Use run_on_ui_thread()", rt_of(ctx).id, func);
+    return false;
+}
+
+// The config lives in the plugin's own file, the cache in oshot's under "plugins.<id>."
+static TomlAPI& store_of(oshot_ctx_t* ctx, oshot_store_t store, std::string& key)
+{
+    plugin_runtime_t& rt = rt_of(ctx);
+    if (store == OSHOT_STORE_CACHE)
+    {
+        key.insert(0, fmt::format("plugins.{}.", rt.id));
+        return *g_cache;
+    }
+    return rt.config;
+}
+
+// For lookups straight in the table, which skip TomlAPI::BuildKey() (Cache keeps
+// everything under [cache])
+static const toml::node* find_node(oshot_ctx_t* ctx, oshot_store_t store, const char* key)
+{
+    std::string    k(key);
+    const TomlAPI& api = store_of(ctx, store, k);
+    if (store == OSHOT_STORE_CACHE)
+        k.insert(0, "cache.");
+    return api.GetTbl().at_path(k).node();
+}
+
 template <typename T>
-static T get_cache_value(const char* key, const T& fallback)
+static T get_typed(oshot_ctx_t* ctx, oshot_store_t store, const char* key, const T& fallback, const char* func)
 {
-    return g_cache->GetValue<T>(prefixed_key(key), fallback);
+    if (!key || !ui_thread_check(ctx, func))
+        return fallback;
+    std::string k(key);
+    return store_of(ctx, store, k).GetValue<T>(k, fallback, true);
 }
 
-oshot_str_t oshot_cache_get_string(const char* key, oshot_str_t fallback)
-{
-    const std::string& str = get_cache_value(key, std::string(fallback.p, fallback.len));
-    return oshot_str_new(str.c_str(), str.length());
-}
-
-bool oshot_cache_get_bool(const char* key, bool fallback)
-{
-    return get_cache_value<bool>(key, fallback);
-}
-
-int64_t oshot_cache_get_int64(const char* key, int64_t fallback)
-{
-    return get_cache_value<int64_t>(key, fallback);
-}
-
-double oshot_cache_get_double(const char* key, double fallback)
-{
-    return get_cache_value<double>(key, fallback);
-}
-
-size_t oshot_cache_get_array(const char* key, oshot_value_t** out, size_t max)
-{
-    return toml_get_array(g_cache->GetValueArray(prefixed_key(key)), out, max);
-}
-
-// ---------------------
-// Setter
-// ---------------------
 template <typename T>
-static void set_cache_value(const char* key, const T& val)
+static void set_typed(oshot_ctx_t* ctx, oshot_store_t store, const char* key, const T& val, const char* func)
 {
-    g_cache->SetValue<T>(prefixed_key(key), val);
+    if (!key || !ui_thread_check(ctx, func))
+        return;
+    std::string k(key);
+    store_of(ctx, store, k).SetValue<T>(k, val);
+    if (store == OSHOT_STORE_CONFIG)
+        rt_of(ctx).config_dirty = true;
 }
 
-void oshot_cache_set_string(const char* key, oshot_str_t val)
+static oshot_str_t get_string(oshot_ctx_t* ctx, oshot_store_t store, const char* key, oshot_str_t fallback)
 {
-    set_cache_value(key, std::string(val.p, val.len));
+    return str_new(get_typed<std::string>(ctx, store, key, to_string(fallback), "get_string"));
 }
 
-void oshot_cache_set_bool(const char* key, bool val)
+static bool get_bool(oshot_ctx_t* ctx, oshot_store_t store, const char* key, bool fallback)
 {
-    set_cache_value<bool>(key, val);
+    return get_typed<bool>(ctx, store, key, fallback, "get_bool");
 }
 
-void oshot_cache_set_int64(const char* key, int64_t val)
+static int64_t get_int64(oshot_ctx_t* ctx, oshot_store_t store, const char* key, int64_t fallback)
 {
-    set_cache_value<int64_t>(key, val);
+    return get_typed<int64_t>(ctx, store, key, fallback, "get_int64");
 }
 
-void oshot_cache_set_double(const char* key, double val)
+static double get_double(oshot_ctx_t* ctx, oshot_store_t store, const char* key, double fallback)
 {
-    set_cache_value<double>(key, val);
+    return get_typed<double>(ctx, store, key, fallback, "get_double");
 }
 
-void oshot_cache_set_value(const char* key, const oshot_value_t* val)
+// Converts a TOML value, returns false for types the ABI doesn't have
+static bool node_to_value(const toml::node& node, oshot_value_t& val)
 {
-    set_toml_value(g_cache.get(), prefixed_key(key).c_str(), val);
+    switch (node.type())
+    {
+        case toml::node_type::string:
+            val.kind = OSHOT_VAL_STRING;
+            val.s    = str_new(node.as_string()->get());
+            return true;
+        case toml::node_type::boolean:
+            val.kind = OSHOT_VAL_BOOL;
+            val.b    = node.as_boolean()->get();
+            return true;
+        case toml::node_type::integer:
+            val.kind = OSHOT_VAL_INT64;
+            val.i    = node.as_integer()->get();
+            return true;
+        case toml::node_type::floating_point:
+            val.kind = OSHOT_VAL_DOUBLE;
+            val.d    = node.as_floating_point()->get();
+            return true;
+        default: return false;
+    }
 }
 
-/* ------------------------------------------------------------------
- * ImGui-bound text buffers
- * ------------------------------------------------------------------ */
-bool oshot_get_text(const char* imgui_id, oshot_str_t* ret)
+static size_t get_array(oshot_ctx_t* ctx, oshot_store_t store, const char* key, oshot_value_t* out, size_t max)
 {
-    auto& t = g_ss_tool.GetImGuiIDTexts();
-    auto  p = t.find(imgui_id);
-    if (p == t.end())
+    if (!key || !out || !ui_thread_check(ctx, "get_array"))
+        return 0;
+
+    const toml::node*  node = find_node(ctx, store, key);
+    const toml::array* arr  = node ? node->as_array() : nullptr;
+    if (!arr)
+        return 0;
+
+    size_t n = 0;
+    for (const toml::node& el : *arr)
+    {
+        if (n == max)
+            break;
+        if (node_to_value(el, out[n]))
+            ++n;
+    }
+    return n;
+}
+
+static oshot_value_t get_value(oshot_ctx_t* ctx, oshot_store_t store, const char* key, oshot_value_t fallback)
+{
+    oshot_value_t ret = fallback;
+    if (fallback.kind == OSHOT_VAL_STRING)
+        ret.s = str_new(fallback.s.p, fallback.s.p ? fallback.s.len : 0);
+
+    if (!key || !ui_thread_check(ctx, "get_value"))
+        return ret;
+
+    const toml::node* node = find_node(ctx, store, key);
+    oshot_value_t     found{};
+    if (node && node_to_value(*node, found))
+    {
+        value_array_free(&ret, 1);
+        return found;
+    }
+    return ret;
+}
+
+static void set_string(oshot_ctx_t* ctx, oshot_store_t store, const char* key, oshot_str_t val)
+{
+    set_typed<std::string>(ctx, store, key, to_string(val), "set_string");
+}
+
+static void set_bool(oshot_ctx_t* ctx, oshot_store_t store, const char* key, bool val)
+{
+    set_typed<bool>(ctx, store, key, val, "set_bool");
+}
+
+static void set_int64(oshot_ctx_t* ctx, oshot_store_t store, const char* key, int64_t val)
+{
+    set_typed<int64_t>(ctx, store, key, val, "set_int64");
+}
+
+static void set_double(oshot_ctx_t* ctx, oshot_store_t store, const char* key, double val)
+{
+    set_typed<double>(ctx, store, key, val, "set_double");
+}
+
+static void set_value(oshot_ctx_t* ctx, oshot_store_t store, const char* key, const oshot_value_t* val)
+{
+    if (!val)
+        return;
+    switch (val->kind)
+    {
+        case OSHOT_VAL_STRING: set_string(ctx, store, key, val->s); break;
+        case OSHOT_VAL_INT64:  set_int64(ctx, store, key, val->i); break;
+        case OSHOT_VAL_BOOL:   set_bool(ctx, store, key, val->b); break;
+        case OSHOT_VAL_DOUBLE: set_double(ctx, store, key, val->d); break;
+        default:               spdlog::error("{}: set_value() with an unknown value kind", rt_of(ctx).id); break;
+    }
+}
+
+static bool get_text(oshot_ctx_t* ctx, const char* id, oshot_str_t* out)
+{
+    if (!id || !out || !ui_thread_check(ctx, "get_text"))
         return false;
 
-    ret->p = static_cast<const char*>(std::malloc(p->second->length()));
-    if (!ret->p)
+    const std::string* text = g_ss_tool.GetTextBuffer(id);
+    if (!text)
         return false;
 
-    std::memcpy(const_cast<char*>(ret->p), p->second->c_str(), p->second->length());
-    ret->len = p->second->length();
+    *out = str_new(*text);
+    return out->p != nullptr;
+}
+
+static bool set_text(oshot_ctx_t* ctx, const char* id, oshot_str_t value)
+{
+    if (!id || !ui_thread_check(ctx, "set_text"))
+        return false;
+
+    std::string* text = g_ss_tool.GetTextBuffer(id);
+    if (!text)
+    {
+        spdlog::error(
+            "{}: set_text(): unknown text id '{}' (use OSHOT_TEXT_OCR or OSHOT_TEXT_BARCODE)", rt_of(ctx).id, id);
+        return false;
+    }
+
+    text->assign(to_string(value));
     return true;
 }
 
-void oshot_set_text(const char* imgui_id, const oshot_str_t value)
+static oshot_capture_t get_capture(oshot_ctx_t* ctx)
 {
-    auto& t  = g_ss_tool.GetImGuiIDTexts();
-    auto  it = t.find(imgui_id);
-    if (it == t.end())
-        return;  // unknown id
+    oshot_capture_t ret{};  // rgba == nullptr: no capture
+    if (!ui_thread_check(ctx, "get_capture"))
+        return ret;
+    // No overlay (e.g. in on_capture_end()), and the selection lives in its ImGui context
+    if (!ImGui::GetCurrentContext())
+        return ret;
 
-    it->second->assign(value.p, value.len);
-}
-
-/* ------------------------------------------------------------------
- * Capture acquisition
- * ------------------------------------------------------------------ */
-oshot_capture_t oshot_get_capture(void)
-{
     const capture_result_t& cap = g_ss_tool.GetFinalImage();
-
-    oshot_capture_t ret{};  // zero-inits
-
     if (cap.data.empty() || cap.w <= 0 || cap.h <= 0)
-        return ret;  // plugin must check ret.rgba == nullptr before use
+        return ret;
 
     ret.rgba = static_cast<uint8_t*>(std::malloc(cap.data.size()));
     if (!ret.rgba)
@@ -376,9 +391,667 @@ oshot_capture_t oshot_get_capture(void)
     return ret;
 }
 
-void oshot_capture_free(oshot_capture_t* cap)
+static void capture_free(oshot_capture_t* cap)
 {
+    if (!cap)
+        return;
     std::free(cap->rgba);
     cap->rgba = nullptr;
     cap->w = cap->h = 0;
 }
+
+/* ------------------------------------------------------------------
+ * Widgets: UI thread, inside render() and render_preferences()
+ * ------------------------------------------------------------------ */
+
+// Logs once and returns false anywhere a plugin's UI isn't being drawn
+static bool ui_check(oshot_ctx_t* ctx, const char* func)
+{
+    plugin_runtime_t& rt = rt_of(ctx);
+    if (!on_plugin_ui_thread())
+    {
+        rt.WarnOnce(UiWarning::OffThread,
+                    fmt::format("{}() called outside the UI thread, ignored. Use run_on_ui_thread()", func));
+        return false;
+    }
+    if (!rt.in_ui)
+    {
+        rt.WarnOnce(UiWarning::OutsideRender,
+                    fmt::format("{}() called outside render() and render_preferences(), ignored", func));
+        return false;
+    }
+    return true;
+}
+
+static void ui_text(oshot_ctx_t* ctx, oshot_str_t text, uint32_t flags)
+{
+    if (!ui_check(ctx, "ui_text"))
+        return;
+
+    const char* begin = text.p ? text.p : "";
+    const char* end   = begin + (text.p ? text.len : 0);
+    if (flags & OSHOT_UI_DISABLED)
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    if (flags & OSHOT_UI_WRAPPED)
+        ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(begin, end);
+    if (flags & OSHOT_UI_WRAPPED)
+        ImGui::PopTextWrapPos();
+    if (flags & OSHOT_UI_DISABLED)
+        ImGui::PopStyleColor();
+}
+
+static bool ui_button(oshot_ctx_t* ctx, oshot_str_t label)
+{
+    return ui_check(ctx, "ui_button") && ImGui::Button(to_string(label).c_str());
+}
+
+static bool ui_checkbox(oshot_ctx_t* ctx, oshot_str_t label, bool* value)
+{
+    return value && ui_check(ctx, "ui_checkbox") && ImGui::Checkbox(to_string(label).c_str(), value);
+}
+
+static bool ui_input_text(oshot_ctx_t* ctx, oshot_str_t label, oshot_str_t* value, uint32_t flags)
+{
+    if (!value || !ui_check(ctx, "ui_input_text"))
+        return false;
+
+    // ImGui keeps its own copy while the field is being edited, so a fresh buffer every frame is fine
+    std::string       buf = to_string(*value);
+    const std::string lbl = to_string(label);
+    const bool        changed =
+        (flags & OSHOT_UI_MULTILINE)
+            ? ImGui::InputTextMultiline(lbl.c_str(), &buf)
+            : ImGui::InputText(lbl.c_str(), &buf, (flags & OSHOT_UI_PASSWORD) ? ImGuiInputTextFlags_Password : 0);
+    if (!changed)
+        return false;
+
+    oshot_str_t str = str_new(buf);
+    if (!str.p)
+        return false;  // out of memory: the plugin keeps its old string
+    str_free(value);
+    *value = str;
+    return true;
+}
+
+static bool ui_combo(oshot_ctx_t* ctx, oshot_str_t label, int32_t* current, const oshot_str_t* items, size_t n)
+{
+    if (!current || (!items && n > 0) || !ui_check(ctx, "ui_combo"))
+        return false;
+
+    const bool        valid   = *current >= 0 && std::cmp_less(*current, n);
+    const std::string preview = valid ? to_string(items[*current]) : std::string();
+    bool              changed = false;
+    if (ImGui::BeginCombo(to_string(label).c_str(), preview.c_str()))
+    {
+        for (size_t i = 0; i < n; ++i)
+        {
+            const bool selected = valid && std::cmp_equal(*current, i);
+            ImGui::PushID(static_cast<int>(i));  // items may repeat
+            if (ImGui::Selectable(to_string(items[i]).c_str(), selected))
+            {
+                *current = static_cast<int32_t>(i);
+                changed  = true;
+            }
+            if (selected)
+                ImGui::SetItemDefaultFocus();
+            ImGui::PopID();
+        }
+        ImGui::EndCombo();
+    }
+    return changed;
+}
+
+static bool ui_slider_int(oshot_ctx_t* ctx, oshot_str_t label, int64_t* value, int64_t min, int64_t max)
+{
+    return value && ui_check(ctx, "ui_slider_int") &&
+           ImGui::SliderScalar(
+               to_string(label).c_str(), ImGuiDataType_S64, value, &min, &max, nullptr, ImGuiSliderFlags_AlwaysClamp);
+}
+
+static bool ui_slider_float(oshot_ctx_t* ctx, oshot_str_t label, double* value, double min, double max)
+{
+    return value && ui_check(ctx, "ui_slider_float") &&
+           ImGui::SliderScalar(
+               to_string(label).c_str(), ImGuiDataType_Double, value, &min, &max, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+}
+
+static bool ui_color(oshot_ctx_t* ctx, oshot_str_t label, float rgba[4])  // NOLINT
+{
+    return rgba && ui_check(ctx, "ui_color") && ImGui::ColorEdit4(to_string(label).c_str(), rgba);
+}
+
+static void ui_progress(oshot_ctx_t* ctx, float fraction, oshot_str_t overlay)
+{
+    if (!ui_check(ctx, "ui_progress"))
+        return;
+    const std::string text = to_string(overlay);
+    ImGui::ProgressBar(fraction, ImVec2(-FLT_MIN, 0.0f), text.empty() ? nullptr : text.c_str());
+}
+
+static void ui_separator(oshot_ctx_t* ctx, oshot_str_t label)
+{
+    if (!ui_check(ctx, "ui_separator"))
+        return;
+    if (!label.p || label.len == 0)
+        ImGui::Separator();
+    else
+        ImGui::SeparatorText(to_string(label).c_str());
+}
+
+static void ui_same_line(oshot_ctx_t* ctx)
+{
+    if (ui_check(ctx, "ui_same_line"))
+        ImGui::SameLine();
+}
+
+static void ui_tooltip(oshot_ctx_t* ctx, oshot_str_t text)
+{
+    if (ui_check(ctx, "ui_tooltip"))
+        ImGui::SetItemTooltip("%s", to_string(text).c_str());
+}
+
+static bool ui_begin_section(oshot_ctx_t* ctx, oshot_str_t label)
+{
+    if (!ui_check(ctx, "ui_begin_section"))
+        return false;
+    const bool open = ImGui::TreeNodeEx(to_string(label).c_str(), ImGuiTreeNodeFlags_SpanAvailWidth);
+    rt_of(ctx).sections.push_back(open);
+    return open;
+}
+
+static void ui_end_section(oshot_ctx_t* ctx)
+{
+    if (!ui_check(ctx, "ui_end_section"))
+        return;
+
+    plugin_runtime_t& rt = rt_of(ctx);
+    if (rt.sections.empty())
+    {
+        rt.WarnOnce(UiWarning::ExtraEnd, "ui_end_section() without ui_begin_section(), ignored");
+        return;
+    }
+    if (rt.sections.back())
+        ImGui::TreePop();
+    rt.sections.pop_back();
+}
+
+/* ------------------------------------------------------------------
+ * Host services
+ * ------------------------------------------------------------------ */
+
+// Reports a failure as oshot_err_t describes (in *err, or logged when the plugin passed no err)
+template <typename... Args>
+static oshot_err_t fail(oshot_ctx_t*                ctx,
+                        oshot_str_t*                err,
+                        oshot_err_t                 code,
+                        const char*                 func,
+                        fmt::format_string<Args...> format,
+                        Args&&... args)
+{
+    const std::string msg = fmt::format(format, std::forward<Args>(args)...);
+    if (err)
+        *err = str_new(msg);
+    else
+        spdlog::warn("{}: {}(): {}", rt_of(ctx).id, func, msg);
+    return code;
+}
+
+static oshot_err_t fail_off_ui_thread(oshot_ctx_t* ctx, oshot_str_t* err, const char* func)
+{
+    return fail(ctx, err, OSHOT_ERR_THREAD, func, "called outside the UI thread, use run_on_ui_thread()");
+}
+
+static void* mem_alloc(size_t size)
+{
+    return std::malloc(size ? size : 1);
+}
+
+static void mem_free(void* ptr)
+{
+    std::free(ptr);
+}
+
+static oshot_err_t copy_text(oshot_ctx_t* ctx, oshot_str_t text, oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "copy_text");
+    if (!text.p && text.len > 0)
+        return fail(ctx, err, OSHOT_ERR_INVALID, "copy_text", "the text is NULL");
+
+    const Result<>& res = g_clipboard.CopyText(to_string(text));
+    if (!res.ok())
+        return fail(ctx, err, OSHOT_ERR_FAILED, "copy_text", "{}", res.error_v());
+    return OSHOT_OK;
+}
+
+static oshot_err_t copy_image(oshot_ctx_t* ctx, const oshot_capture_t* image, oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "copy_image");
+    if (!image || !image->rgba || image->w <= 0 || image->h <= 0)
+        return fail(ctx, err, OSHOT_ERR_INVALID, "copy_image", "the image is empty");
+
+    capture_result_t cap{ .data = {}, .w = image->w, .h = image->h };
+    cap.data.assign(image->rgba, image->rgba + (size_t(image->w) * size_t(image->h) * 4));
+    const Result<>& res = g_clipboard.CopyImage(cap, g_config->File.image_out_type.second);
+    if (!res.ok())
+        return fail(ctx, err, OSHOT_ERR_FAILED, "copy_image", "{}", res.error_v());
+    return OSHOT_OK;
+}
+
+// Sends a desktop notification for notify() and report_result(). The lock keeps
+// report_result()'s calls from plugin threads from overlapping
+static oshot_err_t send_notification(oshot_ctx_t*       ctx,
+                                     const std::string& title,
+                                     const std::string& body,
+                                     oshot_str_t*       err,
+                                     const char*        func)
+{
+    static std::mutex mutex;
+    std::scoped_lock  lock(mutex);
+    if (!dialog::init())
+        return fail(ctx, err, OSHOT_ERR_UNSUPPORTED, func, "notifications aren't available");
+
+    NvdNotification* notif = nvd_notification_new(title.c_str(), body.c_str(), NVD_NOTIFICATION_SIMPLE);
+    if (!notif)
+        return fail(ctx,
+                    err,
+                    OSHOT_ERR_FAILED,
+                    func,
+                    "couldn't create the notification (nvdialog error {})",
+                    static_cast<int>(nvd_get_error()));
+    nvd_send_notification(notif);
+    nvd_delete_notification(notif);
+    return OSHOT_OK;
+}
+
+static oshot_err_t notify(oshot_ctx_t* ctx, oshot_str_t title, oshot_str_t body, oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "notify");
+    return send_notification(ctx, to_string(title), to_string(body), err, "notify");
+}
+
+// "scheme:...", with a scheme of at least 2 characters so a Windows path
+// ("C:\...") isn't taken for one, and no control characters
+static bool is_url(std::string_view url)
+{
+    const size_t colon = url.find(':');
+    if (colon == std::string_view::npos || colon < 2 || !std::isalpha(static_cast<unsigned char>(url[0])))
+        return false;
+    const bool scheme_ok = std::all_of(url.begin() + 1, url.begin() + colon, [](unsigned char c) {
+        return std::isalnum(c) || c == '+' || c == '-' || c == '.';
+    });
+    return scheme_ok && std::ranges::none_of(url, [](unsigned char c) { return c < 0x20 || c == 0x7f; });
+}
+
+static oshot_err_t open_url(oshot_ctx_t* ctx, oshot_str_t url, oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "open_url");
+
+    const std::string u = to_string(url);
+    if (!is_url(u))
+        return fail(ctx, err, OSHOT_ERR_INVALID, "open_url", "'{}' isn't a URL starting with a scheme", u);
+
+    // The platform's opener, which oshot's own links use, lives in ImGui's context
+    ImGuiContext* imgui = ImGui::GetCurrentContext();
+    if (!imgui || !ImGui::GetPlatformIO().Platform_OpenInShellFn)
+        return fail(ctx, err, OSHOT_ERR_UNSUPPORTED, "open_url", "no overlay is open");
+    if (!ImGui::GetPlatformIO().Platform_OpenInShellFn(imgui, u.c_str()))
+        return fail(ctx, err, OSHOT_ERR_FAILED, "open_url", "the system couldn't open '{}'", u);
+    return OSHOT_OK;
+}
+
+// A run_process() child. Each output buffer is written only by the thread
+// reading that pipe, and the waiting thread reads them after those end
+struct plugin_process_t
+{
+    std::unique_ptr<TinyProcessLib::Process> proc;
+    std::string                              out;
+    std::string                              err;
+    std::atomic<bool>                        truncated = false;
+    std::atomic<bool>                        killed    = false;
+};
+
+using proc_string_t = TinyProcessLib::Process::string_type;
+
+static proc_string_t to_proc_string(const std::string& s)
+{
+#if defined(_WIN32) && defined(UNICODE)
+    return fs::path(s).wstring();
+#else
+    return s;
+#endif
+}
+
+// Waits for the process, then queues its on_exit call for RunUiTasks().
+// Holds the registry, not the plugin, which may be unloaded meanwhile
+static void wait_for_process(const std::shared_ptr<plugin_processes_t>& procs,
+                             const std::shared_ptr<plugin_process_t>&   p,
+                             int64_t                                    id,
+                             void (*on_exit)(void*, const oshot_process_result_t*),
+                             void* user)
+{
+    const int status = p->proc->get_exit_status();
+
+    std::scoped_lock lock(procs->mutex);
+    procs->running.erase(id);
+    if (on_exit && !procs->closed)
+    {
+        procs->exited.emplace_back([p, id, status, on_exit, user] {
+            const bool                   killed = p->killed;
+            const oshot_process_result_t res{
+                .id          = id,
+                .exit_code   = killed ? -1 : status,
+                .killed      = killed,
+                .truncated   = p->truncated,
+                .stdout_data = { .p = p->out.c_str(), .len = p->out.size() },
+                .stderr_data = { .p = p->err.c_str(), .len = p->err.size() },
+            };
+            on_exit(user, &res);
+        });
+    }
+    procs->cv.notify_all();
+}
+
+static oshot_err_t run_process(oshot_ctx_t*       ctx,
+                               const oshot_str_t* argv,
+                               size_t             argc,
+                               oshot_str_t        cwd,
+                               void (*on_exit)(void*, const oshot_process_result_t*),
+                               void*        user,
+                               int64_t*     id,
+                               oshot_str_t* err)
+{
+    if (!argv || argc == 0 || !argv[0].p || argv[0].len == 0)
+        return fail(ctx, err, OSHOT_ERR_INVALID, "run_process", "argv has no program");
+
+    std::vector<std::string> args;
+    for (size_t i = 0; i < argc; ++i)
+    {
+        if ((!argv[i].p && argv[i].len > 0) || (argv[i].p && std::memchr(argv[i].p, '\0', argv[i].len)))
+            return fail(ctx, err, OSHOT_ERR_INVALID, "run_process", "argv[{}] is NULL or has a NUL byte", i);
+        args.push_back(to_string(argv[i]));
+    }
+
+    plugin_runtime_t& rt  = rt_of(ctx);
+    const fs::path    dir = cwd.len > 0 ? fs::path(to_string(cwd)) : rt.dir;
+    std::error_code   ec;
+    if (!fs::is_directory(dir, ec))
+        return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "run_process", "the folder '{}' doesn't exist", dir.string());
+
+#if !OSHOT_WINDOWS
+    // A missing program would only show up as exit code 1 from the child
+    if (args[0].find('/') == std::string::npos)
+    {
+        if (which(args[0]) == UNKNOWN)
+            return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "run_process", "'{}' isn't in PATH", args[0]);
+    }
+    else if (const fs::path prog = dir / args[0]; access(prog.c_str(), X_OK) != 0)
+    {
+        return fail(
+            ctx, err, OSHOT_ERR_NOT_FOUND, "run_process", "'{}' doesn't exist or isn't executable", prog.string());
+    }
+#endif
+
+    std::vector<proc_string_t> proc_args;
+    proc_args.reserve(args.size());
+    for (const std::string& arg : args)
+        proc_args.push_back(to_proc_string(arg));
+
+    auto              p      = std::make_shared<plugin_process_t>();
+    plugin_process_t* raw    = p.get();
+    auto              reader = [raw](std::string& buf) {
+        return [raw, &buf](const char* bytes, size_t n) {
+            const size_t room = OSHOT_PROCESS_OUTPUT_MAX - std::min<size_t>(buf.size(), OSHOT_PROCESS_OUTPUT_MAX);
+            if (n > room)
+                raw->truncated = true;
+            buf.append(bytes, std::min(n, room));
+        };
+    };
+
+    // Under the lock, so KillProcesses() can't run between the check and the start
+    plugin_processes_t& procs = *rt.processes;
+    std::scoped_lock    lock(procs.mutex);
+    if (procs.closed)
+        return fail(ctx, err, OSHOT_ERR_UNSUPPORTED, "run_process", "the plugin is being unloaded");
+
+    p->proc = std::make_unique<TinyProcessLib::Process>(
+        proc_args, to_proc_string(dir.string()), reader(p->out), reader(p->err), /*open_stdin=*/true);
+    if (p->proc->get_id() <= 0)
+        return fail(ctx, err, OSHOT_ERR_FAILED, "run_process", "couldn't start '{}'", args[0]);
+    p->proc->close_stdin();
+
+    const int64_t pid = procs.next_id++;
+    procs.running.emplace(pid, p);
+    std::thread(wait_for_process, rt.processes, std::move(p), pid, on_exit, user).detach();
+
+    spdlog::debug("{}: started process {} ({})", rt.id, pid, args[0]);
+    if (id)
+        *id = pid;
+    return OSHOT_OK;
+}
+
+static oshot_err_t kill_process(oshot_ctx_t* ctx, int64_t id, oshot_str_t* err)
+{
+    plugin_processes_t& procs = *rt_of(ctx).processes;
+    std::scoped_lock    lock(procs.mutex);
+
+    auto it = procs.running.find(id);
+    if (it == procs.running.end())
+        return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "kill_process", "no running process has the ID {}", id);
+    it->second->killed = true;
+    it->second->proc->kill(/*force=*/true);
+    return OSHOT_OK;
+}
+
+static oshot_err_t request_final_image(oshot_ctx_t* ctx,
+                                       void (*on_ready)(void*, oshot_capture_t),
+                                       void*        user,
+                                       oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "request_final_image");
+    if (!on_ready)
+        return fail(ctx, err, OSHOT_ERR_INVALID, "request_final_image", "on_ready is NULL");
+    if (!ImGui::GetCurrentContext() || !g_ss_tool.CanReadFinalImage())
+        return fail(ctx, err, OSHOT_ERR_UNSUPPORTED, "request_final_image", "no selection can be read right now");
+
+    rt_of(ctx).image_requests.push_back({ .on_ready = on_ready, .user = user });
+    g_ss_tool.RequestFinalImage();
+    return OSHOT_OK;
+}
+
+static oshot_err_t register_action(oshot_ctx_t*           ctx,
+                                   oshot_place_t          where,
+                                   oshot_str_t            label,
+                                   const oshot_capture_t* icon,
+                                   void (*fn)(void*, int32_t),
+                                   void*        user,
+                                   int32_t*     id,
+                                   oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "register_action");
+    if (where != OSHOT_PLACE_TOOLBAR && where != OSHOT_PLACE_TEXT_TOOLS)
+        return fail(ctx, err, OSHOT_ERR_INVALID, "register_action", "unknown place {}", static_cast<int>(where));
+    if (!fn)
+        return fail(ctx, err, OSHOT_ERR_INVALID, "register_action", "fn is NULL");
+    const std::string text = to_string(label);
+    if (text.empty())
+        return fail(ctx, err, OSHOT_ERR_INVALID, "register_action", "the label is empty");
+    if (icon && (!icon->rgba || icon->w <= 0 || icon->h <= 0 || icon->w > OSHOT_ACTION_ICON_MAX ||
+                 icon->h > OSHOT_ACTION_ICON_MAX))
+        return fail(ctx,
+                    err,
+                    OSHOT_ERR_INVALID,
+                    "register_action",
+                    "the icon must have pixels and be 1 to {} pixels on each side",
+                    OSHOT_ACTION_ICON_MAX);
+
+    plugin_runtime_t& rt = rt_of(ctx);
+    plugin_action_t   action{ .icon   = {},
+                              .label  = text,
+                              .fn     = fn,
+                              .user   = user,
+                              .id     = rt.next_action_id++,
+                              .icon_w = icon ? icon->w : 0,
+                              .icon_h = icon ? icon->h : 0,
+                              .place  = where };
+    if (icon)
+        action.icon.assign(icon->rgba, icon->rgba + (size_t(icon->w) * size_t(icon->h) * 4));
+    if (id)
+        *id = action.id;
+    spdlog::debug("{}: registered action {} '{}'", rt.id, action.id, text);
+    rt.actions.push_back(std::move(action));
+    return OSHOT_OK;
+}
+
+static oshot_err_t unregister_action(oshot_ctx_t* ctx, int32_t action, oshot_str_t* err)
+{
+    if (!on_plugin_ui_thread())
+        return fail_off_ui_thread(ctx, err, "unregister_action");
+
+    plugin_runtime_t& rt = rt_of(ctx);
+    if (std::erase_if(rt.actions, [action](const plugin_action_t& a) { return a.id == action; }) == 0)
+        return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "unregister_action", "no action has the ID {}", action);
+    return OSHOT_OK;
+}
+
+// 0, or an ID register_action() gave out (it may be unregistered by now, a late report is fine)
+static bool valid_action_id(oshot_ctx_t* ctx, int32_t action)
+{
+    return action >= 0 && action < rt_of(ctx).next_action_id;
+}
+
+static oshot_err_t report_progress(oshot_ctx_t* ctx, int32_t action, float fraction, oshot_str_t text, oshot_str_t* err)
+{
+    if (!valid_action_id(ctx, action))
+        return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "report_progress", "no action has the ID {}", action);
+    if (!plugin_overlay_open())
+        return OSHOT_OK;
+
+    rt_of(ctx).Report({ .text     = to_string(text),
+                        .finished = {},
+                        .copyable = {},
+                        .fraction = std::isnan(fraction) ? -1.0f : std::min(fraction, 1.0f),
+                        .action   = action,
+                        .done     = false,
+                        .ok       = false });
+    wake_overlay();
+    return OSHOT_OK;
+}
+
+static oshot_err_t report_result(oshot_ctx_t* ctx,
+                                 int32_t      action,
+                                 bool         ok,
+                                 oshot_str_t  message,
+                                 oshot_str_t  copyable,
+                                 oshot_str_t* err)
+{
+    if (!valid_action_id(ctx, action))
+        return fail(ctx, err, OSHOT_ERR_NOT_FOUND, "report_result", "no action has the ID {}", action);
+
+    plugin_runtime_t& rt  = rt_of(ctx);
+    std::string       msg = to_string(message), copy = to_string(copyable);
+    if (!plugin_overlay_open())
+    {
+        const std::string body = copy.empty() ? msg : fmt::format("{}\n{}", msg, copy);
+        return send_notification(ctx, rt.plugin->name, body, err, "report_result");
+    }
+
+    rt.Report({ .text     = std::move(msg),
+                .finished = std::chrono::steady_clock::now(),
+                .copyable = std::move(copy),
+                .fraction = 1.0f,
+                .action   = action,
+                .done     = true,
+                .ok       = ok });
+    wake_overlay();
+    return OSHOT_OK;
+}
+
+void plugin_runtime_t::KillProcesses()
+{
+    std::unique_lock lock(processes->mutex);
+    processes->closed = true;
+    processes->exited.clear();
+    if (processes->running.empty())
+        return;
+
+    spdlog::info("{}: killing the processes it started that are still running ({})", id, processes->running.size());
+    for (auto& [pid, p] : processes->running)
+    {
+        p->killed = true;
+        p->proc->kill(/*force=*/true);
+    }
+
+    auto all_exited = [this] { return processes->running.empty(); };
+    if (processes->cv.wait_for(lock, 2s, all_exited))
+        return;
+#if !OSHOT_WINDOWS
+    for (auto& [pid, p] : processes->running)
+        p->proc->signal(SIGKILL);
+    if (processes->cv.wait_for(lock, 1s, all_exited))
+        return;
+#endif
+    // Their threads only hold the registry, so they can keep waiting after the plugin is gone
+    spdlog::warn("{}: {} of its processes didn't exit", id, processes->running.size());
+}
+
+const oshot_host_t g_oshot_host = {
+    .struct_size   = sizeof(oshot_host_t),
+    .abi_version   = OSHOT_API_VERSION,
+    .oshot_version = VERSION,
+    .str_new       = [](const char* s, size_t n) { return str_new(s, n); },
+    .str_free            = str_free,
+    .value_array_free    = value_array_free,
+    .log                 = host_log,
+    .get_data_dir        = get_data_dir,
+    .run_on_ui_thread    = run_on_ui_thread,
+    .get_string          = get_string,
+    .get_bool            = get_bool,
+    .get_int64           = get_int64,
+    .get_double          = get_double,
+    .get_array           = get_array,
+    .get_value           = get_value,
+    .set_string          = set_string,
+    .set_bool            = set_bool,
+    .set_int64           = set_int64,
+    .set_double          = set_double,
+    .set_value           = set_value,
+    .get_text            = get_text,
+    .set_text            = set_text,
+    .get_capture         = get_capture,
+    .capture_free        = capture_free,
+    .ui_text             = ui_text,
+    .ui_button           = ui_button,
+    .ui_checkbox         = ui_checkbox,
+    .ui_input_text       = ui_input_text,
+    .ui_combo            = ui_combo,
+    .ui_slider_int       = ui_slider_int,
+    .ui_slider_float     = ui_slider_float,
+    .ui_color            = ui_color,
+    .ui_progress         = ui_progress,
+    .ui_separator        = ui_separator,
+    .ui_same_line        = ui_same_line,
+    .ui_tooltip          = ui_tooltip,
+    .ui_begin_section    = ui_begin_section,
+    .ui_end_section      = ui_end_section,
+    .mem_alloc           = mem_alloc,
+    .mem_free            = mem_free,
+    .copy_text           = copy_text,
+    .copy_image          = copy_image,
+    .notify              = notify,
+    .open_url            = open_url,
+    .run_process         = run_process,
+    .kill_process        = kill_process,
+    .request_final_image = request_final_image,
+    .register_action     = register_action,
+    .unregister_action   = unregister_action,
+    .report_progress     = report_progress,
+    .report_result       = report_result,
+    .request_redraw      = request_redraw,
+};

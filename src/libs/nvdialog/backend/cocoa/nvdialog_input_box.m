@@ -70,7 +70,7 @@ void nvd_show_input_box_cocoa(NvdInputBox *box) {
     }
     else box->user_input = NULL;
 
-    [alert orderOut:nil];
+    [[alert window] orderOut:nil];
     #endif
 }
 

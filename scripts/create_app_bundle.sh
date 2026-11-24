@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
+#
+# Build oshot.app and pack it into a drag-to-install .dmg.
+#
+# Usage: create_app_bundle.sh <oshot_binary> [output.dmg] [lib_search_dir]
+#
+# Environment:
+#   OSHOT_VERSION     version string for Info.plist (default below, kept in sync by `make updatever`)
+#   OSHOT_MODELS_DIR  directory of *.traineddata to bundle into Contents/Resources/tessdata
+#   OSHOT_EXTRA_BINS  space-separated extra executables to put in Contents/MacOS (e.g. oshotpm)
+#   OSHOT_EXTRA_LIBS  space-separated dylibs that nothing in the bundle links but plugins do (e.g. libcimgui)
+#   OSHOT_SDK_DIR     plugin SDK (build/sdk) to copy into Contents/Resources/sdk, for oshotpm's plugin builds
+#   OSHOT_MIN_MACOS   fail if anything in the bundle needs a newer macOS than this (e.g. 15.0)
+#   OSHOT_LIB_SEARCH_DIRS  space-separated extra directories where dylibbundler looks for dylibs (e.g. SDL3's)
 
+set -euo pipefail
 set -x
 
 BASEDIR="$(dirname "${BASH_SOURCE[0]}")"
@@ -12,11 +26,11 @@ check_file() {
 }
 
 install_dylibbundler() {
-    if command -v dylibbundler &>/dev/null 2>&1; then
+    if command -v dylibbundler &>/dev/null; then
         return 0
     fi
 
-    if command -v brew &>/dev/null 2>&1; then
+    if command -v brew &>/dev/null; then
         brew install dylibbundler
     else
         echo "Please install dylibbundler (brew install dylibbundler)"
@@ -25,57 +39,162 @@ install_dylibbundler() {
 }
 
 main() {
-    if [ -z "$1" ]; then
+    if [ -z "${1:-}" ]; then
         echo "Usage: $0 <binary_file> [output_name] [lib_search_dir]"
         exit 1
     fi
+
+    # Resolve inputs before changing directory
+    BINARY="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+    LIB_SEARCH_DIR="$(cd "${3:-$(dirname "$1")}" && pwd)"
+    OUTPUT_NAME="${2:-oshot-macos.dmg}"
+    case "$OUTPUT_NAME" in
+        /*) ;;
+        *) OUTPUT_NAME="$(pwd)/$OUTPUT_NAME" ;;
+    esac
 
     cd "$BASEDIR/.."
 
     install_dylibbundler
 
-    # The release binary
-    check_file "$1"
-    check_file oshot.png
+    check_file "$BINARY"
+    check_file assets/oshot.png
 
-    LIB_SEARCH_DIR="${3:-$(dirname "$1")}"
+    VERSION="${OSHOT_VERSION:-0.5.0-rc2}"
+    # CFBundle*Version must be numeric (no "-rc2")
+    NUM_VERSION="${VERSION%%-*}"
+    NUM_VERSION="${NUM_VERSION#v}"
 
     APP_NAME="oshot"
     APP_DIR="${APP_NAME}.app"
     CONTENTS="${APP_DIR}/Contents"
     MACOS="${CONTENTS}/MacOS"
     FRAMEWORKS="${CONTENTS}/Frameworks"
+    RESOURCES="${CONTENTS}/Resources"
 
     # Clean previous build
     rm -rf "$APP_DIR"
-    mkdir -p "$MACOS" "$FRAMEWORKS"
+    mkdir -p "$MACOS" "$FRAMEWORKS" "$RESOURCES"
 
-    # Copy binary
-    cp -f "$1" "$MACOS/${APP_NAME}"
+    # Copy binaries
+    cp -f "$BINARY" "$MACOS/${APP_NAME}"
     chmod +x "$MACOS/${APP_NAME}"
+    BUNDLER_ARGS=(-x "${MACOS}/${APP_NAME}")
+    SEARCH_ARGS=(-s "$LIB_SEARCH_DIR")
+    for dir in ${OSHOT_LIB_SEARCH_DIRS:-}; do
+        SEARCH_ARGS+=(-s "$dir")
+    done
+    for extra in ${OSHOT_EXTRA_BINS:-}; do
+        check_file "$extra"
+        cp -f "$extra" "$MACOS/"
+        chmod +x "$MACOS/$(basename "$extra")"
+        BUNDLER_ARGS+=(-x "${MACOS}/$(basename "$extra")")
+    done
+
+    if [ -n "${OSHOT_SDK_DIR:-}" ]; then
+        check_file "${OSHOT_SDK_DIR}/include/oshot/oshot_plugin.h"
+        cp -R "${OSHOT_SDK_DIR}" "${RESOURCES}/sdk"
+    fi
 
     # Bundle all dylib dependencies and rewrite their load paths
     dylibbundler -od -b \
-        -x "${MACOS}/${APP_NAME}" \
+        "${BUNDLER_ARGS[@]}" \
         -d "${FRAMEWORKS}/" \
         -p @executable_path/../Frameworks/ \
-        -s "$LIB_SEARCH_DIR"
+        "${SEARCH_ARGS[@]}"
 
-    # Convert oshot.png -> oshot.icns for the Dock icon
-    if command -v sips &>/dev/null 2>&1 && command -v iconutil &>/dev/null 2>&1; then
-        ICONSET=$(mktemp -d)/oshot.iconset
+    # After the first pass, since -od wipes Frameworks/. Named after the install
+    # name (e.g. libcimgui.1.dylib), which is what plugins reference via @rpath.
+    # Libraries that the first pass already bundled are skipped, because a second run
+    # resolves their deps (SDL3) inside Frameworks/ and fails copying them onto themselves
+    if [ -n "${OSHOT_EXTRA_LIBS:-}" ]; then
+        LIB_ARGS=()
+        for lib in ${OSHOT_EXTRA_LIBS}; do
+            check_file "$lib"
+            name="$(basename "$(otool -D "$lib" | tail -n 1)")"
+            [ -e "${FRAMEWORKS}/${name}" ] && continue
+            cp -fL "$lib" "${FRAMEWORKS}/${name}"
+            LIB_ARGS+=(-x "${FRAMEWORKS}/${name}")
+        done
+        if [ "${#LIB_ARGS[@]}" -gt 0 ]; then
+            dylibbundler -of -b \
+                "${LIB_ARGS[@]}" \
+                -d "${FRAMEWORKS}/" \
+                -p @executable_path/../Frameworks/ \
+                "${SEARCH_ARGS[@]}"
+        fi
+
+        # Lets dlopen()ed plugins resolve their @rpath/<lib> dependencies.
+        # Spelled like dylibbundler's -p, so it's skipped if already there
+        install_name_tool -add_rpath @executable_path/../Frameworks/ "${MACOS}/${APP_NAME}" 2>/dev/null || true
+
+        # dylibbundler names copies after the real file (libimgui.1.93.1.dylib),
+        # plugins reference the soname (libimgui.1.dylib)
+        for f in "${FRAMEWORKS}"/*.dylib; do
+            b="$(basename "$f")"
+            if [[ "$b" =~ ^([^.]+)\.([0-9]+)\.[0-9.]+\.dylib$ ]]; then
+                soname="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.dylib"
+                [ -e "${FRAMEWORKS}/${soname}" ] || ln -s "$b" "${FRAMEWORKS}/${soname}"
+            fi
+        done
+    fi
+
+    # dylibbundler rewrites each LC_RPATH to the same -p path, so a binary built with several rpaths
+    # lists it several times, which dyld refuses to load
+    rpaths_of() {
+        otool -l "$1" | awk '$1 == "cmd" && $2 == "LC_RPATH" {getline; getline; print $2}'
+    }
+    for f in "$MACOS"/* "$FRAMEWORKS"/*.dylib; do
+        [ -f "$f" ] && [ ! -L "$f" ] || continue
+        rpaths_of "$f" | sort | uniq -d | while read -r rp; do
+            while [ "$(rpaths_of "$f" | grep -cxF "$rp")" -gt 1 ]; do
+                install_name_tool -delete_rpath "$rp" "$f"
+            done
+        done
+    done
+
+    # OCR models, which get copied into ~/.config/oshot/models on first launch
+    if [ -n "${OSHOT_MODELS_DIR:-}" ]; then
+        mkdir -p "${RESOURCES}/tessdata"
+        cp -f "${OSHOT_MODELS_DIR}"/*.traineddata "${RESOURCES}/tessdata/"
+    fi
+
+    # Convert oshot.png -> oshot.icns for the Dock/Finder icon
+    ICON_KEY=""
+    if command -v sips &>/dev/null && command -v iconutil &>/dev/null; then
+        TMP_ICON_DIR=$(mktemp -d)
+        ICONSET="${TMP_ICON_DIR}/oshot.iconset"
         mkdir -p "$ICONSET"
         for SIZE in 16 32 64 128 256 512; do
-            sips -z $SIZE $SIZE oshot.png --out "${ICONSET}/icon_${SIZE}x${SIZE}.png" &>/dev/null
-            sips -z $((SIZE*2)) $((SIZE*2)) oshot.png --out "${ICONSET}/icon_${SIZE}x${SIZE}@2x.png" &>/dev/null
+            sips -z $SIZE $SIZE assets/oshot.png --out "${ICONSET}/icon_${SIZE}x${SIZE}.png" &>/dev/null
+            sips -z $((SIZE*2)) $((SIZE*2)) assets/oshot.png --out "${ICONSET}/icon_${SIZE}x${SIZE}@2x.png" &>/dev/null
         done
-        iconutil -c icns "$ICONSET" -o "${CONTENTS}/Resources/oshot.icns"
-        mkdir -p "${CONTENTS}/Resources"
-        iconutil -c icns "$ICONSET" -o "${CONTENTS}/Resources/oshot.icns"
+        iconutil -c icns "$ICONSET" -o "${RESOURCES}/oshot.icns"
         ICON_KEY="<key>CFBundleIconFile</key><string>oshot</string>"
-        rm -rf "$(dirname "$ICONSET")"
-    else
-        ICON_KEY=""
+        rm -rf "$TMP_ICON_DIR"
+    fi
+
+    # The newest minimum macOS among everything bundled, so Finder says "requires macOS X" instead of
+    # failing to launch. "<minimum macOS> <file>" for every binary in the bundle
+    min_macos_per_file() {
+        for f in "$MACOS"/* "$FRAMEWORKS"/*.dylib; do
+            if [ -f "$f" ] && [ ! -L "$f" ]; then
+                printf '%s %s\n' "$(otool -l "$f" | awk '/LC_BUILD_VERSION/ {b = 1} /LC_VERSION_MIN_MACOSX/ {m = 1}
+                    (b && $1 == "minos" || m && $1 == "version") && !done {print $2; done = 1}')" "$(basename "$f")"
+            fi
+        done | sort -V
+    }
+    MIN_MACOS="$(min_macos_per_file | tail -n 1 | cut -d' ' -f1)"
+    echo "Minimum macOS: ${MIN_MACOS:-unknown}"
+    if [ -n "${OSHOT_MIN_MACOS:-}" ] && [ -n "$MIN_MACOS" ] &&
+        [ "$(printf '%s\n' "$OSHOT_MIN_MACOS" "$MIN_MACOS" | sort -V | tail -n 1)" != "$OSHOT_MIN_MACOS" ]; then
+        echo "The bundle needs macOS $MIN_MACOS, newer than OSHOT_MIN_MACOS=$OSHOT_MIN_MACOS:" >&2
+        min_macos_per_file >&2
+        exit 1
+    fi
+    MIN_MACOS_KEY=""
+    if [ -n "$MIN_MACOS" ]; then
+        MIN_MACOS_KEY="<key>LSMinimumSystemVersion</key><string>${MIN_MACOS}</string>"
     fi
 
     # Write Info.plist
@@ -94,13 +213,17 @@ main() {
   <key>CFBundleDisplayName</key>
   <string>oshot</string>
   <key>CFBundleVersion</key>
-  <string>0.5.0-rc2</string>
+  <string>${NUM_VERSION}</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.5.0-rc2</string>
+  <string>${NUM_VERSION}</string>
+  <key>CFBundleGetInfoString</key>
+  <string>oshot ${VERSION}</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleSignature</key>
   <string>????</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.utilities</string>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>LSUIElement</key>
@@ -108,29 +231,59 @@ main() {
   <key>NSScreenCaptureUsageDescription</key>
   <string>oshot needs screen recording permission to take screenshots.</string>
   ${ICON_KEY}
+  ${MIN_MACOS_KEY}
 </dict>
 </plist>
 EOF
 
-    # Use second argument as output name or default
-    OUTPUT_NAME="${2:-oshot-macos.dmg}"
+    # oshot's license, those of the libraries linked statically (THIRD-PARTY-LICENSES, from
+    # OSHOT_THIRD_PARTY_LICENSES) and those of the Homebrew formulae the bundled dylibs come from
+    mkdir -p "${RESOURCES}/licenses"
+    cp -f LICENSE "${RESOURCES}/licenses/"
+    if [ -f "$(dirname "$BINARY")/THIRD-PARTY-LICENSES" ]; then
+        cp -f "$(dirname "$BINARY")/THIRD-PARTY-LICENSES" "${RESOURCES}/licenses/"
+    fi
+    if command -v brew &>/dev/null; then
+        CELLAR="$(brew --cellar)"
+        for lib in "$FRAMEWORKS"/*.dylib; do
+            keg="$(find "$CELLAR" -path "*/lib/$(basename "$lib")" -print -quit)"
+            if [ -z "$keg" ]; then continue; fi
+            keg="${keg%/lib/*}"
+            formula="$(basename "$(dirname "$keg")")"
+            if [ -d "${RESOURCES}/licenses/${formula}" ]; then continue; fi
+            shopt -s nullglob
+            files=("$keg"/LICENSE* "$keg"/COPYING* "$keg"/COPYRIGHT* "$keg"/NOTICE* "$keg"/README.ijg*)
+            shopt -u nullglob
+            if [ ${#files[@]} -eq 0 ]; then
+                echo "no license files for ${formula}" >&2
+                continue
+            fi
+            mkdir -p "${RESOURCES}/licenses/${formula}"
+            cp -f "${files[@]}" "${RESOURCES}/licenses/${formula}/"
+        done
+    fi
 
-    # Remove quarantine flag so Gatekeeper doesn't block the app on first launch.
-    # Without this macOS shows "damaged and can't be opened" for unsigned apps
-    # downloaded via a browser.
-    xattr -cr "$APP_DIR"
-
-    # Ad-hoc code signature — satisfies Gatekeeper on the same architecture.
-    # (A real Developer ID signature would be needed for notarization / other Macs)
+    # Ad-hoc code signature. Required to run at all on Apple Silicon; a Developer ID
+    # signature + notarization is needed to open without the Gatekeeper prompt.
     codesign --force --deep --sign - "$APP_DIR"
 
-    # Pack into a .dmg disk image
+    # Fails here, instead of on the user's Mac, if dyld can't load something
+    for exe in "$MACOS"/*; do
+        "$exe" --version >/dev/null
+    done
+
+    # Stage the .dmg with an /Applications shortcut so users can drag-and-drop install
+    DMG_STAGE=$(mktemp -d)
+    cp -R "$APP_DIR" "$DMG_STAGE/"
+    ln -s /Applications "$DMG_STAGE/Applications"
+
     hdiutil create \
-        -volname "oshot" \
-        -srcfolder "$APP_DIR" \
+        -volname "oshot ${VERSION}" \
+        -srcfolder "$DMG_STAGE" \
         -ov \
         -format UDZO \
         "$OUTPUT_NAME"
+    rm -rf "$DMG_STAGE"
 
     echo "App bundle created: ${APP_DIR}"
     echo "Disk image created: ${OUTPUT_NAME}"

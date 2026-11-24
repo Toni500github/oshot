@@ -28,70 +28,161 @@
 
 #include <filesystem>
 #include <memory>
+#include <optional>
+#include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
+#include "platform.hpp"
+#include "screen_capture.hpp"
+#include "theme.hpp"
 #include "toml_api.hpp"
-#include "util.hpp"
+#include "util/image.hpp"
+#include "util/paths.hpp"
 
 class Config : public TomlAPI
 {
 public:
-    // Create .config directories and files and load the config file (args or default)
+    /**
+     * Create the config directory and files if missing, then load the config file
+     * @param configFile The config file, from --config or the default one
+     * @param configDir The config directory
+     **/
     Config(const std::filesystem::path& configFile, const std::filesystem::path& configDir);
 
-    // Variables of config file in [default] table.
-    // They can be overwritten from CLI arguments
+    // Options of the [default] table in the config file.
+    // CLI arguments and --override can overwrite them
     struct config_file_t
     {
-        // Since we package the eng.traineddata file on Windows/MacOS,
-        // because the user may not know how to download one or doesn't want to,
-        // just for out-of-box experience sake, let's use the relative
-        // ./models directory for the OCR models.
-#ifdef __linux__
-        std::string ocr_path = "/usr/share/tessdata/";
-#else
-        std::string ocr_path = "./models";
-#endif
-        std::string ocr_get_repo       = "tesseract-ocr/tessdata";
-        std::string ocr_model          = "eng";
-        std::string theme_file_path    = "theme.toml";
-        std::string image_out_fmt      = "oshot_{:%F_%H-%M}";
+        // image-out-size-ind: unit of the estimated size under the selection, "off" or "auto"
         std::string image_out_size_fmt = "auto";
-        int         delay              = 0;
-        int         color_picker       = 0;  // 0 = "Bar - Square"; 1 = "Wheel - Triangle";
-        int         cpa_mode           = 2;  // color_picker_alpha_mode
-        bool        allow_out_edit     = false;
-        bool        real_full_screen   = false;
-        bool        show_text_tools    = true;
-        bool        enable_vsync       = true;
-        bool        old_toolbar_pos    = false;
-        bool        render_anns        = true;
-        bool        pref_conf_to_env   = false;
-        bool        ctrl_c_copy_img    = true;
 
+        // 0 = "Bar - Square"; 1 = "Wheel - Triangle"
+        int color_picker = 0;
+
+        // color-picker-alpha-mode, a ColorPickerAlpha
+        int cpa_mode = 2;
+
+        // allow-text-edit: the OCR/barcode output can be edited
+        bool allow_out_edit = false;
+
+        // fullscreen: make the overlay a fullscreen window (always on Wayland and macOS)
+        bool fullscreen = true;
+
+        // glx-vendor (X11 only): value for __GLX_VENDOR_LIBRARY_NAME, empty = don't touch it.
+        // "mesa" keeps GLX off the NVIDIA library, which wakes a sleeping hybrid-laptop dGPU
+        std::string glx_vendor;
+
+        // annotations-in-text-tools: scan the selection with its annotations
+        bool render_anns = true;
+
+        // config-over-env: the config wins over environment variables like TESSDATA_PREFIX
+        bool pref_conf_to_env = false;
+
+        // legacy-toolbar-pos: all the tools on one line instead of around the selection
+        bool old_toolbar_pos = false;
+
+        // Global capture hotkey, registered by the tray instance (Windows/macOS only).
+        // Win+Shift+S and Cmd+Shift+3/4/5 are taken by the OS screenshot tools.
+#if OSHOT_WINDOWS
+        std::string hotkey = "Alt+Shift+S";
+#elif OSHOT_MACOS
+        std::string hotkey = "Cmd+Shift+2";
+#else
+        std::string hotkey;
+#endif
+
+        // UI language code like "it" or "pt_BR", or "auto" for the system's (see i18n::init())
+        std::string language = "auto";
+
+        // builtin-font: ImGui's ProggyClean as the main font, system fonts only fill in what it lacks
+        bool builtin_font = false;
+
+        // font-size: the interface font's size in pixels, 0 for the main font's own size (see interface_font_size())
+        int font_size = 0;
+
+        // allow-multiple-trays: let `oshot --tray` start even when another tray is running
+        bool allow_multi_tray = false;
+
+        // allow-multiple-overlays: let a capture open while another oshot overlay is open
+        bool allow_multi_overlay = false;
+
+        // image-out-ext as written in the config, and parsed
         std::pair<std::string, ImageExt> image_out_type = { "png", ImageExt::PNG };
-        std::vector<std::string>         fonts;
+
+        // ocr-folders: the folders whose OCR languages the text tools list
+        std::vector<std::string> ocr_folders     = { get_default_ocr_path() };
+        std::string              ocr_get_repo    = "tesseract-ocr/tessdata";
+        std::string              ocr_language    = "eng";
+        std::string              theme_file_path = "theme.toml";
+        std::string              image_out_fmt   = "oshot_{:%F_%H-%M}";
+        int                      delay           = 0;
+        bool                     show_text_tools = true;
+        bool                     aa_icons        = true;  // antialiased-icons, else the pixel-perfect ones
+        bool                     enable_vsync    = true;
+        bool                     ctrl_c_copy_img = true;
+        std::vector<std::string> fonts;
 
         bool operator==(const config_file_t&) const = default;
     } File;
 
-    // Only from CLI arguments
-    // Or ImGUI window
+    // Set only from CLI arguments or the overlay, never saved
     struct runtime_settings_t
     {
+        // --instant-save=DIR: save there without asking
+        std::string instant_save_dir;
+
+        // --selection: region of the screenshot (or -f image) to use, skips the overlay
+        std::optional<region_t> selection;
+
+        // --instant-copy/--instant-save: copy or save without showing the overlay
+        SavingOp instant_copy_save = SavingOp::kNone;
+
+        // Tesseract page segmentation mode to force, 0 to pick one from the image
+        int preferred_psm = 0;
+
+        // Draw the selection's resize handles, toggled with Ctrl+G
+        bool enable_handles = true;
+
         std::string source_file;
-        int         preferred_psm     = 0;
-        bool        enable_handles    = true;
-        bool        only_launch_tray  = false;
-        bool        only_launch_gui   = false;
-        SavingOp    instant_copy_save = SavingOp::kNone;
+        bool        only_launch_tray = false;
+        bool        only_launch_gui  = false;
+        bool        extract_text     = false;
+        bool        extract_barcode  = false;
 
         bool operator==(const runtime_settings_t&) const = default;
     } Runtime;
 
-    struct theme_overrides_t
+    using ThemeBase = ::ThemeBase;
+
+    // Color tables of a theme file. Values are "#RRGGBB[AA]" or "$name[/opacity%]" from the palette,
+    // kept as written so saving keeps the references
+    struct theme_colors_t
     {
-        std::unordered_map<std::string, std::string> colors;  // ImGuiCol name -> "#RRGGBB[AA]"
+        // Named colors the other tables refer to as "$name"
+        theme::table_t palette;
+
+        // ImGuiCol name -> value
+        theme::table_t colors;
+
+        // theme::app_color_name() -> value
+        theme::table_t oshot_colors;
+
+        bool operator==(const theme_colors_t&) const = default;
+    };
+
+    // The theme file's settings. The rounding and border sizes are -1 when not set,
+    // which keeps the base theme's value
+    struct theme_overrides_t : theme_colors_t
+    {
+        // Other theme files whose color tables apply first, as written (relative to the theme file, ~ and $VARS)
+        std::vector<std::string> includes;
+
+        ThemeBase base = ThemeBase::Dark;
+
+        // Not an ImGui style setting, oshot's own
+        bool smooth_animations = false;
 
         float window_rounding = -1.f;
         float frame_rounding  = -1.f;
@@ -100,51 +191,78 @@ public:
         float window_border   = -1.f;
         float frame_border    = -1.f;
 
-        // custom oshot specific theme options
-        bool smooth_animations = false;
-
         bool operator==(const theme_overrides_t&) const = default;
     } theme_overrides;
 
-    /**
-     * Load config file and parse every config variables
-     * @param filename The config file path
-     */
-    void LoadConfigFile(const std::string& filename);
-
-    /**
-     * Parse the theme file (aka "theme.toml")
-     *  @param filename The directory of the theme file
-     */
-    void LoadThemeFile(const std::string& filename);
-
-    /**
-     * Generate a config file
-     * @param filename The config file path
-     * @param force Overwrite without asking
-     */
-    void GenerateConfig(const std::string& filename, const bool force = false);
-
-    /**
-     * Generate a theme file
-     * @param filename The theme file path
-     * @param force Overwrite without asking
-     */
-    void GenerateTheme(const std::string& filename, const bool force = false);
+    // The color tables of the files in theme_overrides.includes, merged in order. Never saved
+    struct theme_included_t : theme_colors_t
+    {
+        // The includes as full paths, and whether each one loaded
+        std::vector<std::pair<std::string, bool>> files;
+    } theme_included;
 
     using TomlAPI::GetValue;
     using TomlAPI::SetValue;
 
+    /**
+     * Load the config file and parse every option into File
+     * @param filename The config file path
+     **/
+    void LoadConfigFile(const std::string& filename);
+
+    /**
+     * Get the folders to look for OCR languages in: ocr-folders, each once, after the
+     * TESSDATA_PREFIX folder unless config-over-env is on
+     **/
+    [[nodiscard]] std::vector<std::string> GetOcrFolders() const;
+
+    /**
+     * Copy the OCR models shipped with the app into models_dir, skipping existing ones
+     * @param models_dir The writable models directory
+     **/
+    void SeedBundledModels(const std::filesystem::path& models_dir);
+
+    /**
+     * Parse the theme file into theme_overrides and its includes into theme_included
+     * @param filename The theme file path, absolute or relative to the config directory
+     * @param reload Keep the current theme if the file doesn't parse, and only log why
+     * @return false if the file didn't parse and the theme was kept
+     **/
+    bool LoadThemeFile(const std::string& filename, const bool reload = false);
+
+    /**
+     * Whether the theme file or one of its includes changed, appeared or went away since LoadThemeFile()
+     **/
+    [[nodiscard]] bool ThemeFilesChanged() const;
+
+    /**
+     * Write the config file with the current File values
+     * @param filename The config file path
+     * @param force Overwrite without asking
+     **/
+    void GenerateConfig(const std::string& filename, const bool force = false);
+
+    /**
+     * Write the theme file
+     * @param filename The theme file path, relative to the config directory
+     * @param force Overwrite without asking, and write the current theme_overrides instead of the default theme
+     **/
+    void GenerateTheme(const std::string& filename, const bool force = false);
+
+    /**
+     * The theme-file option as a full path. The option itself keeps what the user wrote,
+     * often relative to the config directory, so the config file stays that way when saved
+     **/
+    [[nodiscard]] std::string GetThemeFilePath() const;
+
     [[nodiscard]] const std::string& GetConfigPath() const { return m_config_path; }
-    [[nodiscard]] const std::string& GetThemePath() const { return m_theme_path; }
     [[nodiscard]] const std::string& GetConfigDirPath() const { return m_config_dir_path; }
 
 private:
-    // Parsed theme from LoadThemeFile()
-    TomlAPI m_theme;
+    // The files LoadThemeFile() read and their modification times, min() for a missing one
+    std::vector<std::pair<std::string, std::filesystem::file_time_type>> m_theme_files;
 
     std::string m_config_path;
-    std::string m_theme_path;
     std::string m_config_dir_path;
 };
 

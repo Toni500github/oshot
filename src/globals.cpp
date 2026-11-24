@@ -23,35 +23,64 @@
  *
  */
 
+#include <deque>
+#include <filesystem>
+#include <map>
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "cache.hpp"
 #include "clipboard.hpp"
 #include "config.hpp"
+#include "fmt/format.h"
 #ifndef DISABLE_PLUGINS
 #  include "plugin.hpp"
 #  include "state_manager.hh"
 #endif
+#include "screen_capture.hpp"
 #include "screenshot_tool.hpp"
+#include "spdlog/sinks/ringbuffer_sink.h"
 #include "util.hpp"
+#include "util/paths.hpp"
+#include "version.h"
 
-// Extern variables declariaions
+// Definitions of the extern globals.
+// Only a failed allocation could throw here
+// NOLINTBEGIN(bugprone-throwing-static-initialization)
 std::deque<std::string> g_dropped_paths;
 std::unique_ptr<Config> g_config;
 std::unique_ptr<Cache>  g_cache;
-std::array<char, 100>   g_sock_path;
-int                     g_sock       = -1;
 bool                    g_is_systray = false;
 bool                    g_is_nix     = fs::exists("/nix");
+bool                    g_is_flatpak = fs::exists("/.flatpak-info");
 int                     g_scr_w{}, g_scr_h{};
 Clipboard               g_clipboard(SessionType::Unknown);
 
 std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_imgui_log_sink;
 
+const std::string version_infos = fmt::format(
+    "oshot v{} built from branch '{}' at {} commit '{}' ({}).\n"
+    "Date: {}\n"
+    "Tag: {}\n"
+#ifdef DISABLE_PLUGINS
+    "NO PLUGINS SUPPORT\n"
+#endif
+    ,
+    VERSION,
+    GIT_BRANCH,
+    GIT_DIRTY,
+    GIT_COMMIT_HASH,
+    GIT_COMMIT_MESSAGE,
+    GIT_COMMIT_DATE,
+    GIT_TAG);
+
 #ifndef DISABLE_PLUGINS
 static StateManager _s;
 ScreenshotTool      g_ss_tool(std::move(_s));
 
-std::unordered_map<std::string, plugin_runtime_t> g_plugins;
-plugin_runtime_t*                                 g_current_plugin;
+std::map<std::string, plugin_runtime_t> g_plugins;
 #else
 ScreenshotTool g_ss_tool;
 #endif
+// NOLINTEND(bugprone-throwing-static-initialization)

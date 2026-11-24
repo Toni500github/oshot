@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.toni500github.oshot</id>
+  <name>oshot</name>
+  <summary>Extract on-screen text and QR codes</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>BSD-3-Clause</project_license>
+  <developer id="io.github.toni500github">
+    <name>Toni500</name>
+  </developer>
+  <description>
+    <p>
+      oshot is a screenshot tool for extracting text and QR codes on the fly.
+      Select a region of the screen to read its text with Tesseract OCR, decode
+      its QR codes and barcodes with ZBar, or annotate it, then copy or save it.
+      OCR and decoding run on your computer.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Text extraction (OCR) in any language Tesseract has a model for, with an in-app model downloader</li>
+      <li>QR code and barcode decoding</li>
+      <li>Edit the recognized text before copying it</li>
+      <li>Annotations: arrows, lines, rectangles, circles, numbered counters, text and freehand drawing</li>
+      <li>Works on X11 and Wayland, with multiple monitors</li>
+      <li>Optional system tray mode</li>
+      <li>Text and code extraction from the command line, for scripts</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">oshot.desktop</launchable>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Extract the text of a selection with OCR</caption>
+      <image>https://raw.githubusercontent.com/Toni500github/oshot/main/assets/screenshots/ocr.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Decode QR codes and barcodes</caption>
+      <image>https://raw.githubusercontent.com/Toni500github/oshot/main/assets/screenshots/qr-barcode.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Annotate the selection before copying or saving it</caption>
+      <image>https://raw.githubusercontent.com/Toni500github/oshot/main/assets/screenshots/annotations.png</image>
+    </screenshot>
+  </screenshots>
+  <branding>
+    <color type="primary" scheme_preference="light">#8f9cff</color>
+    <color type="primary" scheme_preference="dark">#1a1a8c</color>
+  </branding>
+  <provides>
+    <binary>oshot</binary>
+  </provides>
+  <url type="homepage">https://github.com/Toni500github/oshot</url>
+  <url type="bugtracker">https://github.com/Toni500github/oshot/issues</url>
+  <url type="donation">https://ko-fi.com/toni500</url>
+  <url type="vcs-browser">https://github.com/Toni500github/oshot</url>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <keywords>
+    <keyword>screenshot</keyword>
+    <keyword>ocr</keyword>
+    <keyword>qr</keyword>
+    <keyword>barcode</keyword>
+  </keywords>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.5.0~rc2" date="2026-10-12" type="development">
+      <url type="details">https://github.com/Toni500github/oshot/releases/tag/v0.5.0-rc2</url>
+    </release>
+    <release version="0.5.0~rc1" date="2026-08-08" type="development">
+      <url type="details">https://github.com/Toni500github/oshot/releases/tag/v0.5.0-rc1</url>
+    </release>
+    <release version="0.4.6" date="2026-06-19">
+      <url type="details">https://github.com/Toni500github/oshot/releases/tag/v0.4.6</url>
+    </release>
+    <release version="0.4.5" date="2026-05-24">
+      <url type="details">https://github.com/Toni500github/oshot/releases/tag/v0.4.5</url>
+    </release>
+    <release version="0.4.4" date="2026-05-03">
+      <url type="details">https://github.com/Toni500github/oshot/releases/tag/v0.4.4</url>
+    </release>
+  </releases>
+</component>

@@ -1,0 +1,10 @@
+# oshot's plugin SDK. Plugins link nothing from oshot, so it's only the headers
+# (oshot/oshot_plugin.h, and oshot/oshot_mock_host.h for unit tests).
+prefix=${pcfiledir}/@OSHOT_PC_PREFIX@
+includedir=${prefix}/include
+
+Name: oshot-plugin
+Description: SDK for oshot plugins
+URL: https://github.com/Toni500github/oshot
+Version: @PROJECT_VERSION@
+Cflags: -I${includedir}

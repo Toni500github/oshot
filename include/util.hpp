@@ -26,221 +26,119 @@
 #ifndef _UTIL_HPP_
 #define _UTIL_HPP_
 
+#include <cstdint>
 #include <filesystem>
-#include <iostream>
+#include <memory>
 #include <string>
-#include <utility>
-#include <variant>
-#include <vector>
+#include <string_view>
+#include <type_traits>
 
-#include "fmt/base.h"
-#include "fmt/color.h"
-#include "nvdialog/nvdialog_core.h"
-#include "nvdialog/nvdialog_dialog.h"
-#include "nvdialog/nvdialog_error.h"
 #include "platform.hpp"
 #include "spdlog/sinks/ringbuffer_sink.h"
-#include "spdlog/spdlog.h"
-#include "version.h"
+#include "util/paths.hpp"
 
-namespace fs = std::filesystem;
-enum class SavingOp;
+// ------------------------------
+// Types
+// ------------------------------
+// Get string literal length
+constexpr size_t operator""_len(const char*, size_t ln) noexcept
+{
+    return ln;
+}
+
+/**
+ * Changes the working directory, and changes it back when it goes out of scope.
+ * Dies if the directory doesn't exist.
+ **/
+struct CdGuard
+{
+    fs::path saved;
+
+    CdGuard(const fs::path& p);
+    ~CdGuard() { fs::current_path(saved); }
+};
+
+/**
+ * A named lock shared by this user's oshot processes, taken without waiting and
+ * held until it's destroyed or the process exits. A second ProcessLock with the
+ * same name in this process is Busy too, just like one in another process.
+ **/
+class ProcessLock
+{
+public:
+    enum class State : std::uint8_t
+    {
+        Held,    // we hold it
+        Busy,    // another process or ProcessLock holds it
+        Failed,  // it couldn't be created (a warning was logged), so nobody can tell
+    };
+
+    /**
+     * Try to take the lock
+     * @param name ASCII name of the lock. It's <runtime dir>/<name>.lock on unix, and the Local\<name> mutex on Windows
+     **/
+    explicit ProcessLock(std::string_view name);
+
+    ~ProcessLock();
+
+    [[nodiscard]] State state() const { return m_state; }
+    [[nodiscard]] bool  held() const { return m_state == State::Held; }
+    [[nodiscard]] bool  busy() const { return m_state == State::Busy; }
+
+    ProcessLock(const ProcessLock&)            = delete;
+    ProcessLock& operator=(const ProcessLock&) = delete;
+
+private:
+    std::string m_name;
+    State       m_state = State::Failed;
 
 #if OSHOT_WINDOWS
-#  define WIN32_LEAN_AND_MEAN
-#  include <combaseapi.h>
-#  include <knownfolders.h>
-#  include <shellapi.h>
-#  include <shlobj.h>
-#  include <windows.h>
-#  define DIR_SEP_STR "\\"
-#  define DIR_SEP     '\\'
+    void* m_handle = nullptr;
 #else
-#  define DIR_SEP_STR "/"
-#  define DIR_SEP     '/'
+    int m_fd = -1;
 #endif
-
-#if OSHOT_WINDOWS || OSHOT_MACOS
-#  define OSHOT_TOOL_ON_MAIN_THREAD true
-#else
-#  define OSHOT_TOOL_ON_MAIN_THREAD false
-#endif
-
-#define UNKNOWN "|<u2n4kn6ow8n>|"
-
-#define STBI_ERROR (stbi_failure_reason() ? stbi_failure_reason() : "Unknown stbi Error")
-
-// if Result is not ok(), return it's error
-#define TRY(expr)                     \
-    do                                \
-    {                                 \
-        auto&& _r = (expr);           \
-        if (!_r.ok())                 \
-            return Err(_r.error_v()); \
-    } while (0)
-
-// TRY() with fmt::format()
-#define TRY_MSG(expr, fmtstr, ...)                                       \
-    do                                                                   \
-    {                                                                    \
-        auto&& _r = (expr);                                              \
-        if (!_r.ok())                                                    \
-            return Err(fmtstr __VA_OPT__(, ) __VA_ARGS__, _r.error_v()); \
-    } while (0)
-
-// if Result is not ok(), execute on_err code
-#define MUST_OK(expr, on_err) \
-    do                        \
-    {                         \
-        auto&& _r = (expr);   \
-        if (!_r.ok())         \
-        {                     \
-            on_err;           \
-        }                     \
-    } while (0)
-
-// shotout to the better c++ server for these helper structs
-template <typename T>
-struct Ok
-{
-    using value_type = T;
-    T value;
 };
 
-// fire-and-forget result
-template <>
-struct Ok<void>
-{
-};
+// ------------------------------
+// Globals
+// ------------------------------
 
-// Deduction guide
-template <typename T>
-Ok(T) -> Ok<T>;
-Ok() -> Ok<void>;
+// This process owns the systray
+extern bool g_is_systray;
 
-template <typename E = std::string>
-struct Err
-{
-    using value_type = E;
-    E value;
+// Video mode size of the monitor the overlay is on
+extern int g_scr_w, g_scr_h;
 
-    Err() = default;
+// `/nix` exists, so the OCR window suggests getting tesseract's models from nixpkgs
+extern bool g_is_nix;
 
-    // Generic single-value ctor: Err(42), Err(some_error_code), Err(std::string{...})
-    template <typename U>
-        requires std::constructible_from<E, U&&> && (!std::same_as<std::remove_cvref_t<U>, Err>)
-    Err(U&& v) : value(std::forward<U>(v))
-    {}
+// Running inside a Flatpak sandbox
+extern bool g_is_flatpak;
 
-    // fmt-powered ctor: Err("failed: {}", code, ...)
-    template <typename... Args>
-        requires(sizeof...(Args) >= 1) && std::constructible_from<E, std::string>
-    Err(fmt::format_string<Args...> fmt_str, Args&&... args) : value(fmt::format(fmt_str, std::forward<Args>(args)...))
-    {}
-};
-template <typename E>
-Err(E) -> Err<E>;
-Err(const char*) -> Err<std::string>;
+// The last log lines, shown in the Logs window
+extern std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_imgui_log_sink;
 
-template <typename... Args>
-    requires(sizeof...(Args) >= 1)
-Err(fmt::format_string<Args...>, Args&&...) -> Err<std::string>;
+// The output of --version, also shown in the About window.
+// In globals.cpp, the only file that includes version.h, which changes with every commit
+extern const std::string version_infos;
 
-template <typename T = Ok<void>, typename E = Err<std::string>>
-class [[nodiscard("Must check if ok")]] Result
-{
-public:
-    template <typename U>
-    Result(Ok<U> const& v) : m_value(std::in_place_index<0>, v.value)
-    {}
-    template <typename U>
-    Result(Ok<U>&& v) : m_value(std::in_place_index<0>, std::move(v.value))
-    {}
+// ------------------------------
+// Functions
+// ------------------------------
 
-    template <typename U>
-    Result(Err<U> const& e) : m_value(std::in_place_index<1>, e.value)
-    {}
-    template <typename U>
-    Result(Err<U>&& e) : m_value(std::in_place_index<1>, std::move(e.value))
-    {}
+/**
+ * Give the heap's free pages back to the system. Only glibc keeps them, elsewhere it does nothing
+ **/
+void glibc_malloc_trim();
 
-    [[nodiscard]] bool ok() const { return std::holds_alternative<T>(m_value); }
-                       operator bool() const { return ok(); }
-    T&                 get() { return std::get<T>(m_value); }
-    E&                 error() { return std::get<E>(m_value); }
-    const T&           get() const { return std::get<T>(m_value); }
-    const E&           error() const { return std::get<E>(m_value); }
+// ------------------------------
+// Template functions
+// ------------------------------
 
-    template <typename U = T, typename = typename U::value_type>
-    typename U::value_type& get_v()
-    {
-        return std::get<T>(m_value).value;
-    }
-
-    template <typename U = T, typename = typename U::value_type>
-    const typename U::value_type& get_v() const
-    {
-        return std::get<T>(m_value).value;
-    }
-
-    template <typename U = E, typename = typename U::value_type>
-    typename U::value_type& error_v()
-    {
-        return std::get<E>(m_value).value;
-    }
-
-    template <typename U = E, typename = typename U::value_type>
-    const typename U::value_type& error_v() const
-    {
-        return std::get<E>(m_value).value;
-    }
-
-private:
-    std::variant<T, E> m_value;
-};
-
-template <typename E>
-class [[nodiscard("Must check if ok")]] Result<Ok<void>, E>
-{
-public:
-    Result() : m_ok(true) {}
-    Result(Ok<void>) : m_ok(true) {}
-
-    template <typename U>
-    Result(const Err<U>& err) : m_ok(false), m_err{ err.value }
-    {}
-    template <typename U>
-    Result(Err<U>&& err) : m_ok(false), m_err{ std::move(err.value) }
-    {}
-
-    [[nodiscard]] bool ok() const { return m_ok; }
-    E&                 error() { return m_err; }
-    const E&           error() const { return m_err; }
-                       operator bool() const { return ok(); }
-
-    template <typename U = E, typename = typename U::value_type>
-    typename U::value_type& error_v()
-    {
-        return m_err.value;
-    }
-
-    template <typename U = E, typename = typename U::value_type>
-    const typename U::value_type& error_v() const
-    {
-        return m_err.value;
-    }
-
-private:
-    bool m_ok;
-    E    m_err;
-};
-
-struct byte_units_t
-{
-    std::string unit;
-    double      num_bytes;
-};
-
+/**
+ * Convert an enum class value to its index, for arrays and bitsets sized by the enum's COUNT
+ * @param e The enum value
+ **/
 template <typename E>
 constexpr size_t idx(E e) noexcept
 {
@@ -248,314 +146,15 @@ constexpr size_t idx(E e) noexcept
     return static_cast<size_t>(e);
 }
 
+/**
+ * Convert an index back to an enum class value. The opposite of idx()
+ * @param n The index
+ **/
 template <typename E, typename T>
 constexpr E toe(T n) noexcept
 {
     static_assert(std::is_integral_v<T>);
     return static_cast<E>(n);
 }
-
-// Forward declaration
-struct capture_result_t;
-struct ImVec4;
-struct ImGuiIO;
-enum class ImageExt;
-// I'm not including <gtk/gtk.h> just for a couple of functions
-extern "C" {
-using gboolean = int32_t;
-gboolean gtk_events_pending();
-gboolean gtk_main_iteration();
-}
-
-// taken from "fmt/color.h" with the addition of alpha.
-// useful in contexts where ImVec4 is not used.
-// Packed as 0xRRGGBBAA
-// clang-format off
-struct rgba_t
-{
-    constexpr rgba_t() : r(0), g(0), b(0), a(0) {}
-
-    constexpr rgba_t(uint8_t r_, uint8_t g_, uint8_t b_, uint8_t a_)
-        : r(r_), g(g_), b(b_), a(a_) {}
-
-    explicit constexpr rgba_t(uint32_t hex)
-        : r((hex >> 24) & 0xFF),
-          g((hex >> 16) & 0xFF),
-          b((hex >> 8)  & 0xFF),
-          a(hex & 0xFF) {}
-
-    constexpr rgba_t(ImVec4 vec);
-
-    constexpr rgba_t(fmt::color hex)
-        : r((uint32_t(hex) >> 16) & 0xFF),
-          g((uint32_t(hex) >> 8)  & 0xFF),
-          b((uint32_t(hex))       & 0xFF),
-          a(0xFF) {}
-
-    static constexpr rgba_t from_rgba(uint32_t v) { return { uint8_t(v >> 24), uint8_t(v >> 16), uint8_t(v >> 8),  uint8_t(v) }; }
-    static constexpr rgba_t from_abgr(uint32_t v) { return { uint8_t(v),       uint8_t(v >> 8),  uint8_t(v >> 16), uint8_t(v >> 24) }; }
-    static constexpr rgba_t from_argb(uint32_t v) { return { uint8_t(v >> 16), uint8_t(v >> 8),  uint8_t(v),       uint8_t(v >> 24) }; }
-    static constexpr rgba_t from_bgra(uint32_t v) { return { uint8_t(v >> 8),  uint8_t(v >> 16), uint8_t(v >> 24), uint8_t(v) }; }
-
-    [[nodiscard]] constexpr uint32_t to_rgba() const { return uint32_t(r)<<24 | uint32_t(g)<<16 | uint32_t(b)<<8 | a; }
-    [[nodiscard]] constexpr uint32_t to_abgr() const { return uint32_t(a)<<24 | uint32_t(b)<<16 | uint32_t(g)<<8 | r; }
-    [[nodiscard]] constexpr uint32_t to_argb() const { return uint32_t(a)<<24 | uint32_t(r)<<16 | uint32_t(g)<<8 | b; }
-    [[nodiscard]] constexpr uint32_t to_bgra() const { return uint32_t(b)<<24 | uint32_t(g)<<16 | uint32_t(r)<<8 | a; }
-
-    [[nodiscard]] constexpr ImVec4 to_imvec4() const;
-    [[nodiscard]] constexpr operator ImVec4() const;
-
-    uint8_t r, g, b, a;
-};
-// clang-format on
-
-inline rgba_t load_rgba(const uint8_t* p)
-{
-    return { p[0], p[1], p[2], p[3] };
-}
-
-constexpr rgba_t operator""_rgba(unsigned long long v)
-{
-    return rgba_t(static_cast<uint32_t>(v));
-}
-
-inline void store_rgba(uint8_t* p, const rgba_t& c)
-{
-    p[0] = c.r;
-    p[1] = c.g;
-    p[2] = c.b;
-    p[3] = c.a;
-}
-
-namespace Colors
-{
-static constexpr auto WHITE  = 0xFFFFFFFF_rgba;
-static constexpr auto RED    = 0xFF0000FF_rgba;
-static constexpr auto GREEN  = 0x00FF00FF_rgba;
-static constexpr auto BLUE   = 0x0000FFFF_rgba;
-static constexpr auto YELLOW = 0xFFFF00FF_rgba;
-static constexpr auto CYAN   = 0x00FFFFFF_rgba;
-}  // namespace Colors
-
-// NOLINTNEXTLINE(performance-enum-size)
-enum class ImageExt
-{
-    PNG,
-    JPEG,
-    BMP,
-    TGA,
-    COUNT
-};
-
-// NOLINTNEXTLINE(performance-enum-size)
-enum class SavingOp
-{
-    kNone,
-    Clipboard,
-    File
-};
-
-// NOLINTNEXTLINE(performance-enum-size)
-enum class ByteUnit
-{
-    Kibibyte = 1024,
-    Kilobyte = 1000,
-    Byte     = 1,
-};
-
-inline constexpr std::array<std::pair<ImageExt, const char*>, idx(ImageExt::COUNT)> IMAGE_EXTS_STR = {
-    { { ImageExt::PNG, "PNG" }, { ImageExt::JPEG, "JPEG" }, { ImageExt::BMP, "BMP" }, { ImageExt::TGA, "TGA" } }
-};
-inline std::unordered_map<std::string_view, ImageExt> IMAGE_EXTS_ENUM = {
-    { { "PNG", ImageExt::PNG }, { "JPEG", ImageExt::JPEG }, { "BMP", ImageExt::BMP }, { "TGA", ImageExt::TGA } }
-};
-
-extern bool g_is_systray;  // old g_is_clipboard_server;
-extern int  g_sock;
-extern int  g_scr_w, g_scr_h;
-extern bool g_is_nix;
-
-extern std::array<char, 100>                              g_sock_path;
-extern std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_imgui_log_sink;
-
-static inline const std::string version_infos = fmt::format(
-    "oshot v{} built from branch '{}' at {} commit '{}' ({}).\n"
-    "Date: {}\n"
-    "Tag: {}\n",
-#ifdef DISABLE_PLUGINS
-    "NO PLUGINS SUPPORT\n",
-#endif
-    VERSION,
-    GIT_BRANCH,
-    GIT_DIRTY,
-    GIT_COMMIT_HASH,
-    GIT_COMMIT_MESSAGE,
-    GIT_COMMIT_DATE,
-    GIT_TAG);
-
-std::vector<uint8_t> encode_to_image(const capture_result_t& cap, ImageExt ext);
-
-std::string replace_str(std::string& str, const std::string_view from, const std::string_view to);
-std::string select_image();
-std::string expand_var(std::string ret);
-std::string col_to_hexstr(const rgba_t& col);
-std::string get_relative_path(const std::string_view relative_path, const char* env, const long long mode);
-std::string which(const std::string_view command);
-
-bool acquire_tray_lock();
-bool is_system_dark_mode();
-bool hexstr_to_col(const std::string_view hex, uint32_t& out);
-bool hexstr_to_imvec4(const std::string_view hex, ImVec4& out);
-
-std::string str_toupper(std::string str);
-std::string str_tolower(std::string str);
-#if !OSHOT_WINDOWS
-fs::path get_runtime_dir();
-#endif
-fs::path get_font_path(const std::string& font);
-fs::path get_home_config_dir();
-fs::path get_home_cache_dir();
-fs::path get_home_pictures_dir();
-fs::path get_home_dir();
-fs::path get_config_dir();
-fs::path get_cache_dir();
-
-Result<capture_result_t> load_image_rgba(const std::string& path);
-Result<std::string>      get_config_image_out_fmt();
-Result<>                 save_image(SavingOp op, const capture_result_t& img, ImageExt ext);
-
-void minimize_window();
-void maximize_window();
-void extern_glfwTerminate();
-void extern_glfwSwapInterval(int v);
-
-byte_units_t auto_divide_bytes(const double num, const ByteUnit base, const std::string_view maxprefix = "");
-byte_units_t divide_bytes(const double num, const std::string_view prefix);
-void         fit_to_screen(capture_result_t& img);
-void         rgba_to_grayscale(const uint8_t* rgba, uint8_t* result, int width, int height);
-void         build_font_atlas(ImGuiIO& io);
-int          get_screen_dpi();
-bool         parse_hex_rgba(const std::string_view hex, rgba_t& out);
-
-#define BOLD_COLOR(x) (fmt::emphasis::bold | fmt::fg(x))
-
-static void create_dialog(const char* title, const NvdDialogType type, const std::string& str) noexcept
-{
-    if (nvd_get_error() == NVD_NOT_INITIALIZED)
-        return;
-
-    NvdDialogBox* dialog = nvd_dialog_box_new(title, str.c_str(), type);
-    nvd_show_dialog(dialog);
-    nvd_free_object(dialog);
-#if OSHOT_LINUX
-    while (gtk_events_pending())
-        gtk_main_iteration();
-#endif
-}
-
-template <typename... Args>
-[[noreturn]] inline void die(const std::string_view fmt, Args&&... args) noexcept
-{
-    const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
-
-    spdlog::critical("{}", str);
-    create_dialog("oshot Fatal Error", NVD_DIALOG_ERROR, str);
-    std::exit(1);
-}
-
-template <typename... Args>
-inline void error(const std::string_view fmt, Args&&... args) noexcept
-{
-    const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
-
-    spdlog::error("{}", str);
-    create_dialog("oshot Error", NVD_DIALOG_ERROR, str);
-}
-
-template <typename... Args>
-inline void warn(const std::string_view fmt, Args&&... args) noexcept
-{
-    const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
-
-    spdlog::warn("{}", str);
-    create_dialog("oshot Warning", NVD_DIALOG_WARNING, str);
-}
-
-template <typename... Args>
-inline void info(const std::string_view fmt, Args&&... args) noexcept
-{
-    const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
-
-    spdlog::info("{}", str);
-    create_dialog("oshot Info", NVD_DIALOG_SIMPLE, str);
-}
-
-/** Ask the user a yes or no question.
- * @param def The default result (Removed)
- * @param fmt The format string
- * @param args Arguments in the format
- * @returns the result, y = true, n = false, only returns def if the result is def
- */
-template <typename... Args>
-inline bool ask_user_yn(bool def, const std::string_view fmt, Args&&... args)
-{
-    const std::string& str = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
-    if (nvd_get_error() == NVD_NOT_INITIALIZED)
-    {
-#if OSHOT_WINDOWS
-        int result = MessageBox(NULL, str.c_str(), "Confirmation", MB_YESNO | MB_ICONQUESTION);
-        return (result == IDYES);
-#else
-        const std::string_view inputs_str = def ? "[Y/n]" : "[y/N]";
-        std::string            result;
-        fmt::print("{} {}: ", str, inputs_str);
-
-        while (std::getline(std::cin, result) && (result.length() > 1))
-        {
-            fmt::print(BOLD_COLOR(fmt::rgb(fmt::color::yellow)), "Please answear y or n\n");
-            fmt::print("{} {}: ", str, inputs_str);
-        }
-
-        if (std::cin.eof())
-            die("Exiting due to CTRL-D or EOF");
-
-        if (result.empty())
-            return def;
-
-        if (def ? std::tolower(result[0]) != 'n' : std::tolower(result[0]) != 'y')
-            return def;
-
-        return !def;
-#endif
-    }
-    else
-    {
-        NvdQuestionBox* question = nvd_dialog_question_new("Confirmation", str.c_str(), NVD_YES_NO);
-        if (!question)
-            die("Couldn't create question dialog box");
-        return nvd_get_reply(question) == NVD_REPLY_OK;
-    }
-}
-
-// RAII guard: ensures glfwTerminate() runs even on crash/signal.
-// Without this, NVIDIA's driver is left in the implicit mode it switched
-// to when we created a full-resolution window, permanently showing 1024x768.
-inline struct GlfwGuard
-{
-    ~GlfwGuard() { extern_glfwTerminate(); }
-} glfw_guard;
-
-struct CdGuard
-{
-    fs::path saved;
-    CdGuard(const fs::path& p) : saved(fs::current_path())
-    {
-        if (!fs::exists(p))
-            die("CdGuard: Path {} doesn't exist", p.string());
-        if (!p.empty())
-            fs::current_path(p);
-    }
-    ~CdGuard() { fs::current_path(saved); }
-};
 
 #endif  // !_UTIL_HPP_

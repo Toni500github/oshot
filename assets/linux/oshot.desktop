@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=oshot
+GenericName=Screenshot Tool
+Comment=Take a screenshot, extract its text and scan QR codes and barcodes
+Exec=oshot
+Icon=oshot
+Terminal=false
+StartupNotify=false
+Categories=Utility;
+Keywords=screenshot;screen;capture;ocr;text;qr;barcode;annotate;
+Actions=Tray;
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
+
+[Desktop Action Tray]
+Name=Start in the System Tray
+Exec=oshot --tray

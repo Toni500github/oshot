@@ -26,6 +26,9 @@
 #ifndef _PLATFORM_H_
 #define _PLATFORM_H_
 
+// Platform macros, always defined as 0 or 1, so test them with #if, not #ifdef
+
+// Clang builtins used below, always false on other compilers
 #ifndef __clang__
 #  define __is_target_vendor(x)      0
 #  define __is_target_os(x)          0
@@ -52,9 +55,42 @@
 #  define OSHOT_WINDOWS 0
 #endif
 
-#if !(OSHOT_LINUX || OSHOT_WINDOWS || OSHOT_MACOS)
+#if (defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__))
+#  define OSHOT_BSD 1
+#else
+#  define OSHOT_BSD 0
+#endif
+
+#if OSHOT_WINDOWS
+#  define OSHOT_LIB_SUFFIX ".dll"
+#elif OSHOT_MACOS
+#  define OSHOT_LIB_SUFFIX ".dylib"
+#else
+#  define OSHOT_LIB_SUFFIX ".so"
+#endif
+
+// X11/Wayland desktops following the freedesktop.org conventions (Linux and the BSDs).
+// Use OSHOT_LINUX only for what is really Linux-specific, such as AppImages.
+#if (OSHOT_LINUX || OSHOT_BSD)
+#  define OSHOT_FREEDESKTOP 1
+#else
+#  define OSHOT_FREEDESKTOP 0
+#endif
+
+/**
+ * System-wide shortcut that starts a capture from the tray instance.
+ * Registration is only implemented on Windows and macOS. On Linux the
+ * WM/DE owns global keybinds, so users bind `oshot --gui` there instead.
+ **/
+#if (OSHOT_WINDOWS || OSHOT_MACOS)
+#  define OSHOT_HAS_GLOBAL_HOTKEY 1
+#else
+#  define OSHOT_HAS_GLOBAL_HOTKEY 0
+#endif
+
+#if !(OSHOT_FREEDESKTOP || OSHOT_WINDOWS || OSHOT_MACOS)
 #  warning \
-      "Platform currently may not be supported, only Linux, Windows and MacOS. Please feel free to report any compilation errors"
+      "Platform currently may not be supported, only Linux, the BSDs, Windows and MacOS. Please feel free to report any compilation errors"
 #endif
 
 #endif  // _PLATFORM_H_

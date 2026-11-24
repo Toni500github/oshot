@@ -47,8 +47,14 @@ void nvd_send_notification_cocoa(NvdNotification *notification)
 
     NSTask *task = [[NSTask alloc] init];
     task.launchPath = @"/usr/bin/osascript";
-    task.arguments = @[@"-e", [NSString stringWithFormat:   @"tell application \"System Events\" to display notification \"%s\" with title \"%s\" sound name \"default\"", 
-                                                            notification->body, notification->title]];
+    /* Not through "System Events", which needs the Automation permission and
+     * asked for it on the first notification. The texts are passed as arguments,
+     * so quotes in them can't break the script. */
+    task.arguments = @[@"-e", @"on run argv",
+                       @"-e", @"display notification (item 2 of argv) with title (item 1 of argv) sound name \"default\"",
+                       @"-e", @"end run",
+                       [NSString stringWithUTF8String:notification->title],
+                       [NSString stringWithUTF8String:notification->body]];
     task.standardOutput = pipe;
 
     [task launch];

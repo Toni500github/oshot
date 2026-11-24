@@ -1,0 +1,18 @@
+name: Release packages
+
+# Release builds of every package from the branch about to be released, uploaded as artifacts,
+# since build.yml builds branches as Debug and only tags as Release
+on:
+  push:
+    branches: ["packaging"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      build-type: Release
+    # build.yml's release job asks for contents: write, and a called workflow can't ask for more
+    # than its caller grants. That job only runs for tags, so nothing is written from here
+    permissions:
+      contents: write

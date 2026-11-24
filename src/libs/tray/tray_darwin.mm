@@ -1,14 +1,22 @@
 #include "tray.hpp"
 #include <Cocoa/Cocoa.h>
+#include <csignal>
 
 using namespace Tray;
 static NSApplication* app;
 static NSStatusBar* statusBar;
 static NSStatusItem* statusItem;
-bool wantsExit = false;
+static NSMenu* trayMenu;
+static std::function<void()> iconClickCallback;
+static bool wantsExit = false;
+static std::function<void()> reopenCallback;
+static std::function<void()> quitSignalCallback;
+static dispatch_source_t signalSources[3];
 
 @interface AppDelegate: NSObject <NSApplicationDelegate>
     - (IBAction)menuCallback:(id)sender;
+    - (IBAction)statusItemClicked:(id)sender;
+    - (void)handleReopen:(NSAppleEventDescriptor*)event withReplyEvent:(NSAppleEventDescriptor*)reply;
 @end
 @implementation AppDelegate{}
     - (IBAction)menuCallback:(id)sender
@@ -19,7 +27,32 @@ bool wantsExit = false;
 			menu->onClicked(menu);
 		}
     }
+    - (IBAction)statusItemClicked:(id)sender
+    {
+		// Right or Ctrl+click: open the menu, which only stays attached while
+		// it's open, otherwise every click would open it instead of getting here
+		NSEvent* event = [NSApp currentEvent];
+		if (event.type == NSEventTypeRightMouseUp || (event.modifierFlags & NSEventModifierFlagControl))
+		{
+			statusItem.menu = trayMenu;
+			[statusItem.button performClick:nil];
+			statusItem.menu = nil;
+			return;
+		}
+		iconClickCallback();
+    }
+    - (void)handleReopen:(NSAppleEventDescriptor*)event withReplyEvent:(NSAppleEventDescriptor*)reply
+    {
+		if (reopenCallback)
+			reopenCallback();
+    }
 @end
+
+// Kept alive for the whole process and set as every menu item's explicit
+// target: NSApp's delegate isn't ours to keep, GLFW replaces it in glfwInit()
+// and clears it in glfwTerminate(), which made nil-targeted items dead
+// after the first capture.
+static AppDelegate* delegate = nil;
 
 static NSMenu* _tray_menu(std::vector<TrayMenu*> menuItems)
 {
@@ -36,6 +69,7 @@ static NSMenu* _tray_menu(std::vector<TrayMenu*> menuItems)
                 initWithTitle:[NSString stringWithUTF8String:tm->text.c_str()]
                 action:@selector(menuCallback:)
                 keyEquivalent:@""];
+			[menuItem setTarget:delegate];
 			[menuItem setEnabled:(tm->isEnabled ? TRUE : FALSE)];
             [menuItem setState:(tm->isChecked ? 1 : 0)];
             [menuItem setRepresentedObject:[NSValue valueWithPointer:tm]];
@@ -51,14 +85,16 @@ static NSMenu* _tray_menu(std::vector<TrayMenu*> menuItems)
 
 bool TrayMaker::Initialize(TrayIcon* toInitialize)
 {
-	AppDelegate *delegate = [[AppDelegate alloc] init];
+	if (delegate == nil)
+		delegate = [[AppDelegate alloc] init];
     app = [NSApplication sharedApplication];
     [app setDelegate:delegate];
     statusBar = [NSStatusBar systemStatusBar];
     statusItem = [statusBar statusItemWithLength:NSVariableStatusItemLength];
     trayIcon = toInitialize;
 	Update();
-    [app activateIgnoringOtherApps:TRUE];
+	// No activateIgnoringOtherApps: when started at login it stole keyboard
+	// focus from whatever the user was typing in
 	return true;
 }
 
@@ -85,6 +121,8 @@ void TrayMaker::Update()
     if (image)
     {
         [image setSize:NSMakeSize(16, 16)];
+        // Only the alpha counts, so macOS draws it dark or light to match the menu bar
+        [image setTemplate:YES];
         statusItem.button.image = image;
     }
     else
@@ -93,10 +131,92 @@ void TrayMaker::Update()
         statusItem.button.title = [NSString stringWithUTF8String:trayIcon->tooltip.c_str()];
     }
 
-    [statusItem setMenu:_tray_menu(trayIcon->menu)];
+    trayMenu          = _tray_menu(trayIcon->menu);
+    iconClickCallback = trayIcon->onClicked;
+    if (iconClickCallback)
+    {
+        [statusItem setMenu:nil];
+        statusItem.button.target = delegate;
+        statusItem.button.action = @selector(statusItemClicked:);
+        [statusItem.button sendActionOn:NSEventMaskLeftMouseUp | NSEventMaskRightMouseUp];
+    }
+    else
+    {
+        [statusItem setMenu:trayMenu];
+    }
 }
 
 void TrayMaker::Exit()
 {
     wantsExit = true;
+    Wake();
 }
+
+void* Tray::GetNativeHandle()
+{
+	return nullptr;
+}
+
+void Tray::SetHotkeyCallback(std::function<void(int)>) {}
+
+void Tray::Wake()
+{
+	if (app == nil)
+		return;
+	NSEvent* event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
+	                                    location:NSZeroPoint
+	                               modifierFlags:0
+	                                   timestamp:0
+	                                windowNumber:0
+	                                     context:nil
+	                                     subtype:0
+	                                       data1:0
+	                                       data2:0];
+	[app postEvent:event atStart:YES];
+}
+
+void Tray::SetQuitSignalCallback(std::function<void()> cb)
+{
+	quitSignalCallback = std::move(cb);
+
+	// Dispatch sources deliver the signal on the main queue, which the tray
+	// loop's run loop services, so the callback isn't limited to
+	// async-signal-safe functions
+	const int sigs[3] = { SIGINT, SIGTERM, SIGHUP };
+	for (int i = 0; i < 3; ++i)
+	{
+		if (signalSources[i])
+			continue;
+		signal(sigs[i], SIG_IGN);
+		signalSources[i] = dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL, sigs[i], 0, dispatch_get_main_queue());
+		dispatch_source_set_event_handler(signalSources[i], ^{
+			if (quitSignalCallback)
+				quitSignalCallback();
+		});
+		dispatch_resume(signalSources[i]);
+	}
+}
+
+void Tray::SetReopenCallback(std::function<void()> cb)
+{
+	reopenCallback = std::move(cb);
+	if (delegate == nil)
+		delegate = [[AppDelegate alloc] init];
+
+	// An LSUIElement app that's already running gets a "reopen" Apple Event
+	// instead of a second instance, without a handler nothing would happen
+	[[NSAppleEventManager sharedAppleEventManager]
+		setEventHandler:delegate
+		    andSelector:@selector(handleReopen:withReplyEvent:)
+		  forEventClass:kCoreEventClass
+		     andEventID:kAEReopenApplication];
+}
+
+bool Tray::PanelIsDark()
+{
+	return false;
+}
+
+void Tray::SetThemeChangeCallback(std::function<void()>) {}
+
+void Tray::Pump() {}

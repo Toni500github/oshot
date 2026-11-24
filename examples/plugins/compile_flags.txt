@@ -1,0 +1,8 @@
+-I../../../include/libs/
+-I../../../build/release/sdk/include
+-I../../../build/debug/sdk/include
+-Wall
+-Wextra
+-Wpedantic
+-Wno-unused-parameter
+-pthread

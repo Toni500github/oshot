@@ -42,7 +42,7 @@ void nvd_show_dialog_cocoa(NvdDialogBox *dialog)
 {
 	[dialog->window_handle runModal];
 	#ifndef _NVD_USE_GNUSTEP
-	[dialog->window_handle orderOut];
+	[[(NSAlert *)dialog->window_handle window] orderOut:nil];
 	#endif
 }
 

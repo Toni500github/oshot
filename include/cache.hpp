@@ -27,35 +27,39 @@
 #define _CACHE_HPP_
 
 #include <array>
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <string_view>
 
+#include "fmt/format.h"
 #include "toml_api.hpp"
 #include "util.hpp"
+#include "util/result.hpp"
 
-// util.hpp
-std::string expand_var(std::string ret);
-
+// Values remembered between runs, in cache.toml
 enum class CacheEntry : uint8_t
 {
-    AnnColor,
-    ImgSavePath,
+    AnnColor,            // last color picked for annotations
+    ImgSavePath,         // folder the save dialog last saved to
+    OcrLanguage,         // OCR language last picked in the text tools
+    OcrLanguageFolder,   // the folder it was picked from
+    OcrLanguageDefault,  // ocr-language when OcrLanguage was picked, so a changed ocr-language wins
+    KnowsPluginsRisk,    // the user accepted the risk of using plugins since they have the same perms as oshot
     COUNT
 };
 
+// cache.toml in the cache directory, under the [cache] table.
+// Loaded on construction and written back on destruction
 class Cache : public TomlAPI
 {
 public:
     Cache(const std::string& cache_dir);
     ~Cache() override;
 
-    Result<> LoadCacheFile();
-
-    [[nodiscard]] const std::string& GetCacheDirPath() const { return m_cache_dir_path; }
-
     using TomlAPI::GetValue;
     using TomlAPI::SetValue;
 
-    // CacheEntry convenience overloads are the ONLY thing Cache needs to add now
     template <typename T>
     T GetValue(CacheEntry e, const T& fallback, bool dont_expand_var = false)
     {
@@ -68,6 +72,8 @@ public:
         SetValue<T>(mk_cache_entries.at(idx(e)), value);
     }
 
+    Result<> LoadCacheFile();
+
 protected:
     [[nodiscard]] std::string BuildKey(const std::string_view key) const override
     {
@@ -75,15 +81,24 @@ protected:
     }
 
 private:
-    void                         CreateFile();
+    // Keys of the CacheEntry values, in the same order (cuz C99 supports at index assign but not C++...)
+    // clang-format off
+    static constexpr std::array<std::string_view, idx(CacheEntry::COUNT)> mk_cache_entries = {
+        "default-color-picker-color",
+        "last-saved-dir",
+        "last-ocr-language",
+        "last-ocr-language-folder",
+        "last-ocr-language-default",
+        "accepted-plugins-risks"
+    };
+    // clang-format on
+
     static constexpr const char* mk_file_path = "cache.toml";
 
     std::string m_cache_dir_path;
 
-    static constexpr std::array<std::string_view, idx(CacheEntry::COUNT)> mk_cache_entries = {
-        "default-color-picker-color",
-        "last-saved-dir"
-    };
+    // Writes the table to cache.toml
+    void CreateFile();
 };
 
 extern std::unique_ptr<Cache> g_cache;
