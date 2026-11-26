@@ -51,7 +51,6 @@ build: configure
 test: build
 	cd $(BUILDDIR) && ctest -V
 
-# Generates include/version.h, which the build also does before compiling
 genver:
 	./scripts/generateVersion.sh
 
@@ -78,5 +77,5 @@ uninstall:
 
 # -i.bak + rm instead of plain -i, which BSD and macOS sed don't take
 updatever:
-	sed -i.bak "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml scripts/*) flake.nix CMakeLists.txt compile_flags.txt
-	rm -f $(addsuffix .bak,$(wildcard .github/workflows/*.yml scripts/*) flake.nix CMakeLists.txt compile_flags.txt)
+	sed -i.bak "s#$(OLDVERSION)#$(VERSION)#g" $(wildcard .github/workflows/*.yml scripts/* po/*) flake.nix CMakeLists.txt compile_flags.txt
+	rm -f $(addsuffix .bak,$(wildcard .github/workflows/*.yml scripts/* po/*) flake.nix CMakeLists.txt compile_flags.txt)

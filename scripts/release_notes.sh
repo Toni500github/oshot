@@ -3,14 +3,14 @@
 # Print the GitHub release notes for a tag: which file to download, then the
 # changes from the matching debian/changelog entry.
 #
-# Usage: release_notes.sh <tag>      e.g. release_notes.sh v0.5.0-rc2
+# Usage: release_notes.sh <tag>      e.g. release_notes.sh v0.5.0
 
 set -euo pipefail
 
 TAG="${1:?usage: $0 <tag>}"
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-# v0.5.0-rc2 -> 0.5.0~rc2, how pre-releases are versioned in debian/changelog
+# v0.5.0-rcn -> 0.5.0~rcm, how pre-releases are versioned in debian/changelog
 DEB_VERSION="${TAG#v}"
 DEB_VERSION="${DEB_VERSION//-/\~}"
 

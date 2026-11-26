@@ -1,7 +1,7 @@
 ; Inno Setup script for the oshot Windows installer.
 ;
 ; Usage (from the repo root, after packaging the portable folder):
-;   iscc /DAppVersion=0.5.0-rc2 /DAppNumVersion=0.5.0 /DArch=x64 /DSourceDir=..\package\oshot /DOutputName=oshot-windows-x64-setup scripts\oshot.iss
+;   iscc /DAppVersion=0.5.0-rc /DAppNumVersion=0.5.0 /DArch=x64 /DSourceDir=..\package\oshot /DOutputName=oshot-windows-x64-setup scripts\oshot.iss
 ;
 ; SourceDir is relative to this script. It must contain oshot.exe, its DLLs and models\eng.traineddata,
 ; i.e. the same folder that goes into the portable zip.
@@ -13,7 +13,7 @@
 #ifndef AppVersion
   #error AppVersion must be defined (/DAppVersion=x.y.z)
 #endif
-; Windows version resources must be purely numeric (no "-rc2")
+; Windows version resources must be purely numeric (no "-rc")
 #ifndef AppNumVersion
   #define AppNumVersion "0.0.0"
 #endif

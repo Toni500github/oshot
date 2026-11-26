@@ -39,7 +39,7 @@ for tool in xgettext msguniq msgmerge msginit msgfmt; do
     fi
 done
 
-# Same version as scripts/generateVersion.sh's fallback, e.g. 0.5.0-rc2
+# Same version as scripts/generateVersion.sh's fallback, e.g. 0.5.0-rcn
 VERSION="$(sed -n 's/^project(oshot VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)$(sed -n 's/^set(PROJECT_VERSION_SUFFIX "\(.*\)")/\1/p' CMakeLists.txt)"
 
 TMP="$(mktemp -d)"

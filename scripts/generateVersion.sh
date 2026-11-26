@@ -4,7 +4,7 @@ set -e
 OUT="./include/version.h"
 TMP="$(mktemp)"
 
-# The version CMakeLists.txt declares (e.g. v0.5.0-rc2), for when there's no tag to describe
+# The version CMakeLists.txt declares (e.g. v0.5.0-rc), for when there's no tag to describe
 FALLBACK_TAG="v$(sed -n 's/^project(oshot VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)$(sed -n 's/^set(PROJECT_VERSION_SUFFIX "\(.*\)")/\1/p' CMakeLists.txt)"
 
 # Fallback values if git is missing or not a git repository
