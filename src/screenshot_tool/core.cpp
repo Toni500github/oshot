@@ -1382,6 +1382,7 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
                       m_inputs.ocr_path,
                       configure_res.error_v());
         ectx.Set(OcrError::FailedToOCR, configure_res.error_v());
+        m_flags.Clear(CaptureFlag::ExtractModified);
 #ifndef DISABLE_PLUGINS
         NotifyPluginsOfOcr(nullptr);
 #endif
@@ -1397,6 +1398,7 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
         m_inputs.ocr_original.clear();
         spdlog::debug("OCR: {}", result.error_v());
         ectx.Set(OcrError::FailedToOCR, result.error_v());
+        m_flags.Clear(CaptureFlag::ExtractModified);
 #ifndef DISABLE_PLUGINS
         NotifyPluginsOfOcr(nullptr);
 #endif
@@ -1404,6 +1406,7 @@ void ScreenshotTool::RunOcr(const capture_result_t& img)
     }
 
     ectx.Clear(OcrError::FailedToOCR);
+    m_flags.Clear(CaptureFlag::ExtractModified);
     m_inputs.ocr_seconds = std::chrono::duration<float>(std::chrono::steady_clock::now() - start).count();
     m_inputs.ocr_results = std::move(result.get());
 #ifndef DISABLE_PLUGINS

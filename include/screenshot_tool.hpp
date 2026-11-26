@@ -199,6 +199,7 @@ enum class CaptureFlag : std::uint8_t
     Esc,                  // this frame's Esc, until a sub-window or RenderOverlay() uses it
     FinalImageRequested,  // set by RequestFinalImage(), until OnCleanFrame()
     ImageCopied,          // the overlay closed after copying the image
+    ExtractModified,      // the user modified the extracted text (OCR)
 
     // The text tools show the text from before the plugins' transformers
     ShowOcrOriginal,

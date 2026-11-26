@@ -260,8 +260,9 @@ static void draw_output_hint(const char* hint, const ImVec2& size)
     ImGui::Dummy(size);
 }
 
-// An output's text box, or `hint` in its place while it's empty and can't be edited
-static void draw_output_text(const char*  id,
+// An output's text box, or `hint` in its place while it's empty and can't be edited.
+// Return true if modified
+static bool draw_output_text(const char*  id,
                              std::string& text,
                              const bool   editable,
                              const bool   wrap,
@@ -271,13 +272,13 @@ static void draw_output_text(const char*  id,
     if (text.empty() && !editable)
     {
         draw_output_hint(hint, ImVec2(ImGui::GetContentRegionAvail().x, height));
-        return;
+        return false;
     }
 
     ImGuiInputTextFlags flags = editable ? 0 : ImGuiInputTextFlags_ReadOnly;
     if (wrap)
         flags |= ImGuiInputTextFlags_WordWrap;
-    ImGui::InputTextMultiline(id, &text, ImVec2(-FLT_MIN, height), flags);
+    return ImGui::InputTextMultiline(id, &text, ImVec2(-FLT_MIN, height), flags);
 }
 
 // The height of a text box that shows `lines` lines
@@ -953,6 +954,7 @@ void ScreenshotTool::DrawMenuItems()
         if (ImGui::BeginMenu(_("Edit")))
         {
             ImGui::MenuItem(_("View Handles"), SHORTCUT_MOD "+G", &g_config->Runtime.enable_handles);
+            ImGui::MenuItem(_("Allow Text Editing"), SHORTCUT_MOD "+E", &g_config->File.allow_out_edit);
 
             ImGui::Separator();
             if (ImGui::MenuItem(_("Preferences...")))
@@ -1245,17 +1247,22 @@ void ScreenshotTool::DrawOcrTools()
                              res.psm_str });
     }
 
+    if (m_flags.Has(CaptureFlag::ExtractModified))
+        ImGui::TextDisabled("%s", _("modified"));
+
     // The text box fills the tab, leaving room for the confidence bar and the stats
     const float below = scanned ? ImGui::GetFrameHeightWithSpacing() + stats_height(stats) : 0.0f;
     const float height =
         std::max(text_box_height(6), ImGui::GetContentRegionAvail().y - below - ImGui::GetStyle().ItemSpacing.y);
-    draw_output_text(original ? "##ocr_original" : "##" OSHOT_TEXT_OCR,
-                     text,
-                     !original && g_config->File.allow_out_edit,
-                     m_flags.Has(CaptureFlag::WrapText),
-                     scanned ? _("No text found. Try another model or layout")
-                             : _("Select an area and press Extract Text to read its text"),
-                     height);
+    const bool modified = draw_output_text(original ? "##ocr_original" : "##" OSHOT_TEXT_OCR,
+                                           text,
+                                           !original && g_config->File.allow_out_edit,
+                                           m_flags.Has(CaptureFlag::WrapText),
+                                           scanned ? _("No text found. Try another model or layout")
+                                                   : _("Select an area and press Extract Text to read its text"),
+                                           height);
+    if (modified)
+        m_flags.Set(CaptureFlag::ExtractModified);
 
     if (scanned)
     {
