@@ -460,33 +460,68 @@ void ScreenshotTool::DrawLogsWindow()
             shown.push_back(&msg);
         }
 
+        // The clipper sizes every row like the first, so a multi-line payload gets one row per line
+        struct log_row_t
+        {
+            const spdlog::details::log_msg_buffer* msg;
+            std::string_view                       text;
+            bool                                   first;
+        };
+        std::vector<log_row_t> rows;
+        for (const auto* msg : shown)
+        {
+            std::string_view rest(msg->payload.data(), msg->payload.size());
+            bool             first = true;
+            do
+            {
+                const size_t nl = rest.find('\n');
+                rows.push_back({ .msg = msg, .text = rest.substr(0, nl), .first = first });
+                rest  = (nl == rest.npos) ? std::string_view{} : rest.substr(nl + 1);
+                first = false;
+            } while (!rest.empty());
+        }
+
         // --- Scrolling log region ---
         ImGui::BeginChild("##log_scroll", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
 
+        const float indent = ImGui::CalcTextSize("00:00:00.000").x + ImGui::GetStyle().ItemSpacing.x;
+
         ImGuiListClipper clipper;
-        clipper.Begin(static_cast<int>(shown.size()));
+        clipper.Begin(static_cast<int>(rows.size()));
         while (clipper.Step())
         {
             for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
             {
-                const auto& msg = *shown[i];
-                // fmt formats a time_point as UTC, but the log file has local time
-                const std::time_t secs = spdlog::log_clock::to_time_t(msg.time);
-                std::tm           local{};
+                const auto& row = rows[i];
+                const auto& msg = *row.msg;
+                if (row.first)
+                {
+                    // fmt formats a time_point as UTC, but the log file has local time
+                    const std::time_t secs = spdlog::log_clock::to_time_t(msg.time);
+                    std::tm           local{};
 #if OSHOT_WINDOWS
-                localtime_s(&local, &secs);
+                    localtime_s(&local, &secs);
 #else
-                localtime_r(&secs, &local);
+                    localtime_r(&secs, &local);
 #endif
-                const auto ms =
-                    std::chrono::duration_cast<std::chrono::milliseconds>(msg.time.time_since_epoch()) % 1000;
-                const std::string& time_fmt = fmt::format("{:%H:%M:%S}.{:03}", local, ms.count());
+                    const auto ms =
+                        std::chrono::duration_cast<std::chrono::milliseconds>(msg.time.time_since_epoch()) % 1000;
+                    const std::string& time_fmt = fmt::format("{:%H:%M:%S}.{:03}", local, ms.count());
 
-                ImGui::TextDisabled("%s", time_fmt.c_str());
-                ImGui::SameLine();
-                ImGui::TextColored(level_color(msg.level), "[%s]", level_tag(msg.level));
-                ImGui::SameLine();
-                ImGui::TextUnformatted(msg.payload.data(), msg.payload.data() + msg.payload.size());
+                    ImGui::TextDisabled("%s", time_fmt.c_str());
+                    ImGui::SameLine();
+                    ImGui::TextColored(level_color(msg.level), "[%s]", level_tag(msg.level));
+                    ImGui::SameLine();
+                }
+                else
+                {
+                    ImGui::Indent(indent);
+                }
+
+                ImGui::TextUnformatted(row.text.data(), row.text.data() + row.text.size());
+
+                if (!row.first)
+                    ImGui::Unindent(indent);
 
                 if (ImGui::BeginPopupContextItem(fmt::format("ctx##{}", i).c_str()))
                 {
