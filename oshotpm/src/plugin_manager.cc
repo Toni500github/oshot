@@ -317,7 +317,7 @@ Result<> PluginManager::ConfirmTrust(std::string_view notice)
         return Ok();
 
     static constexpr std::string_view disclaimer =
-        "Plugins are native code: they run with the same permissions as oshot, and can read and change your "
+        "Plugins are native code, so they run with the same permissions as oshot, and can read and change your "
         "files. Only install plugins from people you trust, and check the repository first if you can.";
 
     // The GUI shows it in the confirmation itself
@@ -630,7 +630,9 @@ Result<> PluginManager::Install(const std::string& source)
     fs::create_directories(m_cache_path, ec);
     RemoveStaleWorkDirs();
 
-    const fs::path path = fs::absolute(source, ec);
+    fs::path path = fs::absolute(source, ec);
+    if (path.has_filename() && path.filename() == "oshot-plugin.toml")
+        path = path.parent_path();
     if (fs::is_directory(path, ec) && fs::exists(path / MANIFEST_NAME, ec))
     {
         std::string name;

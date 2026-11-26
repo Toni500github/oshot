@@ -920,7 +920,8 @@ void ScreenshotTool::DrawInstallPluginsWindow()
 
         ImGui::BeginDisabled(is_installing);
 
-        constexpr SDL_DialogFileFilter filter{ .name = N_("Archives"), .pattern = "zip;tar.gz;tgz;tar.xz;txz" };
+        constexpr SDL_DialogFileFilter filter{ .name    = N_("Plugin archives or manifests"),
+                                               .pattern = "zip;tar.gz;tgz;tar.xz;txz;toml" };
         ui::InputFile(_("Source"), "##install_source", filter, nullptr, m_install.source);
 
         const bool can_install = !is_installing && !m_install.source.empty();
