@@ -60,7 +60,7 @@ main() {
     check_file "$BINARY"
     check_file assets/oshot.png
 
-    VERSION="${OSHOT_VERSION:-0.5.0-rc2}"
+    VERSION="${OSHOT_VERSION:-0.5.0-rc3}"
     # CFBundle*Version must be numeric (no "-rc")
     NUM_VERSION="${VERSION%%-*}"
     NUM_VERSION="${NUM_VERSION#v}"

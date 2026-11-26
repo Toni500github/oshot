@@ -8,8 +8,8 @@ PREFIX      ?= $(if $(filter Linux,$(shell uname -s)),/usr,/usr/local)
 JOBS        := $(or $(patsubst -j%,%,$(filter -j%,$(MAKEFLAGS))),$(shell nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4))
 
 NAME       := oshot
-OLDVERSION := 0.5.0-rc1
-VERSION    := 0.5.0-rc2
+OLDVERSION := 0.5.0-rc2
+VERSION    := 0.5.0-rc3
 TARGET     ?= $(NAME)
 
 DEBUG           ?= 0

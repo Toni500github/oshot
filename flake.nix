@@ -9,7 +9,7 @@
     let
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
-      version = "0.5.0-rc2";
+      version = "0.5.0-rc3";
 
       # A left click on the tray icon needs the "activate" signal of Ayatana AppIndicator 0.6+.
       # Until nixpkgs has it, 0.6.1 is built from upstream's source
