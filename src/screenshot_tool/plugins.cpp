@@ -559,9 +559,14 @@ void ScreenshotTool::DrawManagePluginsWindow()
         if (repos.empty())
             ImGui::TextDisabled("%s", _("No plugins installed."));
 
+        bool first = true;
         for (const manifest_t& repo : repos)
         {
             ImGui::PushID(repo.name.c_str());
+
+            if (first)
+                ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+            first = false;
 
             if (ImGui::CollapsingHeader(repo.name.c_str(),
                                         ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_SpanAvailWidth))
