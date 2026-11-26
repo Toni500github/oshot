@@ -23,57 +23,54 @@
  *
  */
 
-#include <algorithm>
-#include <array>
-#include <cctype>
-#include <cfloat>
-#include <chrono>
-#include <cstddef>
-#include <cstdint>
-#include <filesystem>
-#include <functional>
-#include <memory>
-#include <mutex>
-#include <optional>
-#include <span>
-#include <string_view>
-#include <system_error>
-#include <thread>
-#include <utility>
-#include <vector>
-
-#include "cache.hpp"
-#include "clipboard.hpp"
-#include "fmt/format.h"
-#include "fmt/ranges.h"
-#include "i18n.hpp"
-#include "imgui/imgui.h"
-#include "imgui/imgui_internal.h"
-#include "imgui/imgui_stdlib.h"
-#include "screen_capture.hpp"
-#include "screenshot_tool.hpp"
-#include "spdlog/spdlog.h"
-#include "text_extraction.hpp"
-#include "theme.hpp"
-#include "util.hpp"
-#include "util/color.hpp"
-#include "util/paths.hpp"
-#include "util/result.hpp"
-#include "util/window.hpp"
 #ifndef DISABLE_PLUGINS
+#  include <algorithm>
+#  include <array>
+#  include <cctype>
+#  include <cfloat>
+#  include <chrono>
+#  include <cstddef>
+#  include <cstdint>
+#  include <filesystem>
+#  include <functional>
+#  include <memory>
+#  include <mutex>
+#  include <optional>
+#  include <span>
+#  include <string_view>
+#  include <system_error>
+#  include <thread>
+#  include <utility>
+#  include <vector>
+
+#  include "cache.hpp"
+#  include "clipboard.hpp"
+#  include "fmt/format.h"
+#  include "fmt/ranges.h"
+#  include "helpers.hpp"
+#  include "i18n.hpp"
+#  include "imgui/imgui.h"
+#  include "imgui/imgui_internal.h"
+#  include "imgui/imgui_stdlib.h"
 #  include "manifest.hh"
 #  include "plugin.hpp"
+#  include "screen_capture.hpp"
+#  include "screenshot_tool.hpp"
+#  include "spdlog/spdlog.h"
 #  include "state_manager.hh"
-#endif
-#include "helpers.hpp"
+#  include "text_extraction.hpp"
+#  include "theme.hpp"
+#  include "util.hpp"
+#  include "util/color.hpp"
+#  include "util/paths.hpp"
+#  include "util/result.hpp"
+#  include "util/window.hpp"
 
 using namespace std::chrono_literals;
 
 // ------------------------------
 // Plugins
 // ------------------------------
-
-#ifndef DISABLE_PLUGINS
 
 // What a plugin declares it does on its own, as tags with the reason in their tooltip.
 // `same_line` continues the current line
@@ -566,9 +563,8 @@ void ScreenshotTool::DrawManagePluginsWindow()
         {
             ImGui::PushID(repo.name.c_str());
 
-            if (ImGui::CollapsingHeader(
-                    repo.name.c_str(),
-                    ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_SpanAvailWidth))
+            if (ImGui::CollapsingHeader(repo.name.c_str(),
+                                        ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_SpanAvailWidth))
             {
                 ImGui::Indent();
 
