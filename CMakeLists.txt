@@ -906,8 +906,8 @@ if(NOT DISABLE_PLUGINS)
                 oshot_example_${_name}
                 MODULE
                 examples/plugins/${_source}
-                ${OSHOT_SDK_HEADERS}
             )
+            add_dependencies(oshot_example_${_name} oshot_sdk_headers)
             target_include_directories(
                 oshot_example_${_name}
                 PRIVATE "${OSHOT_SDK_DIR}/include"

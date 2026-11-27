@@ -12,12 +12,15 @@ OLDVERSION := 0.5.0-rc2
 VERSION    := 0.5.0-rc3
 TARGET     ?= $(NAME)
 
-DEBUG           ?= 0
-DISABLE_PLUGINS ?= 0
-BUILD_EXAMPLES  ?= 0
-BUILD_TESTS     ?= 0
+DEBUG           ?= OFF
+DISABLE_PLUGINS ?= OFF
+BUILD_EXAMPLES  ?= OFF
+BUILD_TESTS     ?= OFF
 
-ifeq ($(DEBUG),1)
+# Non-empty if the argument is a true value
+is-on = $(filter 1 ON On on YES Yes yes TRUE True true Y y,$(1))
+
+ifneq ($(call is-on,$(DEBUG)),)
     BUILDDIR   := build/debug
     BUILD_TYPE := Debug
 else
