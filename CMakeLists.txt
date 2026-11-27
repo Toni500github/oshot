@@ -322,7 +322,6 @@ else()
 endif()
 
 target_include_directories(imgui PUBLIC include/libs/imgui)
-target_compile_definitions(imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS IMGUI_DEFINE_MATH_OPERATORS)
 target_link_libraries(imgui PUBLIC ${SDL3_TARGET})
 
 # ---- cimgui (C-ABI plugins only) ----

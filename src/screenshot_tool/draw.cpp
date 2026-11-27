@@ -423,7 +423,16 @@ void ScreenshotTool::DrawASelectionBorder(selection_info_t& sel, const ImRect& r
         constexpr float kMargin   = 3.0f;  // gap between selection corner and the label
 
         const ImVec2 win_size(str_size.x + kPaddingX * 2.0f, str_size.y + kPaddingY * 2.0f);
-        const ImVec2 win_pos(r.Max.x - win_size.x - kMargin, r.Max.y - win_size.y - kMargin);
+        ImVec2       win_pos(r.Max.x - win_size.x - kMargin, r.Max.y - win_size.y - kMargin);
+
+        // If too small to hold the label then move it past the bottom-right corner, unless that leaves the display
+        if (win_size.x + kMargin * 2.0f > r.GetWidth() * 0.75f || win_size.y + kMargin * 2.0f > r.GetHeight() * 0.75f)
+        {
+            const ImVec2 outside(r.Max.x + kMargin, r.Max.y + kMargin);
+            const ImVec2 display = ImGui::GetIO().DisplaySize;
+            if (outside.x + win_size.x <= display.x && outside.y + win_size.y <= display.y)
+                win_pos = outside;
+        }
 
         ui::ScopedStyle style;
         style.Var(ImGuiStyleVar_WindowRounding, 4.0f)
