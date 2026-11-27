@@ -116,7 +116,7 @@ public:
         std::string              ocr_get_repo    = "tesseract-ocr/tessdata";
         std::string              ocr_language    = "eng";
         std::string              theme_file_path = "theme.toml";
-        std::string              image_out_fmt   = "oshot_{:%F_%H-%M}";
+        std::string              image_out_fmt   = "oshot_{:%F_%H-%M-%S}";
         int                      delay           = 0;
         bool                     show_text_tools = true;
         bool                     aa_icons        = true;  // antialiased-icons, else the pixel-perfect ones
