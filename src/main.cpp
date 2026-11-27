@@ -31,6 +31,7 @@
 #include <cstring>
 #include <exception>
 #include <filesystem>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <system_error>
@@ -196,8 +197,17 @@ static int oshot_main(int argc, char* argv[])  // NOLINT
     std::error_code ec;
 
     // Don't make it relative to the working directory, which is System32 when started at sign-in on Windows
-    const fs::path& log_path = fs::temp_directory_path(ec) / fmt::format("oshot_{}.log", getpid());
-    fs::create_directories(log_path.parent_path(), ec);
+    const fs::path log_dir  = fs::temp_directory_path(ec) / "oshot-logs";
+    const fs::path log_path = log_dir / fmt::format("oshot_{}.log", getpid());
+    fs::create_directories(log_dir, ec);
+
+    // If there are more than 20 files, clear them before opening our own log
+    if (std::distance(fs::directory_iterator(log_dir, ec), fs::directory_iterator{}) > 20)
+    {
+        fs::remove_all(log_dir, ec);
+        fs::create_directories(log_dir, ec);
+    }
+
     std::shared_ptr<spdlog::sinks::basic_file_sink_mt> file;
     try
     {
