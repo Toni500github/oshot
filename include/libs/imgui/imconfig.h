@@ -1,5 +1,3 @@
-// https://github.com/ocornut/imgui/commit/77fe4588e6af934b4167b91312174ca3fbb0d71a
-
 //-----------------------------------------------------------------------------
 // DEAR IMGUI COMPILE-TIME OPTIONS
 // Runtime options (clipboard callbacks, enabling various features, etc.) can generally be set via the ImGuiIO structure.

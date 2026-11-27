@@ -1,4 +1,4 @@
-// dear imgui, v1.93.1 WIP
+// dear imgui, v1.93.1
 // (main code and documentation)
 
 // Help:
@@ -6497,6 +6497,12 @@ bool ImGui::IsItemFocused()
 {
     ImGuiContext& g = *GImGui;
     return g.NavId == g.LastItemData.ID && g.NavId != 0;
+}
+
+bool ImGui::IsItemDisabled()
+{
+    ImGuiContext& g = *GImGui;
+    return (g.LastItemData.ItemFlags & ImGuiItemFlags_Disabled);
 }
 
 // Important: this can be useful but it is NOT equivalent to the behavior of e.g.Button()!

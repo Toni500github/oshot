@@ -5,7 +5,7 @@ Update the commit and date here whenever a library is updated, and re-apply the 
 
 | Library | Upstream commit | Date | Local patches |
 |---|---|---|---|
-| Dear ImGui | https://github.com/ocornut/imgui/commit/77fe4588e6af934b4167b91312174ca3fbb0d71a | 2026-11-16 | `imconfig.h`: demo windows and debug tools disabled |
+| Dear ImGui | https://github.com/ocornut/imgui/commit/1ddd7ee13d12cf2663ca175141e38398fab39711 | 2026-11-16 | `imconfig.h`: demo windows and debug tools disabled |
 | cimgui | https://github.com/cimgui/cimgui/commit/2a6a93fccd10f275ee9206167dc9698f6f00fac1 | 2026-10-18 | Regenerated against the ImGui commit above (master, not docking) with oshot's `imconfig.h`; the demo and debug functions libimgui doesn't define are in the generator's `cimgui_skipped` |
 | {fmt} | https://github.com/fmtlib/fmt/commit/14ac0d5a9d40aef14f50954069c1e10971abb0b2 | 2026-11-16 | |
 | spdlog | https://github.com/gabime/spdlog/commit/6d9805df3f588402b17073dcd13eb569ceda864d | 2026-10-24 | `tweakme.h`: `SPDLOG_FMT_EXTERNAL`; `fmt/bundled/` removed |
